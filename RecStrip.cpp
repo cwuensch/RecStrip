@@ -33,6 +33,7 @@
 
 #include <stdlib.h>
 #include <stdio.h>
+#include <stdarg.h>
 #include <string.h>
 #include <time.h>
 #include "remux.h"
@@ -43,11 +44,57 @@
 #define PACKETOFFSET       4
 #define BUFSIZE        65536
 #define FBLIB_DIR_SIZE   512
+#define NRBOOKMARKS      177   // eigentlich werden nur 48 Bookmarks unterstützt!! (SRP2401)
+#define NRSEGMENTMARKER  101
 
 #ifdef _WIN32
   #define inline
   #define __attribute__(a)
 #endif
+
+#if defined(_MSC_VER) && _MSC_VER < 1900
+  #define snprintf c99_snprintf
+  #define vsnprintf c99_vsnprintf
+
+  inline int c99_vsnprintf(char *outBuf, size_t size, const char *format, va_list ap)
+  {
+    int count = -1;
+    if (size != 0)
+      count = _vsnprintf_s(outBuf, size, _TRUNCATE, format, ap);
+    if (count == -1)
+      count = _vscprintf(format, ap);
+    return count;
+  }
+
+  inline int c99_snprintf(char *outBuf, size_t size, const char *format, ...)
+  {
+    int count;
+    va_list ap;
+    va_start(ap, format);
+    count = c99_vsnprintf(outBuf, size, format, ap);
+    va_end(ap);
+    return count;
+  }
+#endif
+
+
+
+typedef enum
+{
+  ST_UNKNOWN,
+  ST_S,
+  ST_T,
+  ST_C,
+  ST_T5700,
+  ST_TMSS,
+  ST_TMST,
+  ST_TMSC,
+  ST_T5800,
+  ST_ST,
+  ST_CT,
+  ST_TF7k7HDPVR,
+  ST_NRTYPES
+} SYSTEM_TYPE;
 
 typedef struct
 {
@@ -222,77 +269,701 @@ typedef struct
   dword                 Zero5;
 } tnavSD;
 
+typedef struct
+{
+  byte                  Version;
+  unsigned long long    RecFileSize;
+  dword                 NrSegmentMarker;
+  dword                 ActiveSegment;
+}__attribute__((packed)) tCutHeader1;
+
+typedef struct
+{
+  word                  Version;
+  unsigned long long    RecFileSize;
+  word                  NrSegmentMarker;
+  word                  ActiveSegment;
+  word                  Padding;
+}__attribute__((packed)) tCutHeader2;
+
+typedef struct
+{
+  dword                 Block;  //Block nr
+  dword                 Timems; //Time in ms
+  float                 Percent;
+  bool                  Selected;
+} tSegmentMarker;
+
+
 
 // Globale Variablen
+char                    RecFileIn[FBLIB_DIR_SIZE], RecFileOut[FBLIB_DIR_SIZE];
+
 FILE                   *fIn = NULL, *fOut = NULL;
 FILE                   *fNavIn = NULL, *fNavOut = NULL;
+
+tnavSD                  NavBuffer;
+byte                   *InfBuffer = NULL;
+TYPE_RecHeader_Info    *RecHeaderInfo = NULL;
+TYPE_Bookmark_Info     *BookmarkInfo = NULL;
+size_t                  InfSize;
+
+tSegmentMarker         *SegmentMarker = NULL;       //[0]=Start of file, [x]=End of file
+int                     NrSegmentMarker = 0;
+int                     ActiveSegment = 0;
+
 unsigned long long int  CurrentPacket = 0, DroppedPackets = 0;
 unsigned long long int  CurrentPosition = 0, PositionOffset = 0;
 
 
-void LoadInfFile(char *RecFileName)
+
+// ----------------------------------------------
+// *****  READ AND WRITE INF FILE  *****
+// ----------------------------------------------
+
+bool LoadInfFile(const char *AbsInfName, SYSTEM_TYPE SystemType)
 {
+  FILE                 *fInfIn = NULL;
+  bool                  Result = FALSE;
+
   //Calculate inf header size
-  InfSize = ((GetSystemType()==ST_TMSC) ? sizeof(TYPE_RecHeader_TMSC) : sizeof(TYPE_RecHeader_TMSS));
+  InfSize = (SystemType==ST_TMSC) ? sizeof(TYPE_RecHeader_TMSC) : sizeof(TYPE_RecHeader_TMSS);
 
   //Allocate and clear the buffer
-  Buffer = (byte*) TAP_MemAlloc(max(InfSize, 32768));
-  if(Buffer) 
-    memset(Buffer, 0, InfSize);
+  InfBuffer = (byte*) malloc(max(InfSize, 32768));
+  if(InfBuffer) 
+    memset(InfBuffer, 0, InfSize);
   else
   {
-    WriteLogMC("MovieCutterLib", "PatchInfFiles() E0901: source inf not patched, cut inf not created.");
-    TRACEEXIT();
+    printf("LoadInfFile() E0901: Not enough memory.\n");
     return FALSE;
   }
 
   //Read the source .inf
-  TAP_SPrint(AbsSourceInfName, sizeof(AbsSourceInfName), "%s/%s.inf", AbsDirectory, SourceFileName);
-  fSourceInf = open(AbsSourceInfName, O_RDONLY);
-  if(fSourceInf < 0)
+  fInfIn = fopen(AbsInfName, "rb");
+  if(!fInfIn)
   {
-    WriteLogMC("MovieCutterLib", "PatchInfFiles() E0902: source inf not patched, cut inf not created.");
-    TAP_MemFree(Buffer);
-    TRACEEXIT();
+    free(InfBuffer);
+    printf("LoadInfFile() E0902: Source inf not found.\n");
     return FALSE;
   }
 
-  BytesRead = read(fSourceInf, Buffer, InfSize);
-  #ifdef FULLDEBUG
-    struct stat statbuf;
-    fstat(fSourceInf, &statbuf);
-    WriteLogMCf("MovieCutterLib", "PatchInfFiles(): %d / %llu Bytes read.", BytesRead, statbuf.st_size);
-  #endif
-  close(fSourceInf);
+  Result = (fread(InfBuffer, 1, InfSize, fInfIn) == InfSize);
+  fclose(fInfIn);
+
+  //Decode the source .inf
+  switch (SystemType)
+  {
+    case ST_TMSS:
+      RecHeaderInfo = &(((TYPE_RecHeader_TMSS*)InfBuffer)->RecHeaderInfo);
+      BookmarkInfo  = &(((TYPE_RecHeader_TMSS*)InfBuffer)->BookmarkInfo);
+      break;
+    case ST_TMSC:
+      RecHeaderInfo = &(((TYPE_RecHeader_TMSC*)InfBuffer)->RecHeaderInfo);
+      BookmarkInfo  = &(((TYPE_RecHeader_TMSC*)InfBuffer)->BookmarkInfo);
+      break;
+    case ST_TMST:
+      RecHeaderInfo = &(((TYPE_RecHeader_TMST*)InfBuffer)->RecHeaderInfo);
+      BookmarkInfo  = &(((TYPE_RecHeader_TMST*)InfBuffer)->BookmarkInfo);
+      break;
+    default:
+      printf("PatchInfFiles() E0903: Incompatible system type.\n");
+      free(InfBuffer);
+      return FALSE;
+  }
+  return Result;
+}
+
+bool SaveInfFile(const char *AbsDestInf, const char *AbsSourceInf)
+{
+  FILE                 *fInfIn = NULL, *fInfOut = NULL;
+  size_t                BytesRead;
+  bool                  Result = FALSE;
+
+  //Allocate and clear the buffer
+  if(!InfBuffer) 
+  {
+    printf("SaveInfFile() E0901: Buffer not allocated.\n");
+    return FALSE;
+  }
+
+  //Encode the new inf and write it to the disk
+  fInfOut = fopen(AbsDestInf, "wb");
+  if(fInfOut)
+  {
+    Result = (fwrite(InfBuffer, 1, InfSize, fInfOut) == InfSize) && Result;
+
+    // Kopiere den Rest der Source-inf (falls vorhanden) in die neue inf hinein
+    fInfIn = fopen(AbsSourceInf, "rb");
+    if(fInfIn)
+    {
+      fseek(fInfOut, InfSize, SEEK_SET);
+      do {
+        BytesRead = fread(InfBuffer, 1, 32768, fInfIn);
+        if (BytesRead > 0)
+          Result = (fwrite(InfBuffer, 1, BytesRead, fInfOut) == BytesRead) && Result;
+      } while (BytesRead > 0);
+      fclose(fInfIn);
+    }
+    Result = (fflush(fInfOut) == 0) && Result;
+    Result = (fclose(fInfOut) == 0) && Result;
+  }
+  else
+  {
+    printf("PatchInfFiles() E0902: New inf not created.\n");
+    Result = FALSE;
+  }
+
+  free(InfBuffer); InfBuffer = NULL;
+  return Result;
 }
 
 
+// ----------------------------------------------
+// *****  READ AND WRITE CUT FILE  *****
+// ----------------------------------------------
+
+bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize)
+{
+  struct stat64         statbuf;
+  bool                  ret = FALSE;
+
+  if(AbsFileName)
+  {
+    ret = (lstat64(AbsFileName, &statbuf) == 0);
+    if (ret && OutFileSize)
+      *OutFileSize = statbuf.st_size;
+  }
+  return ret;
+}
+
+void SecToTimeString(dword Time, char *const OutTimeString)  // needs max. 4 + 1 + 2 + 1 + 2 + 1 = 11 chars
+{
+  dword                 Hour, Min, Sec;
+
+  if(OutTimeString)
+  {
+    Hour = (Time / 3600);
+    Min  = (Time / 60) % 60;
+    Sec  = Time % 60;
+    if (Hour >= 10000) Hour = 9999;
+    snprintf(OutTimeString, 11, "%lu:%02lu:%02lu", Hour, Min, Sec);
+  }
+}
+
+void MSecToTimeString(dword Timems, char *const OutTimeString)  // needs max. 4 + 1 + 2 + 1 + 2 + 1 + 3 + 1 = 15 chars
+{
+  dword                 Hour, Min, Sec, Millisec;
+
+  if(OutTimeString)
+  {
+    Hour = (Timems / 3600000);
+    Min  = (Timems / 60000) % 60;
+    Sec  = (Timems / 1000) % 60;
+    Millisec = Timems % 1000;
+    snprintf(OutTimeString, 15, "%lu:%02lu:%02lu,%03lu", Hour, Min, Sec, Millisec);
+  }
+}
+
+dword TimeStringToMSec(char *const TimeString)
+{
+  dword                 Hour=0, Min=0, Sec=0, Millisec=0, ret=0;
+
+  if(TimeString)
+  {
+    if (sscanf(TimeString, "%lu:%lu:%lu%*1[.,]%lu", &Hour, &Min, &Sec, &Millisec) == 4)
+      ret = 1000*(60*(60*Hour + Min) + Sec) + Millisec;
+  }
+  return ret;
+}
+
+void GetCutNameFromRec(const char *RecFileName, char *const OutCutFileName)
+{
+  char *p = NULL;
+
+  if (RecFileName && OutCutFileName)
+  {
+    snprintf(OutCutFileName, FBLIB_DIR_SIZE, "%s", RecFileName);
+    if ((p = strrchr(OutCutFileName, '.')) == NULL)
+      p = &OutCutFileName[strlen(OutCutFileName)];
+    snprintf(p, 5, ".cut");
+  }
+}
+
+bool CutFileDecodeBin(FILE *fCut, unsigned long long *OutSavedSize)
+{
+  byte                  Version;
+  int                   SavedNrSegments = 0;
+  bool                  ret = FALSE;
+
+  NrSegmentMarker = 0;
+  ActiveSegment = 0;
+  memset(SegmentMarker, 0, NRSEGMENTMARKER * sizeof(tSegmentMarker));
+  if (OutSavedSize) *OutSavedSize = 0;
+
+  if (fCut)
+  {
+    // Check correct version of cut-file
+    Version = fgetc(fCut);
+    switch (Version)
+    {
+      case 1:
+      {
+        rewind(fCut);
+        tCutHeader1 CutHeader;
+        ret = (fread(&CutHeader, sizeof(CutHeader), 1, fCut) == 1);
+        if (ret)
+        {
+          *OutSavedSize = CutHeader.RecFileSize;
+          SavedNrSegments = CutHeader.NrSegmentMarker;
+          ActiveSegment = CutHeader.ActiveSegment;
+        }
+        break;
+      }
+      case 2:
+      {
+        rewind(fCut);
+        tCutHeader2 CutHeader;
+        ret = (fread(&CutHeader, sizeof(CutHeader), 1, fCut) == 1);
+        if (ret)
+        {
+          *OutSavedSize = CutHeader.RecFileSize;
+          SavedNrSegments = CutHeader.NrSegmentMarker;
+          ActiveSegment = CutHeader.ActiveSegment;
+        }
+        break;
+      }
+      default:
+        printf("CutFileDecodeBin: .cut version mismatch!\n");
+    }
+
+    if (ret)
+    {
+      SavedNrSegments = min(SavedNrSegments, NRSEGMENTMARKER);
+      NrSegmentMarker = fread(SegmentMarker, sizeof(tSegmentMarker), SavedNrSegments, fCut);
+      if (NrSegmentMarker < SavedNrSegments)
+        printf("CutFileDecodeBin: Unexpected end of file!\n");
+    }
+  }
+  return ret;
+}
+
+bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
+{
+  char                 *Buffer = NULL;
+  size_t                BufSize = 0;
+  unsigned long long    SavedSize = 0;
+  int                   SavedNrSegments = 0;
+  bool                  HeaderMode=FALSE, SegmentsMode=FALSE;
+  char                  TimeStamp[16];
+  char                 *c, Selected;
+  int                   p;
+  bool                  ret = FALSE;
+
+  NrSegmentMarker = 0;
+  ActiveSegment = 0;
+  memset(SegmentMarker, 0, NRSEGMENTMARKER * sizeof(tSegmentMarker));
+  if (OutSavedSize) *OutSavedSize = 0;
+
+  if (fCut)
+  {
+    // Check the first line
+    if (getline(&Buffer, &BufSize, fCut) >= 0)
+    {
+      if (strncmp(Buffer, "[MCCut3]", 8) == 0)
+      {
+        HeaderMode = TRUE;
+        ret = TRUE;
+      }
+    }
+
+    while (ret && (getline(&Buffer, &BufSize, fCut) >= 0))
+    {
+      //Interpret the following characters as remarks: //
+      c = strstr(Buffer, "//");
+      if(c) *c = '\0';
+
+      // Remove line breaks in the end
+      p = strlen(Buffer);
+      while (p && (Buffer[p-1] == '\r' || Buffer[p-1] == '\n' || Buffer[p-1] == ';'))
+        Buffer[--p] = '\0';
+
+      // Kommentare und Sektionen
+      switch (Buffer[0])
+      {
+        case '\0':
+          continue;
+
+        case '%':
+        case ';':
+        case '#':
+        case '/':
+          continue;
+
+        // Neue Sektion gefunden
+        case '[':
+        {
+          HeaderMode = FALSE;
+          // Header überprüfen
+          if ((SavedSize <= 0) || (SavedNrSegments < 0))
+          {
+            ret = FALSE;
+            break;
+          }
+          if (strcmp(Buffer, "[Segments]") == 0)
+            SegmentsMode = TRUE;
+          continue;
+        }
+      }
+
+      // Header einlesen
+      if (HeaderMode)
+      {
+        char            Name[50];
+        unsigned long long Value;
+
+        if (sscanf(Buffer, "%49[^= ] = %lld", Name, &Value) == 2)
+        {
+          if (strcmp(Name, "RecFileSize") == 0)
+          {
+            SavedSize = Value;
+            if (OutSavedSize) *OutSavedSize = SavedSize;
+          }
+          else if (strcmp(Name, "NrSegmentMarker") == 0)
+            SavedNrSegments = Value;
+//          else if (strcmp(Name, "ActiveSegment") == 0)
+//            ActiveSegment = Value;
+        }
+      }
+
+      // Segmente einlesen
+      else if (SegmentsMode)
+      {
+        //[Segments]
+        //#Nr. ; Sel ; StartBlock ; StartTime ; Percent
+        if (sscanf(Buffer, "%*i ; %c ; %lu ; %16[^;\r\n] ; %f%%", &Selected, &SegmentMarker[NrSegmentMarker].Block, TimeStamp, &SegmentMarker[NrSegmentMarker].Percent) >= 3)
+        {
+          SegmentMarker[NrSegmentMarker].Selected = (Selected == '*');
+          SegmentMarker[NrSegmentMarker].Timems = (TimeStringToMSec(TimeStamp));
+          NrSegmentMarker++;
+        }
+      }
+    }
+    free(Buffer);
+
+    if (ret)
+    {
+      if (NrSegmentMarker != SavedNrSegments)
+        printf("CutFileDecodeTxt: Invalid number of segments read (%d of %d)!\n", NrSegmentMarker, SavedNrSegments);
+    }
+    else
+      printf("CutFileDecodeTxt: Invalid cut file format!\n");
+  }
+  return ret;
+}
+
+bool CutFileLoad(const char *AbsCutName)
+{
+  FILE                 *fCut = NULL;
+  byte                  Version;
+  unsigned long long    RecFileSize, SavedSize;
+  int                   i;
+  bool                  ret = FALSE;
+
+  // Schaue zuerst im Cut-File nach
+  fCut = fopen(AbsCutName, "rb");
+  if(fCut)
+  {
+    Version = fgetc(fCut);
+    if (Version == '[') Version = 3;
+    rewind(fCut);
+
+    printf("CutFileLoad: Importing cut-file version %hhu\n", Version);
+    switch (Version)
+    {
+      case 1:
+      case 2:
+      {
+        ret = CutFileDecodeBin(fCut, &SavedSize);
+        break;
+      }
+      case 3:
+      default:
+      {
+        ret = CutFileDecodeTxt(fCut, &SavedSize);
+        break;
+      }
+    }
+    fclose(fCut);
+    if (!ret)
+      printf("CutFileLoad: Failed to read cut-info from .cut!\n");
+  }
+
+  // Check, if size of rec-File has been changed
+  HDD_GetFileSize(RecFileIn, &RecFileSize);
+  if (ret && (RecFileSize != SavedSize))
+  {
+    printf("CutFileLoad: .cut file size mismatch!\n");
+    return FALSE;
+  }
+  return ret;
+}
+
+bool CutFileSave(const char* AbsCutName)
+{
+  FILE                 *fCut = NULL;
+  char                  TimeStamp[16];
+  unsigned long long    RecFileSize;
+  int                   i;
+  bool                  ret = TRUE;
+
+  // neues CutFile speichern
+  if (SegmentMarker)
+  {
+    if (!HDD_GetFileSize(RecFileOut, &RecFileSize))
+      printf("CutFileSave: Could not detect size of recording!\n"); 
+
+    fCut = fopen(AbsCutName, "wb");
+    if(fCut)
+    {
+      ret = (fprintf(fCut, "[MCCut3]\r\n") > 0) && ret;
+      ret = (fprintf(fCut, "RecFileSize=%llu\r\n", RecFileSize) > 0) && ret;
+      ret = (fprintf(fCut, "NrSegmentMarker=%d\r\n", NrSegmentMarker) > 0) && ret;
+      ret = (fprintf(fCut, "ActiveSegment=%d\r\n\r\n", ActiveSegment) > 0) && ret;  // sicher!?
+      ret = (fprintf(fCut, "[Segments]\r\n") > 0) && ret;
+      ret = (fprintf(fCut, "#Nr ; Sel ; StartBlock ;     StartTime ; Percent\r\n") > 0) && ret;
+      for (i = 0; i < NrSegmentMarker; i++)
+      {
+        MSecToTimeString(SegmentMarker[i].Timems, TimeStamp);
+        ret = (fprintf(fCut, "%3d ;  %c  ; %10lu ;%14s ;  %5.1f%%\r\n", i, (SegmentMarker[i].Selected ? '*' : '-'), SegmentMarker[i].Block, TimeStamp, SegmentMarker[i].Percent) > 0) && ret;
+      }
+      ret = (fclose(fCut) == 0) && ret;
+    }
+  }
+  return ret;
+}
+
+
+// ----------------------------------------------
+// *****  PROCESS NAV FILE  *****
+// ----------------------------------------------
 
 void ProcessNavFile(const unsigned long long CurrentPosition, const unsigned long long PositionOffset)
 {
-  while (fNavIn && (navBuffer.Position < CurrentPosition))
+  unsigned long long PictureHeaderOffset;
+
+  PictureHeaderOffset = ((unsigned long long)(NavBuffer.PHOffsetHigh) << 32) | NavBuffer.PHOffset;
+  while (fNavIn && (PictureHeaderOffset < CurrentPosition))
+  {
+    PictureHeaderOffset -= PositionOffset;
+    NavBuffer.PHOffsetHigh = PictureHeaderOffset >> 32;
+    NavBuffer.PHOffset = PictureHeaderOffset & 0xffffffff;
+
+    if (fNavOut && !fwrite(&NavBuffer, sizeof(tnavSD), 1, fNavOut))
     {
-      navBuffer.Position -= PositionOffset;
-      if (fNavOut && !fwrite(navBuffer, 32, 1, fNavOut))
-      {
-        printf("ERROR writing to nav file!");
-        fclose(fNavOut); fNavOut = NULL;
-      }
-      if (!fread(navBuffer, 32, 1, fNavIn))
-      {
-        fclose(fNavIn); fNavIn = NULL;
-      }
+      printf("ProcessNavFile(): Error writing to nav file!\n");
+      fclose(fNavOut); fNavOut = NULL;
     }
+    if (!fread(&NavBuffer, 32, 1, fNavIn))
+    {
+      fclose(fNavIn); fNavIn = NULL;
+    }
+  }
 }
 
 
+// ----------------------------------------------
+// *****  NALU Dump  *****
+// ----------------------------------------------
+
+/*void NaluDumpReset()
+{
+  LastContinuityInput = -1;
+  ContinuityOffset = 0;
+  PesId = -1;
+  PesOffset = 0;
+  NaluFillState = NALU_NONE;
+  NaluOffset = 0;
+  History = 0xffffffff;
+  DropAllPayload = false;
+}
+
+void ProcessPayload(unsigned char *Payload, int size, bool PayloadStart, sPayloadInfo &Info)
+{
+  Info.DropPayloadStartBytes = 0;
+  Info.DropPayloadEndBytes = 0;
+  int LastKeepByte = -1;
+
+  if (PayloadStart)
+  {
+    History = 0xffffffff;
+    PesId = -1;
+    NaluFillState = NALU_NONE;
+  }
+
+  for (int i=0; i<size; i++)
+  {
+    History = (History << 8) | Payload[i];
+
+    PesOffset++;
+    NaluOffset++;
+
+    bool DropByte = false;
+
+    if (History >= 0x00000180 && History <= 0x000001FF)
+    {
+      // Start of PES packet
+      PesId = History & 0xff;
+      PesOffset = 0;
+      NaluFillState = NALU_NONE;
+    }
+    else if (PesId >= 0xe0 && PesId <= 0xef // video stream
+     && History >= 0x00000100 && History <= 0x0000017F) // NALU start code
+    {
+      int NaluId = History & 0xff;
+      NaluOffset = 0;
+      NaluFillState = ((NaluId & 0x1f) == 0x0c) ? NALU_FILL : NALU_NONE;
+    }
+
+    if (PesId >= 0xe0 && PesId <= 0xef // video stream
+     && PesOffset >= 1 && PesOffset <= 2)
+    {
+      Payload[i] = 0; // Zero out PES length field
+    }
+
+    if (NaluFillState == NALU_FILL && NaluOffset > 0) // Within NALU fill data
+    {
+      // We expect a series of 0xff bytes terminated by a single 0x80 byte.
+
+      if (Payload[i] == 0xFF)
+      {
+        DropByte = true;
+      }
+      else if (Payload[i] == 0x80)
+      {
+        NaluFillState = NALU_TERM; // Last byte of NALU fill, next byte sets NaluFillEnd=true
+        DropByte = true;
+      }
+      else // Invalid NALU fill
+      {
+        dsyslog("cNaluDumper: Unexpected NALU fill data: %02x", Payload[i]);
+        NaluFillState = NALU_END;
+        if (LastKeepByte == -1)
+        {
+          // Nalu fill from beginning of packet until last byte
+          // packet start needs to be dropped
+          Info.DropPayloadStartBytes = i;
+        }
+      }
+    }
+    else if (NaluFillState == NALU_TERM) // Within NALU fill data
+    {
+      // We are after the terminating 0x80 byte
+      NaluFillState = NALU_END;
+      if (LastKeepByte == -1)
+      {
+        // Nalu fill from beginning of packet until last byte
+        // packet start needs to be dropped
+        Info.DropPayloadStartBytes = i;
+      }
+    }
+
+    if (!DropByte)
+      LastKeepByte = i; // Last useful byte
+  }
+
+  Info.DropAllPayloadBytes = (LastKeepByte == -1);
+  Info.DropPayloadEndBytes = size-1-LastKeepByte;
+}
+
+bool ProcessTSPacket(unsigned char *Packet)
+{
+  bool HasAdaption = TsHasAdaptationField(Packet);
+  bool HasPayload = TsHasPayload(Packet);
+
+  // Check continuity:
+  int ContinuityInput = TsContinuityCounter(Packet);
+  if (LastContinuityInput >= 0)
+  {
+    int NewContinuityInput = HasPayload ? (LastContinuityInput + 1) & TS_CONT_CNT_MASK : LastContinuityInput;
+    int Offset = (NewContinuityInput - ContinuityInput) & TS_CONT_CNT_MASK;
+    if (Offset > 0)
+      dsyslog("cNaluDumper: TS continuity offset %i", Offset);
+    if (Offset > ContinuityOffset)
+      ContinuityOffset = Offset; // max if packets get dropped, otherwise always the current one.
+  }
+  LastContinuityInput = ContinuityInput;
+
+  if (HasPayload) {
+    sPayloadInfo Info;
+    int Offset = TsPayloadOffset(Packet);
+    ProcessPayload(Packet + Offset, TS_SIZE - Offset, TsPayloadStart(Packet), Info);
+
+    if (DropAllPayload && !Info.DropAllPayloadBytes)
+    {
+      // Return from drop packet mode to normal mode
+      DropAllPayload = false;
+
+      // Does the packet start with some remaining NALU fill data?
+      if (Info.DropPayloadStartBytes > 0)
+      {
+        // Add these bytes as stuffing to the adaption field.
+
+        // Sample payload layout:
+        // FF FF FF FF FF 80 00 00 01 xx xx xx xx
+        //     ^DropPayloadStartBytes
+
+        TsExtendAdaptionField(Packet, Offset - 4 + Info.DropPayloadStartBytes);
+      }
+    }
+
+    bool DropThisPayload = DropAllPayload;
+
+    if (!DropAllPayload && Info.DropPayloadEndBytes > 0) // Payload ends with 0xff NALU Fill
+    {
+      // Last packet of useful data
+      // Do early termination of NALU fill data
+      Packet[TS_SIZE-1] = 0x80;
+      DropAllPayload = true;
+      // Drop all packets AFTER this one
+
+      // Since we already wrote the 0x80, we have to make sure that
+      // as soon as we stop dropping packets, any beginning NALU fill of next
+      // packet gets dumped. (see DropPayloadStartBytes above)
+    }
+
+    if (DropThisPayload && HasAdaption)
+    {
+      // Drop payload data, but keep adaption field data
+      TsExtendAdaptionField(Packet, TS_SIZE-4);
+      DropThisPayload = false;
+    }
+
+    if (DropThisPayload)
+    {
+      return true; // Drop packet
+    }
+  }
+
+  // Fix Continuity Counter and reproduce incoming offsets:
+  int NewContinuityOutput = TsHasPayload(Packet) ? (LastContinuityOutput + 1) & TS_CONT_CNT_MASK : LastContinuityOutput;
+  NewContinuityOutput = (NewContinuityOutput + ContinuityOffset) & TS_CONT_CNT_MASK;
+  TsSetContinuityCounter(Packet, NewContinuityOutput);
+  LastContinuityOutput = NewContinuityOutput;
+  ContinuityOffset = 0;
+
+  return false; // Keep packet
+}*/
 
 
+// ----------------------------------------------
+// *****  MAIN FUNCTION  *****
+// ----------------------------------------------
 
 int main(int argc, const char* argv[])
 {
   char                  NavFileIn[FBLIB_DIR_SIZE], NavFileOut[FBLIB_DIR_SIZE], InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], CutFileIn[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE];
-  char                  Buffer[PACKETSIZE], navBuffer[32];
+  char                  Buffer[PACKETSIZE];
   int                   ReadBytes;
   int                   ReturnCode = 0;
   int                   i;
@@ -304,40 +975,60 @@ int main(int argc, const char* argv[])
   printf("- portions of VDR (K. Schmidinger), Mpeg2cleaner (S. Poeschel) and MovieCutter -\n\n");
 
   // Eingabe-Parameter prüfen
-  if (argc < 2)
+  if (argc > 2)
+  {
+    strncpy(RecFileIn, argv[1], sizeof(RecFileIn));
+    if (argc > 2)
+      strncpy(RecFileOut, argv[2], sizeof(RecFileOut));
+  }
+  else
   {
     printf("Usage: %s <source-rec> <dest-rec>\n\n", argv[0]);
     exit(1);
   }
 
   // Input-File öffnen
-  printf("Input file: %s\n", argv[1]);
-  fIn = fopen(argv[1], "rb");
+  printf("Input file: %s\n", RecFileIn);
+  fIn = fopen(RecFileIn, "rb");
   if (fIn)
     setvbuf(fIn, NULL, _IOFBF, BUFSIZE);
   else
   {
-    printf("ERROR: Cannot open %s.\n", argv[1]);
+    printf("ERROR: Cannot open %s.\n", RecFileIn);
     exit(2);
   }
 
   // ggf. Output-File öffnen
   if (argc > 2)
   {
-    printf("Output file: %s\n\n", argv[2]);
-    fOut = fopen(argv[2], "wb");
+    printf("Output file: %s\n\n", RecFileOut);
+    fOut = fopen(RecFileOut, "wb");
     if (fOut)
       setvbuf(fOut, NULL, _IOFBF, BUFSIZE);
     else
     {
       fclose(fIn);
-      printf("ERROR: Cannot create %s.\n", argv[2]);
+      printf("ERROR: Cannot create %s.\n", RecFileOut);
       exit(3);
     }
   }
 
+  // ggf. inf-File einlesen
+  snprintf(InfFileIn, sizeof(InfFileIn), "%s.inf", RecFileIn);
+  printf("Inf file: %s\n", InfFileIn);
+  if (LoadInfFile(InfFileIn, ST_TMSC))
+  {
+    if (argc > 2)
+    {
+      snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf", RecFileOut);
+      printf("Inf output: %s\n\n", InfFileOut);
+    }
+  }
+  else
+    printf("WARNING: Cannot open inf file %s.\n", InfFileIn);
+
   // ggf. nav-Files öffnen
-  sprintf(NavFileIn, "%s.nav", argv[1]);
+  snprintf(NavFileIn, sizeof(NavFileIn), "%s.nav", RecFileIn);
   printf("Nav file: %s\n", NavFileIn);
   fNavIn = fopen(NavFileIn, "rb");
   if (fNavIn)
@@ -349,41 +1040,35 @@ int main(int argc, const char* argv[])
     else
       rewind(fNavIn);
 
-    if (argc > 2)
+    if (fread(&NavBuffer, sizeof(tnavSD), 1, fNavIn))
     {
-      sprintf(NavFileOut, "%s.nav", argv[2]);
-      printf("Nav output: %s\n\n", NavFileOut);
-      fNavOut = fopen(NavFileOut, "wb");
-      if (!fNavIn)
-        printf("WARNING: Cannot create nav %s.\n", NavFileOut);
+      if (argc > 2)
+      {
+        snprintf(NavFileOut, sizeof(NavFileOut), "%s.nav", RecFileOut);
+        printf("Nav output: %s\n\n", NavFileOut);
+        fNavOut = fopen(NavFileOut, "wb");
+        if (!fNavIn)
+          printf("WARNING: Cannot create nav %s.\n", NavFileOut);
+      }
+    }
+    else
+    {
+      printf("WARNING: Cannot read nav file.\n");
+      fclose(fNavIn); fNavIn = NULL;
     }
   }
   else
     printf("WARNING: Cannot open nav file %s.\n", NavFileIn);
 
-  // ggf. inf-File einlesen
-  sprintf(InfFileIn, "%s.inf", argv[1]);
-  printf("Inf file: %s\n", NavFileIn);
-  if (LoadInfFile(InfFileIn))
-  {
-    if (argc > 2)
-    {
-      sprintf(InfFileOut, "%s.inf", argv[2]);
-      printf("Inf output: %s\n\n", InfFileOut);
-    }
-  }
-  else
-    printf("WARNING: Cannot open inf file %s.\n", InfFileIn);
-
   // ggf. cut-File einlesen
-  sprintf(CutFileIn, "%s.cut", argv[1]);
+  GetCutNameFromRec(RecFileIn, CutFileIn);
   printf("Cut file: %s\n", CutFileIn);
-  if (LoadCutFile(CutFileIn))
+  if (CutFileLoad(CutFileIn))
   {
     if (argc > 2)
     {
-      sprintf(InfFileOut, "%s.cut", argv[2]);
-      printf("Inf output: %s\n\n", CutFileOut);
+      GetCutNameFromRec(RecFileOut, CutFileOut);
+      printf("Cut output: %s\n\n", CutFileOut);
     }
   }
   else
@@ -415,8 +1100,10 @@ int main(int argc, const char* argv[])
         if (fOut && !fwrite(Buffer, ReadBytes, 1, fOut))
         {
           printf("ERROR: Failed writing to output file.\n");
-          fclose(fOut);
           fclose(fIn);
+          fclose(fOut);
+          if(fNavIn) fclose(fNavIn);
+          if (fNavOut) fclose(fNavOut);
           exit(4);
         }
       CurrentPacket++;
@@ -432,11 +1119,11 @@ int main(int argc, const char* argv[])
   if(fNavIn) fclose(fNavIn);
   if (fNavOut) fclose(fNavOut);
 
-  if (InfFileIn && (argc > 2) && !SaveInfFile(InfFileOut))
+  if (InfFileIn && (argc > 2) && !SaveInfFile(InfFileOut, InfFileIn))
     printf("WARNING: Cannot create inf %s.\n", InfFileOut);
 
-  if (CutFileIn && (argc > 2) && !SaveInfFile(InfFileOut))
-    printf("WARNING: Cannot create inf %s.\n", InfFileOut);
+  if (CutFileIn && (argc > 2) && !CutFileSave(CutFileOut))
+    printf("WARNING: Cannot create cut %s.\n", CutFileOut);
 
   printf("Packets: %lli Dropped: %lli (%lli%%)\n", CurrentPacket, DroppedPackets, CurrentPacket ? DroppedPackets*100/CurrentPacket : 0);
 
