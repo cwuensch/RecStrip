@@ -1,0 +1,66 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Header">
+      <UniqueIdentifier>{67cf1606-9087-4e89-b659-30e02b8b5e6f}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="source">
+      <UniqueIdentifier>{15615354-ec83-4bf6-93ee-d0170ad856c5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="libsi">
+      <UniqueIdentifier>{38c6b1f9-1b5e-4030-bcb0-94c1a517d7cd}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\remux.cpp">
+      <Filter>source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\tools.cpp">
+      <Filter>source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libsi\descriptor.cpp">
+      <Filter>libsi</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libsi\section.cpp">
+      <Filter>libsi</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libsi\si.cpp">
+      <Filter>libsi</Filter>
+    </ClCompile>
+    <ClCompile Include="..\libsi\util.cpp">
+      <Filter>libsi</Filter>
+    </ClCompile>
+    <ClCompile Include="..\RecStrip.cpp">
+      <Filter>source</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\channels.h">
+      <Filter>Header</Filter>
+    </ClInclude>
+    <ClInclude Include="..\remux.h">
+      <Filter>Header</Filter>
+    </ClInclude>
+    <ClInclude Include="..\tools.h">
+      <Filter>Header</Filter>
+    </ClInclude>
+    <ClInclude Include="..\libsi\descriptor.h">
+      <Filter>libsi</Filter>
+    </ClInclude>
+    <ClInclude Include="..\libsi\headers.h">
+      <Filter>libsi</Filter>
+    </ClInclude>
+    <ClInclude Include="..\libsi\section.h">
+      <Filter>libsi</Filter>
+    </ClInclude>
+    <ClInclude Include="..\libsi\si.h">
+      <Filter>libsi</Filter>
+    </ClInclude>
+    <ClInclude Include="..\libsi\util.h">
+      <Filter>libsi</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="..\Makefile" />
+  </ItemGroup>
+</Project>
