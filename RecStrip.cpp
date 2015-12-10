@@ -50,6 +50,7 @@
 #ifdef _WIN32
   #define inline
   #define __attribute__(a)
+  #define stat64 _stat64
 #endif
 
 #if defined(_MSC_VER) && _MSC_VER < 1900
@@ -430,7 +431,7 @@ bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize)
 
   if(AbsFileName)
   {
-    ret = (lstat64(AbsFileName, &statbuf) == 0);
+    ret = (stat64(AbsFileName, &statbuf) == 0);
     if (ret && OutFileSize)
       *OutFileSize = statbuf.st_size;
   }
@@ -496,9 +497,10 @@ bool CutFileDecodeBin(FILE *fCut, unsigned long long *OutSavedSize)
   int                   SavedNrSegments = 0;
   bool                  ret = FALSE;
 
+  memset(SegmentMarker, 0, NRSEGMENTMARKER * sizeof(tSegmentMarker));
+
   NrSegmentMarker = 0;
   ActiveSegment = 0;
-  memset(SegmentMarker, 0, NRSEGMENTMARKER * sizeof(tSegmentMarker));
   if (OutSavedSize) *OutSavedSize = 0;
 
   if (fCut)
@@ -550,8 +552,7 @@ bool CutFileDecodeBin(FILE *fCut, unsigned long long *OutSavedSize)
 
 bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
 {
-  char                 *Buffer = NULL;
-  size_t                BufSize = 0;
+  char                  Buffer[512];
   unsigned long long    SavedSize = 0;
   int                   SavedNrSegments = 0;
   bool                  HeaderMode=FALSE, SegmentsMode=FALSE;
@@ -560,15 +561,16 @@ bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
   int                   p;
   bool                  ret = FALSE;
 
+  memset(SegmentMarker, 0, NRSEGMENTMARKER * sizeof(tSegmentMarker));
+
   NrSegmentMarker = 0;
   ActiveSegment = 0;
-  memset(SegmentMarker, 0, NRSEGMENTMARKER * sizeof(tSegmentMarker));
   if (OutSavedSize) *OutSavedSize = 0;
 
   if (fCut)
   {
     // Check the first line
-    if (getline(&Buffer, &BufSize, fCut) >= 0)
+    if (fgets(Buffer, sizeof(Buffer), fCut) >= 0)
     {
       if (strncmp(Buffer, "[MCCut3]", 8) == 0)
       {
@@ -577,7 +579,7 @@ bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
       }
     }
 
-    while (ret && (getline(&Buffer, &BufSize, fCut) >= 0))
+    while (ret && (fgets(Buffer, sizeof(Buffer), fCut) >= 0))
     {
       //Interpret the following characters as remarks: //
       c = strstr(Buffer, "//");
@@ -987,6 +989,9 @@ int main(int argc, const char* argv[])
     exit(1);
   }
 
+  // Puffer allozieren
+  SegmentMarker = (tSegmentMarker*) malloc(NRSEGMENTMARKER * sizeof(tSegmentMarker));
+
   // Input-File öffnen
   printf("Input file: %s\n", RecFileIn);
   fIn = fopen(RecFileIn, "rb");
@@ -1114,20 +1119,21 @@ int main(int argc, const char* argv[])
   }
   time(&endTime);
 
-  fclose(fIn);
-  if(fOut) fclose(fOut);
-  if(fNavIn) fclose(fNavIn);
-  if (fNavOut) fclose(fNavOut);
-
   if (InfFileIn && (argc > 2) && !SaveInfFile(InfFileOut, InfFileIn))
     printf("WARNING: Cannot create inf %s.\n", InfFileOut);
 
   if (CutFileIn && (argc > 2) && !CutFileSave(CutFileOut))
     printf("WARNING: Cannot create cut %s.\n", CutFileOut);
 
-  printf("Packets: %lli Dropped: %lli (%lli%%)\n", CurrentPacket, DroppedPackets, CurrentPacket ? DroppedPackets*100/CurrentPacket : 0);
+  printf("\nPackets: %lli, Dropped: %lli (%lli%%)\n", CurrentPacket, DroppedPackets, CurrentPacket ? DroppedPackets*100/CurrentPacket : 0);
 
   printf("\nElapsed time: %f sec.\n", difftime(endTime, startTime));
+
+  fclose(fIn);
+  if(fOut) fclose(fOut);
+  if(fNavIn) fclose(fNavIn);
+  if (fNavOut) fclose(fNavOut);
+  free(SegmentMarker);
 
   #ifdef _WIN32
     getchar();
