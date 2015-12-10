@@ -307,7 +307,8 @@ tnavSD                  NavBuffer;
 byte                   *InfBuffer = NULL;
 TYPE_RecHeader_Info    *RecHeaderInfo = NULL;
 TYPE_Bookmark_Info     *BookmarkInfo = NULL;
-size_t                  InfSize;
+SYSTEM_TYPE             SystemType = ST_TMSS;
+size_t                  InfSize = 0;
 
 tSegmentMarker         *SegmentMarker = NULL;       //[0]=Start of file, [x]=End of file
 int                     NrSegmentMarker = 0;
@@ -322,15 +323,32 @@ unsigned long long int  CurrentPosition = 0, PositionOffset = 0;
 // *****  READ AND WRITE INF FILE  *****
 // ----------------------------------------------
 
-bool LoadInfFile(const char *AbsInfName, SYSTEM_TYPE SystemType)
+bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize)
+{
+  struct stat64         statbuf;
+  bool                  ret = FALSE;
+
+  if(AbsFileName)
+  {
+    ret = (stat64(AbsFileName, &statbuf) == 0);
+    if (ret && OutFileSize)
+      *OutFileSize = statbuf.st_size;
+  }
+  return ret;
+}
+
+bool LoadInfFile(const char *AbsInfName)
 {
   FILE                 *fInfIn = NULL;
+  unsigned long long    InfFileSize = 0;
   bool                  Result = FALSE;
 
   //Calculate inf header size
-  InfSize = (SystemType==ST_TMSC) ? sizeof(TYPE_RecHeader_TMSC) : sizeof(TYPE_RecHeader_TMSS);
+  if (HDD_GetFileSize(AbsInfName, &InfFileSize))
+    SystemType = (InfFileSize % 122312 <= 10320) ? ST_TMSC : ST_TMSS;
 
   //Allocate and clear the buffer
+  InfSize = (SystemType == ST_TMSC) ? sizeof(TYPE_RecHeader_TMSC) : sizeof(TYPE_RecHeader_TMSS);
   InfBuffer = (byte*) malloc(max(InfSize, 32768));
   if(InfBuffer) 
     memset(InfBuffer, 0, InfSize);
@@ -363,10 +381,10 @@ bool LoadInfFile(const char *AbsInfName, SYSTEM_TYPE SystemType)
       RecHeaderInfo = &(((TYPE_RecHeader_TMSC*)InfBuffer)->RecHeaderInfo);
       BookmarkInfo  = &(((TYPE_RecHeader_TMSC*)InfBuffer)->BookmarkInfo);
       break;
-    case ST_TMST:
+/*    case ST_TMST:
       RecHeaderInfo = &(((TYPE_RecHeader_TMST*)InfBuffer)->RecHeaderInfo);
       BookmarkInfo  = &(((TYPE_RecHeader_TMST*)InfBuffer)->BookmarkInfo);
-      break;
+      break;  */
     default:
       printf("PatchInfFiles() E0903: Incompatible system type.\n");
       free(InfBuffer);
@@ -423,20 +441,6 @@ bool SaveInfFile(const char *AbsDestInf, const char *AbsSourceInf)
 // ----------------------------------------------
 // *****  READ AND WRITE CUT FILE  *****
 // ----------------------------------------------
-
-bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize)
-{
-  struct stat64         statbuf;
-  bool                  ret = FALSE;
-
-  if(AbsFileName)
-  {
-    ret = (stat64(AbsFileName, &statbuf) == 0);
-    if (ret && OutFileSize)
-      *OutFileSize = statbuf.st_size;
-  }
-  return ret;
-}
 
 void SecToTimeString(dword Time, char *const OutTimeString)  // needs max. 4 + 1 + 2 + 1 + 2 + 1 = 11 chars
 {
@@ -632,7 +636,7 @@ bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
             if (OutSavedSize) *OutSavedSize = SavedSize;
           }
           else if (strcmp(Name, "NrSegmentMarker") == 0)
-            SavedNrSegments = Value;
+            SavedNrSegments = (int)Value;
 //          else if (strcmp(Name, "ActiveSegment") == 0)
 //            ActiveSegment = Value;
         }
@@ -1021,7 +1025,7 @@ int main(int argc, const char* argv[])
   // ggf. inf-File einlesen
   snprintf(InfFileIn, sizeof(InfFileIn), "%s.inf", RecFileIn);
   printf("Inf file: %s\n", InfFileIn);
-  if (LoadInfFile(InfFileIn, ST_TMSC))
+  if (LoadInfFile(InfFileIn))
   {
     if (argc > 2)
     {
