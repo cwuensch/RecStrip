@@ -77,8 +77,6 @@
     <ClCompile Include="..\libsi\si.cpp" />
     <ClCompile Include="..\libsi\util.cpp" />
     <ClCompile Include="..\RecStrip.cpp" />
-    <ClCompile Include="..\remux.cpp" />
-    <ClCompile Include="..\tools.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\channels.h" />

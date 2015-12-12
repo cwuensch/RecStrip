@@ -35,13 +35,10 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <time.h>
-#include "remux.h"
-#include "tools.h"
 #include "../../../../API/TMS/include/type.h"
 
-#define PACKETSIZE       192
-#define PACKETOFFSET       4
 #define BUFSIZE        65536
 #define FBLIB_DIR_SIZE   512
 #define NRBOOKMARKS      177   // eigentlich werden nur 48 Bookmarks unterstützt!! (SRP2401)
@@ -309,6 +306,7 @@ typedef struct
 // Globale Variablen
 char                    RecFileIn[FBLIB_DIR_SIZE], RecFileOut[FBLIB_DIR_SIZE];
 bool                    isHDVideo = TRUE;
+byte                    PACKETSIZE, PACKETOFFSET;
 
 FILE                   *fIn = NULL, *fOut = NULL;
 FILE                   *fNavIn = NULL, *fNavOut = NULL;
@@ -900,10 +898,174 @@ void ProcessCutFile(const dword CurrentPosition, const dword PositionOffset)
 
 
 // ----------------------------------------------
-// *****  NALU Dump  *****
+// *****  Analyse von REC-Files  *****
 // ----------------------------------------------
 
-/*void NaluDumpReset()
+bool isPacketStart(const byte PacketArray[], int ArrayLen)
+{
+  int                   i;
+  bool                  ret = TRUE;
+
+  for (i = 0; i < 10; i++)
+  {
+    if (PACKETOFFSET + (i * PACKETSIZE) >= ArrayLen)
+      break;
+    if (PacketArray[PACKETOFFSET + (i * PACKETSIZE)] != 'G')
+    {
+      ret = FALSE;
+      break;
+    }
+  }
+  return ret;
+}
+
+int GetPacketSize(char *RecFileName)
+{
+  char                 *p;
+  bool                  ret = FALSE;
+
+  p = strrchr(RecFileName, '.');
+  if (p && strcmp(p, ".rec") == 0)
+  {
+    PACKETSIZE = 192;
+    PACKETOFFSET = 4;
+    ret = TRUE;
+  }
+  else
+  {
+    byte               *RecStartArray = NULL;
+    int                 f = -1;
+
+    RecStartArray = (byte*) malloc(1733);  // 1733 = 9*192 + 5
+    if (RecStartArray)
+    {
+      if (fread(RecStartArray, 1, 1733, fIn) == 1733)
+      {
+        PACKETSIZE = 188;
+        PACKETOFFSET = 0;
+        ret = isPacketStart(RecStartArray, 1733);
+
+        if (!ret)
+        {
+          PACKETSIZE = 192;
+          PACKETOFFSET = 4;
+          ret = isPacketStart(RecStartArray, 1733);
+        }
+      }
+      free(RecStartArray);
+    }
+  }
+  return (ret ? PACKETSIZE : 0);
+}
+
+
+// ----------------------------------------------
+// *****  NALU Dump  *****
+// ----------------------------------------------
+#define TS_SIZE               188
+#define TS_PAYLOAD_START      0x40
+#define TS_ADAPT_FIELD_EXISTS 0x20
+#define TS_PAYLOAD_EXISTS     0x10
+#define TS_CONT_CNT_MASK      0x0F
+
+inline bool TsHasPayload(const byte *p)
+{
+  return ((p[3] & TS_PAYLOAD_EXISTS) != 0);
+}
+
+inline bool TsHasAdaptationField(const byte *p)
+{
+  return ((p[3] & TS_ADAPT_FIELD_EXISTS) != 0);
+}
+
+inline bool TsPayloadStart(const byte *p)
+{
+  return ((p[1] & TS_PAYLOAD_START) != 0);
+}
+
+inline int TsPayloadOffset(const byte *p)
+{
+  int o = (p[3] & TS_ADAPT_FIELD_EXISTS) ? p[4] + 5 : 4;
+  return o <= TS_SIZE ? o : TS_SIZE;
+}
+
+inline int TsContinuityCounter(const byte *p)
+{
+  return p[3] & TS_CONT_CNT_MASK;
+}
+
+inline void TsSetContinuityCounter(byte *p, int Counter)
+{
+  p[3] = (p[3] & ~TS_CONT_CNT_MASK) | (Counter & TS_CONT_CNT_MASK);
+}
+
+void TsExtendAdaptionField(unsigned char *Packet, int ToLength)
+{
+  // Hint: ExtenAdaptionField(p, TsPayloadOffset(p) - 4) is a null operation
+
+  int Offset = TsPayloadOffset(Packet); // First byte after existing adaption field
+
+  if (ToLength <= 0)
+  {
+    // Remove adaption field
+    Packet[3] = Packet[3] & ~TS_ADAPT_FIELD_EXISTS;
+    return;
+  }
+
+  // Set adaption field present
+  Packet[3] = Packet[3] | TS_ADAPT_FIELD_EXISTS;
+
+  // Set new length of adaption field:
+  Packet[4] = ToLength <= TS_SIZE-4 ? ToLength-1 : TS_SIZE-4-1;
+
+  if (Packet[4] == TS_SIZE-4-1)
+  {
+    // No more payload, remove payload flag
+    Packet[3] = Packet[3] & ~TS_PAYLOAD_EXISTS;
+  }
+
+  int NewPayload = TsPayloadOffset(Packet); // First byte after new adaption field
+
+  // Fill new adaption field
+  if (Offset == 4 && Offset < NewPayload)
+    Offset++; // skip adaptation_field_length
+  if (Offset == 5 && Offset < NewPayload)
+    Packet[Offset++] = 0; // various flags set to 0
+  while (Offset < NewPayload)
+    Packet[Offset++] = 0xff; // stuffing byte
+}
+
+
+unsigned int History;
+
+int LastContinuityInput;
+int LastContinuityOutput;
+int ContinuityOffset;
+
+bool DropAllPayload;
+
+int PesId;
+int PesOffset;
+
+int NaluOffset;
+
+enum eNaluFillState {
+  NALU_NONE=0,    // currently not NALU fill stream
+  NALU_FILL,      // Within NALU fill stream, 0xff bytes and NALU start code in byte 0
+  NALU_TERM,      // Within NALU fill stream, read 0x80 terminating byte
+  NALU_END        // Beyond end of NALU fill stream, expecting 0x00 0x00 0x01 now
+};
+
+eNaluFillState NaluFillState;
+
+struct sPayloadInfo {
+  int DropPayloadStartBytes;
+  int DropPayloadEndBytes;
+  bool DropAllPayloadBytes;
+};
+
+
+void NaluDumpReset(void)
 {
   LastContinuityInput = -1;
   ContinuityOffset = 0;
@@ -973,7 +1135,7 @@ void ProcessPayload(unsigned char *Payload, int size, bool PayloadStart, sPayloa
       }
       else // Invalid NALU fill
       {
-        dsyslog("cNaluDumper: Unexpected NALU fill data: %02x", Payload[i]);
+        printf("cNaluDumper: Unexpected NALU fill data: %02x", Payload[i]);
         NaluFillState = NALU_END;
         if (LastKeepByte == -1)
         {
@@ -1015,7 +1177,7 @@ bool ProcessTSPacket(unsigned char *Packet)
     int NewContinuityInput = HasPayload ? (LastContinuityInput + 1) & TS_CONT_CNT_MASK : LastContinuityInput;
     int Offset = (NewContinuityInput - ContinuityInput) & TS_CONT_CNT_MASK;
     if (Offset > 0)
-      dsyslog("cNaluDumper: TS continuity offset %i", Offset);
+      printf("cNaluDumper: TS continuity offset %i", Offset);
     if (Offset > ContinuityOffset)
       ContinuityOffset = Offset; // max if packets get dropped, otherwise always the current one.
   }
@@ -1080,7 +1242,7 @@ bool ProcessTSPacket(unsigned char *Packet)
   ContinuityOffset = 0;
 
   return false; // Keep packet
-}*/
+}
 
 
 // ----------------------------------------------
@@ -1090,7 +1252,7 @@ bool ProcessTSPacket(unsigned char *Packet)
 int main(int argc, const char* argv[])
 {
   char                  NavFileIn[FBLIB_DIR_SIZE], NavFileOut[FBLIB_DIR_SIZE], InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], CutFileIn[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE];
-  char                  Buffer[PACKETSIZE];
+  byte                  Buffer[192];
   int                   ReadBytes;
   time_t                startTime, endTime;
 
@@ -1134,7 +1296,10 @@ return 0;*/
   printf("\nInput file: %s\n", RecFileIn);
   fIn = fopen(RecFileIn, "rb");
   if (fIn)
+  {
     setvbuf(fIn, NULL, _IOFBF, BUFSIZE);
+    GetPacketSize(RecFileIn);
+  }
   else
   {
     printf("ERROR: Cannot open %s.\n", RecFileIn);
@@ -1224,7 +1389,7 @@ return 0;*/
 
     if (ReadBytes > 0)
     {
-      if (CurrentPacket % 1000 == 0  /*ProcessPacket(&Buffer[PACKETOFFSET]) == TRUE*/)
+      if (/*CurrentPacket % 1000 == 0 */ ProcessTSPacket(&Buffer[PACKETOFFSET]) == TRUE)
       {
         // Paket wird entfernt
         DroppedPackets++;

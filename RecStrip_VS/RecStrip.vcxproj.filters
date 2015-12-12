@@ -12,12 +12,6 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\remux.cpp">
-      <Filter>source</Filter>
-    </ClCompile>
-    <ClCompile Include="..\tools.cpp">
-      <Filter>source</Filter>
-    </ClCompile>
     <ClCompile Include="..\libsi\descriptor.cpp">
       <Filter>libsi</Filter>
     </ClCompile>
