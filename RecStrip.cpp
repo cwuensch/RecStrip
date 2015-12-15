@@ -305,6 +305,7 @@ typedef struct
 
 // Globale Variablen
 char                    RecFileIn[FBLIB_DIR_SIZE], RecFileOut[FBLIB_DIR_SIZE];
+word                    VideoPID = 0;
 bool                    isHDVideo = TRUE;
 byte                    PACKETSIZE, PACKETOFFSET;
 
@@ -403,6 +404,7 @@ bool LoadInfFile(const char *AbsInfName)
   }
 
   // Prüfe auf HD-Video
+  VideoPID = ServiceInfo->VideoPID;
   if ((ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_PART2) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_H264) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_H263))
     isHDVideo = TRUE;
   else if ((ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG1) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG2))
@@ -849,6 +851,8 @@ void ProcessInfFile(const dword CurrentPosition, const dword PositionOffset)
   static int            End = 0, Start = 0, j = 0;
   static dword          i = 0;
 
+  if (!BookmarkInfo) return;
+
   if (FirstRun)
   {
     // CutDecodeFromBM
@@ -963,10 +967,16 @@ int GetPacketSize(char *RecFileName)
 // *****  NALU Dump  *****
 // ----------------------------------------------
 #define TS_SIZE               188
+#define TS_PID_MASK_HI        0x1F
 #define TS_PAYLOAD_START      0x40
 #define TS_ADAPT_FIELD_EXISTS 0x20
 #define TS_PAYLOAD_EXISTS     0x10
 #define TS_CONT_CNT_MASK      0x0F
+
+inline int TsPid(const byte *p)
+{
+  return (p[1] & TS_PID_MASK_HI) * 256 + p[2];
+}
 
 inline bool TsHasPayload(const byte *p)
 {
@@ -999,7 +1009,7 @@ inline void TsSetContinuityCounter(byte *p, int Counter)
   p[3] = (p[3] & ~TS_CONT_CNT_MASK) | (Counter & TS_CONT_CNT_MASK);
 }
 
-void TsExtendAdaptionField(unsigned char *Packet, int ToLength)
+void TsExtendAdaptionField(byte *Packet, int ToLength)
 {
   // Hint: ExtenAdaptionField(p, TsPayloadOffset(p) - 4) is a null operation
 
@@ -1036,19 +1046,6 @@ void TsExtendAdaptionField(unsigned char *Packet, int ToLength)
 }
 
 
-unsigned int History;
-
-int LastContinuityInput;
-int LastContinuityOutput;
-int ContinuityOffset;
-
-bool DropAllPayload;
-
-int PesId;
-int PesOffset;
-
-int NaluOffset;
-
 enum eNaluFillState {
   NALU_NONE=0,    // currently not NALU fill stream
   NALU_FILL,      // Within NALU fill stream, 0xff bytes and NALU start code in byte 0
@@ -1056,7 +1053,21 @@ enum eNaluFillState {
   NALU_END        // Beyond end of NALU fill stream, expecting 0x00 0x00 0x01 now
 };
 
-eNaluFillState NaluFillState;
+eNaluFillState NaluFillState = NALU_NONE;
+
+unsigned int History = 0xffffffff;
+
+int LastContinuityInput = -1;
+int LastContinuityOutput = -1;
+//int ContinuityOffset = 0;
+
+bool DropAllPayload = FALSE;
+
+int PesId = -1;
+int PesOffset = 0;
+
+int NaluOffset = 0;
+
 
 struct sPayloadInfo {
   int DropPayloadStartBytes;
@@ -1065,17 +1076,17 @@ struct sPayloadInfo {
 };
 
 
-void NaluDumpReset(void)
+/*void NaluDumpReset(void)
 {
   LastContinuityInput = -1;
-  ContinuityOffset = 0;
+//  ContinuityOffset = 0;
   PesId = -1;
   PesOffset = 0;
   NaluFillState = NALU_NONE;
   NaluOffset = 0;
   History = 0xffffffff;
   DropAllPayload = false;
-}
+}*/
 
 void ProcessPayload(unsigned char *Payload, int size, bool PayloadStart, sPayloadInfo &Info)
 {
@@ -1135,7 +1146,7 @@ void ProcessPayload(unsigned char *Payload, int size, bool PayloadStart, sPayloa
       }
       else // Invalid NALU fill
       {
-        printf("cNaluDumper: Unexpected NALU fill data: %02x", Payload[i]);
+        printf("cNaluDumper: Unexpected NALU fill data: %02x\n", Payload[i]);
         NaluFillState = NALU_END;
         if (LastKeepByte == -1)
         {
@@ -1167,6 +1178,7 @@ void ProcessPayload(unsigned char *Payload, int size, bool PayloadStart, sPayloa
 
 bool ProcessTSPacket(unsigned char *Packet)
 {
+  int ContinuityOffset = 0;
   bool HasAdaption = TsHasAdaptationField(Packet);
   bool HasPayload = TsHasPayload(Packet);
 
@@ -1175,11 +1187,11 @@ bool ProcessTSPacket(unsigned char *Packet)
   if (LastContinuityInput >= 0)
   {
     int NewContinuityInput = HasPayload ? (LastContinuityInput + 1) & TS_CONT_CNT_MASK : LastContinuityInput;
-    int Offset = (NewContinuityInput - ContinuityInput) & TS_CONT_CNT_MASK;
-    if (Offset > 0)
-      printf("cNaluDumper: TS continuity offset %i", Offset);
-    if (Offset > ContinuityOffset)
-      ContinuityOffset = Offset; // max if packets get dropped, otherwise always the current one.
+    ContinuityOffset = (NewContinuityInput - ContinuityInput) & TS_CONT_CNT_MASK;
+    if (ContinuityOffset > 0)
+      printf("cNaluDumper: TS continuity offset %i\n", ContinuityOffset);
+//    if (Offset > ContinuityOffset)
+//      ContinuityOffset = Offset; // max if packets get dropped, otherwise always the current one.
   }
   LastContinuityInput = ContinuityInput;
 
@@ -1235,7 +1247,9 @@ bool ProcessTSPacket(unsigned char *Packet)
   }
 
   // Fix Continuity Counter and reproduce incoming offsets:
-  int NewContinuityOutput = TsHasPayload(Packet) ? (LastContinuityOutput + 1) & TS_CONT_CNT_MASK : LastContinuityOutput;
+  int NewContinuityOutput = ContinuityInput;
+  if (LastContinuityOutput >= 0)
+    NewContinuityOutput = TsHasPayload(Packet) ? (LastContinuityOutput + 1) & TS_CONT_CNT_MASK : LastContinuityOutput;
   NewContinuityOutput = (NewContinuityOutput + ContinuityOffset) & TS_CONT_CNT_MASK;
   TsSetContinuityCounter(Packet, NewContinuityOutput);
   LastContinuityOutput = NewContinuityOutput;
@@ -1289,9 +1303,6 @@ return 0;*/
     exit(1);
   }
 
-  // Puffer allozieren
-  SegmentMarker = (tSegmentMarker*) malloc(NRSEGMENTMARKER * sizeof(tSegmentMarker));
-
   // Input-File öffnen
   printf("\nInput file: %s\n", RecFileIn);
   fIn = fopen(RecFileIn, "rb");
@@ -1334,8 +1345,8 @@ return 0;*/
   }
   else
   {
-    InfFileIn[0] = '\0';
     printf("WARNING: Cannot open inf file %s.\n", InfFileIn);
+    InfFileIn[0] = '\0';
   }
 
   // ggf. nav-Files öffnen
@@ -1359,6 +1370,10 @@ return 0;*/
   // ggf. cut-File einlesen
   GetCutNameFromRec(RecFileIn, CutFileIn);
   printf("\nCut file: %s\n", CutFileIn);
+
+  // Puffer allozieren
+  SegmentMarker = (tSegmentMarker*) malloc(NRSEGMENTMARKER * sizeof(tSegmentMarker));
+
   if (CutFileLoad(CutFileIn))
   {
     if (argc > 2)
@@ -1389,7 +1404,7 @@ return 0;*/
 
     if (ReadBytes > 0)
     {
-      if (/*CurrentPacket % 1000 == 0 */ ProcessTSPacket(&Buffer[PACKETOFFSET]) == TRUE)
+      if (/*(TsPid(&Buffer[PACKETOFFSET]) == 0x12) ||*/ ((TsPid(&Buffer[PACKETOFFSET]) == VideoPID) && (ProcessTSPacket(&Buffer[PACKETOFFSET]) == TRUE)))
       {
         // Paket wird entfernt
         DroppedPackets++;
