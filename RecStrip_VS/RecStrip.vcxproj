@@ -72,19 +72,10 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\libsi\descriptor.cpp" />
-    <ClCompile Include="..\libsi\section.cpp" />
-    <ClCompile Include="..\libsi\si.cpp" />
-    <ClCompile Include="..\libsi\util.cpp" />
     <ClCompile Include="..\RecStrip.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\channels.h" />
-    <ClInclude Include="..\libsi\descriptor.h" />
-    <ClInclude Include="..\libsi\headers.h" />
-    <ClInclude Include="..\libsi\section.h" />
-    <ClInclude Include="..\libsi\si.h" />
-    <ClInclude Include="..\libsi\util.h" />
     <ClInclude Include="..\remux.h" />
     <ClInclude Include="..\tools.h" />
   </ItemGroup>

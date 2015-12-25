@@ -19,7 +19,6 @@ if not "%1"=="/quiet" (
   )
 )
 if "%BuildState%"=="0" (
-  move /y MovieCutter.tap ..\MovieCutter.tap
-  copy /y ..\MovieCutter.tap ..\MovieCutter_CW.tap > nul
+  move /y RecStrip.tap ..\RecStrip.tap
 )
 exit %BuildState%

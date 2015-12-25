@@ -938,7 +938,6 @@ int GetPacketSize(char *RecFileName)
   else
   {
     byte               *RecStartArray = NULL;
-    int                 f = -1;
 
     RecStartArray = (byte*) malloc(1733);  // 1733 = 9*192 + 5
     if (RecStartArray)
@@ -1323,7 +1322,9 @@ return 0;*/
     printf("Output file: %s\n", RecFileOut);
     fOut = fopen(RecFileOut, "wb");
     if (fOut)
+    {
       setvbuf(fOut, NULL, _IOFBF, BUFSIZE);
+    }
     else
     {
       fclose(fIn);
@@ -1355,12 +1356,17 @@ return 0;*/
   fNavIn = fopen(NavFileIn, "rb");
   if (fNavIn)
   {
+//    setvbuf(fNavIn, NULL, _IOFBF, BUFSIZE);
     if (argc > 2)
     {
       snprintf(NavFileOut, sizeof(NavFileOut), "%s.nav", RecFileOut);
       printf("Nav output: %s\n", NavFileOut);
       fNavOut = fopen(NavFileOut, "wb");
-      if (!fNavIn)
+      if (fNavOut)
+      {
+//        setvbuf(fNavOut, NULL, _IOFBF, BUFSIZE);
+      }
+      else
         printf("WARNING: Cannot create nav file %s.\n", NavFileOut);
     }
   }
