@@ -12,13 +12,12 @@ if "%1"=="/debug" (
 )
 make %MakeParam%
 set BuildState=%errorlevel%
+del *.d
+del *.o
 
 if not "%1"=="/quiet" (
   if not "%2"=="/quiet" (
     pause
   )
-)
-if "%BuildState%"=="0" (
-  move /y RecStrip.tap ..\RecStrip.tap
 )
 exit %BuildState%

@@ -49,6 +49,7 @@
       <WarningLevel>Level3</WarningLevel>
       <Optimization>Disabled</Optimization>
       <PreprocessorDefinitions>WIN32;_DEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <CompileAs>Default</CompileAs>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -63,6 +64,7 @@
       <FunctionLevelLinking>true</FunctionLevelLinking>
       <IntrinsicFunctions>true</IntrinsicFunctions>
       <PreprocessorDefinitions>WIN32;NDEBUG;_CONSOLE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <CompileAs>Default</CompileAs>
     </ClCompile>
     <Link>
       <SubSystem>Console</SubSystem>
@@ -72,15 +74,23 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
-    <ClCompile Include="..\RecStrip.cpp" />
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="..\channels.h" />
-    <ClInclude Include="..\remux.h" />
-    <ClInclude Include="..\tools.h" />
-  </ItemGroup>
-  <ItemGroup>
     <None Include="..\Makefile" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\CutProcessor.h" />
+    <ClInclude Include="..\InfProcessor.h" />
+    <ClInclude Include="..\NALUDump.h" />
+    <ClInclude Include="..\NavProcessor.h" />
+    <ClInclude Include="..\RebuildInf.h" />
+    <ClInclude Include="..\RecStrip.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\CutProcessor.c" />
+    <ClCompile Include="..\InfProcessor.c" />
+    <ClCompile Include="..\NALUDump.c" />
+    <ClCompile Include="..\NavProcessor.c" />
+    <ClCompile Include="..\RebuildInf.c" />
+    <ClCompile Include="..\RecStrip.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

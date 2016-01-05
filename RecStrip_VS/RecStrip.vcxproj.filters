@@ -9,22 +9,46 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\RecStrip.cpp">
+    <None Include="..\Makefile" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\RecStrip.h">
+      <Filter>Header</Filter>
+    </ClInclude>
+    <ClInclude Include="..\NavProcessor.h">
+      <Filter>Header</Filter>
+    </ClInclude>
+    <ClInclude Include="..\InfProcessor.h">
+      <Filter>Header</Filter>
+    </ClInclude>
+    <ClInclude Include="..\CutProcessor.h">
+      <Filter>Header</Filter>
+    </ClInclude>
+    <ClInclude Include="..\NALUDump.h">
+      <Filter>Header</Filter>
+    </ClInclude>
+    <ClInclude Include="..\RebuildInf.h">
+      <Filter>Header</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="..\RecStrip.c">
       <Filter>source</Filter>
     </ClCompile>
-  </ItemGroup>
-  <ItemGroup>
-    <ClInclude Include="..\channels.h">
-      <Filter>Header</Filter>
-    </ClInclude>
-    <ClInclude Include="..\remux.h">
-      <Filter>Header</Filter>
-    </ClInclude>
-    <ClInclude Include="..\tools.h">
-      <Filter>Header</Filter>
-    </ClInclude>
-  </ItemGroup>
-  <ItemGroup>
-    <None Include="..\Makefile" />
+    <ClCompile Include="..\InfProcessor.c">
+      <Filter>source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\CutProcessor.c">
+      <Filter>source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\NavProcessor.c">
+      <Filter>source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\NALUDump.c">
+      <Filter>source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\RebuildInf.c">
+      <Filter>source</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>
