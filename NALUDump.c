@@ -15,7 +15,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
-#include "../../../../../Topfield/API/TMS/include/type.h"
+#include "../../../../../TF/API/TMS/include/type.h"
 #include "NALUDump.h"
 #include "RecStrip.h"
 
@@ -228,7 +228,7 @@ static void ProcessPayload_SD(unsigned char *Payload, int size, bool PayloadStar
   }
 }
 
-bool ProcessTSPacket(unsigned char *Packet, unsigned long long FilePosition)
+int ProcessTSPacket(unsigned char *Packet, unsigned long long FilePosition)
 {
   int ContinuityOffset = 0;
   tTSPacketHeader *TSPacket = (tTSPacketHeader*) Packet;
@@ -295,7 +295,7 @@ bool ProcessTSPacket(unsigned char *Packet, unsigned long long FilePosition)
         // Drop payload data, but keep adaption field data
         TsExtendAdaptionField(Packet, TS_SIZE-4);
       else
-        return TRUE;  // Drop packet
+        return 1;  // Drop packet
     }
 
     if (Info.ZerosOnly && !TSPacket->Adapt_Field_Exists && (isHDVideo || SliceState) && LastEndedWithNull)
@@ -313,13 +313,13 @@ printf("Potential zero-byte-stuffing found at position %llu", FilePosition);
         size_t ReadBytes = fread(Buffer, 1, PACKETSIZE, fIn);
         if (ReadBytes > 0)
         {
-          if ((TsGetPID(tmpPacket)==CurPid) && ((tmpPayload = TsPayloadOffset(tmpPacket)) < TS_SIZE-2))
+          if ((tmpPacket->SyncByte=='G') && (TsGetPID(tmpPacket)==CurPid) && ((tmpPayload = TsPayloadOffset(tmpPacket)) < TS_SIZE-2))
           {
             fseeko64(fIn, FilePosition, SEEK_SET);
             if (Buffer[PACKETOFFSET + tmpPayload] == 0 && Buffer[PACKETOFFSET + tmpPayload + 1] == 0)
             {
 printf(" --> confirmed!\n");
-              return TRUE;
+              return 2;
             }
             else
             {
@@ -331,7 +331,6 @@ printf(" --> WARNING!!! No StartCode in following packet!!!\n");
       }
     }
   }
-
   LastEndedWithNull = (Packet[TS_SIZE-1] == 0);
 
   // Fix Continuity Counter and reproduce incoming offsets:
@@ -344,5 +343,5 @@ printf(" --> WARNING!!! No StartCode in following packet!!!\n");
     LastContinuityOutput = NewContinuityOutput;
     ContinuityOffset = 0;
   }
-  return FALSE; // Keep packet
+  return 0; // Keep packet
 }

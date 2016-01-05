@@ -15,7 +15,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
-#include "../../../../../Topfield/API/TMS/include/type.h"
+#include "../../../../../TF/API/TMS/include/type.h"
 #include "NavProcessor.h"
 #include "RecStrip.h"
 
@@ -29,22 +29,22 @@ static dword            PTS = 0, DTS;
 
 //HDNAV
 static tnavHD           navHD;
-static long long        SEI = 0, SPS = 0, AUD, NextAUD = -1, SPSLen;
 static tPPS             PPS[10];
+static unsigned long long SEI = 0, SPS = 0;
 static int              PPSCount = 0;
-static byte             SlicePPSID;
+static byte             SlicePPSID = 0;
 static int              FrameIndex = 0;
-static dword            FirstSEIPTS = 0, SEIPTS, LastTimems = 0;
+static dword            FirstSEIPTS = 0, SEIPTS = 0, SPSLen = 0, LastTimems = 0;
 
 //SDNAV
 static tnavSD           SDNav[2];
 static unsigned long long LastPictureHeader = 0;
-static dword            FirstPTS = 0, LastdPTS = 0;
-static int              NavPtr;
 static unsigned long long CurrentSeqHeader = 0;
+static dword            FirstPTS = 0, LastdPTS = 0;
+static int              NavPtr = 0;
 static dword            PacketNr = 0;
-static dword            FirstSHPHOffset = 0;
-static dword            FrameCtr = 0, FrameOffset = 0;
+static byte             FirstSHPHOffset = 0;
+static byte             FrameCtr = 0, FrameOffset = 0;
 
 
 // ----------------------------------------------
@@ -177,18 +177,22 @@ static dword FindPictureHeader(byte *Buffer, byte *FrameType)
 
 bool HDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
 {
-  byte                  NALType, NALRefIdc;
-  int                   Ptr, PayloadStart;
-  char                  s[80];
-  dword                 PCR;
-  static dword          FirstPCR = 0;
-
   static trec           PrimaryPacket, SecondaryPacket;
   static unsigned long long PrimaryTSOffset, SecondaryTSOffset;
   unsigned long long    PrimaryPayloadOffset;
-  byte                  PSBuffer[2*184], PrimaryPayloadSize;
+  static byte           PSBuffer[2*184];
+  byte                  PrimaryPayloadSize;
+  static dword          FirstPCR = 0;
+
+  byte                  NALType, NALRefIdc;
+  byte                  Ptr, PayloadStart;
+  dword                 PCR;
+  unsigned long long    AUD;
 
   bool                  ret = FALSE;
+  #if DEBUGLOG != 0
+    char                  s[80];
+  #endif
 
   //Valid TS packet and payload available?
   if((Packet->TSH[0] != 0x47) || ((Packet->TSH[3] & 0x10) == 0))
@@ -252,7 +256,7 @@ bool HDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
     if((PSBuffer[Ptr] == 0x00) && (PSBuffer[Ptr+1] == 0x00) && (PSBuffer[Ptr+2] == 0x01))
     {
       //Calculate the length of the SPS NAL
-      if((SPS != 0) && (SPSLen == 0)) SPSLen = PrimaryPayloadOffset + Ptr - SPS;
+      if((SPS != 0) && (SPSLen == 0)) SPSLen = (dword) (PrimaryPayloadOffset + Ptr - SPS);
 
       //Calculate the length of the previous PPS NAL
       if((PPSCount > 0) && (PPS[PPSCount - 1].Len == 0))
@@ -369,7 +373,7 @@ bool HDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
               for(k = 0; k < PPSCount; k++)
                 if(PPS[k].ID == SlicePPSID)
                 {
-                  navHD.SEIPPS = SEI - PPS[k].Offset;
+                  navHD.SEIPPS = (dword) (SEI - PPS[k].Offset);
                   break;
                 }
 
@@ -497,7 +501,7 @@ bool SDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
     if(PictHeader > 0)
     {
 //      if(NavPtr > 0) TAP_Hdd_Fwrite(&SDNav[0], sizeof(tnavSD), 1, fTF);
-      if (NavPtr > 0 && SDNav[0].PHOffset > 0)
+      if (NavPtr > 0)
         if (fNavOut && !fwrite(&SDNav[0], sizeof(tnavSD), 1, fNavOut))
         {
           printf("ProcessNavFile(): Error writing to nav file!\n");
@@ -512,7 +516,7 @@ bool SDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
 
       if(FrameType == 1)
       {
-        FirstSHPHOffset = (dword) (PictHeader - CurrentSeqHeader);
+        FirstSHPHOffset = (byte) (PictHeader - CurrentSeqHeader);
         FrameOffset     = FrameCtr;
         FrameCtr        = 0;
       }
@@ -573,7 +577,7 @@ bool LoadNavFiles(const char* AbsInNav, const char* AbsOutNav)
 
 bool CloseNavFiles(void)
 {
-  if (!isHDVideo && (NavPtr > 0) && fNavOut)
+  if (fNavOut && !isHDVideo && (NavPtr > 0))
     fwrite(&SDNav[0], sizeof(tnavSD), 1, fNavOut);
 
   if (fNavIn) fclose(fNavIn);
@@ -588,8 +592,8 @@ void ProcessNavFile(const unsigned long long CurrentPosition, const unsigned lon
 {
   static byte           NavBuffer[sizeof(tnavHD)];
   static tnavSD        *curSDNavRec = (tnavSD*) &NavBuffer[0];
-  static bool           FirstRun = TRUE;
   static unsigned long long CurPictureHeaderOffset = 0, NextPictureHeaderOffset = 0;
+  static bool           FirstRun = TRUE;
   bool WriteNavRec;
 
   if (FirstRun && fNavIn)

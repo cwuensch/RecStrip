@@ -40,7 +40,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
-#include "../../../../../Topfield/API/TMS/include/type.h"
+#include "../../../../../TF/API/TMS/include/type.h"
 #include "RecStrip.h"
 #include "InfProcessor.h"
 #include "NavProcessor.h"
@@ -85,12 +85,13 @@ char                    RecFileIn[FBLIB_DIR_SIZE], RecFileOut[FBLIB_DIR_SIZE];
 word                    VideoPID = 0;
 bool                    isHDVideo = FALSE;
 byte                    PACKETSIZE, PACKETOFFSET;
+bool                    RemoveEPGStream = TRUE;
 
 FILE                   *fIn = NULL;  // dirty Hack: erreichbar machen für NALUDump
 static FILE            *fOut = NULL;
 
-static unsigned long long int  CurrentPacket = 0, DroppedPackets = 0, DroppedNALU = 0;
-static unsigned long long int  CurrentPosition = 0, outpos=0, PositionOffset = 0;
+static unsigned long long  CurrentPosition = 0, PositionOffset = 0, CurrentPacket = 0;
+static unsigned long long  NrDroppedFillerNALU = 0, NrDroppedZeroStuffing = 0, NrDroppedNullPid = 0, NrDroppedEPGPid = 0;
 
 
 bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize)
@@ -186,6 +187,7 @@ int main(int argc, const char* argv[])
   char                  NavFileIn[FBLIB_DIR_SIZE], NavFileOut[FBLIB_DIR_SIZE], InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], CutFileIn[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE];
   byte                  Buffer[192];
   int                   ReadBytes;
+  bool                  DropCurPacket;
   time_t                startTime, endTime;
 
   printf("\nRecStrip for Topfield PVR v0.2\n");
@@ -295,39 +297,73 @@ int main(int argc, const char* argv[])
     ReadBytes = fread(Buffer, 1, PACKETSIZE, fIn);
     if (ReadBytes > 0)
     {
-      int CurPID = TsGetPID((tTSPacketHeader*) &Buffer[PACKETOFFSET]);
-
-      if ((CurPID == 0x1FFF) || (CurPID == 0x12) || ((CurPID == VideoPID) && (ProcessTSPacket(&Buffer[PACKETOFFSET], CurrentPosition) == TRUE)))
+      if (Buffer[PACKETOFFSET] == 'G')
       {
-        // alle Bookmarks / cut-Einträge, deren Position <= CurrentPosition/9024 sind, um PositionOffset/9024 reduzieren
-        ProcessInfFile(CurPosBlocks, PosOffsetBlocks);
-        ProcessCutFile(CurPosBlocks, PosOffsetBlocks);
+        int CurPID = TsGetPID((tTSPacketHeader*) &Buffer[PACKETOFFSET]);
 
-        // Paket wird entfernt
-        DroppedPackets++;
-        if ((CurPID != 0x1FFF) && (CurPID != 0x12)) DroppedNALU++;
-        PositionOffset += ReadBytes;
+        DropCurPacket = FALSE;
+        if (CurPID == 0x1FFF)
+        {
+          NrDroppedNullPid++;
+          DropCurPacket = TRUE;
+        }
+        else if (CurPID == 0x12 && RemoveEPGStream)
+        {
+          NrDroppedEPGPid++;
+          DropCurPacket = TRUE;
+        }
+        else if (CurPID == VideoPID)
+        {
+          switch (ProcessTSPacket(&Buffer[PACKETOFFSET], CurrentPosition))
+          {
+            case 1: 
+              NrDroppedFillerNALU++;
+              DropCurPacket = TRUE;
+              break;
+            case 2:
+              NrDroppedZeroStuffing++;
+              DropCurPacket = TRUE;
+              break;
+            default:
+              break;
+          }
+        }
+
+        if (DropCurPacket)
+        {
+          // alle Bookmarks / cut-Einträge, deren Position <= CurrentPosition/9024 sind, um PositionOffset/9024 reduzieren
+          ProcessInfFile(CurPosBlocks, PosOffsetBlocks);
+          ProcessCutFile(CurPosBlocks, PosOffsetBlocks);
+
+          // Paket wird entfernt
+          PositionOffset += ReadBytes;
+        }
+        else
+        {
+          // nav-Eintrag korrigieren und ausgeben, wenn Position < CurrentPosition ist (um PositionOffset reduzieren)
+          if (CurPID == VideoPID)
+            ProcessNavFile(CurrentPosition, PositionOffset, (trec*) &Buffer[PACKETOFFSET]);
+
+          // (ggf. verändertes) Paket wird in Ausgabe geschrieben
+          if (fOut && !fwrite(Buffer, ReadBytes, 1, fOut))
+          {
+            printf("ERROR: Failed writing to output file.\n");
+            fclose(fIn);
+            fclose(fOut);
+            CloseNavFiles();
+//            free(SegmentMarker);
+            exit(4);
+          }
+//          outpos += ReadBytes;
+        }
+        CurrentPacket++;
+        CurrentPosition += ReadBytes;
       }
       else
       {
-        // nav-Eintrag korrigieren und ausgeben, wenn Position < CurrentPosition ist (um PositionOffset reduzieren)
-        if (CurPID == VideoPID)
-          ProcessNavFile(CurrentPosition, PositionOffset, (trec*) &Buffer[PACKETOFFSET]);
-
-        // (ggf. verändertes) Paket wird in Ausgabe geschrieben
-        if (fOut && !fwrite(Buffer, ReadBytes, 1, fOut))
-        {
-          printf("ERROR: Failed writing to output file.\n");
-          fclose(fIn);
-          fclose(fOut);
-          CloseNavFiles();
-//          free(SegmentMarker);
-          exit(4);
-        }
-        outpos += ReadBytes;
+        printf("ERROR: Incorrect TS - Missing sync byte at position %llu.\n", CurrentPosition);
+        exit(5);
       }
-      CurrentPacket++;
-      CurrentPosition += ReadBytes;
     }
     else
     {
@@ -343,7 +379,7 @@ int main(int argc, const char* argv[])
     if (fflush(fOut) != 0 || fclose(fOut) != 0)
     {
       printf("ERROR: Failed closing the output file.\n");
-      exit(5);
+      exit(6);
     }
   }
   if (!CloseNavFiles())
@@ -355,7 +391,7 @@ int main(int argc, const char* argv[])
   if (*CutFileIn && (argc > 2) && !CutFileSave(CutFileOut))
     printf("WARNING: Cannot create cut %s.\n", CutFileOut);
 
-  printf("\nPackets: %lli, Dropped (NALU): %lli (%lli%%), Dropped (all): %lli (%lli%%)\n", CurrentPacket, DroppedNALU, CurrentPacket ? DroppedNALU*100/CurrentPacket : 0, DroppedPackets, CurrentPacket ? DroppedPackets*100/CurrentPacket : 0);
+  printf("\nPackets: %llu, FillerNALUs: %llu (%f%%), ZeroByteStuffing: %llu (%f%%), NullPackets: %llu (%f%%), EPG: %llu (%f%%), Dropped (all): %lli (%f%%)\n", CurrentPacket, NrDroppedFillerNALU, (CurrentPacket ? NrDroppedFillerNALU*100/CurrentPacket : 0), NrDroppedZeroStuffing, (CurrentPacket ? NrDroppedZeroStuffing*100/CurrentPacket : 0), NrDroppedNullPid, (CurrentPacket ? NrDroppedNullPid*100/CurrentPacket : 0), NrDroppedEPGPid, (CurrentPacket ? NrDroppedEPGPid*100/CurrentPacket : 0), NrDroppedFillerNALU+NrDroppedZeroStuffing+NrDroppedNullPid+NrDroppedEPGPid, (CurrentPacket ? (NrDroppedFillerNALU+NrDroppedZeroStuffing+NrDroppedNullPid+NrDroppedEPGPid)*100/CurrentPacket : 0));
 
   time(&endTime);
   printf("\nElapsed time: %f sec.\n", difftime(endTime, startTime));
