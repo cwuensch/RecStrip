@@ -307,7 +307,7 @@ bool ProcessTSPacket(unsigned char *Packet, unsigned long long FilePosition)
 //      unsigned long long OldFilePos = ftello64(fIn);
       int                CurPid = TsGetPID(TSPacket), tmpPayload, i;
 
-printf("Potential zero-byte-padding found at position %llu", FilePosition);
+printf("Potential zero-byte-stuffing found at position %llu", FilePosition);
       for (i = 0; i < 10; i++)
       {
         size_t ReadBytes = fread(Buffer, 1, PACKETSIZE, fIn);
