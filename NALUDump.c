@@ -120,7 +120,7 @@ static void ProcessPayload_HD(unsigned char *Payload, int size, bool PayloadStar
     PesOffset++;
     NaluOffset++;
 
-    if (History >= 0x00000180 && History <= 0x000001FF)
+    if (History >= 0x000001B9 && History <= 0x000001FF)
     {
       // Start of PES packet
       PesId = History & 0xff;
@@ -210,7 +210,7 @@ static void ProcessPayload_SD(unsigned char *Payload, int size, bool PayloadStar
     if ((History & 0xFFFFFF00) == 0x00000100)
     {
       StartCodeID = Payload[i];
-      if (StartCodeID >= 0x80)
+      if (StartCodeID >= 0xB9)
       {
         // Start of PES packet
         PesId = StartCodeID;
