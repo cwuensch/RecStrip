@@ -15,7 +15,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
-#include "../../../../../TF/API/TMS/include/type.h"
+#include "../../../../../Topfield/API/TMS/include/type.h"
 #include "NavProcessor.h"
 #include "RecStrip.h"
 
@@ -42,7 +42,6 @@ static unsigned long long LastPictureHeader = 0;
 static unsigned long long CurrentSeqHeader = 0;
 static dword            FirstPTS = 0, LastdPTS = 0;
 static int              NavPtr = 0;
-static dword            PacketNr = 0;
 static byte             FirstSHPHOffset = 0;
 static byte             FrameCtr = 0, FrameOffset = 0;
 

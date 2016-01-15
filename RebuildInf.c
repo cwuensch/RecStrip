@@ -232,7 +232,7 @@ bool GetVideoInfos(FILE* fIn)
   Buffer = (byte*) malloc(RECBUFFERENTRIES * PACKETSIZE);
   if (!Buffer)
   {
-    printf("  Failed tp allocate the buffer.\n");
+    printf("  Failed to allocate the buffer.\n");
     return FALSE;
   }
 

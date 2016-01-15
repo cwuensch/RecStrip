@@ -5,7 +5,7 @@
 #define NRSEGMENTMARKER            101
 #define BUFSIZE                  65536
 #define FBLIB_DIR_SIZE             512
-#define RECBUFFERENTRIES          5000
+#define RECBUFFERENTRIES         10000
 
 #define STREAM_VIDEO_MPEG1        0x01
 #define STREAM_VIDEO_MPEG2        0x02

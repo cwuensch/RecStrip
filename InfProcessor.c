@@ -96,11 +96,13 @@ bool LoadInfFile(const char *AbsInfName)
   {
     isHDVideo = TRUE;
     VideoPID = ServiceInfo->VideoPID;
+    printf("VideoStream=%x, VideoPID=%4.4x, HD=%d", ServiceInfo->VideoStreamType, VideoPID, isHDVideo);
   }
   else if ((ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG1) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG2))
   {
     isHDVideo = FALSE;
     VideoPID = ServiceInfo->VideoPID;
+    printf("VideoStream=%x, VideoPID=%4.4x, HD=%d", ServiceInfo->VideoStreamType, VideoPID, isHDVideo);
   }
   else
   {
@@ -173,7 +175,7 @@ void ProcessInfFile(const dword CurrentPosition, const dword PositionOffset)
 
     if(End)
     {
-      int NrSegments = BookmarkInfo->Bookmarks[End - 1];
+      NrSegments = BookmarkInfo->Bookmarks[End - 1];
       if (NrSegments > NRSEGMENTMARKER) NrSegments = NRSEGMENTMARKER;
       Start = End - NrSegments - 5;
     }
@@ -186,7 +188,7 @@ void ProcessInfFile(const dword CurrentPosition, const dword PositionOffset)
     i++;
   }
 
-  while (Start && (j < NrSegments) && (BookmarkInfo->Bookmarks[j] < CurrentPosition))
+  while (Start && (j < NrSegments) && (BookmarkInfo->Bookmarks[Start+j] < CurrentPosition))
   {
     BookmarkInfo->Bookmarks[Start+j] -= PositionOffset;
     j++;

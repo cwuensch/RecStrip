@@ -15,7 +15,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
-#include "../../../../../TF/API/TMS/include/type.h"
+#include "../../../../../Topfield/API/TMS/include/type.h"
 #include "NALUDump.h"
 #include "RecStrip.h"
 
@@ -217,7 +217,7 @@ static void ProcessPayload_SD(unsigned char *Payload, int size, bool PayloadStar
         PesOffset = 0;
       }
       if (PesId >= 0xe0 && PesId <= 0xef)  // video stream
-        SliceState = (StartCodeID >= 0x01 /*&& StartCodeID <= 0xAF*/);  // !!!!!!!!!!
+        SliceState = (StartCodeID >= 0x01 && StartCodeID <= 0xAF);
     }
 
     if (PesId >= 0xe0 && PesId <= 0xef  // video stream
@@ -307,7 +307,7 @@ int ProcessTSPacket(unsigned char *Packet, unsigned long long FilePosition)
 //      unsigned long long OldFilePos = ftello64(fIn);
       int                CurPid = TsGetPID(TSPacket), tmpPayload, i;
 
-printf("Potential zero-byte-stuffing found at position %llu", FilePosition);
+//printf("Potential zero-byte-stuffing found at position %llu", FilePosition);
       for (i = 0; i < 10; i++)
       {
         size_t ReadBytes = fread(Buffer, 1, PACKETSIZE, fIn);
@@ -318,12 +318,12 @@ printf("Potential zero-byte-stuffing found at position %llu", FilePosition);
             fseeko64(fIn, FilePosition, SEEK_SET);
             if (Buffer[PACKETOFFSET + tmpPayload] == 0 && Buffer[PACKETOFFSET + tmpPayload + 1] == 0)
             {
-printf(" --> confirmed!\n");
+//printf(" --> confirmed!\n");
               return 2;
             }
             else
             {
-printf(" --> WARNING!!! No StartCode in following packet!!!\n");
+printf("%llu --> WARNING!!! No StartCode in following packet!!!\n", FilePosition);
               break;
             }
           }

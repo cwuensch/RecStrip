@@ -225,8 +225,8 @@ static bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
           }
           else if (strcmp(Name, "NrSegmentMarker") == 0)
             SavedNrSegments = (int)Value;
-//          else if (strcmp(Name, "ActiveSegment") == 0)
-//            ActiveSegment = Value;
+          else if (strcmp(Name, "ActiveSegment") == 0)
+            ActiveSegment = Value;
         }
       }
 
@@ -243,7 +243,6 @@ static bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
         }
       }
     }
-    free(Buffer);
 
     if (ret)
     {
