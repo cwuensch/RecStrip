@@ -30,7 +30,7 @@ typedef struct
 
 void GetCutNameFromRec(const char *RecFileName, char *const OutCutFileName);
 bool CutFileLoad(const char *AbsCutName);
-bool CutFileSave(const char* AbsCutName);
+bool CutFileClose(const char* AbsCutName, bool Save);
 void ProcessCutFile(const dword CurrentPosition, const dword PositionOffset);
 
 #endif

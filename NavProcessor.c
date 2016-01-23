@@ -66,9 +66,13 @@ static int get_ue_golomb32(byte *p, byte *StartBit)
   int                   leadingZeroBits;
   dword                 d;
 
+  TRACEENTER;
   d = (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3];
   if(d == 0)
+  {
+    TRACEEXIT;
     return 0;
+  }
 
   leadingZeroBits = 0;
   while(((d >> *StartBit) & 1) == 0)
@@ -83,11 +87,13 @@ static int get_ue_golomb32(byte *p, byte *StartBit)
 
   *StartBit = *StartBit - leadingZeroBits;
 
+  TRACEEXIT;
   return (1 << leadingZeroBits) - 1 + d;
 }
 
 static bool GetPTS(byte *Buffer, dword *PTS, dword *DTS)
 {
+  TRACEENTER;
   if((Buffer[0] == 0x00) && (Buffer[1] == 0x00) && (Buffer[2] == 0x01) && ((Buffer[3] & 0xf0) == 0xe0) && (Buffer[7] & 0x80))
   {
     //MPEG Video Stream
@@ -121,21 +127,28 @@ static bool GetPTS(byte *Buffer, dword *PTS, dword *DTS)
              ((Buffer[18] & 0xfe) >>  2);
     else
       *DTS = 0;
+
+    TRACEEXIT;
     return TRUE;
   }
+  TRACEEXIT;
   return FALSE;
 }
 
 static bool GetPCR(byte *pBuffer, dword *PCR)
 {
+  TRACEENTER;
   if ((pBuffer[0] == 0x47) && ((pBuffer[3] & 0x20) != 0) && (pBuffer[4] > 0) && (pBuffer[5] & 0x10))
   {
     //Extract the time out of the PCR bit pattern
     //The PCR is clocked by a 90kHz generator. To convert to milliseconds
     //the 33 bit number can be shifted right and divided by 45
     *PCR = (dword)((((dword)pBuffer[6] << 24) | (pBuffer[7] << 16) | (pBuffer[8] << 8) | pBuffer[9]) / 45);
+
+    TRACEEXIT;
     return TRUE;
   }
+  TRACEEXIT;
   return FALSE;
 }
 
@@ -151,11 +164,16 @@ static dword FindSequenceHeaderCode(byte *Buffer)
 {
   int                   i;
 
+  TRACEENTER;
   for(i = 0; i < 180; i++)
   {
     if((Buffer[i] == 0x00) && (Buffer[i + 1] == 0x00) && (Buffer[i + 2] == 0x01) && (Buffer[i + 3] == 0xb3))
+    {
+      TRACEEXIT;
       return i + 8;
+    }
   }
+  TRACEEXIT;
   return 0;
 }
 
@@ -163,14 +181,17 @@ static dword FindPictureHeader(byte *Buffer, byte *FrameType)
 {
   int                   i;
 
+  TRACEENTER;
   for(i = 0; i < 180; i++)
   {
     if((Buffer[i] == 0x00) && (Buffer[i + 1] == 0x00) && (Buffer[i + 2] == 0x01) && (Buffer[i + 3] == 0x00))
     {
       *FrameType = (Buffer[i + 5] >> 3) & 0x03;
+      TRACEEXIT;
       return i + 8;
     }
   }
+  TRACEEXIT;
   return 0;
 }
 
@@ -193,9 +214,14 @@ bool HDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
     char                  s[80];
   #endif
 
+  TRACEENTER;
+
   //Valid TS packet and payload available?
   if((Packet->TSH[0] != 0x47) || ((Packet->TSH[3] & 0x10) == 0))
+  {
+    TRACEEXIT;
     return FALSE;
+  }
 
   //Shift packets from secondary to primary buffer
   memcpy(&PrimaryPacket, &SecondaryPacket, sizeof(trec));
@@ -471,6 +497,7 @@ bool HDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
     }
     Ptr++;
   }
+  TRACEEXIT;
   return ret;
 }
 
@@ -480,6 +507,8 @@ bool SDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
   byte                  FrameType;
   bool                  ret = TRUE;
   int                   i;
+
+  TRACEENTER;
 
   SeqHeader = FindSequenceHeaderCode(&Packet->Data[0]);
   if(SeqHeader != 0)
@@ -549,12 +578,14 @@ bool SDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
       FrameCtr++;
     }
   }
+  TRACEEXIT;
   return ret;
 }
 
 
 bool LoadNavFiles(const char* AbsInNav, const char* AbsOutNav)
 {
+  TRACEENTER;
   memset(&navHD, 0, sizeof(tnavHD));
   memset(SDNav, 0, 2*sizeof(tnavSD));
 
@@ -569,22 +600,29 @@ bool LoadNavFiles(const char* AbsInNav, const char* AbsOutNav)
     }
     else
       printf("WARNING: Cannot create nav file %s.\n", AbsOutNav);
+
+    TRACEEXIT;
     return TRUE;
   }
+  TRACEEXIT;
   return FALSE;
 }
 
 bool CloseNavFiles(void)
 {
+  bool                  ret = TRUE;
+
+  TRACEENTER;
   if (fNavOut && !isHDVideo && (NavPtr > 0))
     fwrite(&SDNav[0], sizeof(tnavSD), 1, fNavOut);
 
   if (fNavIn) fclose(fNavIn);
   fNavIn = NULL;
   if (fNavOut)
-    return (fflush(fNavOut) == 0 && fclose(fNavOut) == 0);
-  else
-    return TRUE;
+    ret = (fflush(fNavOut) == 0 && fclose(fNavOut) == 0);
+
+  TRACEEXIT;
+  return ret;
 }
 
 void ProcessNavFile(const unsigned long long CurrentPosition, const unsigned long long PositionOffset, trec *Packet)
@@ -595,6 +633,7 @@ void ProcessNavFile(const unsigned long long CurrentPosition, const unsigned lon
   static bool           FirstRun = TRUE;
   bool WriteNavRec;
 
+  TRACEENTER;
   if (FirstRun && fNavIn)
   {
     // Versuche, nav-Dateien aus Timeshift-Aufnahmen zu unterstützen ***experimentell***
@@ -652,5 +691,6 @@ else
       }
     }
   }
+  TRACEEXIT;
 }
 

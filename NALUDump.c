@@ -61,14 +61,19 @@ inline int TsPayloadOffset(tTSPacketHeader *Packet)
 static void TsExtendAdaptionField(byte *Packet, int ToLength)
 {
   // Hint: ExtenAdaptionField(p, TsPayloadOffset(p) - 4) is a null operation
-  tTSPacketHeader *TSPacket = (tTSPacketHeader*) Packet;
-  int Offset = TsPayloadOffset(TSPacket); // First byte after existing adaption field
+  tTSPacketHeader *TSPacket;
+  int Offset;
   int NewPayload;
+
+  TRACEENTER;
+  TSPacket = (tTSPacketHeader*) Packet;
+  Offset = TsPayloadOffset(TSPacket); // First byte after existing adaption field
 
   if (ToLength <= 0)
   {
     // Remove adaption field
     TSPacket->Adapt_Field_Exists = 0;
+    TRACEEXIT;
     return;
   }
 
@@ -93,6 +98,8 @@ static void TsExtendAdaptionField(byte *Packet, int ToLength)
     Packet[Offset++] = 0; // various flags set to 0
   while (Offset < NewPayload)
     Packet[Offset++] = 0xff; // stuffing byte
+
+  TRACEEXIT;
 }
 
 static void ProcessPayload_HD(unsigned char *Payload, int size, bool PayloadStart, sPayloadInfo *Info)
@@ -100,6 +107,7 @@ static void ProcessPayload_HD(unsigned char *Payload, int size, bool PayloadStar
   bool DropByte;
   int LastKeepByte = -1, i;
 
+  TRACEENTER;
   Info->DropPayloadStartBytes = 0;
   Info->DropPayloadEndBytes = 0;
   Info->ZerosOnly = TRUE;
@@ -184,6 +192,7 @@ static void ProcessPayload_HD(unsigned char *Payload, int size, bool PayloadStar
 
   Info->DropAllPayloadBytes = (LastKeepByte == -1);
   Info->DropPayloadEndBytes = size-1-LastKeepByte;
+  TRACEEXIT;
 }
 
 static void ProcessPayload_SD(unsigned char *Payload, int size, bool PayloadStart, sPayloadInfo *Info)
@@ -191,6 +200,7 @@ static void ProcessPayload_SD(unsigned char *Payload, int size, bool PayloadStar
   byte StartCodeID = 0;
   int i;
 
+  TRACEENTER;
   Info->ZerosOnly = TRUE;
 
   if (PayloadStart)
@@ -226,15 +236,19 @@ static void ProcessPayload_SD(unsigned char *Payload, int size, bool PayloadStar
       Payload[i] = 0; // Zero out PES length field
     }
   }
+  TRACEEXIT;
 }
 
 int ProcessTSPacket(unsigned char *Packet, unsigned long long FilePosition)
 {
   int ContinuityOffset = 0;
+  int ContinuityInput;
   tTSPacketHeader *TSPacket = (tTSPacketHeader*) Packet;
 
+  TRACEENTER;
+
   // Check continuity:
-  int ContinuityInput = TSPacket->ContinuityCount;
+  ContinuityInput = TSPacket->ContinuityCount;
   if (LastContinuityInput >= 0)
   {
     int NewContinuityInput = TSPacket->Payload_Exists ? (LastContinuityInput + 1) % 16 : LastContinuityInput;
@@ -295,7 +309,10 @@ int ProcessTSPacket(unsigned char *Packet, unsigned long long FilePosition)
         // Drop payload data, but keep adaption field data
         TsExtendAdaptionField(Packet, TS_SIZE-4);
       else
+      {
+        TRACEEXIT;
         return 1;  // Drop packet
+      }
     }
 
     if (Info.ZerosOnly && !TSPacket->Adapt_Field_Exists && (isHDVideo || SliceState) && LastEndedWithNull)
@@ -319,6 +336,7 @@ int ProcessTSPacket(unsigned char *Packet, unsigned long long FilePosition)
             if (Buffer[PACKETOFFSET + tmpPayload] == 0 && Buffer[PACKETOFFSET + tmpPayload + 1] == 0)
             {
 //printf(" --> confirmed!\n");
+              TRACEEXIT;
               return 2;
             }
             else
@@ -343,5 +361,6 @@ printf("%llu --> WARNING!!! No StartCode in following packet!!!\n", FilePosition
     LastContinuityOutput = NewContinuityOutput;
     ContinuityOffset = 0;
   }
+  TRACEEXIT;
   return 0; // Keep packet
 }

@@ -34,6 +34,7 @@ static void SecToTimeString(dword Time, char *const OutTimeString)  // needs max
 {
   dword                 Hour, Min, Sec;
 
+  TRACEENTER;
   if(OutTimeString)
   {
     Hour = (Time / 3600);
@@ -42,12 +43,14 @@ static void SecToTimeString(dword Time, char *const OutTimeString)  // needs max
     if (Hour >= 10000) Hour = 9999;
     snprintf(OutTimeString, 11, "%lu:%02lu:%02lu", Hour, Min, Sec);
   }
+  TRACEEXIT;
 }
 
 static void MSecToTimeString(dword Timems, char *const OutTimeString)  // needs max. 4 + 1 + 2 + 1 + 2 + 1 + 3 + 1 = 15 chars
 {
   dword                 Hour, Min, Sec, Millisec;
 
+  TRACEENTER;
   if(OutTimeString)
   {
     Hour = (Timems / 3600000);
@@ -56,17 +59,20 @@ static void MSecToTimeString(dword Timems, char *const OutTimeString)  // needs 
     Millisec = Timems % 1000;
     snprintf(OutTimeString, 15, "%lu:%02lu:%02lu,%03lu", Hour, Min, Sec, Millisec);
   }
+  TRACEEXIT;
 }
 
 static dword TimeStringToMSec(char *const TimeString)
 {
   dword                 Hour=0, Min=0, Sec=0, Millisec=0, ret=0;
 
+  TRACEENTER;
   if(TimeString)
   {
     if (sscanf(TimeString, "%lu:%lu:%lu%*1[.,]%lu", &Hour, &Min, &Sec, &Millisec) == 4)
       ret = 1000*(60*(60*Hour + Min) + Sec) + Millisec;
   }
+  TRACEEXIT;
   return ret;
 }
 
@@ -74,6 +80,7 @@ void GetCutNameFromRec(const char *RecFileName, char *const OutCutFileName)
 {
   char *p = NULL;
 
+  TRACEENTER;
   if (RecFileName && OutCutFileName)
   {
     snprintf(OutCutFileName, FBLIB_DIR_SIZE, "%s", RecFileName);
@@ -81,6 +88,7 @@ void GetCutNameFromRec(const char *RecFileName, char *const OutCutFileName)
       p = &OutCutFileName[strlen(OutCutFileName)];
     snprintf(p, 5, ".cut");
   }
+  TRACEEXIT;
 }
 
 static bool CutFileDecodeBin(FILE *fCut, unsigned long long *OutSavedSize)
@@ -89,6 +97,7 @@ static bool CutFileDecodeBin(FILE *fCut, unsigned long long *OutSavedSize)
   int                   SavedNrSegments = 0;
   bool                  ret = FALSE;
 
+  TRACEENTER;
   memset(SegmentMarker, 0, NRSEGMENTMARKER * sizeof(tSegmentMarker));
 
   NrSegmentMarker = 0;
@@ -139,6 +148,7 @@ static bool CutFileDecodeBin(FILE *fCut, unsigned long long *OutSavedSize)
         printf("CutFileDecodeBin: Unexpected end of file!\n");
     }
   }
+  TRACEEXIT;
   return ret;
 }
 
@@ -153,6 +163,7 @@ static bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
   int                   p;
   bool                  ret = FALSE;
 
+  TRACEENTER;
   memset(SegmentMarker, 0, NRSEGMENTMARKER * sizeof(tSegmentMarker));
 
   NrSegmentMarker = 0;
@@ -252,6 +263,7 @@ static bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
     else
       printf("CutFileDecodeTxt: Invalid cut file format!\n");
   }
+  TRACEEXIT;
   return ret;
 }
 
@@ -261,6 +273,8 @@ bool CutFileLoad(const char *AbsCutName)
   byte                  Version;
   unsigned long long    RecFileSize, SavedSize;
   bool                  ret = FALSE;
+
+  TRACEENTER;
 
   // Puffer allozieren
   SegmentMarker = (tSegmentMarker*) malloc(NRSEGMENTMARKER * sizeof(tSegmentMarker));
@@ -298,6 +312,7 @@ bool CutFileLoad(const char *AbsCutName)
       if (RecFileSize != SavedSize)
       {
         printf("CutFileLoad: .cut file size mismatch!\n");
+        TRACEEXIT;
         return FALSE;
       }
     }
@@ -307,10 +322,11 @@ bool CutFileLoad(const char *AbsCutName)
   else
     printf("CutFileLoad: Cannot open cut file %s!\n", AbsCutName);
 
+  TRACEEXIT;
   return ret;
 }
 
-bool CutFileSave(const char* AbsCutName)
+bool CutFileClose(const char* AbsCutName, bool Save)
 {
   FILE                 *fCut = NULL;
   char                  TimeStamp[16];
@@ -318,32 +334,38 @@ bool CutFileSave(const char* AbsCutName)
   int                   i;
   bool                  ret = TRUE;
 
+  TRACEENTER;
+
   // neues CutFile speichern
   if (SegmentMarker)
   {
-    if (!HDD_GetFileSize(RecFileOut, &RecFileSize))
-      printf("CutFileSave: Could not detect size of recording!\n"); 
-
-    fCut = fopen(AbsCutName, "wb");
-    if(fCut)
+    if (Save)
     {
-      ret = (fprintf(fCut, "[MCCut3]\r\n") > 0) && ret;
-      ret = (fprintf(fCut, "RecFileSize=%llu\r\n", RecFileSize) > 0) && ret;
-      ret = (fprintf(fCut, "NrSegmentMarker=%d\r\n", NrSegmentMarker) > 0) && ret;
-      ret = (fprintf(fCut, "ActiveSegment=%d\r\n\r\n", ActiveSegment) > 0) && ret;  // sicher!?
-      ret = (fprintf(fCut, "[Segments]\r\n") > 0) && ret;
-      ret = (fprintf(fCut, "#Nr ; Sel ; StartBlock ;     StartTime ; Percent\r\n") > 0) && ret;
-      for (i = 0; i < NrSegmentMarker; i++)
+      if (!HDD_GetFileSize(RecFileOut, &RecFileSize))
+        printf("CutFileSave: Could not detect size of recording!\n"); 
+
+      fCut = fopen(AbsCutName, "wb");
+      if(fCut)
       {
-        MSecToTimeString(SegmentMarker[i].Timems, TimeStamp);
-        ret = (fprintf(fCut, "%3d ;  %c  ; %10lu ;%14s ;  %5.1f%%\r\n", i, (SegmentMarker[i].Selected ? '*' : '-'), SegmentMarker[i].Block, TimeStamp, SegmentMarker[i].Percent) > 0) && ret;
+        ret = (fprintf(fCut, "[MCCut3]\r\n") > 0) && ret;
+        ret = (fprintf(fCut, "RecFileSize=%llu\r\n", RecFileSize) > 0) && ret;
+        ret = (fprintf(fCut, "NrSegmentMarker=%d\r\n", NrSegmentMarker) > 0) && ret;
+        ret = (fprintf(fCut, "ActiveSegment=%d\r\n\r\n", ActiveSegment) > 0) && ret;  // sicher!?
+        ret = (fprintf(fCut, "[Segments]\r\n") > 0) && ret;
+        ret = (fprintf(fCut, "#Nr ; Sel ; StartBlock ;     StartTime ; Percent\r\n") > 0) && ret;
+        for (i = 0; i < NrSegmentMarker; i++)
+        {
+          MSecToTimeString(SegmentMarker[i].Timems, TimeStamp);
+          ret = (fprintf(fCut, "%3d ;  %c  ; %10lu ;%14s ;  %5.1f%%\r\n", i, (SegmentMarker[i].Selected ? '*' : '-'), SegmentMarker[i].Block, TimeStamp, SegmentMarker[i].Percent) > 0) && ret;
+        }
+        ret = (fflush(fCut) == 0) && ret;
+        ret = (fclose(fCut) == 0) && ret;
       }
-      ret = (fflush(fCut) == 0) && ret;
-      ret = (fclose(fCut) == 0) && ret;
     }
+    free(SegmentMarker);
+    SegmentMarker = NULL;
   }
-  free(SegmentMarker);
-  SegmentMarker = NULL;
+  TRACEEXIT;
   return ret;
 }
 
@@ -351,9 +373,11 @@ void ProcessCutFile(const dword CurrentPosition, const dword PositionOffset)
 {
   static int i = 0;
 
+  TRACEENTER;
   while ((i < NrSegmentMarker) && (SegmentMarker[i].Block < CurrentPosition))
   {
     SegmentMarker[i].Block -= PositionOffset;
     i++;
   }
+  TRACEEXIT;
 }

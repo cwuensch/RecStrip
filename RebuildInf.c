@@ -162,15 +162,16 @@ void AnalyzePMT(byte *PSBuffer)
   short                 SectionLength, DescriptorType, DescriptorLength, ProgramInfoLength;
   word                  PID;
   char                  Log[512];
-  bool                  HDFound = FALSE;
+  bool                  VideoFound = FALSE, HDFound = FALSE;
 
+  TRACEENTER;
   Log[0] = '\0';
 
   //The following variables have a constant distance from the packet header
   SectionLength = (((PSBuffer[0x01] << 8) | PSBuffer[0x02]) & 0xfff) - 7;
 
-  sprintf(&Log[strlen(Log)], ", ServiceID=%4.4x", ((PSBuffer[0x03] << 8) | PSBuffer[0x04]));
-  sprintf(&Log[strlen(Log)], ", PCRPID=%4.4x", ((PSBuffer[0x08] << 8) | PSBuffer [0x09]) & 0x1fff);
+  sprintf(&Log[strlen(Log)], ", ServiceID=0x%4.4x", ((PSBuffer[0x03] << 8) | PSBuffer[0x04]));
+  sprintf(&Log[strlen(Log)], ", PCRPID=0x%4.4x", ((PSBuffer[0x08] << 8) | PSBuffer [0x09]) & 0x1fff);
 
   ProgramInfoLength = ((PSBuffer[0x0a] << 8) | PSBuffer[0x0b]) & 0xfff;
 
@@ -187,7 +188,7 @@ void AnalyzePMT(byte *PSBuffer)
   }
 
   //Loop through all elementary stream descriptors and search for the Audio and Video descriptor
-  while (SectionLength > 0)
+  while ((SectionLength > 0) && !VideoFound)
   {
     PID = ((PSBuffer [DescrPt + 1] << 8) | PSBuffer [DescrPt + 2]) & 0x1fff;
     DescriptorLength = ((PSBuffer[DescrPt + 3] << 8) | PSBuffer [DescrPt + 4]) & 0xfff;
@@ -203,8 +204,9 @@ void AnalyzePMT(byte *PSBuffer)
 
       case STREAM_VIDEO_MPEG1:
       case STREAM_VIDEO_MPEG2:
+        VideoFound = TRUE;
         VideoPID = PID;
-        sprintf(&Log[strlen(Log)], ", VideoStream=%x, VideoPID=%4.4x, HD=%d", PSBuffer[DescrPt], VideoPID, isHDVideo);
+        sprintf(&Log[strlen(Log)], ", VideoStream=0x%x, VideoPID=0x%4.4x, HD=%d", PSBuffer[DescrPt], VideoPID, isHDVideo);
         break;
     }
 
@@ -215,6 +217,7 @@ void AnalyzePMT(byte *PSBuffer)
   if (HDFound != isHDVideo)
     printf("ERROR! Inconsistent video format. inf: %s, PMT(mid): %s\n", isHDVideo ? "HD" : "SD", HDFound ? "HD" : "SD");
   isHDVideo = HDFound;
+  TRACEEXIT;
 }
 
 bool GetVideoInfos(FILE* fIn)
@@ -229,16 +232,18 @@ bool GetVideoInfos(FILE* fIn)
   byte                 *p;
   int                   i, j;
 
+  TRACEENTER;
   Buffer = (byte*) malloc(RECBUFFERENTRIES * PACKETSIZE);
   if (!Buffer)
   {
     printf("  Failed to allocate the buffer.\n");
+    TRACEEXIT;
     return FALSE;
   }
 
   // Springe in die Mitte der Aufnahme
   HDD_GetFileSize(RecFileIn, &RecFileSize);
-  fseeko64(fIn, RecFileSize/2, SEEK_SET);
+  fseeko64(fIn, ((RecFileSize/2))/PACKETSIZE*PACKETSIZE, SEEK_SET);
 
   //Read the first RECBUFFERENTRIES TS pakets for analysis
   ReadPackets = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn);
@@ -247,6 +252,7 @@ bool GetVideoInfos(FILE* fIn)
   {
     printf("  Failed to read the first %d TS packets.\n", RECBUFFERENTRIES);
     free(Buffer);
+    TRACEEXIT;
     return FALSE;
   }
 
@@ -274,11 +280,12 @@ bool GetVideoInfos(FILE* fIn)
   }
 
   if(PMTPID)
-    printf("  PMTPID=%4.4x", PMTPID);
+    printf("  PMTPID=0x%4.4x", PMTPID);
   else
   {
     printf("  Failed to locate a PMT packet.\n");
     free(Buffer);
+    TRACEEXIT;
     return FALSE;
   }
 
@@ -297,5 +304,6 @@ bool GetVideoInfos(FILE* fIn)
 //  PSBuffer_Reset(&PMTBuffer);
 
   free(Buffer);
+  TRACEEXIT;
   return TRUE;
 }

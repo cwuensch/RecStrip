@@ -39,6 +39,8 @@ bool LoadInfFile(const char *AbsInfName)
   unsigned long long    InfFileSize = 0;
   bool                  Result = FALSE;
 
+  TRACEENTER;
+
   //Calculate inf header size
   if (HDD_GetFileSize(AbsInfName, &InfFileSize))
     SystemType = (InfFileSize % 122312 <= 10320) ? ST_TMSC : ST_TMSS;
@@ -51,6 +53,7 @@ bool LoadInfFile(const char *AbsInfName)
   else
   {
     printf("LoadInfFile() E0901: Not enough memory.\n");
+    TRACEEXIT;
     return FALSE;
   }
 
@@ -60,6 +63,7 @@ bool LoadInfFile(const char *AbsInfName)
   {
     free(InfBuffer);
     printf("LoadInfFile() E0902: Source inf not found.\n");
+    TRACEEXIT;
     return FALSE;
   }
 
@@ -67,48 +71,53 @@ bool LoadInfFile(const char *AbsInfName)
   fclose(fInfIn);
 
   //Decode the source .inf
-  switch (SystemType)
+  if (Result)
   {
-    case ST_TMSS:
-      RecHeaderInfo = &(((TYPE_RecHeader_TMSS*)InfBuffer)->RecHeaderInfo);
-      BookmarkInfo  = &(((TYPE_RecHeader_TMSS*)InfBuffer)->BookmarkInfo);
-      ServiceInfo   = &(((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo);
-      break;
-    case ST_TMSC:
-      RecHeaderInfo = &(((TYPE_RecHeader_TMSC*)InfBuffer)->RecHeaderInfo);
-      BookmarkInfo  = &(((TYPE_RecHeader_TMSC*)InfBuffer)->BookmarkInfo);
-      ServiceInfo   = &(((TYPE_RecHeader_TMSC*)InfBuffer)->ServiceInfo);
-      break;
-/*    case ST_TMST:
-      RecHeaderInfo = &(((TYPE_RecHeader_TMST*)InfBuffer)->RecHeaderInfo);
-      BookmarkInfo  = &(((TYPE_RecHeader_TMST*)InfBuffer)->BookmarkInfo);
-      ServiceInfo   = &(((TYPE_RecHeader_TMST*)InfBuffer)->ServiceInfo);
-      break;  */
-    default:
-      printf("LoadInfFile() E0903: Incompatible system type.\n");
-      free(InfBuffer);
-      return FALSE;
-  }
+    switch (SystemType)
+    {
+      case ST_TMSS:
+        RecHeaderInfo = &(((TYPE_RecHeader_TMSS*)InfBuffer)->RecHeaderInfo);
+        BookmarkInfo  = &(((TYPE_RecHeader_TMSS*)InfBuffer)->BookmarkInfo);
+        ServiceInfo   = &(((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo);
+        break;
+      case ST_TMSC:
+        RecHeaderInfo = &(((TYPE_RecHeader_TMSC*)InfBuffer)->RecHeaderInfo);
+        BookmarkInfo  = &(((TYPE_RecHeader_TMSC*)InfBuffer)->BookmarkInfo);
+        ServiceInfo   = &(((TYPE_RecHeader_TMSC*)InfBuffer)->ServiceInfo);
+        break;
+/*      case ST_TMST:
+        RecHeaderInfo = &(((TYPE_RecHeader_TMST*)InfBuffer)->RecHeaderInfo);
+        BookmarkInfo  = &(((TYPE_RecHeader_TMST*)InfBuffer)->BookmarkInfo);
+        ServiceInfo   = &(((TYPE_RecHeader_TMST*)InfBuffer)->ServiceInfo);
+        break;  */
+      default:
+        printf("LoadInfFile() E0903: Incompatible system type.\n");
+        free(InfBuffer);
+        TRACEEXIT;
+        return FALSE;
+    }
 
-  // Prüfe auf HD-Video
-  VideoPID = ServiceInfo->VideoPID;
-  if ((ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_PART2) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_H264) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_H263))
-  {
-    isHDVideo = TRUE;
+    // Prüfe auf HD-Video
     VideoPID = ServiceInfo->VideoPID;
-    printf("VideoStream=%x, VideoPID=%4.4x, HD=%d", ServiceInfo->VideoStreamType, VideoPID, isHDVideo);
+    if ((ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_PART2) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_H264) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_H263))
+    {
+      isHDVideo = TRUE;
+      VideoPID = ServiceInfo->VideoPID;
+      printf("VideoStream=0x%x, VideoPID=0x%4.4x, HD=%d\n", ServiceInfo->VideoStreamType, VideoPID, isHDVideo);
+    }
+    else if ((ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG1) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG2))
+    {
+      isHDVideo = FALSE;
+      VideoPID = ServiceInfo->VideoPID;
+      printf("VideoStream=0x%x, VideoPID=0x%4.4x, HD=%d", ServiceInfo->VideoStreamType, VideoPID, isHDVideo);
+    }
+    else
+    {
+      VideoPID = 0;
+      printf("LoadInfFile() E0904: Unknown video stream type.\n");
+    }
   }
-  else if ((ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG1) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG2))
-  {
-    isHDVideo = FALSE;
-    VideoPID = ServiceInfo->VideoPID;
-    printf("VideoStream=%x, VideoPID=%4.4x, HD=%d", ServiceInfo->VideoStreamType, VideoPID, isHDVideo);
-  }
-  else
-  {
-    VideoPID = 0;
-    printf("LoadInfFile() E0904: Unknown video stream type.\n");
-  }
+  TRACEEXIT;
   return Result;
 }
 
@@ -117,6 +126,8 @@ bool SaveInfFile(const char *AbsDestInf, const char *AbsSourceInf)
   FILE                 *fInfIn = NULL, *fInfOut = NULL;
   size_t                BytesRead;
   bool                  Result = FALSE;
+
+  TRACEENTER;
 
   //Allocate and clear the buffer
   if(!InfBuffer) 
@@ -153,6 +164,7 @@ bool SaveInfFile(const char *AbsDestInf, const char *AbsSourceInf)
   }
 
   free(InfBuffer); InfBuffer = NULL;
+  TRACEEXIT;
   return Result;
 }
 
@@ -163,7 +175,12 @@ void ProcessInfFile(const dword CurrentPosition, const dword PositionOffset)
   static int            End = 0, Start = 0, j = 0;
   static dword          i = 0;
 
-  if (!BookmarkInfo) return;
+  TRACEENTER;
+
+  if (!BookmarkInfo) {
+    TRACEEXIT;
+    return;
+  }
 
   if (FirstRun)
   {
@@ -199,4 +216,5 @@ void ProcessInfFile(const dword CurrentPosition, const dword PositionOffset)
     BookmarkInfo->Resume -= PositionOffset;
     ResumeSet = TRUE;
   }
+  TRACEEXIT;
 }

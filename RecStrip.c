@@ -99,12 +99,14 @@ bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize)
   struct stat64         statbuf;
   bool                  ret = FALSE;
 
+  TRACEENTER;
   if(AbsFileName)
   {
     ret = (stat64(AbsFileName, &statbuf) == 0);
     if (ret && OutFileSize)
       *OutFileSize = statbuf.st_size;
   }
+  TRACEEXIT;
   return ret;
 }
 
@@ -126,6 +128,7 @@ bool isPacketStart(const byte PacketArray[], int ArrayLen)
   int                   i;
   bool                  ret = TRUE;
 
+  TRACEENTER;
   for (i = 0; i < 10; i++)
   {
     if (PACKETOFFSET + (i * PACKETSIZE) >= ArrayLen)
@@ -136,6 +139,7 @@ bool isPacketStart(const byte PacketArray[], int ArrayLen)
       break;
     }
   }
+  TRACEEXIT;
   return ret;
 }
 
@@ -144,6 +148,7 @@ int GetPacketSize(char *RecFileName)
   char                 *p;
   bool                  ret = FALSE;
 
+  TRACEENTER;
   p = strrchr(RecFileName, '.');
   if (p && strcmp(p, ".rec") == 0)
   {
@@ -174,6 +179,7 @@ int GetPacketSize(char *RecFileName)
       free(RecStartArray);
     }
   }
+  TRACEEXIT;
   return (ret ? PACKETSIZE : 0);
 }
 
@@ -190,6 +196,9 @@ int main(int argc, const char* argv[])
   bool                  DropCurPacket;
   time_t                startTime, endTime;
 
+  TRACEENTER;
+  setvbuf(stdout, NULL, _IOLBF, 4096);  // zeilenweises Buffering, auch bei Ausgabe in Datei
+
   printf("\nRecStrip for Topfield PVR v0.2\n");
   printf("(C) 2016 Christian Wuensch\n");
   printf("- based on Naludump 0.1.1 by Udo Richter -\n");
@@ -205,6 +214,7 @@ int main(int argc, const char* argv[])
   else
   {
     printf("\nUsage: %s <source-rec> <dest-rec>\n\n", argv[0]);
+    TRACEEXIT;
     exit(1);
   }
 
@@ -219,6 +229,7 @@ int main(int argc, const char* argv[])
   else
   {
     printf("ERROR: Cannot open %s.\n", RecFileIn);
+    TRACEEXIT;
     exit(2);
   }
 
@@ -235,6 +246,7 @@ int main(int argc, const char* argv[])
     {
       fclose(fIn);
       printf("ERROR: Cannot create %s.\n", RecFileOut);
+      TRACEEXIT;
       exit(3);
     }
   }
@@ -355,7 +367,8 @@ int main(int argc, const char* argv[])
             fclose(fIn);
             fclose(fOut);
             CloseNavFiles();
-//            free(SegmentMarker);
+            CutFileClose(NULL, FALSE);
+            TRACEEXIT;
             exit(4);
           }
         }
@@ -365,6 +378,11 @@ int main(int argc, const char* argv[])
       else
       {
         printf("ERROR: Incorrect TS - Missing sync byte at position %llu.\n", CurrentPosition);
+        fclose(fIn);
+        fclose(fOut);
+        CloseNavFiles();
+        CutFileClose(NULL, FALSE);
+        TRACEEXIT;
         exit(5);
       }
     }
@@ -379,33 +397,35 @@ int main(int argc, const char* argv[])
       break;
     }
   }
-  fclose(fIn);
-  if(fOut)
-  {
-    if (fflush(fOut) != 0 || fclose(fOut) != 0)
-    {
-      printf("ERROR: Failed closing the output file.\n");
-      exit(6);
-    }
-  }
+
   if (!CloseNavFiles())
     printf("WARNING: Failed closing the nav file.\n");
 
   if (*InfFileIn && (argc > 2) && !SaveInfFile(InfFileOut, InfFileIn))
     printf("WARNING: Cannot create inf %s.\n", InfFileOut);
 
-  if (*CutFileIn && (argc > 2) && !CutFileSave(CutFileOut))
+  if (*CutFileIn && (argc > 2) && !CutFileClose(CutFileOut, TRUE))
     printf("WARNING: Cannot create cut %s.\n", CutFileOut);
+
+  fclose(fIn);
+  if(fOut)
+  {
+    if (fflush(fOut) != 0 || fclose(fOut) != 0)
+    {
+      printf("ERROR: Failed closing the output file.\n");
+      TRACEEXIT;
+      exit(6);
+    }
+  }
 
   printf("\nPackets: %llu, FillerNALUs: %llu (%llu%%), ZeroByteStuffing: %llu (%llu%%), NullPackets: %llu (%llu%%), EPG: %llu (%llu%%), Dropped (all): %lli (%llu%%)\n", CurrentPacket, NrDroppedFillerNALU, (CurrentPacket ? NrDroppedFillerNALU*100/CurrentPacket : 0), NrDroppedZeroStuffing, (CurrentPacket ? NrDroppedZeroStuffing*100/CurrentPacket : 0), NrDroppedNullPid, (CurrentPacket ? NrDroppedNullPid*100/CurrentPacket : 0), NrDroppedEPGPid, (CurrentPacket ? NrDroppedEPGPid*100/CurrentPacket : 0), NrDroppedFillerNALU+NrDroppedZeroStuffing+NrDroppedNullPid+NrDroppedEPGPid, (CurrentPacket ? (NrDroppedFillerNALU+NrDroppedZeroStuffing+NrDroppedNullPid+NrDroppedEPGPid)*100/CurrentPacket : 0));
 
   time(&endTime);
   printf("\nElapsed time: %f sec.\n", difftime(endTime, startTime));
 
-//  free(SegmentMarker);
-
   #ifdef _WIN32
 //    getchar();
   #endif
+  TRACEEXIT;
   exit(0);
 }
