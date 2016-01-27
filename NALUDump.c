@@ -128,7 +128,7 @@ static void ProcessPayload_HD(unsigned char *Payload, int size, bool PayloadStar
     PesOffset++;
     NaluOffset++;
 
-    if (History >= 0x000001B9 && History <= 0x000001FF)
+    if (History >= 0x000001B9 && History <= 0x000001FF)  // im Original: >= 0x00000180
     {
       // Start of PES packet
       PesId = History & 0xff;
@@ -263,6 +263,7 @@ int ProcessTSPacket(unsigned char *Packet, unsigned long long FilePosition)
   if (TSPacket->Payload_Exists)
   {
     sPayloadInfo Info;
+    bool DropThisPayload = FALSE;
     int Offset = TsPayloadOffset(TSPacket);
 
     if (isHDVideo)
@@ -287,6 +288,7 @@ int ProcessTSPacket(unsigned char *Packet, unsigned long long FilePosition)
         }
       }
 
+      DropThisPayload = DropAllPayload;
       if (!DropAllPayload && Info.DropPayloadEndBytes > 0) // Payload ends with 0xff NALU Fill
       {
         // Last packet of useful data
@@ -303,7 +305,7 @@ int ProcessTSPacket(unsigned char *Packet, unsigned long long FilePosition)
     else
       ProcessPayload_SD(Packet + Offset, TS_SIZE - Offset, TSPacket->Payload_Unit_Start, &Info);
 
-    if (DropAllPayload)
+    if (DropThisPayload)
     {
       if (TSPacket->Adapt_Field_Exists)
         // Drop payload data, but keep adaption field data

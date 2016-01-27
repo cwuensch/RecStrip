@@ -197,9 +197,10 @@ int main(int argc, const char* argv[])
   time_t                startTime, endTime;
 
   TRACEENTER;
-  setvbuf(stdout, NULL, _IOLBF, 4096);  // zeilenweises Buffering, auch bei Ausgabe in Datei
-
-  printf("\nRecStrip for Topfield PVR v0.2\n");
+  #ifndef _WIN32
+    setvbuf(stdout, NULL, _IOLBF, 4096);  // zeilenweises Buffering, auch bei Ausgabe in Datei
+  #endif
+  printf("\nRecStrip for Topfield PVR v0.3\n");
   printf("(C) 2016 Christian Wuensch\n");
   printf("- based on Naludump 0.1.1 by Udo Richter -\n");
   printf("- portions of Mpeg2cleaner (S. Poeschel), RebuildNav (Firebird) & MovieCutter -\n");

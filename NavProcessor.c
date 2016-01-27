@@ -260,6 +260,9 @@ bool HDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
     PayloadStart = 0;
   }
 
+if (PayloadStart > 184)
+  printf("ASSERTION ERROR");
+
   PrimaryPayloadSize = 184 - PayloadStart;
   memcpy(PSBuffer, &PrimaryPacket.Data[PayloadStart], PrimaryPayloadSize);
 
@@ -272,6 +275,8 @@ bool HDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
   {
     PayloadStart = 0;
   }
+if (PayloadStart > 184)
+  printf("ASSERTION ERROR");
   memcpy(&PSBuffer[PrimaryPayloadSize], &SecondaryPacket.Data[PayloadStart], 184 - PayloadStart);
 
   //Search for start codes in the primary buffer. The secondary buffer is used if a NALU runs over the 184 byte TS packet border
@@ -337,7 +342,7 @@ bool HDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
               Bit = 31;
               PPS[PPSCount].ID = get_ue_golomb32(&PSBuffer[Ptr+4], &Bit);
               #if DEBUGLOG != 0
-                sprintf(&s[strlen(s)], " (ID=%d)", PPS[PPSCount].ID);
+                snprintf(&s[strlen(s)], sizeof(s)-strlen(s), " (ID=%d)", PPS[PPSCount].ID);
               #endif
               PPS[PPSCount].Len = 0;
               PPSCount++;
@@ -467,7 +472,7 @@ bool HDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
             SlicePPSID = get_ue_golomb32(&PSBuffer[Ptr+4], &Bit);
 
             #if DEBUGLOG != 0
-              sprintf(&s[strlen(s)], " (PPS ID=%hu)\n", SlicePPSID);
+              snprintf(&s[strlen(s)], sizeof(s)-strlen(s), " (PPS ID=%hu)\n", SlicePPSID);
             #endif
 
             if((FrameType == 3) && (NALRefIdc > 0)) FrameType = 2;
@@ -481,7 +486,7 @@ bool HDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
         }
 
         #if DEBUGLOG != 0
-          if(NALRefIdc != 0) sprintf(&s[strlen(s)], " (NALRefIdc=%hu)", NALRefIdc);
+          if(NALRefIdc != 0) snprintf(&s[strlen(s)], sizeof(s)-strlen(s), " (NALRefIdc=%hu)", NALRefIdc);
           printf("%8.8llx: %s\n", PrimaryPayloadOffset + Ptr, s);
         #endif
 
@@ -597,6 +602,8 @@ bool LoadNavFiles(const char* AbsInNav, const char* AbsOutNav)
     if (fNavOut)
     {
 //        setvbuf(fNavOut, NULL, _IOFBF, BUFSIZE);
+printf("OPEN: fNavIn (0x%x)\n", fNavIn);
+printf("OPEN: fNavOut (0x%x)\n", fNavOut);
     }
     else
       printf("WARNING: Cannot create nav file %s.\n", AbsOutNav);
@@ -616,10 +623,13 @@ bool CloseNavFiles(void)
   if (fNavOut && !isHDVideo && (NavPtr > 0))
     fwrite(&SDNav[0], sizeof(tnavSD), 1, fNavOut);
 
+printf("CLOSE: fNavIn (0x%x)\n", fNavIn);
   if (fNavIn) fclose(fNavIn);
   fNavIn = NULL;
+printf("CLOSE: fNavOut (0x%x)\n", fNavOut);
   if (fNavOut)
     ret = (fflush(fNavOut) == 0 && fclose(fNavOut) == 0);
+  fNavOut = NULL;
 
   TRACEEXIT;
   return ret;

@@ -26,8 +26,8 @@
 #endif
 
 
-#define TRACEENTER  printf("Start %s \n", (char*)__FUNCTION__)
-#define TRACEEXIT   printf("End %s \n", (char*)__FUNCTION__)
+#define TRACEENTER // printf("Start %s \n", (char*)__FUNCTION__)
+#define TRACEEXIT  // printf("End %s \n", (char*)__FUNCTION__)
 
 
 typedef struct

@@ -170,8 +170,8 @@ void AnalyzePMT(byte *PSBuffer)
   //The following variables have a constant distance from the packet header
   SectionLength = (((PSBuffer[0x01] << 8) | PSBuffer[0x02]) & 0xfff) - 7;
 
-  sprintf(&Log[strlen(Log)], ", ServiceID=0x%4.4x", ((PSBuffer[0x03] << 8) | PSBuffer[0x04]));
-  sprintf(&Log[strlen(Log)], ", PCRPID=0x%4.4x", ((PSBuffer[0x08] << 8) | PSBuffer [0x09]) & 0x1fff);
+  snprintf(Log, sizeof(Log), "ServiceID=0x%4.4x", ((PSBuffer[0x03] << 8) | PSBuffer[0x04]));
+  snprintf(&Log[strlen(Log)], sizeof(Log)-strlen(Log), ", PCRPID=0x%4.4x", ((PSBuffer[0x08] << 8) | PSBuffer [0x09]) & 0x1fff);
 
   ProgramInfoLength = ((PSBuffer[0x0a] << 8) | PSBuffer[0x0b]) & 0xfff;
 
@@ -206,7 +206,7 @@ void AnalyzePMT(byte *PSBuffer)
       case STREAM_VIDEO_MPEG2:
         VideoFound = TRUE;
         VideoPID = PID;
-        sprintf(&Log[strlen(Log)], ", VideoStream=0x%x, VideoPID=0x%4.4x, HD=%d", PSBuffer[DescrPt], VideoPID, isHDVideo);
+        snprintf(&Log[strlen(Log)], sizeof(Log)-strlen(Log), ", VideoStream=0x%x, VideoPID=0x%4.4x, HD=%d", PSBuffer[DescrPt], VideoPID, isHDVideo);
         break;
     }
 

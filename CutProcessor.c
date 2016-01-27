@@ -278,6 +278,12 @@ bool CutFileLoad(const char *AbsCutName)
 
   // Puffer allozieren
   SegmentMarker = (tSegmentMarker*) malloc(NRSEGMENTMARKER * sizeof(tSegmentMarker));
+  if (!SegmentMarker)
+  {
+    printf("CutFileLoad: Failed to allocate memory!\n");
+    TRACEEXIT;
+    return FALSE;
+  }
 
   // Schaue zuerst im Cut-File nach
   fCut = fopen(AbsCutName, "rb");
