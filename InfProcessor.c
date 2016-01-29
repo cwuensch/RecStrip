@@ -32,6 +32,49 @@ static size_t           InfSize = 0;
 // *****  READ AND WRITE INF FILE  *****
 // ----------------------------------------------
 
+SYSTEM_TYPE DeterminInfType(byte *InfBuffer)
+{
+  int                   PointsS, PointsT, PointsC;
+  unsigned long        *pd;
+  unsigned short       *pw;
+
+  //ST_TMSS: Frequency = dword @ 0x0578 (10000...13000)
+  //         SymbolRate = word @ 0x057c (2000...30000)
+  //         Flags1 = word     @ 0x0575 (& 0xf000 == 0)
+  //
+  //ST_TMST: Frequency = dword @ 0x0578 (47000...862000)
+  //         Bandwidth = byte  @ 0x0576 (6..8)
+  //         LPHP = byte       @ 0x057e (& 0xfe == 0)
+  //
+  //ST_TMSC: Frequency = dword @ 0x0574 (174000...230000 || 470000...862000)
+  //         SymbolRate = word @ 0x0578 (2000...30000)
+  //         Modulation = byte @ 0x057e (<= 4)
+
+  PointsS = 0;
+  PointsT = 0;
+  PointsC = 0;
+
+  pd = (dword*)&InfBuffer[0x0578]; if((*pd >= 10000) && (*pd <= 13000)) PointsS++;
+  pw = (word*)&InfBuffer[0x057c]; if((*pw >= 2000) && (*pw <= 30000)) PointsS++;
+  pw = (word*)&InfBuffer[0x0575]; if((*pw & 0xf000) == 0) PointsS++;
+
+  pd = (dword*)&InfBuffer[0x0578]; if((*pd >= 47000) && (*pd <= 862000)) PointsT++;
+  if((InfBuffer[0x0576] >= 6) && (InfBuffer[0x0576] <= 8)) PointsT++;
+  if((InfBuffer[0x057e] && 0xfe) == 0) PointsT++;
+
+  pd = (dword*)&InfBuffer[0x0574]; if(((*pd >= 113000000) && (*pd <= 230000000)) || ((*pd >= 470000000) && (*pd <= 858000000))) PointsC++;
+  pw = (word*)&InfBuffer[0x0578]; if((*pw >= 2000) && (*pw <= 30000)) PointsC++;
+  if(InfBuffer[0x057e] <= 4) PointsC++;
+
+  printf("DVBs = %d, DVBt = %d, DVBc = %d points\n", PointsS, PointsT, PointsC);
+
+  if(PointsS == 3) return ST_TMSS;
+  if(PointsT == 3) return ST_TMST;
+  if(PointsC == 3) return ST_TMSC;
+
+  return ST_UNKNOWN;
+}
+
 bool LoadInfFile(const char *AbsInfName)
 {
   FILE                 *fInfIn = NULL;
@@ -44,16 +87,7 @@ bool LoadInfFile(const char *AbsInfName)
   //Calculate inf header size
   if (HDD_GetFileSize(AbsInfName, &InfFileSize))
   {
-    printf("File size of inf: %llu", InfFileSize);
-
-    if (((InfFileSize % 122312) % 1024 == 84) || ((InfFileSize % 122312) % 1024 == 248))
-      SystemType = ST_TMSS;
-    else if (((InfFileSize % 122312) % 1024 == 80) || ((InfFileSize % 122312) % 1024 == 244))
-      SystemType = ST_TMSC;
-    else
-printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
-
-    printf(" -> SystemType: %s\n", ((SystemType==ST_TMSC) ? "ST_TMSC" : "ST_TMSS"));
+    printf("File size of inf: %llu\n", InfFileSize);
   }
   else
   {
@@ -73,10 +107,9 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
   }
 
   //Allocate and clear the buffer
-  InfSize = (SystemType == ST_TMSC) ? sizeof(TYPE_RecHeader_TMSC) : sizeof(TYPE_RecHeader_TMSS);
-  InfBuffer = (byte*) malloc(max(InfSize, 32768));
-  if(InfBuffer) 
-    memset(InfBuffer, 0, InfSize);
+  InfBuffer = (byte*) malloc(max(InfFileSize, 32768));
+  if(InfBuffer)
+    memset(InfBuffer, 0, max(InfFileSize, 32768));
   else
   {
     fclose(fInfIn);
@@ -85,25 +118,29 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
     return FALSE;
   }
 
-  Result = (fread(InfBuffer, 1, InfSize, fInfIn) == InfSize);
+  Result = (fread(InfBuffer, 1, InfFileSize, fInfIn) == InfFileSize);
   fclose(fInfIn);
 
   //Decode the source .inf
   if (Result)
   {
+    SystemType = DeterminInfType(InfBuffer);
     switch (SystemType)
     {
       case ST_TMSS:
+        InfSize = sizeof(TYPE_RecHeader_TMSS);
         RecHeaderInfo = &(((TYPE_RecHeader_TMSS*)InfBuffer)->RecHeaderInfo);
         BookmarkInfo  = &(((TYPE_RecHeader_TMSS*)InfBuffer)->BookmarkInfo);
         ServiceInfo   = &(((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo);
         break;
       case ST_TMSC:
+        InfSize = sizeof(TYPE_RecHeader_TMSC);
         RecHeaderInfo = &(((TYPE_RecHeader_TMSC*)InfBuffer)->RecHeaderInfo);
         BookmarkInfo  = &(((TYPE_RecHeader_TMSC*)InfBuffer)->BookmarkInfo);
         ServiceInfo   = &(((TYPE_RecHeader_TMSC*)InfBuffer)->ServiceInfo);
         break;
 /*      case ST_TMST:
+        InfSize = sizeof(TYPE_RecHeader_TMST);
         RecHeaderInfo = &(((TYPE_RecHeader_TMST*)InfBuffer)->RecHeaderInfo);
         BookmarkInfo  = &(((TYPE_RecHeader_TMST*)InfBuffer)->BookmarkInfo);
         ServiceInfo   = &(((TYPE_RecHeader_TMST*)InfBuffer)->ServiceInfo);
@@ -148,7 +185,7 @@ bool SaveInfFile(const char *AbsDestInf, const char *AbsSourceInf)
   TRACEENTER;
 
   //Allocate and clear the buffer
-  if(!InfBuffer) 
+  if(!InfBuffer)
   {
     printf("SaveInfFile() E0901: Buffer not allocated.\n");
     return FALSE;
