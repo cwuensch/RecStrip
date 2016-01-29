@@ -43,16 +43,21 @@ bool LoadInfFile(const char *AbsInfName)
 
   //Calculate inf header size
   if (HDD_GetFileSize(AbsInfName, &InfFileSize))
-    SystemType = (InfFileSize % 122312 <= 10320) ? ST_TMSC : ST_TMSS;
+  {
+    printf("File size of inf: %llu", InfFileSize);
 
-  //Allocate and clear the buffer
-  InfSize = (SystemType == ST_TMSC) ? sizeof(TYPE_RecHeader_TMSC) : sizeof(TYPE_RecHeader_TMSS);
-  InfBuffer = (byte*) malloc(max(InfSize, 32768));
-  if(InfBuffer) 
-    memset(InfBuffer, 0, InfSize);
+    if (((InfFileSize % 122312) % 1024 == 84) || ((InfFileSize % 122312) % 1024 == 248))
+      SystemType = ST_TMSS;
+    else if (((InfFileSize % 122312) % 1024 == 80) || ((InfFileSize % 122312) % 1024 == 244))
+      SystemType = ST_TMSC;
+    else
+printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
+
+    printf(" -> SystemType: %s\n", ((SystemType==ST_TMSC) ? "ST_TMSC" : "ST_TMSS"));
+  }
   else
   {
-    printf("LoadInfFile() E0901: Not enough memory.\n");
+    printf("LoadInfFile() E0901: Source inf not found.\n");
     TRACEEXIT;
     return FALSE;
   }
@@ -61,8 +66,21 @@ bool LoadInfFile(const char *AbsInfName)
   fInfIn = fopen(AbsInfName, "rb");
   if(!fInfIn)
   {
-    free(InfBuffer);
+    free(InfBuffer); InfBuffer = NULL;
     printf("LoadInfFile() E0902: Source inf not found.\n");
+    TRACEEXIT;
+    return FALSE;
+  }
+
+  //Allocate and clear the buffer
+  InfSize = (SystemType == ST_TMSC) ? sizeof(TYPE_RecHeader_TMSC) : sizeof(TYPE_RecHeader_TMSS);
+  InfBuffer = (byte*) malloc(max(InfSize, 32768));
+  if(InfBuffer) 
+    memset(InfBuffer, 0, InfSize);
+  else
+  {
+    fclose(fInfIn);
+    printf("LoadInfFile() E0903: Not enough memory.\n");
     TRACEEXIT;
     return FALSE;
   }
@@ -91,8 +109,8 @@ bool LoadInfFile(const char *AbsInfName)
         ServiceInfo   = &(((TYPE_RecHeader_TMST*)InfBuffer)->ServiceInfo);
         break;  */
       default:
-        printf("LoadInfFile() E0903: Incompatible system type.\n");
-        free(InfBuffer);
+        printf("LoadInfFile() E0904: Incompatible system type.\n");
+        free(InfBuffer); InfBuffer = NULL;
         TRACEEXIT;
         return FALSE;
     }
@@ -114,7 +132,7 @@ bool LoadInfFile(const char *AbsInfName)
     else
     {
       VideoPID = 0;
-      printf("LoadInfFile() E0904: Unknown video stream type.\n");
+      printf("LoadInfFile() E0905: Unknown video stream type.\n");
     }
   }
   TRACEEXIT;
@@ -152,7 +170,7 @@ bool SaveInfFile(const char *AbsDestInf, const char *AbsSourceInf)
         if (BytesRead > 0)
           Result = (fwrite(InfBuffer, 1, BytesRead, fInfOut) == BytesRead) && Result;
       } while (BytesRead > 0);
-      fclose(fInfIn);
+      fclose(fInfIn); fInfIn = NULL;
     }
     Result = (fflush(fInfOut) == 0) && Result;
     Result = (fclose(fInfOut) == 0) && Result;
@@ -177,13 +195,17 @@ void ProcessInfFile(const dword CurrentPosition, const dword PositionOffset)
 
   TRACEENTER;
 
-  if (!BookmarkInfo) {
+  if (!InfBuffer || !BookmarkInfo) {
     TRACEEXIT;
     return;
   }
 
   if (FirstRun)
   {
+if (BookmarkInfo->NrBookmarks > NRBOOKMARKS)
+  printf("DEBUG: Assertion Error: NrBookmarks=%lu\n", BookmarkInfo->NrBookmarks);
+    BookmarkInfo->NrBookmarks = min(BookmarkInfo->NrBookmarks, NRBOOKMARKS);
+
     // CutDecodeFromBM
     if (BookmarkInfo->Bookmarks[NRBOOKMARKS-2] == 0x8E0A4247)       // ID im vorletzen Bookmark-Dword (-> neues SRP-Format und CRP-Format auf SRP)
       End = NRBOOKMARKS - 2;

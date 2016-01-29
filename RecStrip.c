@@ -1,6 +1,6 @@
 /*
   RecStrip for Topfield PVR
-  (C) 2015 Christian Wünsch
+  (C) 2016 Christian Wünsch
 
   Based on Naludump 0.1.1 by Udo Richter
   Concepts from NaluStripper (Marten Richter)

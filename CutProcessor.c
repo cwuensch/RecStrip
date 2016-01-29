@@ -380,10 +380,13 @@ void ProcessCutFile(const dword CurrentPosition, const dword PositionOffset)
   static int i = 0;
 
   TRACEENTER;
-  while ((i < NrSegmentMarker) && (SegmentMarker[i].Block < CurrentPosition))
+  if (SegmentMarker)
   {
-    SegmentMarker[i].Block -= PositionOffset;
-    i++;
+    while ((i < NrSegmentMarker) && (SegmentMarker[i].Block < CurrentPosition))
+    {
+      SegmentMarker[i].Block -= PositionOffset;
+      i++;
+    }
   }
   TRACEEXIT;
 }

@@ -253,16 +253,18 @@ bool HDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
       #endif
     }
     PayloadStart = (PrimaryPacket.Data[0] + 1);
-    PrimaryPayloadOffset += PayloadStart;
   }
   else
   {
     PayloadStart = 0;
   }
-
 if (PayloadStart > 184)
-  printf("ASSERTION ERROR");
+{
+  printf("DEBUG: Assertion Error: PayloadStart=%hhu\n", PayloadStart);
+  PayloadStart = 184;
+}
 
+  PrimaryPayloadOffset += PayloadStart;
   PrimaryPayloadSize = 184 - PayloadStart;
   memcpy(PSBuffer, &PrimaryPacket.Data[PayloadStart], PrimaryPayloadSize);
 
@@ -276,8 +278,11 @@ if (PayloadStart > 184)
     PayloadStart = 0;
   }
 if (PayloadStart > 184)
-  printf("ASSERTION ERROR");
-  memcpy(&PSBuffer[PrimaryPayloadSize], &SecondaryPacket.Data[PayloadStart], 184 - PayloadStart);
+{
+  printf("DEBUG: Assertion Error: PayloadStart(2)=%hhu\n", PayloadStart);
+  PayloadStart = 184;
+}
+  memcpy(&PSBuffer[PrimaryPayloadSize], &SecondaryPacket.Data[PayloadStart], 184 - min(PayloadStart, 184));
 
   //Search for start codes in the primary buffer. The secondary buffer is used if a NALU runs over the 184 byte TS packet border
   Ptr = 0;
@@ -586,7 +591,6 @@ bool SDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
   TRACEEXIT;
   return ret;
 }
-
 
 bool LoadNavFiles(const char* AbsInNav, const char* AbsOutNav)
 {
