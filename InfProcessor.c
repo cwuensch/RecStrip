@@ -24,7 +24,7 @@
 static byte            *InfBuffer = NULL;
 static TYPE_RecHeader_Info *RecHeaderInfo = NULL;
 static TYPE_Bookmark_Info  *BookmarkInfo = NULL;
-static SYSTEM_TYPE      SystemType = ST_TMSS;
+static SYSTEM_TYPE      SystemType = ST_UNKNOWN;
 static size_t           InfSize = 0;
 
 
@@ -32,11 +32,14 @@ static size_t           InfSize = 0;
 // *****  READ AND WRITE INF FILE  *****
 // ----------------------------------------------
 
-SYSTEM_TYPE DeterminInfType(byte *InfBuffer)
+static SYSTEM_TYPE DetermineInfType(byte *InfBuffer)
 {
-  int                   PointsS, PointsT, PointsC;
+  int                   PointsS = 0, PointsT = 0, PointsC = 0;
   unsigned long        *pd;
   unsigned short       *pw;
+  SYSTEM_TYPE           Result = ST_UNKNOWN;
+
+  TRACEENTER;
 
   //ST_TMSS: Frequency = dword @ 0x0578 (10000...13000)
   //         SymbolRate = word @ 0x057c (2000...30000)
@@ -50,10 +53,6 @@ SYSTEM_TYPE DeterminInfType(byte *InfBuffer)
   //         SymbolRate = word @ 0x0578 (2000...30000)
   //         Modulation = byte @ 0x057e (<= 4)
 
-  PointsS = 0;
-  PointsT = 0;
-  PointsC = 0;
-
   pd = (dword*)&InfBuffer[0x0578]; if((*pd >= 10000) && (*pd <= 13000)) PointsS++;
   pw = (word*)&InfBuffer[0x057c]; if((*pw >= 2000) && (*pw <= 30000)) PointsS++;
   pw = (word*)&InfBuffer[0x0575]; if((*pw & 0xf000) == 0) PointsS++;
@@ -66,13 +65,18 @@ SYSTEM_TYPE DeterminInfType(byte *InfBuffer)
   pw = (word*)&InfBuffer[0x0578]; if((*pw >= 2000) && (*pw <= 30000)) PointsC++;
   if(InfBuffer[0x057e] <= 4) PointsC++;
 
-  printf("DVBs = %d, DVBt = %d, DVBc = %d points\n", PointsS, PointsT, PointsC);
+  printf("Determine SystemType: DVBs = %d, DVBt = %d, DVBc = %d points", PointsS, PointsT, PointsC);
 
-  if(PointsS == 3) return ST_TMSS;
-  if(PointsT == 3) return ST_TMST;
-  if(PointsC == 3) return ST_TMSC;
+  if(PointsS == 3) Result = ST_TMSS;
+  else if(PointsC == 3) Result = ST_TMSC;
+  else if(PointsT == 3) Result = ST_TMST;
+  else
+printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
 
-  return ST_UNKNOWN;
+  printf(" -> SystemType=ST_TMS%c\n", (Result==ST_TMSS ? 'S' : ((Result==ST_TMSC) ? 'C' : 'T')));
+
+  TRACEEXIT;
+  return Result;
 }
 
 bool LoadInfFile(const char *AbsInfName)
@@ -87,7 +91,16 @@ bool LoadInfFile(const char *AbsInfName)
   //Calculate inf header size
   if (HDD_GetFileSize(AbsInfName, &InfFileSize))
   {
-    printf("File size of inf: %llu\n", InfFileSize);
+    printf("File size of inf: %llu", InfFileSize);
+
+    if (((InfFileSize % 122312) % 1024 == 84) || ((InfFileSize % 122312) % 1024 == 248))
+      SystemType = ST_TMSS;
+    else if (((InfFileSize % 122312) % 1024 == 80) || ((InfFileSize % 122312) % 1024 == 244))
+      SystemType = ST_TMSC;
+    else
+printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
+
+    printf(" -> SystemType: %s\n", ((SystemType==ST_TMSC) ? "ST_TMSC" : "ST_TMSS"));
   }
   else
   {
@@ -107,9 +120,10 @@ bool LoadInfFile(const char *AbsInfName)
   }
 
   //Allocate and clear the buffer
-  InfBuffer = (byte*) malloc(max(InfFileSize, 32768));
+  InfSize = sizeof(TYPE_RecHeader_TMSS);
+  InfBuffer = (byte*) malloc(max(InfSize, 32768));
   if(InfBuffer)
-    memset(InfBuffer, 0, max(InfFileSize, 32768));
+    memset(InfBuffer, 0, max(InfSize, 32768));
   else
   {
     fclose(fInfIn);
@@ -118,13 +132,13 @@ bool LoadInfFile(const char *AbsInfName)
     return FALSE;
   }
 
-  Result = (fread(InfBuffer, 1, InfFileSize, fInfIn) == InfFileSize);
+  Result = (fread(InfBuffer, 1, InfSize, fInfIn) + 1 >= InfSize);
   fclose(fInfIn);
 
   //Decode the source .inf
   if (Result)
   {
-    SystemType = DeterminInfType(InfBuffer);
+    SystemType = DetermineInfType(InfBuffer);
     switch (SystemType)
     {
       case ST_TMSS:
@@ -139,12 +153,12 @@ bool LoadInfFile(const char *AbsInfName)
         BookmarkInfo  = &(((TYPE_RecHeader_TMSC*)InfBuffer)->BookmarkInfo);
         ServiceInfo   = &(((TYPE_RecHeader_TMSC*)InfBuffer)->ServiceInfo);
         break;
-/*      case ST_TMST:
+      case ST_TMST:
         InfSize = sizeof(TYPE_RecHeader_TMST);
         RecHeaderInfo = &(((TYPE_RecHeader_TMST*)InfBuffer)->RecHeaderInfo);
         BookmarkInfo  = &(((TYPE_RecHeader_TMST*)InfBuffer)->BookmarkInfo);
         ServiceInfo   = &(((TYPE_RecHeader_TMST*)InfBuffer)->ServiceInfo);
-        break;  */
+        break;
       default:
         printf("LoadInfFile() E0904: Incompatible system type.\n");
         free(InfBuffer); InfBuffer = NULL;
