@@ -276,15 +276,6 @@ bool CutFileLoad(const char *AbsCutName)
 
   TRACEENTER;
 
-  // Puffer allozieren
-  SegmentMarker = (tSegmentMarker*) malloc(NRSEGMENTMARKER * sizeof(tSegmentMarker));
-  if (!SegmentMarker)
-  {
-    printf("CutFileLoad: Failed to allocate memory!\n");
-    TRACEEXIT;
-    return FALSE;
-  }
-
   // Schaue zuerst im Cut-File nach
   fCut = fopen(AbsCutName, "rb");
   if(fCut)
@@ -293,6 +284,16 @@ bool CutFileLoad(const char *AbsCutName)
     if (Version == '[') Version = 3;
     rewind(fCut);
 
+    // Puffer allozieren
+    SegmentMarker = (tSegmentMarker*) malloc(NRSEGMENTMARKER * sizeof(tSegmentMarker));
+    if (!SegmentMarker)
+    {
+      printf("CutFileLoad: Failed to allocate memory!\n");
+      fclose(fCut);
+      TRACEEXIT;
+      return FALSE;
+    }
+  
     printf("CutFileLoad: Importing cut-file version %hhu\n", Version);
     switch (Version)
     {
@@ -318,6 +319,8 @@ bool CutFileLoad(const char *AbsCutName)
       if (RecFileSize != SavedSize)
       {
         printf("CutFileLoad: .cut file size mismatch!\n");
+        free(SegmentMarker);
+        SegmentMarker = NULL;
         TRACEEXIT;
         return FALSE;
       }
