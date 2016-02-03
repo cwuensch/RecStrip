@@ -32,7 +32,7 @@ static size_t           InfSize = 0;
 // *****  READ AND WRITE INF FILE  *****
 // ----------------------------------------------
 
-static SYSTEM_TYPE DetermineInfType(byte *InfBuffer)
+static SYSTEM_TYPE DetermineInfType()
 {
   int                   PointsS = 0, PointsT = 0, PointsC = 0;
   unsigned long        *pd;
@@ -138,7 +138,7 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
   //Decode the source .inf
   if (Result)
   {
-    SystemType = DetermineInfType(InfBuffer);
+    SystemType = DetermineInfType();
     switch (SystemType)
     {
       case ST_TMSS:
@@ -178,7 +178,7 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
     {
       isHDVideo = FALSE;
       VideoPID = ServiceInfo->VideoPID;
-      printf("VideoStream=0x%x, VideoPID=0x%4.4x, HD=%d", ServiceInfo->VideoStreamType, VideoPID, isHDVideo);
+      printf("VideoStream=0x%x, VideoPID=0x%4.4x, HD=%d\n", ServiceInfo->VideoStreamType, VideoPID, isHDVideo);
     }
     else
     {

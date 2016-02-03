@@ -25,7 +25,7 @@
 // Globale Variablen
 static FILE            *fNavIn = NULL, *fNavOut = NULL;
 static byte             FrameType;
-static dword            PTS = 0, DTS;
+static dword            PTS = 0, DTS = 0;
 
 //HDNAV
 static tnavHD           navHD;
@@ -91,7 +91,7 @@ static int get_ue_golomb32(byte *p, byte *StartBit)
   return (1 << leadingZeroBits) - 1 + d;
 }
 
-static bool GetPTS(byte *Buffer, dword *PTS, dword *DTS)
+static bool GetPTS(byte *Buffer, dword *pPTS, dword *pDTS)
 {
   TRACEENTER;
   if((Buffer[0] == 0x00) && (Buffer[1] == 0x00) && (Buffer[2] == 0x01) && ((Buffer[3] & 0xf0) == 0xe0) && (Buffer[7] & 0x80))
@@ -113,21 +113,24 @@ static bool GetPTS(byte *Buffer, dword *PTS, dword *DTS)
     //..............................1000010.
 
     //Return PTS >> 1 so that we do not need 64 bit variables
-    *PTS = ((Buffer[ 9] & 0x0e) << 28) |
-           ((Buffer[10] & 0xff) << 21) |
-           ((Buffer[11] & 0xfe) << 13) |
-           ((Buffer[12] & 0xff) <<  6) |
-           ((Buffer[13] & 0xfe) >>  2);
+    if (pPTS)
+      *pPTS = ((Buffer[ 9] & 0x0e) << 28) |
+              ((Buffer[10] & 0xff) << 21) |
+              ((Buffer[11] & 0xfe) << 13) |
+              ((Buffer[12] & 0xff) <<  6) |
+              ((Buffer[13] & 0xfe) >>  2);
 
-    if(Buffer[7] & 0x40)
-      *DTS = ((Buffer[14] & 0x0e) << 28) |
-             ((Buffer[15] & 0xff) << 21) |
-             ((Buffer[16] & 0xfe) << 13) |
-             ((Buffer[17] & 0xff) <<  6) |
-             ((Buffer[18] & 0xfe) >>  2);
-    else
-      *DTS = 0;
-
+    if (pDTS)
+    {
+      if (Buffer[7] & 0x40)
+        *pDTS = ((Buffer[14] & 0x0e) << 28) |
+                ((Buffer[15] & 0xff) << 21) |
+                ((Buffer[16] & 0xfe) << 13) |
+                ((Buffer[17] & 0xff) <<  6) |
+                ((Buffer[18] & 0xfe) >>  2);
+      else
+        *pDTS = 0;
+    }
     TRACEEXIT;
     return TRUE;
   }
@@ -135,15 +138,15 @@ static bool GetPTS(byte *Buffer, dword *PTS, dword *DTS)
   return FALSE;
 }
 
-static bool GetPCR(byte *pBuffer, dword *PCR)
+static bool GetPCR(byte *pBuffer, dword *pPCR)
 {
   TRACEENTER;
-  if ((pBuffer[0] == 0x47) && ((pBuffer[3] & 0x20) != 0) && (pBuffer[4] > 0) && (pBuffer[5] & 0x10))
+  if (pPCR && (pBuffer[0] == 0x47) && ((pBuffer[3] & 0x20) != 0) && (pBuffer[4] > 0) && (pBuffer[5] & 0x10))
   {
     //Extract the time out of the PCR bit pattern
     //The PCR is clocked by a 90kHz generator. To convert to milliseconds
     //the 33 bit number can be shifted right and divided by 45
-    *PCR = (dword)((((dword)pBuffer[6] << 24) | (pBuffer[7] << 16) | (pBuffer[8] << 8) | pBuffer[9]) / 45);
+    *pPCR = (dword)((((dword)pBuffer[6] << 24) | (pBuffer[7] << 16) | (pBuffer[8] << 8) | pBuffer[9]) / 45);
 
     TRACEEXIT;
     return TRUE;
@@ -177,7 +180,7 @@ static dword FindSequenceHeaderCode(byte *Buffer)
   return 0;
 }
 
-static dword FindPictureHeader(byte *Buffer, byte *FrameType)
+static dword FindPictureHeader(byte *Buffer, byte *pFrameType)
 {
   int                   i;
 
@@ -186,7 +189,8 @@ static dword FindPictureHeader(byte *Buffer, byte *FrameType)
   {
     if((Buffer[i] == 0x00) && (Buffer[i + 1] == 0x00) && (Buffer[i + 2] == 0x01) && (Buffer[i + 3] == 0x00))
     {
-      *FrameType = (Buffer[i + 5] >> 3) & 0x03;
+      if (pFrameType)
+        *pFrameType = (Buffer[i + 5] >> 3) & 0x03;
       TRACEEXIT;
       return i + 8;
     }
@@ -606,8 +610,8 @@ bool LoadNavFiles(const char* AbsInNav, const char* AbsOutNav)
     if (fNavOut)
     {
 //        setvbuf(fNavOut, NULL, _IOFBF, BUFSIZE);
-printf("OPEN: fNavIn (0x%x)\n", fNavIn);
-printf("OPEN: fNavOut (0x%x)\n", fNavOut);
+printf("OPEN: fNavIn (0x%x)\n", (unsigned int)fNavIn);
+printf("OPEN: fNavOut (0x%x)\n", (unsigned int)fNavOut);
     }
     else
       printf("WARNING: Cannot create nav file %s.\n", AbsOutNav);
@@ -627,10 +631,10 @@ bool CloseNavFiles(void)
   if (fNavOut && !isHDVideo && (NavPtr > 0))
     fwrite(&SDNav[0], sizeof(tnavSD), 1, fNavOut);
 
-printf("CLOSE: fNavIn (0x%x)\n", fNavIn);
+printf("CLOSE: fNavIn (0x%x)\n", (unsigned int)fNavIn);
   if (fNavIn) fclose(fNavIn);
   fNavIn = NULL;
-printf("CLOSE: fNavOut (0x%x)\n", fNavOut);
+printf("CLOSE: fNavOut (0x%x)\n", (unsigned int)fNavOut);
   if (fNavOut)
     ret = (fflush(fNavOut) == 0 && fclose(fNavOut) == 0);
   fNavOut = NULL;
