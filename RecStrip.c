@@ -83,13 +83,14 @@
 // Globale Variablen
 char                    RecFileIn[FBLIB_DIR_SIZE], RecFileOut[FBLIB_DIR_SIZE];
 word                    VideoPID = 0;
-bool                    isHDVideo = FALSE;
+bool                    isHDVideo = FALSE, AlreadyStripped = FALSE;
 byte                    PACKETSIZE, PACKETOFFSET;
 bool                    RemoveEPGStream = TRUE;
 
 FILE                   *fIn = NULL;  // dirty Hack: erreichbar machen für NALUDump
 static FILE            *fOut = NULL;
 
+static unsigned long long  RecFileSize = 0;
 static unsigned long long  CurrentPosition = 0, PositionOffset = 0, CurrentPacket = 0;
 static unsigned long long  NrDroppedFillerNALU = 0, NrDroppedZeroStuffing = 0, NrDroppedNullPid = 0, NrDroppedEPGPid = 0;
 
@@ -200,7 +201,7 @@ int main(int argc, const char* argv[])
   #ifndef _WIN32
     setvbuf(stdout, NULL, _IOLBF, 4096);  // zeilenweises Buffering, auch bei Ausgabe in Datei
   #endif
-  printf("\nRecStrip for Topfield PVR v0.4\n");
+  printf("\nRecStrip for Topfield PVR v0.5\n");
   printf("(C) 2016 Christian Wuensch\n");
   printf("- based on Naludump 0.1.1 by Udo Richter -\n");
   printf("- portions of Mpeg2cleaner (S. Poeschel), RebuildNav (Firebird) & MovieCutter -\n");
@@ -225,7 +226,8 @@ int main(int argc, const char* argv[])
 
   // Input-File öffnen
   printf("\nInput file: %s\n", RecFileIn);
-  fIn = fopen(RecFileIn, "rb");
+  if (HDD_GetFileSize(RecFileIn, &RecFileSize))
+    fIn = fopen(RecFileIn, "rb");
   if (fIn)
   {
     setvbuf(fIn, NULL, _IOFBF, BUFSIZE);
@@ -272,6 +274,15 @@ int main(int argc, const char* argv[])
     printf("WARNING: Cannot open inf file %s.\n", InfFileIn);
     InfFileIn[0] = '\0';
   }
+  if (AlreadyStripped)
+  {
+    printf("INFO: File has already been stripped.\n");
+/*    fclose(fIn); fIn = NULL;
+    fclose(fOut); fOut = NULL;
+    CloseInfFile(NULL, NULL, FALSE);
+    TRACEEXIT;
+    exit(0); */
+  }
 
   // ggf. nav-Files öffnen
   snprintf(NavFileIn, sizeof(NavFileIn), "%s.nav", RecFileIn);
@@ -306,7 +317,7 @@ int main(int argc, const char* argv[])
 
   // Datei paketweise einlesen und verarbeiten
   time(&startTime);
-  while (TRUE)
+  while (fIn)
   {
     ReadBytes = fread(Buffer, 1, PACKETSIZE, fIn);
     if (ReadBytes > 0)
@@ -369,9 +380,10 @@ int main(int argc, const char* argv[])
           if (fOut && !fwrite(Buffer, ReadBytes, 1, fOut))
           {
             printf("ERROR: Failed writing to output file.\n");
-            fclose(fIn);
-            fclose(fOut);
+            fclose(fIn); fIn = NULL;
+            fclose(fOut); fOut = NULL;
             CloseNavFiles();
+            CloseInfFile(NULL, NULL, FALSE);
             CutFileClose(NULL, FALSE);
             TRACEEXIT;
             exit(4);
@@ -382,46 +394,65 @@ int main(int argc, const char* argv[])
       }
       else
       {
-        printf("ERROR: Incorrect TS - Missing sync byte at position %llu.\n", CurrentPosition);
-        fclose(fIn);
-        fclose(fOut);
-        CloseNavFiles();
-        CutFileClose(NULL, FALSE);
-        TRACEEXIT;
-        exit(5);
+        if (CurrentPosition + 4096 >= RecFileSize)
+        {
+          printf("INFO: Incorrect TS - Ignoring last %llu bytes.\n", RecFileSize - CurrentPosition);
+          fclose(fIn); fIn = NULL;
+        }
+        else
+        {
+          printf("ERROR: Incorrect TS - Missing sync byte at position %llu.\n", CurrentPosition);
+          fclose(fIn); fIn = NULL;
+          fclose(fOut); fOut = NULL;
+          CloseNavFiles();
+          CloseInfFile(NULL, NULL, FALSE);
+          CutFileClose(NULL, FALSE);
+          TRACEEXIT;
+          exit(5);
+        }
       }
     }
     else
     {
-      dword CurPosBlocks = CalcBlockSize(CurrentPosition);
-      dword PosOffsetBlocks = CalcBlockSize(PositionOffset);
-
-      // alle Bookmarks / cut-Einträge, deren Position <= CurrentPosition/9024 sind, um PositionOffset/9024 reduzieren
-      ProcessInfFile(CurPosBlocks+1, PosOffsetBlocks);
-      ProcessCutFile(CurPosBlocks+1, PosOffsetBlocks);
-      break;
+      fclose(fIn); fIn = NULL;
     }
   }
 
-  if (!CloseNavFiles())
-    printf("WARNING: Failed closing the nav file.\n");
+  dword CurPosBlocks = CalcBlockSize(CurrentPosition);
+  dword PosOffsetBlocks = CalcBlockSize(PositionOffset);
 
-  if (*InfFileIn && (argc > 2) && !SaveInfFile(InfFileOut, InfFileIn))
-    printf("WARNING: Cannot create inf %s.\n", InfFileOut);
+  // alle Bookmarks / cut-Einträge, deren Position <= CurrentPosition/9024 sind, um PositionOffset/9024 reduzieren
+  ProcessInfFile(CurPosBlocks+1, PosOffsetBlocks);
+  ProcessCutFile(CurPosBlocks+1, PosOffsetBlocks);
 
-  if (*CutFileIn && (argc > 2) && !CutFileClose(CutFileOut, TRUE))
-    printf("WARNING: Cannot create cut %s.\n", CutFileOut);
 
-  fclose(fIn);
+  if (fIn)
+  {
+    fclose(fIn); fIn = NULL;
+  }
   if(fOut)
   {
     if (fflush(fOut) != 0 || fclose(fOut) != 0)
     {
       printf("ERROR: Failed closing the output file.\n");
+      CloseNavFiles();
+      CloseInfFile(NULL, NULL, FALSE);
+      CutFileClose(NULL, FALSE);
       TRACEEXIT;
       exit(6);
     }
+    fOut = NULL;
   }
+
+  if (!CloseNavFiles())
+    printf("WARNING: Failed closing the nav file.\n");
+
+  if (*InfFileIn && (argc > 2) && !CloseInfFile(InfFileOut, InfFileIn, TRUE))
+    printf("WARNING: Cannot create inf %s.\n", InfFileOut);
+
+  if (*CutFileIn && (argc > 2) && !CutFileClose(CutFileOut, TRUE))
+    printf("WARNING: Cannot create cut %s.\n", CutFileOut);
+
 
   printf("\nPackets: %llu, FillerNALUs: %llu (%llu%%), ZeroByteStuffing: %llu (%llu%%), NullPackets: %llu (%llu%%), EPG: %llu (%llu%%), Dropped (all): %lli (%llu%%)\n", CurrentPacket, NrDroppedFillerNALU, (CurrentPacket ? NrDroppedFillerNALU*100/CurrentPacket : 0), NrDroppedZeroStuffing, (CurrentPacket ? NrDroppedZeroStuffing*100/CurrentPacket : 0), NrDroppedNullPid, (CurrentPacket ? NrDroppedNullPid*100/CurrentPacket : 0), NrDroppedEPGPid, (CurrentPacket ? NrDroppedEPGPid*100/CurrentPacket : 0), NrDroppedFillerNALU+NrDroppedZeroStuffing+NrDroppedNullPid+NrDroppedEPGPid, (CurrentPacket ? (NrDroppedFillerNALU+NrDroppedZeroStuffing+NrDroppedNullPid+NrDroppedEPGPid)*100/CurrentPacket : 0));
 

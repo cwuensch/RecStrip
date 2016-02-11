@@ -185,12 +185,19 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
       VideoPID = 0;
       printf("LoadInfFile() E0905: Unknown video stream type.\n");
     }
+
+    if (RecHeaderInfo->RecStripFlag == 0x2A0A0004)
+      AlreadyStripped = TRUE;
+    else if (RecHeaderInfo->RecStripFlag == 0)
+      RecHeaderInfo->RecStripFlag = 0x2A0A0004;
+    else
+      printf("DEBUG! Assertion Error: RecStrip-Flag is not 0.\n");
   }
   TRACEEXIT;
   return Result;
 }
 
-bool SaveInfFile(const char *AbsDestInf, const char *AbsSourceInf)
+bool CloseInfFile(const char *AbsDestInf, const char *AbsSourceInf, bool Save)
 {
   FILE                 *fInfIn = NULL, *fInfOut = NULL;
   size_t                BytesRead;
@@ -198,40 +205,41 @@ bool SaveInfFile(const char *AbsDestInf, const char *AbsSourceInf)
 
   TRACEENTER;
 
-  //Allocate and clear the buffer
-  if(!InfBuffer)
+  if (Save)
   {
-    printf("SaveInfFile() E0901: Buffer not allocated.\n");
-    return FALSE;
-  }
-
-  //Encode the new inf and write it to the disk
-  fInfOut = fopen(AbsDestInf, "wb");
-  if(fInfOut)
-  {
-    Result = (fwrite(InfBuffer, 1, InfSize, fInfOut) == InfSize);
-
-    // Kopiere den Rest der Source-inf (falls vorhanden) in die neue inf hinein
-    fInfIn = fopen(AbsSourceInf, "rb");
-    if(fInfIn)
+    if(!InfBuffer)
     {
-      fseek(fInfIn, InfSize, SEEK_SET);
-      do {
-        BytesRead = fread(InfBuffer, 1, 32768, fInfIn);
-        if (BytesRead > 0)
-          Result = (fwrite(InfBuffer, 1, BytesRead, fInfOut) == BytesRead) && Result;
-      } while (BytesRead > 0);
-      fclose(fInfIn); fInfIn = NULL;
+      printf("SaveInfFile() E0901: Buffer not allocated.\n");
+      return FALSE;
     }
-    Result = (fflush(fInfOut) == 0) && Result;
-    Result = (fclose(fInfOut) == 0) && Result;
-  }
-  else
-  {
-    printf("PatchInfFiles() E0902: New inf not created.\n");
-    Result = FALSE;
-  }
 
+    //Encode the new inf and write it to the disk
+    fInfOut = fopen(AbsDestInf, "wb");
+    if(fInfOut)
+    {
+      Result = (fwrite(InfBuffer, 1, InfSize, fInfOut) == InfSize);
+
+      // Kopiere den Rest der Source-inf (falls vorhanden) in die neue inf hinein
+      fInfIn = fopen(AbsSourceInf, "rb");
+      if(fInfIn)
+      {
+        fseek(fInfIn, InfSize, SEEK_SET);
+        do {
+          BytesRead = fread(InfBuffer, 1, 32768, fInfIn);
+          if (BytesRead > 0)
+            Result = (fwrite(InfBuffer, 1, BytesRead, fInfOut) == BytesRead) && Result;
+        } while (BytesRead > 0);
+        fclose(fInfIn); fInfIn = NULL;
+      }
+      Result = (fflush(fInfOut) == 0) && Result;
+      Result = (fclose(fInfOut) == 0) && Result;
+    }
+    else
+    {
+      printf("PatchInfFiles() E0902: New inf not created.\n");
+      Result = FALSE;
+    }
+  }
   free(InfBuffer); InfBuffer = NULL;
   TRACEEXIT;
   return Result;

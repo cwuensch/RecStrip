@@ -33,7 +33,8 @@ typedef struct
   word                  TSFlag:1;
   word                  CopyFlag:1;
 
-  byte                  HeaderUnknown4[10];
+  byte                  HeaderUnknown4[6];
+  dword                 RecStripFlag;
 } TYPE_RecHeader_Info;
 
 typedef struct
@@ -97,8 +98,8 @@ typedef struct
   word                  ModulationSystem:1;   // 0=DVBS, 1=DVBS2
   word                  ModulationType:2;     // 0=Auto, 1=QPSK, 2=8PSK, 3=16QAM
   word                  FECMode:4;            // 0x0 = AUTO, 0x1 = 1_2, 0x2 = 2_3, 0x3 = 3_4,
-                                            // 0x4 = 5_6 , 0x5 = 7_8, 0x6 = 8_9, 0x7 = 3_5,
-                                            // 0x8 = 4_5, 0x9 = 9_10, 0xa = reserved, 0xf = NO_CONV
+                                              // 0x4 = 5_6 , 0x5 = 7_8, 0x6 = 8_9, 0x7 = 3_5,
+                                              // 0x8 = 4_5, 0x9 = 9_10, 0xa = reserved, 0xf = NO_CONV
   word                  Pilot:1;
   word                  unused2:4;
   byte                  unused3;
@@ -178,7 +179,7 @@ typedef struct
 
 
 bool LoadInfFile(const char *AbsInfName);
-bool SaveInfFile(const char *AbsDestInf, const char *AbsSourceInf);
+bool CloseInfFile(const char *AbsDestInf, const char *AbsSourceInf, bool Save);
 void ProcessInfFile(const dword CurrentPosition, const dword PositionOffset);
 
 #endif
