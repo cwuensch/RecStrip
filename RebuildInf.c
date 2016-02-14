@@ -170,7 +170,7 @@ void AnalyzePMT(byte *PSBuffer)
   //The following variables have a constant distance from the packet header
   SectionLength = (((PSBuffer[0x01] << 8) | PSBuffer[0x02]) & 0xfff) - 7;
 
-  snprintf(Log, sizeof(Log), "ServiceID=0x%4.4x", ((PSBuffer[0x03] << 8) | PSBuffer[0x04]));
+  snprintf(Log, sizeof(Log), ", ServiceID=0x%4.4x", ((PSBuffer[0x03] << 8) | PSBuffer[0x04]));
   snprintf(&Log[strlen(Log)], sizeof(Log)-strlen(Log), ", PCRPID=0x%4.4x", ((PSBuffer[0x08] << 8) | PSBuffer [0x09]) & 0x1fff);
 
   ProgramInfoLength = ((PSBuffer[0x0a] << 8) | PSBuffer[0x0b]) & 0xfff;

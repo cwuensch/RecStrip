@@ -1,6 +1,8 @@
 #ifndef __RECSTRIPH__
 #define __RECSTRIPH__
 
+#define VERSION                   "0.5"
+
 #define NRBOOKMARKS                177   // eigentlich werden nur 48 Bookmarks unterstützt!! (SRP2401)
 #define NRSEGMENTMARKER            101
 #define BUFSIZE                  65536
@@ -50,7 +52,7 @@ typedef struct
 // Globale Variablen
 extern char             RecFileIn[], RecFileOut[];
 extern word             VideoPID;
-extern bool             isHDVideo;
+extern bool             isHDVideo, AlreadyStripped;
 extern byte             PACKETSIZE, PACKETOFFSET;
 
 

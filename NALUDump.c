@@ -254,7 +254,7 @@ int ProcessTSPacket(unsigned char *Packet, unsigned long long FilePosition)
     int NewContinuityInput = TSPacket->Payload_Exists ? (LastContinuityInput + 1) % 16 : LastContinuityInput;
     ContinuityOffset = (NewContinuityInput - ContinuityInput) % 16;
     if (ContinuityOffset > 0)
-      printf("cNaluDumper: TS continuity offset %i\n", ContinuityOffset);
+      printf("cNaluDumper: TS continuity offset %i (pos=%llu)\n", ContinuityOffset, FilePosition);
 //    if (Offset > ContinuityOffset)
 //      ContinuityOffset = Offset; // max if packets get dropped, otherwise always the current one.
   }
@@ -334,21 +334,22 @@ int ProcessTSPacket(unsigned char *Packet, unsigned long long FilePosition)
         {
           if ((tmpPacket->SyncByte=='G') && (TsGetPID(tmpPacket)==CurPid) && ((tmpPayload = TsPayloadOffset(tmpPacket)) < TS_SIZE-2))
           {
-            fseeko64(fIn, FilePosition, SEEK_SET);
             if (Buffer[PACKETOFFSET + tmpPayload] == 0 && Buffer[PACKETOFFSET + tmpPayload + 1] == 0)
             {
 //printf(" --> confirmed!\n");
+              fseeko64(fIn, FilePosition + PACKETSIZE, SEEK_SET);
               TRACEEXIT;
               return 2;
             }
             else
             {
-printf("%llu --> WARNING!!! No StartCode in following packet!!!\n", FilePosition);
+printf("WARNING!!! No StartCode in following packet!!! (pos=%llu)\n", FilePosition);
               break;
             }
           }
         }
       }
+      fseeko64(fIn, FilePosition + PACKETSIZE, SEEK_SET);
     }
   }
   LastEndedWithNull = (Packet[TS_SIZE-1] == 0);

@@ -201,7 +201,7 @@ int main(int argc, const char* argv[])
   #ifndef _WIN32
     setvbuf(stdout, NULL, _IOLBF, 4096);  // zeilenweises Buffering, auch bei Ausgabe in Datei
   #endif
-  printf("\nRecStrip for Topfield PVR v0.5\n");
+  printf("\nRecStrip for Topfield PVR " VERSION "\n");
   printf("(C) 2016 Christian Wuensch\n");
   printf("- based on Naludump 0.1.1 by Udo Richter -\n");
   printf("- portions of Mpeg2cleaner (S. Poeschel), RebuildNav (Firebird) & MovieCutter -\n");
@@ -211,7 +211,7 @@ int main(int argc, const char* argv[])
   {
     strncpy(RecFileIn, argv[1], sizeof(RecFileIn));
     RecFileIn[sizeof(RecFileIn)-1] = '\0';
-    if (argc > 2)
+//    if (argc > 2)
     {
       strncpy(RecFileOut, argv[2], sizeof(RecFileOut));
       RecFileOut[sizeof(RecFileOut)-1] = '\0';
@@ -232,6 +232,7 @@ int main(int argc, const char* argv[])
   {
     setvbuf(fIn, NULL, _IOFBF, BUFSIZE);
     GetPacketSize(RecFileIn);
+    printf("File size of rec: %llu, packet size: %lu\n", RecFileSize, PACKETSIZE);
   }
   else
   {
@@ -418,13 +419,14 @@ int main(int argc, const char* argv[])
     }
   }
 
-  dword CurPosBlocks = CalcBlockSize(CurrentPosition);
-  dword PosOffsetBlocks = CalcBlockSize(PositionOffset);
+  {
+    dword CurPosBlocks = CalcBlockSize(CurrentPosition);
+    dword PosOffsetBlocks = CalcBlockSize(PositionOffset);
 
-  // alle Bookmarks / cut-Einträge, deren Position <= CurrentPosition/9024 sind, um PositionOffset/9024 reduzieren
-  ProcessInfFile(CurPosBlocks+1, PosOffsetBlocks);
-  ProcessCutFile(CurPosBlocks+1, PosOffsetBlocks);
-
+    // alle Bookmarks / cut-Einträge, deren Position <= CurrentPosition/9024 sind, um PositionOffset/9024 reduzieren
+    ProcessInfFile(CurPosBlocks+1, PosOffsetBlocks);
+    ProcessCutFile(CurPosBlocks+1, PosOffsetBlocks);
+  }
 
   if (fIn)
   {

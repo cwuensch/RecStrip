@@ -168,7 +168,7 @@ static dword FindSequenceHeaderCode(byte *Buffer)
   int                   i;
 
   TRACEENTER;
-  for(i = 0; i < 180; i++)
+  for(i = 0; i < 176; i++)
   {
     if((Buffer[i] == 0x00) && (Buffer[i + 1] == 0x00) && (Buffer[i + 2] == 0x01) && (Buffer[i + 3] == 0xb3))
     {
@@ -185,7 +185,7 @@ static dword FindPictureHeader(byte *Buffer, byte *pFrameType)
   int                   i;
 
   TRACEENTER;
-  for(i = 0; i < 180; i++)
+  for(i = 0; i < 176; i++)
   {
     if((Buffer[i] == 0x00) && (Buffer[i + 1] == 0x00) && (Buffer[i + 2] == 0x01) && (Buffer[i + 3] == 0x00))
     {
@@ -528,9 +528,9 @@ bool SDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
   if(SeqHeader != 0)
     CurrentSeqHeader = FilePositionOfPacket + SeqHeader;
 
-  for(i = 0; i < 180; i++)
+  for(i = 0; i < 166; i++)
   {
-    if(GetPTS(&Packet->Data[i], &PTS, &DTS))
+    if(GetPTS(&Packet->Data[i], &PTS, &DTS))  // GetPTS braucht deutlich mehr als 4 Bytes!! Hier müsste aufs nächste Paket zugegriffen werden...
     {
       if((FirstPTS == 0) && (PTS > 0)) FirstPTS = PTS;
       break;
@@ -543,7 +543,7 @@ bool SDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
     if(PictHeader > 0)
     {
 //      if(NavPtr > 0) TAP_Hdd_Fwrite(&SDNav[0], sizeof(tnavSD), 1, fTF);
-      if (NavPtr > 0)
+      if (NavPtr > 1)
         if (fNavOut && !fwrite(&SDNav[0], sizeof(tnavSD), 1, fNavOut))
         {
           printf("ProcessNavFile(): Error writing to nav file!\n");
@@ -577,13 +577,17 @@ bool SDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
 
       if(NavPtr > 0)
       {
-        if(SeqHeader != 0) SDNav[0].NextPH = (dword) (CurrentSeqHeader - LastPictureHeader);
-                      else SDNav[0].NextPH = (dword) (PictHeader - LastPictureHeader);
+        if(SeqHeader != 0)
+          SDNav[0].NextPH = (dword) (CurrentSeqHeader - LastPictureHeader);
+        else
+          SDNav[0].NextPH = (dword) (PictHeader - LastPictureHeader);
       }
 
       SDNav[1].Timems = (PTS - FirstPTS) / 45;
-      if(SDNav[1].Timems > LastdPTS) LastdPTS = SDNav[1].Timems;
-      else SDNav[1].Timems = LastdPTS;
+      if(SDNav[1].Timems > LastdPTS)
+        LastdPTS = SDNav[1].Timems;
+      else
+        SDNav[1].Timems = LastdPTS;
 
       SDNav[1].Zero1 = 0;
       SDNav[1].Zero5 = 0;

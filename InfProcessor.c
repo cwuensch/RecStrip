@@ -138,7 +138,7 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
   //Decode the source .inf
   if (Result)
   {
-    SystemType = DetermineInfType();
+    /*SystemType = */ DetermineInfType();
     switch (SystemType)
     {
       case ST_TMSS:
@@ -166,6 +166,15 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
         return FALSE;
     }
 
+    // Prüfe auf verschlüsselte Aufnahme
+    if ((RecHeaderInfo->CryptFlag & 1) != 0)
+    {
+      printf("LoadInfFile() E0905: Recording is encrypted.\n");
+      free(InfBuffer); InfBuffer = NULL;
+      TRACEEXIT;
+      return FALSE;
+    }
+
     // Prüfe auf HD-Video
     VideoPID = ServiceInfo->VideoPID;
     if ((ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_PART2) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_H264) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_H263))
@@ -183,15 +192,15 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
     else
     {
       VideoPID = 0;
-      printf("LoadInfFile() E0905: Unknown video stream type.\n");
+      printf("LoadInfFile() E0906: Unknown video stream type.\n");
     }
 
-    if (RecHeaderInfo->RecStripFlag == 0x2A0A0004)
+if (RecHeaderInfo->Reserved != 0)
+  printf("DEBUG! Assertion Error: Reserved-Flags is not 0.\n");
+    if (RecHeaderInfo->rs_HasBeenStripped)
       AlreadyStripped = TRUE;
-    else if (RecHeaderInfo->RecStripFlag == 0)
-      RecHeaderInfo->RecStripFlag = 0x2A0A0004;
     else
-      printf("DEBUG! Assertion Error: RecStrip-Flag is not 0.\n");
+      RecHeaderInfo->rs_HasBeenStripped = 1;
   }
   TRACEEXIT;
   return Result;
@@ -217,19 +226,21 @@ bool CloseInfFile(const char *AbsDestInf, const char *AbsSourceInf, bool Save)
     fInfOut = fopen(AbsDestInf, "wb");
     if(fInfOut)
     {
+      RecHeaderInfo->rs_ToBeStripped = FALSE;
       Result = (fwrite(InfBuffer, 1, InfSize, fInfOut) == InfSize);
 
       // Kopiere den Rest der Source-inf (falls vorhanden) in die neue inf hinein
-      fInfIn = fopen(AbsSourceInf, "rb");
+      fInfIn = fopen(AbsSourceInf, "r+b");
       if(fInfIn)
       {
+        fwrite(RecHeaderInfo, 1, sizeof(TYPE_RecHeader_Info), fInfIn);
         fseek(fInfIn, InfSize, SEEK_SET);
         do {
           BytesRead = fread(InfBuffer, 1, 32768, fInfIn);
           if (BytesRead > 0)
             Result = (fwrite(InfBuffer, 1, BytesRead, fInfOut) == BytesRead) && Result;
         } while (BytesRead > 0);
-        fclose(fInfIn); fInfIn = NULL;
+        fclose(fInfIn);
       }
       Result = (fflush(fInfOut) == 0) && Result;
       Result = (fclose(fInfOut) == 0) && Result;

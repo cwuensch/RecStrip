@@ -22,7 +22,11 @@ typedef struct
 {
   char                  HeaderMagic[4];
   word                  HeaderVersion;
-  byte                  HeaderUnknown2[2];
+  byte                  HeaderUnknown2;
+  byte                  rbn_HasBeenScanned:1;
+  byte                  rs_HasBeenStripped:1;
+  byte                  rs_ToBeStripped:1;
+  byte                  Reserved:5;
   dword                 HeaderStartTime;
   word                  HeaderDuration;
   word                  HeaderDurationSec;
@@ -33,8 +37,7 @@ typedef struct
   word                  TSFlag:1;
   word                  CopyFlag:1;
 
-  byte                  HeaderUnknown4[6];
-  dword                 RecStripFlag;
+  byte                  HeaderUnknown4[10];
 } TYPE_RecHeader_Info;
 
 typedef struct
