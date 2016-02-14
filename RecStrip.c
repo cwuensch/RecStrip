@@ -232,7 +232,7 @@ int main(int argc, const char* argv[])
   {
     setvbuf(fIn, NULL, _IOFBF, BUFSIZE);
     GetPacketSize(RecFileIn);
-    printf("File size of rec: %llu, packet size: %lu\n", RecFileSize, PACKETSIZE);
+    printf("File size of rec: %llu, packet size: %u\n", RecFileSize, PACKETSIZE);
   }
   else
   {
