@@ -73,7 +73,9 @@ static SYSTEM_TYPE DetermineInfType()
   else
 printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
 
-  printf(" -> SystemType=ST_TMS%c\n", (Result==ST_TMSS ? 'S' : ((Result==ST_TMSC) ? 'C' : 'T')));
+//  printf(" -> SystemType=ST_TMS%c\n", (Result==ST_TMSS ? 'S' : ((Result==ST_TMSC) ? 'C' : 'T')));
+  if (Result != SystemType)
+    printf(" -> DEBUG! Assertion error: SystemType in inf (%u) not consistent to filesize (%u)!\n", Result, SystemType);
 
   TRACEEXIT;
   return Result;
@@ -199,8 +201,6 @@ if (RecHeaderInfo->Reserved != 0)
   printf("DEBUG! Assertion Error: Reserved-Flags is not 0.\n");
     if (RecHeaderInfo->rs_HasBeenStripped)
       AlreadyStripped = TRUE;
-    else
-      RecHeaderInfo->rs_HasBeenStripped = 1;
   }
   TRACEEXIT;
   return Result;
@@ -227,12 +227,14 @@ bool CloseInfFile(const char *AbsDestInf, const char *AbsSourceInf, bool Save)
     if(fInfOut)
     {
       RecHeaderInfo->rs_ToBeStripped = FALSE;
+      RecHeaderInfo->rs_HasBeenStripped = TRUE;
       Result = (fwrite(InfBuffer, 1, InfSize, fInfOut) == InfSize);
 
       // Kopiere den Rest der Source-inf (falls vorhanden) in die neue inf hinein
       fInfIn = fopen(AbsSourceInf, "r+b");
       if(fInfIn)
       {
+        RecHeaderInfo->rs_HasBeenStripped = FALSE;
         fwrite(RecHeaderInfo, 1, sizeof(TYPE_RecHeader_Info), fInfIn);
         fseek(fInfIn, InfSize, SEEK_SET);
         do {

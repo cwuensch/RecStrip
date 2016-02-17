@@ -42,7 +42,7 @@ static int              PesId = -1;
 static int              PesOffset = 0;
 static int              NaluOffset = 0;
 
-static bool             LastEndedWithNull = TRUE;
+static bool             LastEndedWithNull = TRUE, LastEndedWith3Nulls = FALSE;
 
 // ----------------------------------------------
 // *****  NALU Dump  *****
@@ -324,9 +324,17 @@ int ProcessTSPacket(unsigned char *Packet, unsigned long long FilePosition)
       byte               Buffer[192];
       tTSPacketHeader   *tmpPacket = (tTSPacketHeader*) &Buffer[PACKETOFFSET];
 //      unsigned long long OldFilePos = ftello64(fIn);
-      int                CurPid = TsGetPID(TSPacket), tmpPayload, i;
+      int                CurPid, tmpPayload, i;
 
 //printf("Potential zero-byte-stuffing found at position %llu", FilePosition);
+      if (LastEndedWith3Nulls)  // wenn 3 Nullen am Ende -> dann darf FolgePaket ohne anfangen
+      {
+//printf(" --> confirmed by LastEndedWith3Nulls!\n");
+        TRACEEXIT;
+        return 2;
+      }
+
+      CurPid = TsGetPID(TSPacket);
       for (i = 0; i < 10; i++)
       {
         size_t ReadBytes = fread(Buffer, 1, PACKETSIZE, fIn);
@@ -336,7 +344,7 @@ int ProcessTSPacket(unsigned char *Packet, unsigned long long FilePosition)
           {
             if (Buffer[PACKETOFFSET + tmpPayload] == 0 && Buffer[PACKETOFFSET + tmpPayload + 1] == 0)
             {
-//printf(" --> confirmed!\n");
+//printf(" --> confirmed by NextStartsWith00!\n");
               fseeko64(fIn, FilePosition + PACKETSIZE, SEEK_SET);
               TRACEEXIT;
               return 2;
@@ -352,7 +360,8 @@ printf("WARNING!!! No StartCode in following packet!!! (pos=%llu)\n", FilePositi
       fseeko64(fIn, FilePosition + PACKETSIZE, SEEK_SET);
     }
   }
-  LastEndedWithNull = (Packet[TS_SIZE-1] == 0);
+  LastEndedWithNull   = (Packet[TS_SIZE-1] == 0);  // wird nur gesetzt für das zuletzt erhaltene Paket
+  LastEndedWith3Nulls = (Packet[TS_SIZE-1] == 0 && Packet[TS_SIZE-2] == 0 && Packet[TS_SIZE-3] == 0);
 
   // Fix Continuity Counter and reproduce incoming offsets:
   {
