@@ -216,7 +216,7 @@ bool HDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
   dword                 PCR;
   unsigned long long    AUD = 0;
 
-  bool                  ret = FALSE;
+  bool                  ret = FALSE, SEIFoundInPacket = FALSE;
   #if DEBUGLOG != 0
     char                  s[80];
   #endif
@@ -314,14 +314,17 @@ if (PayloadStart > 184)
             #if DEBUGLOG != 0
               strcpy(s, "NAL_SEI");
             #endif
-
-            SEI = PrimaryPayloadOffset + Ptr;
-            SEIPTS = PTS;
-            if(FirstSEIPTS == 0) FirstSEIPTS = PTS;
+            if (!SEIFoundInPacket)  // CW: nur die erste SEI innerhalb des Packets nehmen
+            {
+              SEI = PrimaryPayloadOffset + Ptr;
+              SEIPTS = PTS;
+              if(FirstSEIPTS == 0) FirstSEIPTS = PTS;
+              SEIFoundInPacket = TRUE;
 
 dbg_PositionOffset = dbg_PositionOffset1;
 dbg_SEIFound = dbg_CurrentPosition/192;
 //printf("%llu: SEI found: %llu\n", dbg_CurrentPosition/192, SEI);
+            }            
             break;
           };
 

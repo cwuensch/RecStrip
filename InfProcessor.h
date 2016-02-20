@@ -24,9 +24,10 @@ typedef struct
   word                  HeaderVersion;
   byte                  HeaderUnknown2;
   byte                  rbn_HasBeenScanned:1;
+  byte                  iqt_UnencryptedRec:1;
   byte                  rs_HasBeenStripped:1;
   byte                  rs_ToBeStripped:1;
-  byte                  Reserved:5;
+  byte                  Reserved:4;
   dword                 HeaderStartTime;
   word                  HeaderDuration;
   word                  HeaderDurationSec;
