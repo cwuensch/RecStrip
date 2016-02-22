@@ -67,9 +67,9 @@ static SYSTEM_TYPE DetermineInfType()
 
   printf("Determine SystemType: DVBs = %d, DVBt = %d, DVBc = %d points", PointsS, PointsT, PointsC);
 
-  if(PointsS == 3) Result = ST_TMSS;
-  else if(PointsC == 3) Result = ST_TMSC;
-  else if(PointsT == 3) Result = ST_TMST;
+  if(PointsS >= PointsC && PointsS >= PointsT) Result = ST_TMSS;
+  else if(PointsC >= PointsS && PointsC >= PointsT) Result = ST_TMSC;
+  else if(PointsT >= PointsS && PointsT >= PointsC) Result = ST_TMST;
   else
 printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
 
@@ -86,6 +86,7 @@ bool LoadInfFile(const char *AbsInfName)
   FILE                 *fInfIn = NULL;
   TYPE_Service_Info    *ServiceInfo = NULL;
   unsigned long long    InfFileSize = 0;
+  SYSTEM_TYPE           SystemType2;
   bool                  Result = FALSE;
 
   TRACEENTER;
@@ -140,32 +141,29 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
   //Decode the source .inf
   if (Result)
   {
-    /*SystemType = */ DetermineInfType();
+    SystemType2 = DetermineInfType();
+    if (SystemType == ST_UNKNOWN) SystemType = SystemType2;
+    RecHeaderInfo = (TYPE_RecHeader_Info*) InfBuffer;
+    ServiceInfo   = &(((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo);
     switch (SystemType)
     {
       case ST_TMSS:
         InfSize = sizeof(TYPE_RecHeader_TMSS);
-        RecHeaderInfo = &(((TYPE_RecHeader_TMSS*)InfBuffer)->RecHeaderInfo);
-        BookmarkInfo  = &(((TYPE_RecHeader_TMSS*)InfBuffer)->BookmarkInfo);
-        ServiceInfo   = &(((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo);
+        BookmarkInfo = &(((TYPE_RecHeader_TMSS*)InfBuffer)->BookmarkInfo);
         break;
       case ST_TMSC:
         InfSize = sizeof(TYPE_RecHeader_TMSC);
-        RecHeaderInfo = &(((TYPE_RecHeader_TMSC*)InfBuffer)->RecHeaderInfo);
-        BookmarkInfo  = &(((TYPE_RecHeader_TMSC*)InfBuffer)->BookmarkInfo);
-        ServiceInfo   = &(((TYPE_RecHeader_TMSC*)InfBuffer)->ServiceInfo);
+        BookmarkInfo = &(((TYPE_RecHeader_TMSC*)InfBuffer)->BookmarkInfo);
         break;
       case ST_TMST:
         InfSize = sizeof(TYPE_RecHeader_TMST);
-        RecHeaderInfo = &(((TYPE_RecHeader_TMST*)InfBuffer)->RecHeaderInfo);
-        BookmarkInfo  = &(((TYPE_RecHeader_TMST*)InfBuffer)->BookmarkInfo);
-        ServiceInfo   = &(((TYPE_RecHeader_TMST*)InfBuffer)->ServiceInfo);
+        BookmarkInfo = &(((TYPE_RecHeader_TMST*)InfBuffer)->BookmarkInfo);
         break;
       default:
-        printf("LoadInfFile() E0904: Incompatible system type.\n");
+/*        printf("LoadInfFile() E0904: Incompatible system type.\n");
         free(InfBuffer); InfBuffer = NULL;
         TRACEEXIT;
-        return FALSE;
+        return FALSE; */
     }
 
     // Prüfe auf verschlüsselte Aufnahme
@@ -182,13 +180,11 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
     if ((ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_PART2) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_H264) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_H263))
     {
       isHDVideo = TRUE;
-      VideoPID = ServiceInfo->VideoPID;
       printf("VideoStream=0x%x, VideoPID=0x%4.4x, HD=%d\n", ServiceInfo->VideoStreamType, VideoPID, isHDVideo);
     }
     else if ((ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG1) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG2))
     {
       isHDVideo = FALSE;
-      VideoPID = ServiceInfo->VideoPID;
       printf("VideoStream=0x%x, VideoPID=0x%4.4x, HD=%d\n", ServiceInfo->VideoStreamType, VideoPID, isHDVideo);
     }
     else
