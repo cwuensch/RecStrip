@@ -650,7 +650,7 @@ bool CloseNavFiles(void)
   if (fNavIn) fclose(fNavIn);
   fNavIn = NULL;
   if (fNavOut)
-    ret = (fflush(fNavOut) == 0 && fclose(fNavOut) == 0);
+    ret = (/*fflush(fNavOut) == 0 &&*/ fclose(fNavOut) == 0);
   fNavOut = NULL;
 
   TRACEEXIT;

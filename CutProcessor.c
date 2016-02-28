@@ -76,6 +76,20 @@ static dword TimeStringToMSec(char *const TimeString)
   return ret;
 }
 
+static void ResetSegmentMarkers(void)
+{
+  int i;
+  TRACEENTER;
+
+  for (i = 0; i < NrSegmentMarker; i++)
+    if (SegmentMarker[i].pCaption)
+      free(SegmentMarker[i].pCaption);
+  memset(SegmentMarker, 0, NRSEGMENTMARKER * sizeof(tSegmentMarker));
+  NrSegmentMarker = 0;
+
+  TRACEEXIT;
+}
+
 void GetCutNameFromRec(const char *RecFileName, char *const OutCutFileName)
 {
   char *p = NULL;
@@ -98,9 +112,8 @@ static bool CutFileDecodeBin(FILE *fCut, unsigned long long *OutSavedSize)
   bool                  ret = FALSE;
 
   TRACEENTER;
-  memset(SegmentMarker, 0, NRSEGMENTMARKER * sizeof(tSegmentMarker));
 
-  NrSegmentMarker = 0;
+  ResetSegmentMarkers();
   ActiveSegment = 0;
   if (OutSavedSize) *OutSavedSize = 0;
 
@@ -143,6 +156,11 @@ static bool CutFileDecodeBin(FILE *fCut, unsigned long long *OutSavedSize)
     if (ret)
     {
       SavedNrSegments = min(SavedNrSegments, NRSEGMENTMARKER);
+      while (fread(SegmentMarker, sizeof(tSegmentMarker)-4, 1, fCut))
+      {
+        SegmentMarker[NrSegmentMarker].pCaption = NULL;
+        NrSegmentMarker++;
+      }
       NrSegmentMarker = fread(SegmentMarker, sizeof(tSegmentMarker), SavedNrSegments, fCut);
       if (NrSegmentMarker < SavedNrSegments)
         printf("CutFileDecodeBin: Unexpected end of file!\n");
@@ -154,19 +172,18 @@ static bool CutFileDecodeBin(FILE *fCut, unsigned long long *OutSavedSize)
 
 static bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
 {
-  char                  Buffer[512];
+  char                  Buffer[4096];
   unsigned long long    SavedSize = 0;
   int                   SavedNrSegments = 0;
   bool                  HeaderMode=FALSE, SegmentsMode=FALSE;
   char                  TimeStamp[16];
   char                 *c, Selected;
-  int                   p;
+  int                   p, ReadBytes;
   bool                  ret = FALSE;
 
   TRACEENTER;
-  memset(SegmentMarker, 0, NRSEGMENTMARKER * sizeof(tSegmentMarker));
 
-  NrSegmentMarker = 0;
+  ResetSegmentMarkers();
   ActiveSegment = 0;
   if (OutSavedSize) *OutSavedSize = 0;
 
@@ -246,10 +263,17 @@ static bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
       {
         //[Segments]
         //#Nr. ; Sel ; StartBlock ; StartTime ; Percent
-        if (sscanf(Buffer, "%*i ; %c ; %lu ; %15[^;\r\n] ; %f%%", &Selected, &SegmentMarker[NrSegmentMarker].Block, TimeStamp, &SegmentMarker[NrSegmentMarker].Percent) >= 3)
+        if (sscanf(Buffer, "%*i ; %c ; %lu ; %15[^;\r\n] ; %f%%%n", &Selected, &SegmentMarker[NrSegmentMarker].Block, TimeStamp, &SegmentMarker[NrSegmentMarker].Percent, &ReadBytes) >= 3)
         {
           SegmentMarker[NrSegmentMarker].Selected = (Selected == '*');
           SegmentMarker[NrSegmentMarker].Timems = (TimeStringToMSec(TimeStamp));
+          SegmentMarker[NrSegmentMarker].pCaption = NULL;
+          while (Buffer[ReadBytes] && (Buffer[ReadBytes] == ' ' || Buffer[ReadBytes] == ';'))  ReadBytes++;
+          if (Buffer[ReadBytes])
+          {
+            SegmentMarker[NrSegmentMarker].pCaption = (char*)malloc(strlen(&Buffer[ReadBytes]));
+            strcpy(SegmentMarker[NrSegmentMarker].pCaption, &Buffer[ReadBytes]);
+          }
           NrSegmentMarker++;
         }
       }
@@ -286,7 +310,9 @@ bool CutFileLoad(const char *AbsCutName)
 
     // Puffer allozieren
     SegmentMarker = (tSegmentMarker*) malloc(NRSEGMENTMARKER * sizeof(tSegmentMarker));
-    if (!SegmentMarker)
+    if (SegmentMarker)
+      memset(SegmentMarker, 0, NRSEGMENTMARKER * sizeof(tSegmentMarker));
+    else
     {
       printf("CutFileLoad: Failed to allocate memory!\n");
       fclose(fCut);
@@ -319,6 +345,7 @@ bool CutFileLoad(const char *AbsCutName)
       if (RecFileSize != SavedSize)
       {
         printf("CutFileLoad: .cut file size mismatch!\n");
+        ResetSegmentMarkers();
         free(SegmentMarker);
         SegmentMarker = NULL;
         TRACEEXIT;
@@ -361,16 +388,22 @@ bool CutFileClose(const char* AbsCutName, bool Save)
         ret = (fprintf(fCut, "NrSegmentMarker=%d\r\n", NrSegmentMarker) > 0) && ret;
         ret = (fprintf(fCut, "ActiveSegment=%d\r\n\r\n", ActiveSegment) > 0) && ret;  // sicher!?
         ret = (fprintf(fCut, "[Segments]\r\n") > 0) && ret;
-        ret = (fprintf(fCut, "#Nr ; Sel ; StartBlock ;     StartTime ; Percent\r\n") > 0) && ret;
+        ret = (fprintf(fCut, "#Nr ; Sel ; StartBlock ;     StartTime ; Percent ; Caption\r\n") > 0) && ret;
         for (i = 0; i < NrSegmentMarker; i++)
         {
           MSecToTimeString(SegmentMarker[i].Timems, TimeStamp);
-          ret = (fprintf(fCut, "%3d ;  %c  ; %10lu ;%14s ;  %5.1f%%\r\n", i, (SegmentMarker[i].Selected ? '*' : '-'), SegmentMarker[i].Block, TimeStamp, SegmentMarker[i].Percent) > 0) && ret;
+          ret = (fprintf(fCut, "%3d ;  %c  ; %10lu ;%14s ;  %5.1f%% ; %s\r\n", i, (SegmentMarker[i].Selected ? '*' : '-'), SegmentMarker[i].Block, TimeStamp, SegmentMarker[i].Percent, (SegmentMarker[i].pCaption ? SegmentMarker[i].pCaption : "")) > 0) && ret;
         }
-        ret = (fflush(fCut) == 0) && ret;
+//        ret = (fflush(fCut) == 0) && ret;
         ret = (fclose(fCut) == 0) && ret;
       }
+      else
+      {
+        printf("CutFileSave: failed to open .cut!");
+        ret = FALSE;
+      }
     }
+    ResetSegmentMarkers();
     free(SegmentMarker);
     SegmentMarker = NULL;
   }

@@ -25,6 +25,7 @@ typedef struct
   dword                 Timems; //Time in ms
   float                 Percent;
   int                   Selected;
+  char                 *pCaption;
 } tSegmentMarker;
 
 

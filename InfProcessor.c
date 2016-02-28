@@ -160,10 +160,10 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
         BookmarkInfo = &(((TYPE_RecHeader_TMST*)InfBuffer)->BookmarkInfo);
         break;
       default:
-/*        printf("LoadInfFile() E0904: Incompatible system type.\n");
+        printf("LoadInfFile() E0904: Incompatible system type.\n");
         free(InfBuffer); InfBuffer = NULL;
         TRACEEXIT;
-        return FALSE; */
+        return FALSE;
     }
 
     // Prüfe auf verschlüsselte Aufnahme
@@ -240,7 +240,7 @@ bool CloseInfFile(const char *AbsDestInf, const char *AbsSourceInf, bool Save)
         } while (BytesRead > 0);
         fclose(fInfIn);
       }
-      Result = (fflush(fInfOut) == 0) && Result;
+//      Result = (fflush(fInfOut) == 0) && Result;
       Result = (fclose(fInfOut) == 0) && Result;
     }
     else

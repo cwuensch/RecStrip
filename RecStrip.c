@@ -82,10 +82,10 @@
 
 // Globale Variablen
 char                    RecFileIn[FBLIB_DIR_SIZE], RecFileOut[FBLIB_DIR_SIZE];
+byte                    PACKETSIZE, PACKETOFFSET;
 word                    VideoPID = 0;
 bool                    isHDVideo = FALSE, AlreadyStripped = FALSE;
-byte                    PACKETSIZE, PACKETOFFSET;
-bool                    RemoveEPGStream = TRUE;
+bool                    DoStrip = FALSE, DoCut = FALSE, RemoveEPGStream = TRUE;
 
 FILE                   *fIn = NULL;  // dirty Hack: erreichbar machen für NALUDump
 static FILE            *fOut = NULL;
@@ -193,7 +193,7 @@ int main(int argc, const char* argv[])
 {
   char                  NavFileIn[FBLIB_DIR_SIZE], NavFileOut[FBLIB_DIR_SIZE], InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], CutFileIn[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE];
   byte                  Buffer[192];
-  int                   ReadBytes;
+  int                   ReadBytes, i;
   bool                  DropCurPacket;
   time_t                startTime, endTime;
 
@@ -207,6 +207,27 @@ int main(int argc, const char* argv[])
   printf("- portions of Mpeg2cleaner (S. Poeschel), RebuildNav (Firebird) & MovieCutter -\n");
 
   // Eingabe-Parameter prüfen
+  i = 1;
+  while (i < argc-1)
+  {
+    if (argv && argv[i] && argv[i][0] == '-')
+    {
+      switch (argv[i][1])
+      {
+        case 'c':   DoCut = TRUE;           break;
+        case 's':   DoStrip = TRUE;         break;
+        case 'e':   RemoveEPGStream = TRUE; break;
+        default:    printf("\nUnknown argument: -%c\n", argv[i][1]);
+      }
+      argv[1] = argv[0];
+      argv++;
+      argc--;
+    }
+  }
+  if (!DoCut && !DoStrip) DoStrip = TRUE;
+  if (!DoStrip) RemoveEPGStream = FALSE;
+
+  // Eingabe-Dateinamen lesen
   if (argc > 2)
   {
     strncpy(RecFileIn, argv[1], sizeof(RecFileIn));
@@ -219,7 +240,10 @@ int main(int argc, const char* argv[])
   }
   else
   {
-    printf("\nUsage: %s <source-rec> <dest-rec>\n\n", argv[0]);
+    printf("\nUsage: %s [-s] [-c] [-e] <source-rec> <dest-rec>\n", argv[0]);
+    printf(" -s: Strip recording (default if no option is provided.)\n");
+    printf(" -c: Cut movie (copy only selected parts from cutfile). May be combined with -s\n");
+    printf(" -e: Remove the EPG stream (only if -s is provided).\n");
     TRACEEXIT;
     exit(1);
   }
@@ -434,7 +458,7 @@ int main(int argc, const char* argv[])
   }
   if(fOut)
   {
-    if (fflush(fOut) != 0 || fclose(fOut) != 0)
+    if (/*fflush(fOut) != 0 ||*/ fclose(fOut) != 0)
     {
       printf("ERROR: Failed closing the output file.\n");
       CloseNavFiles();
