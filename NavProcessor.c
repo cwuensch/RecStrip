@@ -45,8 +45,8 @@ static unsigned long long LastPictureHeader = 0;
 static unsigned long long CurrentSeqHeader = 0;
 static dword            FirstPTS = 0 /*, LastdPTS = 0*/;
 static int              NavPtr = 0;
-static byte             FirstSHPHOffset = 0;
-static byte             FrameCtr = 0, FrameOffset = 0;
+static word             FirstSHPHOffset = 0;
+static byte             FrameCtr = 0, FrameOffset = 0, FrameOffset2 = 0;
 
 
 // ----------------------------------------------
@@ -299,7 +299,7 @@ if (PayloadStart > 184)
       //Calculate the length of the previous PPS NAL
       if((PPSCount > 0) && (PPS[PPSCount - 1].Len == 0))
       {
-        PPS[PPSCount - 1].Len = (byte) (PrimaryPayloadOffset + Ptr - PPS[PPSCount - 1].Offset);
+        PPS[PPSCount - 1].Len = (word) (PrimaryPayloadOffset + Ptr - PPS[PPSCount - 1].Offset);
       }
 
       if((PSBuffer[Ptr+3] & 0x80) == 0x00)
@@ -398,14 +398,14 @@ dbg_SEIFound = dbg_CurrentPosition/192;
             {
               switch(FrameType)
               {
-                case 1:
+                case 1:  // I-Frame
                 {
                   FrameIndex = 0;
                   break;
                 }
 
-                case 2:
-                case 3:
+                case 2:  // P-Frame
+                case 3:  // B-Frame
                 {
                   FrameIndex++;
                   break;
@@ -575,24 +575,25 @@ bool SDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
 
       PictHeader += FilePositionOfPacket;
 
-      if(FrameType == 1)
+      if(FrameType == 2) FrameOffset = 0;  // P-Frame
+
+      SDNav[1].FrameIndex  = FrameCtr + FrameOffset;
+
+      if(FrameType == 1)  // I-Frame
       {
-        FirstSHPHOffset = (byte) (PictHeader - CurrentSeqHeader);
-        FrameOffset     = FrameCtr;
-        FrameCtr        = 0;
+        FirstSHPHOffset = (word) (PictHeader - CurrentSeqHeader);
+        FrameOffset          = FrameCtr;  // Position des I-Frames in der aktuellen Zählung (diese geht weiter, bis P kommt)
+        FrameCtr             = 0;         // zählt die Distanz zum letzten I-Frame
       }
 
-      if(FrameType == 2) FrameOffset = 0;
-
-      SDNav[1].SHOffset     = (dword)(PictHeader - CurrentSeqHeader) | (FrameType << 24);
-      SDNav[1].MPEGType     = 0x20;
-      SDNav[1].FrameIndex   = FrameCtr + FrameOffset;
-      SDNav[1].Field5       = FirstSHPHOffset;
+      SDNav[1].SHOffset        = (dword)(PictHeader - CurrentSeqHeader) | (FrameType << 24);
+      SDNav[1].MPEGType        = 0x20;
+      SDNav[1].iFrameSeqOffset = FirstSHPHOffset;
 
       //Some magic for the AUS pvrs
-      SDNav[1].PHOffset     = (dword)(PictHeader - 4 + PACKETOFFSET);
-      SDNav[1].PHOffsetHigh = (dword)((PictHeader - 4 + PACKETOFFSET) >> 32);
-	  SDNav[1].PTS2         = PTS;
+      SDNav[1].PHOffset        = (dword)(PictHeader - 4 + PACKETOFFSET);
+      SDNav[1].PHOffsetHigh    = (dword)((PictHeader - 4 + PACKETOFFSET) >> 32);
+	    SDNav[1].PTS2            = PTS;
 
       if(NavPtr > 0)
       {
@@ -603,7 +604,7 @@ bool SDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
       }
 
       SDNav[1].Timems = (PTS - FirstPTS) / 45;
-      SDNav[1].Zero1 = 0;
+//      SDNav[1].Zero1 = 0;
       SDNav[1].Zero5 = 0;
 
       LastPictureHeader = PictHeader;
@@ -715,13 +716,13 @@ else
       if (isHDVideo)
       {
         navHD.Timems = curSDNavRec->Timems;
-        navHD.FrameIndex = ((tnavHD*)NavBuffer)->FrameIndex;
+//        navHD.FrameIndex = ((tnavHD*)NavBuffer)->FrameIndex;
       }
       else if (fNavIn)
       {
         SDNav[1].Timems = curSDNavRec->Timems;
-        SDNav[1].FrameIndex = curSDNavRec->FrameIndex;
-        SDNav[1].Zero1 = curSDNavRec->Zero1;
+//        SDNav[1].FrameIndex = curSDNavRec->FrameIndex;
+//        SDNav[1].Zero1 = curSDNavRec->Zero1;
       }
 
       if (fNavIn)
