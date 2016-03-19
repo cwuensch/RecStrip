@@ -1,23 +1,6 @@
 #ifndef __INFPROCESSORH__
 #define __INFPROCESSORH__
 
-typedef enum
-{
-  ST_UNKNOWN,
-  ST_S,
-  ST_T,
-  ST_C,
-  ST_T5700,
-  ST_TMSS,
-  ST_TMST,
-  ST_TMSC,
-  ST_T5800,
-  ST_ST,
-  ST_CT,
-  ST_TF7k7HDPVR,
-  ST_NRTYPES
-} SYSTEM_TYPE;
-
 typedef struct
 {
   char                  HeaderMagic[4];
@@ -131,7 +114,8 @@ typedef struct
 
 typedef struct
 {
-  dword                 Frequency;
+  dword                 SatIdx:8;      // immer 0 (das niedrigst wertige Byte)
+  dword                 Frequency:24;  // nur die 3 hochwertigen Bytes -> muss durch 256 geteilt werden
   word                  SymbolRate;
   word                  TSID;
   word                  OriginalNetworkID;

@@ -24,7 +24,6 @@
 static byte            *InfBuffer = NULL;
 static TYPE_RecHeader_Info *RecHeaderInfo = NULL;
 static TYPE_Bookmark_Info  *BookmarkInfo = NULL;
-static SYSTEM_TYPE      SystemType = ST_UNKNOWN;
 static size_t           InfSize = 0;
 
 
@@ -32,14 +31,31 @@ static size_t           InfSize = 0;
 // *****  READ AND WRITE INF FILE  *****
 // ----------------------------------------------
 
-static SYSTEM_TYPE DetermineInfType()
+static SYSTEM_TYPE DetermineInfType(const byte *const InfBuffer, const unsigned long long InfFileSize)
 {
   int                   PointsS = 0, PointsT = 0, PointsC = 0;
-  unsigned long        *pd;
-  unsigned short       *pw;
-  SYSTEM_TYPE           Result = ST_UNKNOWN;
+  SYSTEM_TYPE           SizeType = ST_UNKNOWN, Result = ST_UNKNOWN;
+
+  TYPE_RecHeader_TMSS  *Inf_TMSS = (TYPE_RecHeader_TMSS*)InfBuffer;
+  TYPE_RecHeader_TMSC  *Inf_TMSC = (TYPE_RecHeader_TMSC*)InfBuffer;
+  TYPE_RecHeader_TMST  *Inf_TMST = (TYPE_RecHeader_TMST*)InfBuffer;
 
   TRACEENTER;
+
+  // Dateigröße beurteilen
+  if (((InfFileSize % 122312) % 1024 == 84) || ((InfFileSize % 122312) % 1024 == 248))
+  {
+    PointsS++;
+    PointsT++;
+    SizeType = ST_TMSS;
+  }
+  else if (((InfFileSize % 122312) % 1024 == 80) || ((InfFileSize % 122312) % 1024 == 244))
+  {
+    PointsC++;
+    SizeType = ST_TMSC;
+  }
+
+  // Frequenzdaten
 
   //ST_TMSS: Frequency = dword @ 0x0578 (10000...13000)
   //         SymbolRate = word @ 0x057c (2000...30000)
@@ -53,28 +69,35 @@ static SYSTEM_TYPE DetermineInfType()
   //         SymbolRate = word @ 0x0578 (2000...30000)
   //         Modulation = byte @ 0x057e (<= 4)
 
-  pd = (dword*)&InfBuffer[0x0578]; if((*pd >= 10000) && (*pd <= 13000)) PointsS++;
-  pw = (word*)&InfBuffer[0x057c]; if((*pw >= 2000) && (*pw <= 30000)) PointsS++;
-  pw = (word*)&InfBuffer[0x0575]; if((*pw & 0xf000) == 0) PointsS++;
+  if ((Inf_TMSS->TransponderInfo.Frequency      >=     10700)  &&  (Inf_TMSS->TransponderInfo.Frequency  <=     12750))  PointsS++;
+  if ((Inf_TMSS->TransponderInfo.SymbolRate     >=     10000)  &&  (Inf_TMSS->TransponderInfo.SymbolRate <=     30000))  PointsS++;
+  if ((Inf_TMSS->TransponderInfo.unused2        ==         0)  &&  (Inf_TMSS->TransponderInfo.unused3    ==         0))  PointsS++;
 
-  pd = (dword*)&InfBuffer[0x0578]; if((*pd >= 47000) && (*pd <= 862000)) PointsT++;
-  if((InfBuffer[0x0576] >= 6) && (InfBuffer[0x0576] <= 8)) PointsT++;
-  if((InfBuffer[0x057e] && 0xfe) == 0) PointsT++;
+  if ((Inf_TMST->TransponderInfo.Frequency      >=     47000)  &&  (Inf_TMST->TransponderInfo.Frequency  <=    862000))  PointsT++;
+  if ((Inf_TMST->TransponderInfo.Bandwidth      >=         6)  &&  (Inf_TMST->TransponderInfo.Bandwidth  <=         8))  PointsT++;
+  if ((Inf_TMST->TransponderInfo.LPHP           <=         1)  &&  (Inf_TMST->TransponderInfo.unused2    ==         0))  PointsT++;
 
-  pd = (dword*)&InfBuffer[0x0574]; if(((*pd >= 113000000) && (*pd <= 230000000)) || ((*pd >= 470000000) && (*pd <= 858000000))) PointsC++;
-  pw = (word*)&InfBuffer[0x0578]; if((*pw >= 2000) && (*pw <= 30000)) PointsC++;
-  if(InfBuffer[0x057e] <= 4) PointsC++;
+  if ((Inf_TMSC->TransponderInfo.Frequency      >=     47000)  &&  (Inf_TMSC->TransponderInfo.Frequency  <=    862000))  PointsC++;
+  if ((Inf_TMSC->TransponderInfo.SymbolRate     >=      6111)  &&  (Inf_TMSC->TransponderInfo.SymbolRate <=      6900))  PointsC++;
+  if  (Inf_TMSC->TransponderInfo.ModulationType <=         4)   PointsC++;
+  if  (Inf_TMSC->TransponderInfo.SatIdx         ==         0)   PointsC++;  else PointsC--;
+  if (*(dword*)(&InfBuffer[sizeof(TYPE_RecHeader_TMSC)]) == 0)  PointsC++;
 
-  printf("Determine SystemType: DVBs = %d, DVBt = %d, DVBc = %d points", PointsS, PointsT, PointsC);
+  printf("Determine SystemType: DVBs = %d, DVBt = %d, DVBc = %d points\n", PointsS, PointsT, PointsC);
 
-  if(PointsS >= PointsC && PointsS >= PointsT) Result = ST_TMSS;
-  else if(PointsC >= PointsS && PointsC >= PointsT) Result = ST_TMSC;
-  else if(PointsT >= PointsS && PointsT >= PointsC) Result = ST_TMST;
+  // Wenn SatIdx gesetzt, dann kann TMS-C ausgeschlossen werden (?)
+//  if (Inf_TMSC->TransponderInfo.SatIdx != 0) PointsC = 0;
+
+  if (PointsC>=6 || (PointsC>=5 && PointsS<=3 && PointsT<=3) || (PointsC>=4 && PointsS<=2 && PointsT<=2))
+    Result = ST_TMSC;
   else
-printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
+    if (PointsS >= 3 && PointsT <= 3)
+      Result = ST_TMSS;
+    else if (PointsT >= 3 && PointsS <= 3)
+      Result = ST_TMST;
 
-//  printf(" -> SystemType=ST_TMS%c\n", (Result==ST_TMSS ? 'S' : ((Result==ST_TMSC) ? 'C' : 'T')));
-  if (Result != SystemType)
+  printf(" -> SystemType=ST_TMS%c\n", (Result==ST_TMSS ? 'S' : ((Result==ST_TMSC) ? 'C' : ((Result==ST_TMST) ? 'T' : '?'))));
+  if (Result != SizeType && !(Result == ST_TMST && SizeType == ST_TMSS))
     printf(" -> DEBUG! Assertion error: SystemType in inf (%u) not consistent to filesize (%u)!\n", Result, SystemType);
 
   TRACEEXIT;
@@ -86,7 +109,6 @@ bool LoadInfFile(const char *AbsInfName)
   FILE                 *fInfIn = NULL;
   TYPE_Service_Info    *ServiceInfo = NULL;
   unsigned long long    InfFileSize = 0;
-  SYSTEM_TYPE           SystemType2;
   bool                  Result = FALSE;
 
   TRACEENTER;
@@ -135,14 +157,13 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
     return FALSE;
   }
 
-  Result = (fread(InfBuffer, 1, InfSize, fInfIn) + 1 >= InfSize);
+  Result = (fread(InfBuffer, 1, InfSize, fInfIn) + 4 >= InfSize);
   fclose(fInfIn);
 
   //Decode the source .inf
   if (Result)
   {
-    SystemType2 = DetermineInfType();
-    if (SystemType == ST_UNKNOWN) SystemType = SystemType2;
+    SystemType = DetermineInfType(InfBuffer, InfFileSize);
     RecHeaderInfo = (TYPE_RecHeader_Info*) InfBuffer;
     ServiceInfo   = &(((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo);
     switch (SystemType)

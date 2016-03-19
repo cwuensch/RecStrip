@@ -25,16 +25,16 @@
 // Globale Variablen
 static FILE            *fNavIn = NULL, *fNavOut = NULL;
 static byte             FrameType;
-static dword            PTS = 0, DTS = 0;
+static byte             FrameCtr = 0, FrameOffset = 0;
+static dword            PTS = 0, DTS = 0, LastTimems = 0;
 
 //HDNAV
 static tnavHD           navHD;
 static tPPS             PPS[10];
-static unsigned long long SEI = 0, SPS = 0;
+static unsigned long long SEI = 0, SPS = 0, AUD = 0;
 static int              PPSCount = 0;
 static byte             SlicePPSID = 0;
-static int              FrameIndex = 0;
-static dword            FirstSEIPTS = 0, SEIPTS = 0, SPSLen = 0, LastTimems = 0;
+static dword            FirstSEIPTS = 0, SEIPTS = 0, IFramePTS = 0, SPSLen = 0;
 
 static unsigned long long dbg_CurPictureHeaderOffset = 0, dbg_SEIFound = 0;
 static unsigned long long dbg_CurrentPosition = 0, dbg_PositionOffset = 0, dbg_PositionOffset1 = 0, dbg_PositionOffset2 = 0;
@@ -46,7 +46,6 @@ static unsigned long long CurrentSeqHeader = 0;
 static dword            FirstPTS = 0 /*, LastdPTS = 0*/;
 static int              NavPtr = 0;
 static word             FirstSHPHOffset = 0;
-static byte             FrameCtr = 0, FrameOffset = 0, FrameOffset2 = 0;
 
 
 // ----------------------------------------------
@@ -214,8 +213,6 @@ bool HDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
   byte                  NALType, NALRefIdc;
   byte                  Ptr, PayloadStart;
   dword                 PCR;
-  unsigned long long    AUD = 0;
-
   bool                  ret = FALSE, SEIFoundInPacket = FALSE;
   #if DEBUGLOG != 0
     char                  s[80];
@@ -314,7 +311,8 @@ if (PayloadStart > 184)
             #if DEBUGLOG != 0
               strcpy(s, "NAL_SEI");
             #endif
-            if (!SEIFoundInPacket)  // CW: nur die erste SEI innerhalb des Packets nehmen
+//            if (SEI == 0 || NavPtr == 0)  // jkIT: nur die erste SEI seit dem letzten Nav-Record nehmen
+            if (!SEIFoundInPacket)   // CW: nur die erste SEI innerhalb des Packets nehmen
             {
               SEI = PrimaryPayloadOffset + Ptr;
               SEIPTS = PTS;
@@ -365,13 +363,21 @@ dbg_SEIFound = dbg_CurrentPosition/192;
             break;
           };
 
+          case NAL_FILLER_DATA:
+          {
+            #if DEBUGLOG != 0
+              strcpy(s, "NAL_FILLER_DATA");
+            #endif
+            AUD = PrimaryPayloadOffset + Ptr;
+            break;
+          }
+
           case NAL_AU_DELIMITER:
-//          case NAL_FILLER_DATA:
           {
             byte    k;
 
             #if DEBUGLOG != 0
-              if(NALType == NAL_AU_DELIMITER)
+              if (NALType == NAL_AU_DELIMITER)
               {
                 strcpy(s, "NAL_AU_DELIMITER (");
 
@@ -387,30 +393,35 @@ dbg_SEIFound = dbg_CurrentPosition/192;
                   case 7: strcat(s, "I, SI, P, SP, B)"); break;
                 }
               }
-              else
-                strcpy(s, "NAL_FILLER_DATA");
             #endif
-
-            if(NALType == NAL_AU_DELIMITER)
-              AUD = PrimaryPayloadOffset + Ptr;
 
             if((SEI != 0) && (SPS != 0) && (PPSCount != 0))
             {
-              switch(FrameType)
+              if((FrameType == 2) /*&& IFramePTS && ((int)(PTS-IFramePTS) >= 0)*/)
               {
-                case 1:  // I-Frame
-                {
-                  FrameIndex = 0;
-                  break;
-                }
-
-                case 2:  // P-Frame
-                case 3:  // B-Frame
-                {
-                  FrameIndex++;
-                  break;
-                }
+                FrameOffset = 0;  // P-Frame
+                IFramePTS = 0;
               }
+
+              if (navHD.FrameIndex == 0)
+                navHD.FrameIndex  = FrameCtr + FrameOffset;
+
+              if(FrameType == 1)  // I-Frame
+              {
+                FrameOffset     = FrameCtr + ((SystemType==ST_TMSC) ? 0 : 1);  // Position des I-Frames in der aktuellen Zählung (diese geht weiter, bis P kommt) - SRP-2401 zählt nach dem I-Frame + 2
+                FrameCtr        = 0;        // zählt die Distanz zum letzten I-Frame
+                IFramePTS       = PTS;
+              }
+              FrameCtr++;
+
+/*              if (navHD.FrameIndex == 0)
+                navHD.FrameIndex = FrameCtr;
+
+              if (FrameType == 1)  // I-Frame
+                FrameCtr = 0;
+
+//              if (FrameType == 2 || FrameType == 3)  // P-Frame oder B-Frame
+                FrameCtr++;  */
 
 //              memset(&navHD, 0, sizeof(tnavHD));
 
@@ -423,8 +434,6 @@ dbg_SEIFound = dbg_CurrentPosition/192;
 
               navHD.FrameType = FrameType;
               navHD.MPEGType = 0x30;
-              if (navHD.FrameIndex == 0)
-                navHD.FrameIndex = FrameIndex;
 
               navHD.PPSLen = 8;
               if(PPSCount != 0)
@@ -440,7 +449,10 @@ dbg_SEIFound = dbg_CurrentPosition/192;
               navHD.SEIOffsetHigh = SEI >> 32;
               navHD.SEIOffsetLow = SEI & 0x00000000ffffffffll;
               navHD.SEIPTS = SEIPTS;
-              if (AUD)
+
+              if (AUD == 0 || NavPtr == 0 || SystemType == ST_TMSC)  // CRP-2401 zählt Filler-NALU nicht als Delimiter
+                AUD = PrimaryPayloadOffset + Ptr;
+              if (AUD >= SEI)
                 navHD.NextAUD = (dword) (AUD - SEI);
 
               if (!fNavIn && !navHD.Timems)
@@ -468,6 +480,7 @@ dbg_SEIFound = dbg_CurrentPosition/192;
               NavPtr++;
 
               SEI = 0;
+              AUD = 0;
               FrameType = 3;
 //memset(&navHD, 0, sizeof(tnavHD));
 //navHD.SEIOffsetHigh = 0; navHD.SEIOffsetLow = 0;
@@ -570,7 +583,6 @@ bool SDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
         }
       ret = TRUE;
       memcpy(&SDNav[0], &SDNav[1], sizeof(tnavSD));
-      SDNav[1].Timems=0;
       NavPtr++;
 
       PictHeader += FilePositionOfPacket;
@@ -582,8 +594,8 @@ bool SDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
       if(FrameType == 1)  // I-Frame
       {
         FirstSHPHOffset = (word) (PictHeader - CurrentSeqHeader);
-        FrameOffset          = FrameCtr;  // Position des I-Frames in der aktuellen Zählung (diese geht weiter, bis P kommt)
-        FrameCtr             = 0;         // zählt die Distanz zum letzten I-Frame
+        FrameOffset            = FrameCtr;  // Position des I-Frames in der aktuellen Zählung (diese geht weiter, bis P kommt)
+        FrameCtr               = 0;         // zählt die Distanz zum letzten I-Frame
       }
 
       SDNav[1].SHOffset        = (dword)(PictHeader - CurrentSeqHeader) | (FrameType << 24);
@@ -593,7 +605,7 @@ bool SDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
       //Some magic for the AUS pvrs
       SDNav[1].PHOffset        = (dword)(PictHeader - 4 + PACKETOFFSET);
       SDNav[1].PHOffsetHigh    = (dword)((PictHeader - 4 + PACKETOFFSET) >> 32);
-	    SDNav[1].PTS2            = PTS;
+      SDNav[1].PTS2            = PTS;
 
       if(NavPtr > 0)
       {
@@ -646,7 +658,7 @@ bool CloseNavFiles(void)
 
   TRACEENTER;
   if (fNavOut && !isHDVideo && (NavPtr > 0))
-    fwrite(&SDNav[0], sizeof(tnavSD), 1, fNavOut);
+    fwrite(&SDNav[0], sizeof(tnavSD), 2, fNavOut);
 
   if (fNavIn) fclose(fNavIn);
   fNavIn = NULL;
@@ -708,7 +720,7 @@ if (isHDVideo)
 //printf("%llu: Setze Offset aus nav: %llu\n", CurrentPosition/192, NextPictureHeaderOffset);
 else
 {
-  CurPictureHeaderOffset = NextPictureHeaderOffset - PositionOffset;
+  CurPictureHeaderOffset = NextPictureHeaderOffset + 4 - PACKETOFFSET - PositionOffset;
   if (fNavIn && LastPictureHeader != CurPictureHeaderOffset)
     printf("DEBUG: Problem! pos=%llu, offset=%llu, Orig-Nav-PHOffset=%llu, Rebuilt-Nav-PHOffset=%llu, Differenz= %lld * 192 + %lld\n", CurrentPosition, PositionOffset, NextPictureHeaderOffset, LastPictureHeader-PACKETOFFSET, ((long long int)(LastPictureHeader-CurPictureHeaderOffset))/192, ((long long int)(LastPictureHeader-CurPictureHeaderOffset))%192);
 }

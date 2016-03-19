@@ -32,6 +32,23 @@
 #define TRACEEXIT  // printf("End %s \n", (char*)__FUNCTION__)
 
 
+typedef enum
+{
+  ST_UNKNOWN,
+  ST_S,
+  ST_T,
+  ST_C,
+  ST_T5700,
+  ST_TMSS,
+  ST_TMST,
+  ST_TMSC,
+  ST_T5800,
+  ST_ST,
+  ST_CT,
+  ST_TF7k7HDPVR,
+  ST_NRTYPES
+} SYSTEM_TYPE;
+
 typedef struct
 {
   word                  PID;
@@ -51,6 +68,7 @@ typedef struct
 
 // Globale Variablen
 extern char             RecFileIn[], RecFileOut[];
+extern SYSTEM_TYPE      SystemType;
 extern byte             PACKETSIZE, PACKETOFFSET;
 extern word             VideoPID;
 extern bool             isHDVideo, AlreadyStripped;

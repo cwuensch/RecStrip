@@ -161,7 +161,6 @@ static bool CutFileDecodeBin(FILE *fCut, unsigned long long *OutSavedSize)
         SegmentMarker[NrSegmentMarker].pCaption = NULL;
         NrSegmentMarker++;
       }
-      NrSegmentMarker = fread(SegmentMarker, sizeof(tSegmentMarker), SavedNrSegments, fCut);
       if (NrSegmentMarker < SavedNrSegments)
         printf("CutFileDecodeBin: Unexpected end of file!\n");
     }

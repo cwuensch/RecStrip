@@ -82,6 +82,7 @@
 
 // Globale Variablen
 char                    RecFileIn[FBLIB_DIR_SIZE], RecFileOut[FBLIB_DIR_SIZE];
+SYSTEM_TYPE             SystemType = ST_UNKNOWN;
 byte                    PACKETSIZE, PACKETOFFSET;
 word                    VideoPID = 0;
 bool                    isHDVideo = FALSE, AlreadyStripped = FALSE;
@@ -193,7 +194,7 @@ int main(int argc, const char* argv[])
 {
   char                  NavFileIn[FBLIB_DIR_SIZE], NavFileOut[FBLIB_DIR_SIZE], InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], CutFileIn[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE];
   byte                  Buffer[192];
-  int                   ReadBytes, i;
+  int                   ReadBytes;
   bool                  DropCurPacket;
   time_t                startTime, endTime;
 
@@ -207,24 +208,20 @@ int main(int argc, const char* argv[])
   printf("- portions of Mpeg2cleaner (S. Poeschel), RebuildNav (Firebird) & MovieCutter -\n");
 
   // Eingabe-Parameter prüfen
-  i = 1;
-  while (i < argc-1)
+  while ((argc > 1) && (argv && argv[1] && argv[1][0] == '-'))
   {
-    if (argv && argv[i] && argv[i][0] == '-')
+    switch (argv[1][1])
     {
-      switch (argv[i][1])
-      {
-        case 'c':   DoCut = TRUE;           break;
-        case 's':   DoStrip = TRUE;         break;
-        case 'e':   RemoveEPGStream = TRUE; break;
-        default:    printf("\nUnknown argument: -%c\n", argv[i][1]);
-      }
-      argv[1] = argv[0];
-      argv++;
-      argc--;
+      case 'c':   DoCut = TRUE;           break;
+      case 's':   DoStrip = TRUE;         break;
+      case 'e':   RemoveEPGStream = TRUE; break;
+      default:    printf("\nUnknown argument: -%c\n", argv[1][1]);
     }
+    argv[1] = argv[0];
+    argv++;
+    argc--;
   }
-  if (!DoCut && !DoStrip) DoStrip = TRUE;
+//  if (!DoCut && !DoStrip) DoStrip = TRUE;
   if (!DoStrip) RemoveEPGStream = FALSE;
 
   // Eingabe-Dateinamen lesen
@@ -296,8 +293,20 @@ int main(int argc, const char* argv[])
   }
   else
   {
-    printf("WARNING: Cannot open inf file %s.\n", InfFileIn);
-    InfFileIn[0] = '\0';
+    if (SystemType != ST_UNKNOWN)
+    {
+      printf("WARNING: Cannot open inf file %s.\n", InfFileIn);
+      InfFileIn[0] = '\0';
+    }
+    else
+    {
+      printf("ERROR: Unknown SystemType.\n");
+      fclose(fIn); fIn = NULL;
+      fclose(fOut); fOut = NULL;
+      CloseInfFile(NULL, NULL, FALSE);
+      TRACEEXIT;
+      exit(4);
+    }
   }
   if (AlreadyStripped)
   {
@@ -350,32 +359,35 @@ int main(int argc, const char* argv[])
       if (Buffer[PACKETOFFSET] == 'G')
       {
         int CurPID = TsGetPID((tTSPacketHeader*) &Buffer[PACKETOFFSET]);
-
         DropCurPacket = FALSE;
-        if (CurPID == 0x1FFF)
+
+        if (DoStrip)
         {
-          NrDroppedNullPid++;
-          DropCurPacket = TRUE;
-        }
-        else if (CurPID == 0x12 && RemoveEPGStream)
-        {
-          NrDroppedEPGPid++;
-          DropCurPacket = TRUE;
-        }
-        else if (CurPID == VideoPID)
-        {
-          switch (ProcessTSPacket(&Buffer[PACKETOFFSET], CurrentPosition))
+          if (CurPID == 0x1FFF)
           {
-            case 1: 
-              NrDroppedFillerNALU++;
-              DropCurPacket = TRUE;
-              break;
-            case 2:
-              NrDroppedZeroStuffing++;
-              DropCurPacket = TRUE;
-              break;
-            default:
-              break;
+            NrDroppedNullPid++;
+            DropCurPacket = TRUE;
+          }
+          else if (CurPID == 0x12 && RemoveEPGStream)
+          {
+            NrDroppedEPGPid++;
+            DropCurPacket = TRUE;
+          }
+          else if (CurPID == VideoPID)
+          {
+            switch (ProcessTSPacket(&Buffer[PACKETOFFSET], CurrentPosition))
+            {
+              case 1: 
+                NrDroppedFillerNALU++;
+                DropCurPacket = TRUE;
+                break;
+              case 2:
+                NrDroppedZeroStuffing++;
+                DropCurPacket = TRUE;
+                break;
+              default:
+                break;
+            }
           }
         }
 
@@ -411,7 +423,7 @@ int main(int argc, const char* argv[])
             CloseInfFile(NULL, NULL, FALSE);
             CutFileClose(NULL, FALSE);
             TRACEEXIT;
-            exit(4);
+            exit(5);
           }
         }
         CurrentPacket++;
@@ -433,7 +445,7 @@ int main(int argc, const char* argv[])
           CloseInfFile(NULL, NULL, FALSE);
           CutFileClose(NULL, FALSE);
           TRACEEXIT;
-          exit(5);
+          exit(6);
         }
       }
     }
@@ -465,7 +477,7 @@ int main(int argc, const char* argv[])
       CloseInfFile(NULL, NULL, FALSE);
       CutFileClose(NULL, FALSE);
       TRACEEXIT;
-      exit(6);
+      exit(7);
     }
     fOut = NULL;
   }

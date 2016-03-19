@@ -10,6 +10,7 @@ typedef struct
 //  byte                  Zero1;
   dword                 PHOffsetHigh;
   dword                 PHOffset;
+
   dword                 PTS2;
   dword                 NextPH;
   dword                 Timems;
@@ -26,14 +27,17 @@ typedef struct
 //  byte                  Zero1;
   dword                 SEIOffsetHigh;
   dword                 SEIOffsetLow;
+
   dword                 SEIPTS;
   dword                 NextAUD;
   dword                 Timems;
   dword                 Zero2;
+
   dword                 SEISPS;
   dword                 SPSLen;
   dword                 IFrame;
   dword                 Zero4;
+
   dword                 Zero5;
   dword                 Zero6;
   dword                 Zero7;
