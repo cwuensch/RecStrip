@@ -72,10 +72,12 @@ static SYSTEM_TYPE DetermineInfType(const byte *const InfBuffer, const unsigned 
   if ((Inf_TMSS->TransponderInfo.Frequency      >=     10700)  &&  (Inf_TMSS->TransponderInfo.Frequency  <=     12750))  PointsS++;
   if ((Inf_TMSS->TransponderInfo.SymbolRate     >=     10000)  &&  (Inf_TMSS->TransponderInfo.SymbolRate <=     30000))  PointsS++;
   if ((Inf_TMSS->TransponderInfo.unused2        ==         0)  &&  (Inf_TMSS->TransponderInfo.unused3    ==         0))  PointsS++;
+//  if  (Inf_TMSS->TransponderInfo.TPMode         ==         0)   PointsS++;
 
   if ((Inf_TMST->TransponderInfo.Frequency      >=     47000)  &&  (Inf_TMST->TransponderInfo.Frequency  <=    862000))  PointsT++;
   if ((Inf_TMST->TransponderInfo.Bandwidth      >=         6)  &&  (Inf_TMST->TransponderInfo.Bandwidth  <=         8))  PointsT++;
   if ((Inf_TMST->TransponderInfo.LPHP           <=         1)  &&  (Inf_TMST->TransponderInfo.unused2    ==         0))  PointsT++;
+  if  (Inf_TMST->TransponderInfo.SatIdx         !=         0)   PointsT++;  else PointsT--;
 
   if ((Inf_TMSC->TransponderInfo.Frequency      >=     47000)  &&  (Inf_TMSC->TransponderInfo.Frequency  <=    862000))  PointsC++;
   if ((Inf_TMSC->TransponderInfo.SymbolRate     >=      6111)  &&  (Inf_TMSC->TransponderInfo.SymbolRate <=      6900))  PointsC++;
@@ -88,12 +90,12 @@ static SYSTEM_TYPE DetermineInfType(const byte *const InfBuffer, const unsigned 
   // Wenn SatIdx gesetzt, dann kann TMS-C ausgeschlossen werden (?)
 //  if (Inf_TMSC->TransponderInfo.SatIdx != 0) PointsC = 0;
 
-  if (PointsC>=6 || (PointsC>=5 && PointsS<=3 && PointsT<=3) || (PointsC>=4 && PointsS<=2 && PointsT<=2))
+  if (PointsC>=6 || (PointsC>=5 && PointsS<=3 && PointsT<=4) || (PointsC>=4 && PointsS<=2 && PointsT<=3))
     Result = ST_TMSC;
   else
-    if (PointsS >= 3 && PointsT <= 3)
+    if (PointsS >= 3 && PointsT <= 4)
       Result = ST_TMSS;
-    else if (PointsT >= 3 && PointsS <= 3)
+    else if (PointsT >= 4 && PointsS <= 3)
       Result = ST_TMST;
 
   printf(" -> SystemType=ST_TMS%c\n", (Result==ST_TMSS ? 'S' : ((Result==ST_TMSC) ? 'C' : ((Result==ST_TMST) ? 'T' : '?'))));

@@ -59,7 +59,9 @@ typedef struct
   byte                  EventRunningStatus;
   byte                  EventTextLength;
   byte                  EventParentalRate;
-  char                  EventNameDescription[273];
+  char                  EventNameDescription[257];
+  word                  ServiceID;
+  byte                  unknown[14];
 } TYPE_Event_Info;
 
 typedef struct
@@ -81,7 +83,7 @@ typedef struct
 {
   byte                  SatIdx;
   word                  Polar:1;              // 0=V, 1=H
-  word                  unused1:3;
+  word                  TPMode:3;             // TPMode ist entweder 000 für "normal" oder 001 für "SmaTV" ("SmaTV" kommt in der Realität nicht vor)
   word                  ModulationSystem:1;   // 0=DVBS, 1=DVBS2
   word                  ModulationType:2;     // 0=Auto, 1=QPSK, 2=8PSK, 3=16QAM
   word                  FECMode:4;            // 0x0 = AUTO, 0x1 = 1_2, 0x2 = 2_3, 0x3 = 3_4,
