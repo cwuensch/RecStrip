@@ -270,7 +270,7 @@ static bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
           while (Buffer[ReadBytes] && (Buffer[ReadBytes] == ' ' || Buffer[ReadBytes] == ';'))  ReadBytes++;
           if (Buffer[ReadBytes])
           {
-            SegmentMarker[NrSegmentMarker].pCaption = (char*)malloc(strlen(&Buffer[ReadBytes]));
+            SegmentMarker[NrSegmentMarker].pCaption = (char*)malloc(strlen(&Buffer[ReadBytes]) + 1);
             strcpy(SegmentMarker[NrSegmentMarker].pCaption, &Buffer[ReadBytes]);
           }
           NrSegmentMarker++;
