@@ -131,6 +131,7 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
   }
   else
   {
+    SystemType = ST_TMSS;
     printf("LoadInfFile() E0901: Source inf not found.\n");
     TRACEEXIT;
     return FALSE;
@@ -140,6 +141,7 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
   fInfIn = fopen(AbsInfName, "rb");
   if(!fInfIn)
   {
+    SystemType = ST_TMSS;
     free(InfBuffer); InfBuffer = NULL;
     printf("LoadInfFile() E0902: Source inf not found.\n");
     TRACEEXIT;
