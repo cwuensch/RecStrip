@@ -3,7 +3,8 @@
 
 typedef struct
 {
-  dword                 SHOffset; // = (FrameType shl 24) or SHOffset
+  dword                 SHOffset:24; // = (FrameType shl 24) or SHOffset
+  dword                 FrameType:8;
   byte                  MPEGType;
   byte                  FrameIndex;
   word                  iFrameSeqOffset;
@@ -86,6 +87,11 @@ typedef struct
   word                  Len;
 }tPPS;
 
+typedef struct
+{
+  dword                 PTS;       // PTS des zuletzt gefundenen I-Frames
+  int                   FrameCtr;  // Anzahl Frames, die nach diesem I-Frame kamen (bis ein weiterer Counter eingefügt wurde)
+}tFrameCtr;
 
 bool HDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket);
 bool SDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket);

@@ -20,12 +20,12 @@
 #include "RecStrip.h"
 
 //#define DEBUGLOG 1
+#define COUNTSTACKSIZE 8
 
 
 // Globale Variablen
 static FILE            *fNavIn = NULL, *fNavOut = NULL;
 static byte             FrameType;
-static byte             FrameCtr = 0, FrameOffset = 0;
 static dword            PTS = 0, DTS = 0, LastTimems = 0;
 
 //HDNAV
@@ -35,6 +35,8 @@ static unsigned long long SEI = 0, SPS = 0, AUD = 0;
 static int              PPSCount = 0;
 static byte             SlicePPSID = 0;
 static dword            FirstSEIPTS = 0, SEIPTS = 0, IFramePTS = 0, SPSLen = 0;
+static tFrameCtr        CounterStack[COUNTSTACKSIZE];
+static int              LastIFrame = 0;
 
 static unsigned long long dbg_CurPictureHeaderOffset = 0, dbg_SEIFound = 0;
 static unsigned long long dbg_CurrentPosition = 0, dbg_PositionOffset = 0, dbg_PositionOffset1 = 0, dbg_PositionOffset2 = 0;
@@ -46,6 +48,7 @@ static unsigned long long CurrentSeqHeader = 0;
 static dword            FirstPTS = 0 /*, LastdPTS = 0*/;
 static int              NavPtr = 0;
 static word             FirstSHPHOffset = 0;
+static byte             FrameCtr = 0, FrameOffset = 0;
 
 
 // ----------------------------------------------
@@ -214,6 +217,7 @@ bool HDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
   byte                  Ptr, PayloadStart;
   dword                 PCR;
   bool                  ret = FALSE, SEIFoundInPacket = FALSE;
+  byte                  i, p;
   #if DEBUGLOG != 0
     char                  s[80];
   #endif
@@ -299,7 +303,17 @@ if (PayloadStart > 184)
         PPS[PPSCount - 1].Len = (word) (PrimaryPayloadOffset + Ptr - PPS[PPSCount - 1].Offset);
       }
 
-      if((PSBuffer[Ptr+3] & 0x80) == 0x00)
+      if((PSBuffer[Ptr+3] & 0x80) != 0x00)
+      {
+        if(GetPTS(&PSBuffer[Ptr], &PTS, &DTS))
+        {
+          #if DEBUGLOG != 0
+            printf("%8.8llx: PTS = 0x%8.8x, DTS = 0x%8.8x\n", PrimaryPayloadOffset + Ptr, PTS, DTS);
+          #endif
+          Ptr+=13;
+        }
+      }
+      else
       {
         NALRefIdc = (PSBuffer[Ptr+3] >> 5) & 3;
         NALType = PSBuffer[Ptr+3] & 0x1f;
@@ -312,7 +326,7 @@ if (PayloadStart > 184)
               strcpy(s, "NAL_SEI");
             #endif
 //            if (SEI == 0 || NavPtr == 0)  // jkIT: nur die erste SEI seit dem letzten Nav-Record nehmen
-            if (!SEIFoundInPacket)   // CW: nur die erste SEI innerhalb des Packets nehmen
+            if (!SEIFoundInPacket)        // CW: nur die erste SEI innerhalb des Packets nehmen
             {
               SEI = PrimaryPayloadOffset + Ptr;
               SEIPTS = PTS;
@@ -395,9 +409,11 @@ dbg_SEIFound = dbg_CurrentPosition/192;
               }
             #endif
 
+
             if((SEI != 0) && (SPS != 0) && (PPSCount != 0))
             {
-              if((FrameType == 2) /*&& IFramePTS && ((int)(PTS-IFramePTS) >= 0)*/)
+
+/*              if((FrameType != 1) && IFramePTS && ((int)(SEIPTS-IFramePTS) >= 0))
               {
                 FrameOffset = 0;  // P-Frame
                 IFramePTS = 0;
@@ -408,20 +424,46 @@ dbg_SEIFound = dbg_CurrentPosition/192;
 
               if(FrameType == 1)  // I-Frame
               {
-                FrameOffset     = FrameCtr + ((SystemType==ST_TMSC) ? 0 : 1);  // Position des I-Frames in der aktuellen Zählung (diese geht weiter, bis P kommt) - SRP-2401 zählt nach dem I-Frame + 2
+                FrameOffset     = FrameCtr + ((SystemType==ST_TMSC || !FrameCtr) ? 0 : 1);  // Position des I-Frames in der aktuellen Zählung (diese geht weiter, bis P kommt) - SRP-2401 zählt nach dem I-Frame + 2
                 FrameCtr        = 0;        // zählt die Distanz zum letzten I-Frame
-                IFramePTS       = PTS;
+                IFramePTS       = SEIPTS;
               }
-              FrameCtr++;
+              FrameCtr++;  */
 
-/*              if (navHD.FrameIndex == 0)
-                navHD.FrameIndex = FrameCtr;
 
-              if (FrameType == 1)  // I-Frame
-                FrameCtr = 0;
+              // jeder beliebige Frame-Typ
+              if (navHD.FrameIndex == 0)
+              {
+                // CounterStack von oben durchgehen, bis ein PTS gefunden wird, der <= dem aktuellen ist
+int j = 0;
+                for (i = COUNTSTACKSIZE; i > 0; i--)
+                {
+                  j++;
+                  p = (LastIFrame + i) % COUNTSTACKSIZE;          // Schleife läuft von LastIFrame rückwärts, max. Stackgröße
+                  navHD.FrameIndex += CounterStack[p].FrameCtr;   // alle Counter auf dem Weg zum passenden I-Frame addieren
+                  if ((int)(SEIPTS - CounterStack[p].PTS) > 0)    // überlaufsichere Prüfung, ob PTS > Counter-PTS
+                    break;
+                }
+if (j > 2)
+  printf("j=%d\n", j);
+              }
 
-//              if (FrameType == 2 || FrameType == 3)  // P-Frame oder B-Frame
-                FrameCtr++;  */
+              if(FrameType == 1)  // I-Frame
+              {
+                if (SystemType != ST_TMSC && CounterStack[LastIFrame].PTS != 0)
+                  CounterStack[LastIFrame].FrameCtr++;  // SRP-2401 zählt nach dem I-Frame + 2
+
+                // neuen I-Frame in den CounterStack einfügen, an Position LastIFrame+1
+                LastIFrame = (LastIFrame + 1) % COUNTSTACKSIZE;
+                CounterStack[LastIFrame].PTS = SEIPTS;
+                CounterStack[LastIFrame].FrameCtr = 0;
+              }
+
+              // aktuellen Frame-Counter erhöhen
+              CounterStack[LastIFrame].FrameCtr++;
+
+
+
 
 //              memset(&navHD, 0, sizeof(tnavHD));
 
@@ -528,13 +570,6 @@ dbg_SEIFound = dbg_CurrentPosition/192;
 
         Ptr += 4;
       }
-      else if(GetPTS(&PSBuffer[Ptr], &PTS, &DTS))
-      {
-        #if DEBUGLOG != 0
-          printf("%8.8llx: PTS = 0x%8.8x, DTS = 0x%8.8x\n", PrimaryPayloadOffset + Ptr, PTS, DTS);
-        #endif
-        Ptr+=13;
-      }
     }
     Ptr++;
   }
@@ -598,7 +633,8 @@ bool SDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
         FrameCtr               = 0;         // zählt die Distanz zum letzten I-Frame
       }
 
-      SDNav[1].SHOffset        = (dword)(PictHeader - CurrentSeqHeader) | (FrameType << 24);
+      SDNav[1].SHOffset        = (dword)(PictHeader - CurrentSeqHeader);
+      SDNav[1].FrameType       = FrameType;
       SDNav[1].MPEGType        = 0x20;
       SDNav[1].iFrameSeqOffset = FirstSHPHOffset;
 
@@ -696,6 +732,8 @@ void ProcessNavFile(const unsigned long long CurrentPosition, const unsigned lon
       fclose(fNavIn); fNavIn = NULL;
       if(fNavOut) fclose(fNavOut); fNavOut = NULL;
     }
+
+    memset(CounterStack, 0, COUNTSTACKSIZE * sizeof(tFrameCtr));
     FirstRun = FALSE;
   }
 
