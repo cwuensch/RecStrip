@@ -410,7 +410,7 @@ int main(int argc, const char* argv[])
 //          PositionOffset += PACKETOFFSET;  // Reduktion auf 188 Byte Packets
           // nav-Eintrag korrigieren und ausgeben, wenn Position < CurrentPosition ist (um PositionOffset reduzieren)
           if (CurPID == VideoPID)
-            ProcessNavFile(CurrentPosition, PositionOffset, (trec*) &Buffer[PACKETOFFSET]);
+            ProcessNavFile(CurrentPosition, PositionOffset, (tTSPacket*) &Buffer[PACKETOFFSET]);
 
           // (ggf. verändertes) Paket wird in Ausgabe geschrieben
 //          if (fOut && !fwrite(&Buffer[PACKETOFFSET], ReadBytes-PACKETOFFSET, 1, fOut))  // Reduktion auf 188 Byte Packets

@@ -75,9 +75,22 @@ typedef enum
 
 typedef struct
 {
-  byte                  TSH[4];
-  byte                  Data[184];
-} trec;
+  char SyncByte;  // = 'G'
+  byte PID1:5;
+  byte Transport_Prio:1;
+  byte Payload_Unit_Start:1;
+  byte Transport_Error:1;
+  
+  byte PID2:8;
+  
+  byte ContinuityCount:4;
+  byte Payload_Exists:1;
+  byte Adapt_Field_Exists:1;
+  byte Scrambling_Ctrl:2;
+  
+  byte Adapt_Field_Length;
+  byte Data[184];
+} tTSPacket;
 
 //HDNAV
 typedef struct
@@ -93,10 +106,10 @@ typedef struct
   int                   FrameCtr;  // Anzahl Frames, die nach diesem I-Frame kamen (bis ein weiterer Counter eingefügt wurde)
 }tFrameCtr;
 
-bool HDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket);
-bool SDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket);
+bool HDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacket);
+bool SDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacket);
 bool LoadNavFiles(const char* AbsInNav, const char* AbsOutNav);
 bool CloseNavFiles(void);
-void ProcessNavFile(const unsigned long long CurrentPosition, const unsigned long long PositionOffset, trec* Packet);
+void ProcessNavFile(const unsigned long long CurrentPosition, const unsigned long long PositionOffset, tTSPacket* Packet);
 
 #endif

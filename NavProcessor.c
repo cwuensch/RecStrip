@@ -31,7 +31,9 @@ static dword            PTS = 0, DTS = 0, LastTimems = 0;
 //HDNAV
 static tnavHD           navHD;
 static tPPS             PPS[10];
+static unsigned long long PosFirstNull = 0, PosSecondNull = 0, HeaderFound = 0;
 static unsigned long long SEI = 0, SPS = 0, AUD = 0;
+static bool             GetPPSID = FALSE, GetSlicePPSID = FALSE;
 static int              PPSCount = 0;
 static byte             SlicePPSID = 0;
 static dword            FirstSEIPTS = 0, SEIPTS = 0, IFramePTS = 0, SPSLen = 0;
@@ -39,7 +41,7 @@ static tFrameCtr        CounterStack[COUNTSTACKSIZE];
 static int              LastIFrame = 0;
 
 static unsigned long long dbg_CurPictureHeaderOffset = 0, dbg_SEIFound = 0;
-static unsigned long long dbg_CurrentPosition = 0, dbg_PositionOffset = 0, dbg_PositionOffset1 = 0, dbg_PositionOffset2 = 0;
+static unsigned long long dbg_CurrentPosition = 0, dbg_PositionOffset = 0, dbg_SEIPositionOffset = 0;
 
 //SDNAV
 static tnavSD           SDNav[2];
@@ -96,10 +98,10 @@ static int get_ue_golomb32(byte *p, byte *StartBit)
   return (1 << leadingZeroBits) - 1 + d;
 }
 
-static bool GetPTS(byte *Buffer, dword *pPTS, dword *pDTS)
+static bool GetPTS2(byte *Buffer, dword *pPTS, dword *pDTS)
 {
   TRACEENTER;
-  if((Buffer[0] == 0x00) && (Buffer[1] == 0x00) && (Buffer[2] == 0x01) && ((Buffer[3] & 0xf0) == 0xe0) && (Buffer[7] & 0x80))
+  if(((Buffer[0] & 0xf0) == 0xe0) && (Buffer[4] & 0x80))
   {
     //MPEG Video Stream
     //00 00 01 E0 00 00 88 C0 0B 35 BD E9 8A 85 15 BD E9 36 25 FF
@@ -119,20 +121,20 @@ static bool GetPTS(byte *Buffer, dword *pPTS, dword *pDTS)
 
     //Return PTS >> 1 so that we do not need 64 bit variables
     if (pPTS)
-      *pPTS = ((Buffer[ 9] & 0x0e) << 28) |
-              ((Buffer[10] & 0xff) << 21) |
-              ((Buffer[11] & 0xfe) << 13) |
-              ((Buffer[12] & 0xff) <<  6) |
-              ((Buffer[13] & 0xfe) >>  2);
+      *pPTS = ((Buffer[ 6] & 0x0e) << 28) |
+              ((Buffer[ 7] & 0xff) << 21) |
+              ((Buffer[ 8] & 0xfe) << 13) |
+              ((Buffer[ 9] & 0xff) <<  6) |
+              ((Buffer[10] & 0xfe) >>  2);
 
     if (pDTS)
     {
       if (Buffer[7] & 0x40)
-        *pDTS = ((Buffer[14] & 0x0e) << 28) |
-                ((Buffer[15] & 0xff) << 21) |
-                ((Buffer[16] & 0xfe) << 13) |
-                ((Buffer[17] & 0xff) <<  6) |
-                ((Buffer[18] & 0xfe) >>  2);
+        *pDTS = ((Buffer[11] & 0x0e) << 28) |
+                ((Buffer[12] & 0xff) << 21) |
+                ((Buffer[13] & 0xfe) << 13) |
+                ((Buffer[14] & 0xff) <<  6) |
+                ((Buffer[15] & 0xfe) >>  2);
       else
         *pDTS = 0;
     }
@@ -141,6 +143,11 @@ static bool GetPTS(byte *Buffer, dword *pPTS, dword *pDTS)
   }
   TRACEEXIT;
   return FALSE;
+}
+static bool GetPTS(byte *Buffer, dword *pPTS, dword *pDTS)
+{
+  if((Buffer[0] == 0x00) && (Buffer[1] == 0x00) && (Buffer[2] == 0x01))
+    return GetPTS2(&Buffer[3], pPTS, pDTS);
 }
 
 static bool GetPCR(byte *pBuffer, dword *pPCR)
@@ -204,13 +211,10 @@ static dword FindPictureHeader(byte *Buffer, byte *pFrameType)
   return 0;
 }
 
-bool HDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
+bool HDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacket)
 {
-  static trec           PrimaryPacket, SecondaryPacket;
-  static unsigned long long PrimaryTSOffset, SecondaryTSOffset;
-  unsigned long long    PrimaryPayloadOffset;
-  static byte           PSBuffer[2*184];
-  byte                  PrimaryPayloadSize;
+  unsigned long long    PacketOffset, PosFirstNull=0, PosSecondNull=0;
+  byte                  PayloadSize;
   static dword          FirstPCR = 0;
 
   byte                  NALType, NALRefIdc;
@@ -224,88 +228,107 @@ bool HDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
 
   TRACEENTER;
 
-  //Shift packets from secondary to primary buffer
-  memcpy(&PrimaryPacket, &SecondaryPacket, sizeof(trec));
-  PrimaryTSOffset = SecondaryTSOffset;
-  memcpy(&SecondaryPacket, Packet, sizeof(trec));
-  SecondaryTSOffset = FilePositionOfPacket;
+  // PROCESS THE TS-PACKET
 
-  //Valid TS packet and payload available?
-  if((PrimaryPacket.TSH[0] != 0x47) || ((PrimaryPacket.TSH[3] & 0x10) == 0))
+  // Valid TS packet and payload available?
+  if((Packet->SyncByte != 'G') || !Packet->Payload_Exists)
   {
     TRACEEXIT;
     return FALSE;
   }
 
-  #if DEBUGLOG != 0
-    //Start of a new PES?
-    if(PrimaryPacket.TSH[1] & 0x40)
-      printf("\n%8.8llx: PES Start\n", PrimaryTSOffset);
-  #endif
-
-  //Convert primary and secondary TS buffers into a PS packet
-//  memset(PSBuffer, 0, 2*184);
-
-  //Start with the primary buffer
-  PrimaryPayloadOffset = PrimaryTSOffset + 4 + PACKETOFFSET;
-
-  //Adaptation field available?
-  if(PrimaryPacket.TSH[3] & 0x20)
+  if (Packet->Payload_Unit_Start)
   {
-    //If available, get the PCR
-    if(GetPCR(PrimaryPacket.TSH, &PCR))
+    #if DEBUGLOG != 0
+      printf("\n%8.8llx: PES Start\n", FilePositionOfPacket);
+    #endif
+    PosFirstNull = 0; PosSecondNull = 0; HeaderFound = FALSE;
+    // alles andere auch zurücksetzen?
+  }
+
+  // Adaptation field available?
+  if(Packet->Adapt_Field_Exists)
+  {
+    // If available, get the PCR
+    if(GetPCR((byte*)Packet, &PCR))
     {
       if(FirstPCR == 0) FirstPCR = PCR;
       #if DEBUGLOG != 0
         printf("%8.8llx: PCR = 0x%8.8x, dPCR = 0x%8.8x\n", PrimaryTSOffset, PCR, DeltaPCR(FirstPCR, PCR));
       #endif
     }
-    PayloadStart = (PrimaryPacket.Data[0] + 1);
+    PayloadStart = (Packet->Data[0] + 1);
   }
   else
-  {
     PayloadStart = 0;
-  }
-if (PayloadStart > 184)
-{
-  printf("DEBUG: Assertion Error: PayloadStart=%hhu\n", PayloadStart);
-  PayloadStart = 184;
-}
 
-  PrimaryPayloadOffset += PayloadStart;
-  PrimaryPayloadSize = 184 - PayloadStart;
-  memcpy(PSBuffer, &PrimaryPacket.Data[PayloadStart], PrimaryPayloadSize);
+  PacketOffset = FilePositionOfPacket + 4 + PACKETOFFSET;
+  PayloadSize = 184 - min(PayloadStart, 184);
 
-  //Now the secondary buffer
-  if(SecondaryPacket.TSH[3] & 0x20)
-    PayloadStart = (SecondaryPacket.Data[0] + 1);
-  else
-    PayloadStart = 0;
-if (PayloadStart > 184)
-{
-  printf("DEBUG: Assertion Error: PayloadStart(2)=%hhu\n", PayloadStart);
-  PayloadStart = 184;
-}
-  memcpy(&PSBuffer[PrimaryPayloadSize], &SecondaryPacket.Data[PayloadStart], 184 - min(PayloadStart, 184));
 
-  //Search for start codes in the primary buffer. The secondary buffer is used if a NALU runs over the 184 byte TS packet border
-  Ptr = 0;
-  while(Ptr < PrimaryPayloadSize)
+  // PROCESS THE PAYLOAD
+
+  // Search for start codes in the packet. Continue from last packet
+  Ptr = PayloadStart;
+  while(Ptr < PayloadSize)
   {
-    if((PSBuffer[Ptr] == 0x00) && (PSBuffer[Ptr+1] == 0x00) && (PSBuffer[Ptr+2] == 0x01))
+    // Check for Header
+    if (!HeaderFound)
     {
-      //Calculate the length of the SPS NAL
-      if((SPS != 0) && (SPSLen == 0)) SPSLen = (dword) (PrimaryPayloadOffset + Ptr - SPS);
-
-      //Calculate the length of the previous PPS NAL
-      if((PPSCount > 0) && (PPS[PPSCount - 1].Len == 0))
+      if (PosFirstNull && PosSecondNull && (Packet->Data[Ptr] == 1))
+        HeaderFound = PosFirstNull;
+      
+      if (Packet->Data[Ptr] == 0)
       {
-        PPS[PPSCount - 1].Len = (word) (PrimaryPayloadOffset + Ptr - PPS[PPSCount - 1].Offset);
+        PosFirstNull = PosSecondNull;
+        PosSecondNull = PacketOffset + Ptr;
       }
+      else
+        PosSecondNull = 0;
 
-      if((PSBuffer[Ptr+3] & 0x80) != 0x00)
+      if (HeaderFound) { Ptr++; continue; }
+    }
+
+    // Process access on Packet[Ptr+4]
+    if (GetPPSID)
+    {
+      byte Bit = 31;
+      PPS[PPSCount-1].ID = get_ue_golomb32(&Packet->Data[Ptr], &Bit);
+      #if DEBUGLOG != 0
+        snprintf(&s[strlen(s)], sizeof(s)-strlen(s), " (ID=%d)", PPS[PPSCount-1].ID);
+      #endif
+      GetPPSID = FALSE;
+    }
+    if (GetSlicePPSID)
+    {
+      byte Bit = 31;
+      //first_mb_in_slice
+      get_ue_golomb32(&Packet->Data[Ptr], &Bit);
+      //slice_type
+      get_ue_golomb32(&Packet->Data[Ptr], &Bit);
+      //pic_parameter_set_id
+      SlicePPSID = get_ue_golomb32(&Packet->Data[Ptr], &Bit);
+
+      #if DEBUGLOG != 0
+        snprintf(&s[strlen(s)], sizeof(s)-strlen(s), " (PPS ID=%hu)\n", SlicePPSID);
+      #endif
+      GetSlicePPSID = FALSE;
+    }
+
+    // Process a NALU header
+    if (HeaderFound)
+    {
+      // Calculate the length of the SPS NAL
+      if ((SPS != 0) && (SPSLen == 0))
+        SPSLen = (dword) (HeaderFound - SPS);
+
+      // Calculate the length of the previous PPS NAL
+      if ((PPSCount > 0) && (PPS[PPSCount - 1].Len == 0))
+        PPS[PPSCount - 1].Len = (word) (HeaderFound - PPS[PPSCount - 1].Offset);
+
+      if((Packet->Data[Ptr] & 0x80) != 0x00)
       {
-        if(GetPTS(&PSBuffer[Ptr], &PTS, &DTS))
+        if(GetPTS2(&Packet->Data[Ptr], &PTS, &DTS))    // ***ACHTUNG!! Überlauf möglich - GetPTS braucht deutlich mehr als 1 Byte!! Hier müsste aufs nächste Paket zugegriffen werden...
         {
           #if DEBUGLOG != 0
             printf("%8.8llx: PTS = 0x%8.8x, DTS = 0x%8.8x\n", PrimaryPayloadOffset + Ptr, PTS, DTS);
@@ -315,8 +338,8 @@ if (PayloadStart > 184)
       }
       else
       {
-        NALRefIdc = (PSBuffer[Ptr+3] >> 5) & 3;
-        NALType = PSBuffer[Ptr+3] & 0x1f;
+        NALRefIdc = (Packet->Data[Ptr] >> 5) & 3;
+        NALType = Packet->Data[Ptr] & 0x1f;
 
         switch(NALType)
         {
@@ -328,12 +351,12 @@ if (PayloadStart > 184)
 //            if (SEI == 0 || NavPtr == 0)  // jkIT: nur die erste SEI seit dem letzten Nav-Record nehmen
             if (!SEIFoundInPacket)        // CW: nur die erste SEI innerhalb des Packets nehmen
             {
-              SEI = PrimaryPayloadOffset + Ptr;
+              SEI = HeaderFound;
               SEIPTS = PTS;
               if(FirstSEIPTS == 0) FirstSEIPTS = PTS;
               SEIFoundInPacket = TRUE;
 
-dbg_PositionOffset = dbg_PositionOffset1;
+dbg_SEIPositionOffset = dbg_PositionOffset;
 dbg_SEIFound = dbg_CurrentPosition/192;
 //printf("%llu: SEI found: %llu\n", dbg_CurrentPosition/192, SEI);
             }            
@@ -346,7 +369,7 @@ dbg_SEIFound = dbg_CurrentPosition/192;
               strcpy(s, "NAL_SPS");
             #endif
 
-            SPS = PrimaryPayloadOffset + Ptr;
+            SPS = HeaderFound;
             SPSLen = 0;
             PPSCount = 0;
             break;
@@ -354,8 +377,6 @@ dbg_SEIFound = dbg_CurrentPosition/192;
 
           case NAL_PPS:
           {
-            byte        Bit;
-
             #if DEBUGLOG != 0
               strcpy(s, "NAL_PPS");
             #endif
@@ -363,14 +384,10 @@ dbg_SEIFound = dbg_CurrentPosition/192;
             //We need to remember every PPS because the upcoming slice will point to one of them
             if(PPSCount < 10)
             {
-              PPS[PPSCount].Offset = PrimaryPayloadOffset + Ptr;
-              Bit = 31;
-              PPS[PPSCount].ID = get_ue_golomb32(&PSBuffer[Ptr+4], &Bit);
-              #if DEBUGLOG != 0
-                snprintf(&s[strlen(s)], sizeof(s)-strlen(s), " (ID=%d)", PPS[PPSCount].ID);
-              #endif
+              PPS[PPSCount].Offset = HeaderFound;
               PPS[PPSCount].Len = 0;
               PPSCount++;
+              GetPPSID = TRUE;
             }
 
             FrameType = 1;
@@ -382,7 +399,7 @@ dbg_SEIFound = dbg_CurrentPosition/192;
             #if DEBUGLOG != 0
               strcpy(s, "NAL_FILLER_DATA");
             #endif
-            AUD = PrimaryPayloadOffset + Ptr;
+            AUD = HeaderFound;
             break;
           }
 
@@ -413,7 +430,8 @@ dbg_SEIFound = dbg_CurrentPosition/192;
             if((SEI != 0) && (SPS != 0) && (PPSCount != 0))
             {
 
-/*              if((FrameType != 1) && IFramePTS && ((int)(SEIPTS-IFramePTS) >= 0))
+/*              // MEINE VARIANTE
+              if((FrameType != 1) && IFramePTS && ((int)(SEIPTS-IFramePTS) >= 0))
               {
                 FrameOffset = 0;  // P-Frame
                 IFramePTS = 0;
@@ -431,6 +449,7 @@ dbg_SEIFound = dbg_CurrentPosition/192;
               FrameCtr++;  */
 
 
+              // VARIANTE VON jkIT
               // jeder beliebige Frame-Typ
               if (navHD.FrameIndex == 0)
               {
@@ -493,7 +512,7 @@ if (j > 2)
               navHD.SEIPTS = SEIPTS;
 
               if (AUD == 0 || NavPtr == 0 || SystemType == ST_TMSC)  // CRP-2401 zählt Filler-NALU nicht als Delimiter
-                AUD = PrimaryPayloadOffset + Ptr;
+                AUD = HeaderFound;
               if (AUD >= SEI)
                 navHD.NextAUD = (dword) (AUD - SEI);
 
@@ -505,14 +524,14 @@ if (j > 2)
               navHD.SEISPS = (dword) (SEI - SPS);
               navHD.SPSLen = SPSLen;
               navHD.IFrame = 0;
+
 {
-  unsigned long long CurPictureHeaderOffset = dbg_CurPictureHeaderOffset - dbg_PositionOffset;
+  unsigned long long CurPictureHeaderOffset = dbg_CurPictureHeaderOffset - dbg_SEIPositionOffset;
   if (fNavIn && SEI != CurPictureHeaderOffset && dbg_CurrentPosition/192 != dbg_SEIFound)
-    printf("DEBUG: Problem! pos=%llu, offset=%llu, Orig-Nav-PHOffset=%llu, Rebuilt-Nav-PHOffset=%llu, Differenz= %lld * 192 + %lld\n", dbg_CurrentPosition, dbg_PositionOffset, dbg_CurPictureHeaderOffset, SEI, ((long long int)(SEI-CurPictureHeaderOffset))/192, ((long long int)(SEI-CurPictureHeaderOffset))%192);
+    printf("DEBUG: Problem! pos=%llu, offset=%llu, Orig-Nav-PHOffset=%llu, Rebuilt-Nav-PHOffset=%llu, Differenz= %lld * 192 + %lld\n", dbg_CurrentPosition, dbg_SEIPositionOffset, dbg_CurPictureHeaderOffset, SEI, ((long long int)(SEI-CurPictureHeaderOffset))/192, ((long long int)(SEI-CurPictureHeaderOffset))%192);
 //printf("%llu: fwrite: SEI=%llu, nav=%llu\n", dbg_CurrentPosition/192, SEI, CurPictureHeaderOffset);
 }
 
-//              TAP_Hdd_Fwrite(&navHD, sizeof(tnavHD), 1, fTF);
               if (fNavOut && !fwrite(&navHD, sizeof(tnavHD), 1, fNavOut))
               {
                 printf("ProcessNavFile(): Error writing to nav file!\n");
@@ -535,23 +554,10 @@ if (j > 2)
           case NAL_SLICE_IDR:
           case NAL_SLICE:
           {
-            byte        Bit;
-
             #if DEBUGLOG != 0
               strcpy(s, "NAL_SLICE");
             #endif
-
-            Bit = 31;
-            //first_mb_in_slice
-            get_ue_golomb32(&PSBuffer[Ptr+4], &Bit);
-            //slice_type
-            get_ue_golomb32(&PSBuffer[Ptr+4], &Bit);
-            //pic_parameter_set_id
-            SlicePPSID = get_ue_golomb32(&PSBuffer[Ptr+4], &Bit);
-
-            #if DEBUGLOG != 0
-              snprintf(&s[strlen(s)], sizeof(s)-strlen(s), " (PPS ID=%hu)\n", SlicePPSID);
-            #endif
+            GetSlicePPSID = TRUE;
 
             if((FrameType == 3) && (NALRefIdc > 0)) FrameType = 2;
             break;
@@ -565,19 +571,19 @@ if (j > 2)
 
         #if DEBUGLOG != 0
           if(NALRefIdc != 0) snprintf(&s[strlen(s)], sizeof(s)-strlen(s), " (NALRefIdc=%hu)", NALRefIdc);
-          printf("%8.8llx: %s\n", PrimaryPayloadOffset + Ptr, s);
+          printf("%8.8llx: %s\n", HeaderFound, s);
         #endif
-
-        Ptr += 4;
       }
     }
+
+    HeaderFound = 0;
     Ptr++;
   }
   TRACEEXIT;
   return ret;
 }
 
-bool SDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
+bool SDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacket)
 {
   unsigned long long    SeqHeader, PictHeader;
   byte                  FrameType;
@@ -586,13 +592,13 @@ bool SDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
 
   TRACEENTER;
 
-  SeqHeader = FindSequenceHeaderCode(&Packet->Data[0]);
+  SeqHeader = FindSequenceHeaderCode(Packet->Data);  // ***ACHTUNG!! Hier werden Header, die an Paketgrenze umgebrochen werden, nicht gefunden (-> vllt. auch nicht nötig, da die Nav-Erzeugung ja funktioniert?)
   if(SeqHeader != 0)
     CurrentSeqHeader = FilePositionOfPacket + SeqHeader;
 
   for(i = 0; i < 166; i++)
   {
-    if(GetPTS(&Packet->Data[i], &PTS, &DTS))  // GetPTS braucht deutlich mehr als 4 Bytes!! Hier müsste aufs nächste Paket zugegriffen werden...
+    if(GetPTS(&Packet->Data[i], &PTS, &DTS))  // ***ACHTUNG!! Überlauf möglich - GetPTS braucht deutlich mehr als 4 Bytes!! Hier müsste aufs nächste Paket zugegriffen werden...
     {
       if((FirstPTS == 0) && (PTS > 0)) FirstPTS = PTS;
       break;
@@ -601,7 +607,7 @@ bool SDNAV_ParsePacket(trec *Packet, unsigned long long FilePositionOfPacket)
 
   if(CurrentSeqHeader > 0)
   {
-    PictHeader = FindPictureHeader(&Packet->Data[0], &FrameType);
+    PictHeader = FindPictureHeader(Packet->Data, &FrameType);  // ***ACHTUNG!! Hier werden Header, die an Paketgrenze umgebrochen werden, nicht gefunden (-> vllt. auch nicht nötig, da die Nav-Erzeugung ja funktioniert?)
     if(PictHeader > 0)
     {
       if(SDNav[0].Timems > LastTimems)
@@ -706,7 +712,7 @@ bool CloseNavFiles(void)
   return ret;
 }
 
-void ProcessNavFile(const unsigned long long CurrentPosition, const unsigned long long PositionOffset, trec *Packet)
+void ProcessNavFile(const unsigned long long CurrentPosition, const unsigned long long PositionOffset, tTSPacket *Packet)
 {
   static byte           NavBuffer[sizeof(tnavHD)];
   static tnavSD        *curSDNavRec = (tnavSD*) &NavBuffer[0];
@@ -740,8 +746,7 @@ void ProcessNavFile(const unsigned long long CurrentPosition, const unsigned lon
   if (fNavOut)
   {
 dbg_CurrentPosition = CurrentPosition;
-dbg_PositionOffset1 = dbg_PositionOffset2;
-dbg_PositionOffset2 = PositionOffset;
+dbg_PositionOffset = PositionOffset;
 
     if (isHDVideo)
       WriteNavRec = HDNAV_ParsePacket(Packet, CurrentPosition - PositionOffset);
