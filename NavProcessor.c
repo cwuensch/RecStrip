@@ -26,12 +26,14 @@
 // Globale Variablen
 static FILE            *fNavIn = NULL, *fNavOut = NULL;
 static byte             FrameType;
-static dword            PTS = 0, DTS = 0, LastTimems = 0;
+static unsigned long long PosFirstNull = 0, PosSecondNull = 0, HeaderFound = 0;
+static dword            PTS = 0, LastTimems = 0;
+static byte             PTSBuffer[16];
+static int              PTSBufFill = 0;  // 0: keinen PTS suchen, 1..15 Puffer-Füllstand, bei 16 PTS auslesen und zurücksetzen
 
 //HDNAV
 static tnavHD           navHD;
 static tPPS             PPS[10];
-static unsigned long long PosFirstNull = 0, PosSecondNull = 0, HeaderFound = 0;
 static unsigned long long SEI = 0, SPS = 0, AUD = 0;
 static bool             GetPPSID = FALSE, GetSlicePPSID = FALSE;
 static int              PPSCount = 0;
@@ -41,7 +43,7 @@ static tFrameCtr        CounterStack[COUNTSTACKSIZE];
 static int              LastIFrame = 0;
 
 static unsigned long long dbg_CurPictureHeaderOffset = 0, dbg_SEIFound = 0;
-static unsigned long long dbg_CurrentPosition = 0, dbg_PositionOffset = 0, dbg_SEIPositionOffset = 0;
+static unsigned long long dbg_CurrentPosition = 0, dbg_PositionOffset = 0, dbg_HeaderPosOffset = 0, dbg_SEIPositionOffset = 0;
 
 //SDNAV
 static tnavSD           SDNav[2];
@@ -51,6 +53,7 @@ static dword            FirstPTS = 0 /*, LastdPTS = 0*/;
 static int              NavPtr = 0;
 static word             FirstSHPHOffset = 0;
 static byte             FrameCtr = 0, FrameOffset = 0;
+static bool             PictHeaderFound = FALSE, PictHeaderSkipped = FALSE;
 
 
 // ----------------------------------------------
@@ -101,7 +104,7 @@ static int get_ue_golomb32(byte *p, byte *StartBit)
 static bool GetPTS2(byte *Buffer, dword *pPTS, dword *pDTS)
 {
   TRACEENTER;
-  if(((Buffer[0] & 0xf0) == 0xe0) && (Buffer[4] & 0x80))
+  if((Buffer[0] & 0xf0) == 0xe0)
   {
     //MPEG Video Stream
     //00 00 01 E0 00 00 88 C0 0B 35 BD E9 8A 85 15 BD E9 36 25 FF
@@ -120,14 +123,14 @@ static bool GetPTS2(byte *Buffer, dword *pPTS, dword *pDTS)
     //..............................1000010.
 
     //Return PTS >> 1 so that we do not need 64 bit variables
-    if (pPTS)
+    if (pPTS && (Buffer[4] & 0x80))
       *pPTS = ((Buffer[ 6] & 0x0e) << 28) |
               ((Buffer[ 7] & 0xff) << 21) |
               ((Buffer[ 8] & 0xfe) << 13) |
               ((Buffer[ 9] & 0xff) <<  6) |
               ((Buffer[10] & 0xfe) >>  2);
 
-    if (pDTS)
+    if (pDTS && (Buffer[4] & 0xC0))
     {
       if (Buffer[7] & 0x40)
         *pDTS = ((Buffer[11] & 0x0e) << 28) |
@@ -175,7 +178,7 @@ static dword DeltaPCR(dword FirstPCR, dword SecondPCR)
     return (95443718 - FirstPCR + SecondPCR);
 }
 
-static dword FindSequenceHeaderCode(byte *Buffer)
+/*static dword FindSequenceHeaderCode(byte *Buffer)
 {
   int                   i;
 
@@ -209,16 +212,15 @@ static dword FindPictureHeader(byte *Buffer, byte *pFrameType)
   }
   TRACEEXIT;
   return 0;
-}
+}*/
 
 bool HDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacket)
 {
-  unsigned long long    PacketOffset, PosFirstNull=0, PosSecondNull=0;
-  byte                  PayloadSize;
-  static dword          FirstPCR = 0;
+  unsigned long long    PacketOffset;
+  byte                  PayloadStart, PayloadSize, Ptr;
 
+  static dword          FirstPCR = 0;
   byte                  NALType, NALRefIdc;
-  byte                  Ptr, PayloadStart;
   dword                 PCR;
   bool                  ret = FALSE, SEIFoundInPacket = FALSE;
   byte                  i, p;
@@ -276,7 +278,10 @@ bool HDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacke
     if (!HeaderFound)
     {
       if (PosFirstNull && PosSecondNull && (Packet->Data[Ptr] == 1))
+      {
         HeaderFound = PosFirstNull;
+dbg_HeaderPosOffset = dbg_PositionOffset;
+      }
       
       if (Packet->Data[Ptr] == 0)
       {
@@ -287,6 +292,22 @@ bool HDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacke
         PosSecondNull = 0;
 
       if (HeaderFound) { Ptr++; continue; }
+    }
+
+    // Process PTS
+    if (PTSBufFill)
+    {
+      PTSBuffer[PTSBufFill++] = Packet->Data[Ptr];
+      if (PTSBufFill > 10)
+      {
+        if(GetPTS2(PTSBuffer, &PTS, NULL))
+        {
+          #if DEBUGLOG != 0
+            printf("%8.8llx: PTS = 0x%8.8x, DTS = 0x%8.8x\n", PrimaryPayloadOffset + Ptr, PTS, DTS);
+          #endif
+        }
+        PTSBufFill = 0;
+      }
     }
 
     // Process access on Packet[Ptr+4]
@@ -328,13 +349,8 @@ bool HDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacke
 
       if((Packet->Data[Ptr] & 0x80) != 0x00)
       {
-        if(GetPTS2(&Packet->Data[Ptr], &PTS, &DTS))    // ***ACHTUNG!! Überlauf möglich - GetPTS braucht deutlich mehr als 1 Byte!! Hier müsste aufs nächste Paket zugegriffen werden...
-        {
-          #if DEBUGLOG != 0
-            printf("%8.8llx: PTS = 0x%8.8x, DTS = 0x%8.8x\n", PrimaryPayloadOffset + Ptr, PTS, DTS);
-          #endif
-          Ptr+=13;
-        }
+        PTSBuffer[0] = Packet->Data[Ptr];
+        PTSBufFill = 1;
       }
       else
       {
@@ -356,7 +372,7 @@ bool HDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacke
               if(FirstSEIPTS == 0) FirstSEIPTS = PTS;
               SEIFoundInPacket = TRUE;
 
-dbg_SEIPositionOffset = dbg_PositionOffset;
+dbg_SEIPositionOffset = dbg_HeaderPosOffset;
 dbg_SEIFound = dbg_CurrentPosition/192;
 //printf("%llu: SEI found: %llu\n", dbg_CurrentPosition/192, SEI);
             }            
@@ -585,85 +601,164 @@ if (j > 2)
 
 bool SDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacket)
 {
-  unsigned long long    SeqHeader, PictHeader;
+  unsigned long long    PacketOffset;
+  byte                  PayloadStart, PayloadSize, Ptr;
+
+  unsigned long long    PictHeader;
   byte                  FrameType;
   bool                  ret = TRUE;
-  int                   i;
 
   TRACEENTER;
 
-  SeqHeader = FindSequenceHeaderCode(Packet->Data);  // ***ACHTUNG!! Hier werden Header, die an Paketgrenze umgebrochen werden, nicht gefunden (-> vllt. auch nicht nötig, da die Nav-Erzeugung ja funktioniert?)
-  if(SeqHeader != 0)
-    CurrentSeqHeader = FilePositionOfPacket + SeqHeader;
+  // PROCESS THE TS-PACKET
 
-  for(i = 0; i < 166; i++)
+  // Valid TS packet and payload available?
+  if((Packet->SyncByte != 'G') || !Packet->Payload_Exists)
   {
-    if(GetPTS(&Packet->Data[i], &PTS, &DTS))  // ***ACHTUNG!! Überlauf möglich - GetPTS braucht deutlich mehr als 4 Bytes!! Hier müsste aufs nächste Paket zugegriffen werden...
-    {
-      if((FirstPTS == 0) && (PTS > 0)) FirstPTS = PTS;
-      break;
-    }
+    TRACEEXIT;
+    return FALSE;
   }
 
-  if(CurrentSeqHeader > 0)
+  if (Packet->Payload_Unit_Start)
+    PosFirstNull = 0; PosSecondNull = 0; HeaderFound = 0;
+
+  // Adaptation field available?
+  if(Packet->Adapt_Field_Exists)
+    PayloadStart = (Packet->Data[0] + 1);
+  else
+    PayloadStart = 0;
+
+  PacketOffset = FilePositionOfPacket + 4 + PACKETOFFSET;
+  PayloadSize = 184 - min(PayloadStart, 184);
+
+
+  // PROCESS THE PAYLOAD
+
+  // Search for start codes in the packet. Continue from last packet
+  Ptr = PayloadStart;
+  while(Ptr < PayloadSize)
   {
-    PictHeader = FindPictureHeader(Packet->Data, &FrameType);  // ***ACHTUNG!! Hier werden Header, die an Paketgrenze umgebrochen werden, nicht gefunden (-> vllt. auch nicht nötig, da die Nav-Erzeugung ja funktioniert?)
-    if(PictHeader > 0)
+    // Check for Header
+    if (!HeaderFound)
     {
-      if(SDNav[0].Timems > LastTimems)
-        LastTimems = SDNav[0].Timems;
+      if (PosFirstNull && PosSecondNull && (Packet->Data[Ptr] == 1))
+        HeaderFound = PosFirstNull;
+      
+      if (Packet->Data[Ptr] == 0)
+      {
+        PosFirstNull = PosSecondNull;
+        PosSecondNull = PacketOffset + Ptr;
+      }
       else
-        SDNav[0].Timems = LastTimems;
+        PosSecondNull = 0;
 
-//      if(NavPtr > 0) TAP_Hdd_Fwrite(&SDNav[0], sizeof(tnavSD), 1, fTF);
-      if (NavPtr > 1)
-        if (fNavOut && !fwrite(&SDNav[0], sizeof(tnavSD), 1, fNavOut))
-        {
-          printf("ProcessNavFile(): Error writing to nav file!\n");
-          fclose(fNavOut); fNavOut = NULL;
-        }
-      ret = TRUE;
-      memcpy(&SDNav[0], &SDNav[1], sizeof(tnavSD));
-      NavPtr++;
-
-      PictHeader += FilePositionOfPacket;
-
-      if(FrameType == 2) FrameOffset = 0;  // P-Frame
-
-      SDNav[1].FrameIndex  = FrameCtr + FrameOffset;
-
-      if(FrameType == 1)  // I-Frame
-      {
-        FirstSHPHOffset = (word) (PictHeader - CurrentSeqHeader);
-        FrameOffset            = FrameCtr;  // Position des I-Frames in der aktuellen Zählung (diese geht weiter, bis P kommt)
-        FrameCtr               = 0;         // zählt die Distanz zum letzten I-Frame
-      }
-
-      SDNav[1].SHOffset        = (dword)(PictHeader - CurrentSeqHeader);
-      SDNav[1].FrameType       = FrameType;
-      SDNav[1].MPEGType        = 0x20;
-      SDNav[1].iFrameSeqOffset = FirstSHPHOffset;
-
-      //Some magic for the AUS pvrs
-      SDNav[1].PHOffset        = (dword)(PictHeader - 4 + PACKETOFFSET);
-      SDNav[1].PHOffsetHigh    = (dword)((PictHeader - 4 + PACKETOFFSET) >> 32);
-      SDNav[1].PTS2            = PTS;
-
-      if(NavPtr > 0)
-      {
-        if(CurrentSeqHeader > LastPictureHeader)
-          SDNav[0].NextPH = (dword) (CurrentSeqHeader - LastPictureHeader);
-        else
-          SDNav[0].NextPH = (dword) (PictHeader - LastPictureHeader);
-      }
-
-      SDNav[1].Timems = (PTS - FirstPTS) / 45;
-//      SDNav[1].Zero1 = 0;
-      SDNav[1].Zero5 = 0;
-
-      LastPictureHeader = PictHeader;
-      FrameCtr++;
+      if (HeaderFound) { Ptr++; continue; }
     }
+
+    // Process PTS
+    if (PTSBufFill)
+    {
+      PTSBuffer[PTSBufFill++] = Packet->Data[Ptr];
+      if (PTSBufFill > 10)
+      {
+        if (GetPTS2(PTSBuffer, &PTS, NULL))
+          if((FirstPTS == 0) && (PTS > 0)) FirstPTS = PTS;
+        PTSBufFill = 0;
+      }
+    }
+
+    // Process a header
+    if (HeaderFound)
+    {
+      PTSBuffer[0] = Packet->Data[Ptr];
+      PTSBufFill = 1;
+
+      if (Packet->Data[Ptr] == 0xB3)
+        // Sequence Header
+        CurrentSeqHeader = HeaderFound;  // +5 könnte problematisch sein
+      else if (Packet->Data[Ptr] == 0x00)
+      {
+        // Picture Header
+        if (CurrentSeqHeader > 0)
+        {
+          PictHeaderFound = TRUE;
+          PictHeaderSkipped = FALSE;
+          Ptr++;
+          continue;
+        }
+      }
+    }
+
+    // Process Picture Header
+    if (PictHeaderFound)
+    {
+      if (!PictHeaderSkipped)
+      {
+        Ptr++;
+        PictHeaderSkipped = TRUE;
+        continue;
+      }
+      else
+      {
+        if(SDNav[0].Timems > LastTimems)
+          LastTimems = SDNav[0].Timems;
+        else
+          SDNav[0].Timems = LastTimems;
+
+        if (NavPtr > 1)
+          if (fNavOut && !fwrite(&SDNav[0], sizeof(tnavSD), 1, fNavOut))
+          {
+            printf("ProcessNavFile(): Error writing to nav file!\n");
+            fclose(fNavOut); fNavOut = NULL;
+          }
+        ret = TRUE;
+        memcpy(&SDNav[0], &SDNav[1], sizeof(tnavSD));
+        NavPtr++;
+
+
+        PictHeader = HeaderFound;  // +3 könnte problematisch sein
+
+        FrameType = (Packet->Data[Ptr] >> 3) & 0x03;
+        if(FrameType == 2) FrameOffset = 0;  // P-Frame
+
+        SDNav[1].FrameIndex  = FrameCtr + FrameOffset;
+
+        if(FrameType == 1)  // I-Frame
+        {
+          FirstSHPHOffset = (word) (PictHeader - CurrentSeqHeader);
+          FrameOffset            = FrameCtr;  // Position des I-Frames in der aktuellen Zählung (diese geht weiter, bis P kommt)
+          FrameCtr               = 0;         // zählt die Distanz zum letzten I-Frame
+        }
+
+        SDNav[1].SHOffset        = (dword)(PictHeader - CurrentSeqHeader);
+        SDNav[1].FrameType       = FrameType;
+        SDNav[1].MPEGType        = 0x20;
+        SDNav[1].iFrameSeqOffset = FirstSHPHOffset;
+
+        //Some magic for the AUS pvrs
+        SDNav[1].PHOffset        = (dword)(PictHeader - 4 + PACKETOFFSET);
+        SDNav[1].PHOffsetHigh    = (dword)((PictHeader - 4 + PACKETOFFSET) >> 32);
+        SDNav[1].PTS2            = PTS;
+
+        if(NavPtr > 0)
+        {
+          if(CurrentSeqHeader > LastPictureHeader)
+            SDNav[0].NextPH = (dword) (CurrentSeqHeader - LastPictureHeader);
+          else
+            SDNav[0].NextPH = (dword) (PictHeader - LastPictureHeader);
+        }
+
+        SDNav[1].Timems = (PTS - FirstPTS) / 45;
+        SDNav[1].Zero5 = 0;
+
+        LastPictureHeader = PictHeader;
+        FrameCtr++;
+      }
+      PictHeaderFound = FALSE;
+    }
+
+    HeaderFound = 0;
+    Ptr++;
   }
   TRACEEXIT;
   return ret;

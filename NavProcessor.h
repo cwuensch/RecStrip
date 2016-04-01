@@ -1,6 +1,8 @@
 #ifndef __NAVPROCESSORH__
 #define __NAVPROCESSORH__
 
+#include "RecStrip.h"
+
 typedef struct
 {
   dword                 SHOffset:24; // = (FrameType shl 24) or SHOffset
@@ -73,24 +75,6 @@ typedef enum
   SLICE_SI
 } tSLICE_Type;
 
-typedef struct
-{
-  char SyncByte;  // = 'G'
-  byte PID1:5;
-  byte Transport_Prio:1;
-  byte Payload_Unit_Start:1;
-  byte Transport_Error:1;
-  
-  byte PID2:8;
-  
-  byte ContinuityCount:4;
-  byte Payload_Exists:1;
-  byte Adapt_Field_Exists:1;
-  byte Scrambling_Ctrl:2;
-  
-  byte Adapt_Field_Length;
-  byte Data[184];
-} tTSPacket;
 
 //HDNAV
 typedef struct

@@ -48,11 +48,11 @@ static bool             LastEndedWithNull = TRUE, LastEndedWith3Nulls = FALSE;
 // *****  NALU Dump  *****
 // ----------------------------------------------
 
-inline int TsGetPID(tTSPacketHeader *Packet)
+inline int TsGetPID(tTSPacket *Packet)
 {
   return ((Packet->PID1 *256) | Packet->PID2);
 }
-inline int TsPayloadOffset(tTSPacketHeader *Packet)
+inline int TsPayloadOffset(tTSPacket *Packet)
 {
   int o = (Packet->Adapt_Field_Exists) ? Packet->Adapt_Field_Length+5 : 4;
   return (o <= TS_SIZE ? o : TS_SIZE);
@@ -61,12 +61,12 @@ inline int TsPayloadOffset(tTSPacketHeader *Packet)
 static void TsExtendAdaptionField(byte *Packet, int ToLength)
 {
   // Hint: ExtenAdaptionField(p, TsPayloadOffset(p) - 4) is a null operation
-  tTSPacketHeader *TSPacket;
+  tTSPacket *TSPacket;
   int Offset;
   int NewPayload;
 
   TRACEENTER;
-  TSPacket = (tTSPacketHeader*) Packet;
+  TSPacket = (tTSPacket*) Packet;
   Offset = TsPayloadOffset(TSPacket); // First byte after existing adaption field
 
   if (ToLength <= 0)
@@ -243,7 +243,7 @@ int ProcessTSPacket(unsigned char *Packet, unsigned long long FilePosition)
 {
   int ContinuityOffset = 0;
   int ContinuityInput;
-  tTSPacketHeader *TSPacket = (tTSPacketHeader*) Packet;
+  tTSPacket *TSPacket = (tTSPacket*) Packet;
 
   TRACEENTER;
 
@@ -322,7 +322,7 @@ int ProcessTSPacket(unsigned char *Packet, unsigned long long FilePosition)
       // Prüfe ob Folgepaket mit 00 00 anfängt
       // dirty Hack: Greife auf den FileStream von RecStrip zu (unschön, aber ich weiß keine bessere Lösung)
       byte               Buffer[192];
-      tTSPacketHeader   *tmpPacket = (tTSPacketHeader*) &Buffer[PACKETOFFSET];
+      tTSPacket         *tmpPacket = (tTSPacket*) &Buffer[PACKETOFFSET];
 //      unsigned long long OldFilePos = ftello64(fIn);
       int                CurPid, tmpPayload, i;
 

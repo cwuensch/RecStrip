@@ -1,6 +1,8 @@
 #ifndef __NALUDUMPH__
 #define __NALUDUMPH__
 
+#include "RecStrip.h"
+
 #define TS_SIZE               188
 
 // ----------------------------------------------
@@ -23,24 +25,9 @@ typedef struct
   bool ZerosOnly;
 } sPayloadInfo;
 
-typedef struct
-{
-  char SyncByte;  // = 'G'
-  byte PID1:5;
-  byte Transport_Prio:1;
-  byte Payload_Unit_Start:1;
-  byte Transport_Error:1;
-  byte PID2:8;
-  byte ContinuityCount:4;
-  byte Payload_Exists:1;
-  byte Adapt_Field_Exists:1;
-  byte Scrambling_Ctrl:2;
-  byte Adapt_Field_Length;
-} tTSPacketHeader;
 
-
-int TsGetPID(tTSPacketHeader *Packet);
-int TsPayloadOffset(tTSPacketHeader *Packet);
+int TsGetPID(tTSPacket *Packet);
+int TsPayloadOffset(tTSPacket *Packet);
 int ProcessTSPacket(unsigned char *Packet, unsigned long long FilePosition);
 
 #endif

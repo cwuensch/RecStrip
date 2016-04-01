@@ -49,7 +49,27 @@ typedef enum
   ST_NRTYPES
 } SYSTEM_TYPE;
 
+
 typedef struct
+{
+  char SyncByte;  // = 'G'
+  byte PID1:5;
+  byte Transport_Prio:1;
+  byte Payload_Unit_Start:1;
+  byte Transport_Error:1;
+  
+  byte PID2:8;
+  
+  byte ContinuityCount:4;
+  byte Payload_Exists:1;
+  byte Adapt_Field_Exists:1;
+  byte Scrambling_Ctrl:2;
+  
+  byte Adapt_Field_Length;
+  byte Data[184];
+} tTSPacket;
+
+/*typedef struct
 {
   word                  PID;
   int                   ValidBuffer;    //0: no data yet, Buffer1 gets filled
@@ -62,7 +82,7 @@ typedef struct
   byte                 *Buffer1, *Buffer2;
   int                   PSFileCtr;
   byte                  ErrorFlag;
-} tPSBuffer;
+} tPSBuffer; */
 
 
 

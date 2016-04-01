@@ -356,9 +356,9 @@ int main(int argc, const char* argv[])
     ReadBytes = fread(Buffer, 1, PACKETSIZE, fIn);
     if (ReadBytes > 0)
     {
-      if (Buffer[PACKETOFFSET] == 'G')
+      if (Buffer[PACKETOFFSET] == 'G' || ((tTSPacket*) &Buffer[PACKETOFFSET])->Scrambling_Ctrl > 0x01)
       {
-        int CurPID = TsGetPID((tTSPacketHeader*) &Buffer[PACKETOFFSET]);
+        int CurPID = TsGetPID((tTSPacket*) &Buffer[PACKETOFFSET]);
         DropCurPacket = FALSE;
 
         if (DoStrip)
