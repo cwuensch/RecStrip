@@ -65,7 +65,6 @@ typedef struct
   byte Adapt_Field_Exists:1;
   byte Scrambling_Ctrl:2;
   
-  byte Adapt_Field_Length;
   byte Data[184];
 } tTSPacket;
 

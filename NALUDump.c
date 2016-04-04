@@ -54,7 +54,7 @@ inline int TsGetPID(tTSPacket *Packet)
 }
 inline int TsPayloadOffset(tTSPacket *Packet)
 {
-  int o = (Packet->Adapt_Field_Exists) ? Packet->Adapt_Field_Length+5 : 4;
+  int o = (Packet->Adapt_Field_Exists) ? Packet->Data[0]+5 : 4;
   return (o <= TS_SIZE ? o : TS_SIZE);
 }
 
@@ -81,15 +81,15 @@ static void TsExtendAdaptionField(byte *Packet, int ToLength)
   TSPacket->Adapt_Field_Exists = 1;
 
   // Set new length of adaption field:
-  TSPacket->Adapt_Field_Length = (ToLength <= TS_SIZE-4) ? ToLength-1 : TS_SIZE-4-1;
+  TSPacket->Data[0] = (ToLength <= TS_SIZE-4) ? ToLength-1 : TS_SIZE-4-1;
 
-  if (TSPacket->Adapt_Field_Length == TS_SIZE-4-1)
+  if (TSPacket->Data[0] == TS_SIZE-4-1)
   {
     // No more payload, remove payload flag
     TSPacket->Payload_Exists = 0;
   }
 
-  NewPayload = TSPacket->Adapt_Field_Length + 5; // First byte after new adaption field
+  NewPayload = TSPacket->Data[0] + 5; // First byte after new adaption field
 
   // Fill new adaption field
   if (Offset == 4 && Offset < NewPayload)
