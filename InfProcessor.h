@@ -1,6 +1,8 @@
 #ifndef __INFPROCESSORH__
 #define __INFPROCESSORH__
 
+#include "RecStrip.h"
+
 typedef struct
 {
   char                  HeaderMagic[4];
@@ -71,13 +73,6 @@ typedef struct
   dword                 ExtEventEventID;
   char                  ExtEventText[1024];
 } TYPE_ExtEvent_Info;
-
-typedef struct
-{
-  dword                 NrBookmarks;
-  dword                 Bookmarks[177];
-  dword                 Resume;
-} TYPE_Bookmark_Info;
 
 typedef struct
 {
@@ -170,6 +165,5 @@ typedef struct
 
 bool LoadInfFile(const char *AbsInfName);
 bool CloseInfFile(const char *AbsDestInf, const char *AbsSourceInf, bool Save);
-void ProcessInfFile(const dword CurrentPosition, const dword PositionOffset);
 
 #endif

@@ -24,12 +24,14 @@
 
 
 // Globale Variablen
+dword                   LastTimems = 0, TimeOffset = 0;
 static FILE            *fNavIn = NULL, *fNavOut = NULL;
 static byte             FrameType;
 static unsigned long long PosFirstNull = 0, PosSecondNull = 0, HeaderFound = 0;
-static dword            PTS = 0, LastTimems = 0;
+static dword            PTS = 0;
 static byte             PTSBuffer[16];
 static int              PTSBufFill = 0;  // 0: keinen PTS suchen, 1..15 Puffer-Füllstand, bei 16 PTS auslesen und zurücksetzen
+bool                    WaitForIFrame = TRUE, FirstPacketAfterCut = FALSE;
 
 //HDNAV
 static tnavHD           navHD;
@@ -46,7 +48,7 @@ static unsigned long long dbg_NavPictureHeaderOffset = 0, dbg_SEIFound = 0;
 static unsigned long long dbg_CurrentPosition = 0, dbg_PositionOffset = 0, dbg_HeaderPosOffset = 0, dbg_SEIPositionOffset = 0;
 
 //SDNAV
-static tnavSD           SDNav;
+static tnavSD           navSD;
 static unsigned long long PictHeader = 0, LastPictureHeader = 0;
 static unsigned long long CurrentSeqHeader = 0;
 static dword            FirstPTS = 0 /*, LastdPTS = 0*/;
@@ -209,16 +211,20 @@ static dword FindPictureHeader(byte *Buffer, byte *pFrameType)
   return 0;
 }*/
 
+void SetFirstPacketAfterCut()
+{
+  FirstPacketAfterCut = TRUE;
+  WaitForIFrame = TRUE;
+}
+
 void HDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacket)
 {
-  unsigned long long    PacketOffset;
   byte                  PayloadStart, Ptr;
 
   static dword          FirstPCR = 0;
   byte                  NALType, NALRefIdc;
   dword                 PCR;
   bool                  SEIFoundInPacket = FALSE;
-  byte                  i, p;
   #if DEBUGLOG != 0
     char                  s[80];
   #endif
@@ -239,7 +245,7 @@ void HDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacke
     #if DEBUGLOG != 0
       printf("\n%8.8llx: PES Start\n", FilePositionOfPacket);
     #endif
-    PosFirstNull = 0; PosSecondNull = 0; HeaderFound = FALSE;
+    PosFirstNull = 0; PosSecondNull = 0; HeaderFound = 0; PTSBufFill = 0;
     // alles andere auch zurücksetzen?
   }
 
@@ -254,12 +260,10 @@ void HDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacke
         printf("%8.8llx: PCR = 0x%8.8x, dPCR = 0x%8.8x\n", PrimaryTSOffset, PCR, DeltaPCR(FirstPCR, PCR));
       #endif
     }
-    PayloadStart = (Packet->Data[0] + 1);
+    PayloadStart = Packet->Data[0] + 1;
   }
   else
     PayloadStart = 0;
-
-  PacketOffset = FilePositionOfPacket + 4 + PACKETOFFSET;
 
 
   // PROCESS THE PAYLOAD
@@ -280,7 +284,7 @@ dbg_HeaderPosOffset = dbg_PositionOffset;
       if (Packet->Data[Ptr] == 0)
       {
         PosFirstNull = PosSecondNull;
-        PosSecondNull = PacketOffset + Ptr;
+        PosSecondNull = FilePositionOfPacket + 4 + Ptr;
       }
       else
         PosSecondNull = 0;
@@ -368,8 +372,8 @@ dbg_HeaderPosOffset = dbg_PositionOffset;
               SEIFoundInPacket = TRUE;
 
 dbg_SEIPositionOffset = dbg_HeaderPosOffset;
-dbg_SEIFound = dbg_CurrentPosition/192;
-//printf("%llu: SEI found: %llu\n", dbg_CurrentPosition/192, SEI);
+dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
+//printf("%llu: SEI found: %llu\n", dbg_CurrentPosition/PACKETSIZE, SEI);
             }            
             break;
           };
@@ -518,6 +522,10 @@ dbg_SEIFound = dbg_CurrentPosition/192;
               navHD.SEIOffsetLow = SEI & 0x00000000ffffffffll;
               navHD.SEIPTS = SEIPTS;
 
+              navHD.SEISPS = (dword) (SEI - SPS);
+              navHD.SPSLen = SPSLen;
+              navHD.IFrame = 0;
+
               if (AUD == 0 || NavPtr == 0 || SystemType == ST_TMSC)  // CRP-2401 zählt Filler-NALU nicht als Delimiter
                 AUD = HeaderFound;
               if (AUD >= SEI)
@@ -525,21 +533,30 @@ dbg_SEIFound = dbg_CurrentPosition/192;
 
               if (!fNavIn && !navHD.Timems)
                 navHD.Timems = (SEIPTS - FirstSEIPTS) / 45;
-              if(navHD.Timems > LastTimems) LastTimems = navHD.Timems;
-              navHD.Timems = LastTimems;
 
-              navHD.SEISPS = (dword) (SEI - SPS);
-              navHD.SPSLen = SPSLen;
-              navHD.IFrame = 0;
+              // nach Schnittpunkt die fehlende Zeit von Timems abziehen
+              if (FirstPacketAfterCut)
+              {
+                TimeOffset += navHD.Timems - LastTimems;
+                FirstPacketAfterCut = FALSE;
+              }
+              navHD.Timems -= TimeOffset;
+
+              // sicherstellen, dass Timems monoton ansteigt
+              if( ((int)(navHD.Timems - LastTimems)) >= 0)  LastTimems = navHD.Timems;
+              else  navHD.Timems = LastTimems;
 
 {
   unsigned long long RefPictureHeaderOffset = dbg_NavPictureHeaderOffset - dbg_SEIPositionOffset;
-  if (fNavIn && SEI != RefPictureHeaderOffset && dbg_CurrentPosition/192 != dbg_SEIFound)
-    printf("DEBUG: Problem! pos=%llu, offset=%llu, Orig-Nav-PHOffset=%llu, Rebuilt-Nav-PHOffset=%llu, Differenz= %lld * 192 + %lld\n", dbg_CurrentPosition, dbg_SEIPositionOffset, dbg_NavPictureHeaderOffset, SEI, ((long long int)(SEI-RefPictureHeaderOffset))/192, ((long long int)(SEI-RefPictureHeaderOffset))%192);
-//printf("%llu: fwrite: SEI=%llu, nav=%llu\n", dbg_CurrentPosition/192, SEI, CurPictureHeaderOffset);
+  if (fNavIn && SEI != RefPictureHeaderOffset && dbg_CurrentPosition/PACKETSIZE != dbg_SEIFound)
+    printf("DEBUG: Problem! pos=%llu, offset=%llu, Orig-Nav-PHOffset=%llu, Rebuilt-Nav-PHOffset=%llu, Differenz= %lld * %d + %lld\n", dbg_CurrentPosition, dbg_SEIPositionOffset, dbg_NavPictureHeaderOffset, SEI, ((long long int)(SEI-RefPictureHeaderOffset))/PACKETSIZE, PACKETSIZE, ((long long int)(SEI-RefPictureHeaderOffset))%PACKETSIZE);
+//printf("%llu: fwrite: SEI=%llu, nav=%llu\n", dbg_CurrentPosition/PACKETSIZE, SEI, CurPictureHeaderOffset);
 }
 
-              if (fNavOut && !fwrite(&navHD, sizeof(tnavHD), 1, fNavOut))
+              if (WaitForIFrame && navHD.FrameType == 1)
+                WaitForIFrame = FALSE;
+
+              if (fNavOut && !WaitForIFrame && !fwrite(&navHD, sizeof(tnavHD), 1, fNavOut))
               {
                 printf("ProcessNavFile(): Error writing to nav file!\n");
                 fclose(fNavOut); fNavOut = NULL;
@@ -590,7 +607,6 @@ dbg_SEIFound = dbg_CurrentPosition/192;
 
 void SDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacket)
 {
-  unsigned long long    PacketOffset;
   byte                  PayloadStart, Ptr;
   byte                  FrameType;
 
@@ -606,15 +622,13 @@ void SDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacke
   }
 
   if (Packet->Payload_Unit_Start)
-    PosFirstNull = 0; PosSecondNull = 0; HeaderFound = 0;
+    PosFirstNull = 0; PosSecondNull = 0; HeaderFound = 0; PTSBufFill = 0;
 
   // Adaptation field available?
   if(Packet->Adapt_Field_Exists)
-    PayloadStart = (Packet->Data[0] + 1);
+    PayloadStart = Packet->Data[0] + 1;
   else
     PayloadStart = 0;
-
-  PacketOffset = FilePositionOfPacket + 4 + PACKETOFFSET;
 
 
   // PROCESS THE PAYLOAD
@@ -632,7 +646,7 @@ void SDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacke
       if (Packet->Data[Ptr] == 0)
       {
         PosFirstNull = PosSecondNull;
-        PosSecondNull = PacketOffset + Ptr;
+        PosSecondNull = FilePositionOfPacket + 4 + Ptr;
       }
       else
         PosSecondNull = 0;
@@ -658,7 +672,7 @@ void SDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacke
       if (PictHeader)
       {
         // noch ein Byte skippen für FrameType
-        HeaderFound = FALSE;
+        HeaderFound = 0;
         Ptr++;
         continue;
       }
@@ -690,20 +704,27 @@ void SDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacke
     if (PictHeader)
     {
       // OLD NAV RECORD
-      if(SDNav.Timems > LastTimems)
-        LastTimems = SDNav.Timems;
-      else
-        SDNav.Timems = LastTimems;
+      navSD.NextPH = (dword) (((CurrentSeqHeader>LastPictureHeader) ? CurrentSeqHeader : PictHeader) - LastPictureHeader);
+
+      // nach Schnittpunkt die fehlende Zeit von Timems abziehen
+      if (FirstPacketAfterCut)
+      {
+        TimeOffset += navSD.Timems - LastTimems;
+        FirstPacketAfterCut = FALSE;
+      }
+      navSD.Timems -= TimeOffset;
+
+      // sicherstellen, dass Timems monoton ansteigt
+      if( ((int)(navSD.Timems - LastTimems)) >= 0)  LastTimems = navSD.Timems;
+      else  navSD.Timems = LastTimems;
+
+      if (WaitForIFrame && navSD.FrameType == 1)
+        WaitForIFrame = FALSE;
 
       if(NavPtr > 0)
       {
-        if(CurrentSeqHeader > LastPictureHeader)
-          SDNav.NextPH = (dword) (CurrentSeqHeader - LastPictureHeader);
-        else
-          SDNav.NextPH = (dword) (PictHeader - LastPictureHeader);
-
         // Write the nav record
-        if (fNavOut && !fwrite(&SDNav, sizeof(tnavSD), 1, fNavOut))
+        if (fNavOut && !WaitForIFrame && !fwrite(&navSD, sizeof(tnavSD), 1, fNavOut))
         {
           printf("ProcessNavFile(): Error writing to nav file!\n");
           fclose(fNavOut); fNavOut = NULL;
@@ -715,7 +736,7 @@ void SDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacke
       FrameType = (Packet->Data[Ptr] >> 3) & 0x03;
       if(FrameType == 2) FrameOffset = 0;  // P-Frame
 
-      SDNav.FrameIndex  = FrameCtr + FrameOffset;
+      navSD.FrameIndex  = FrameCtr + FrameOffset;
 
       if(FrameType == 1)  // I-Frame
       {
@@ -724,19 +745,19 @@ void SDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacke
         FrameCtr               = 0;         // zählt die Distanz zum letzten I-Frame
       }
 
-      SDNav.SHOffset        = (dword)(PictHeader - CurrentSeqHeader);
-      SDNav.FrameType       = FrameType;
-      SDNav.MPEGType        = 0x20;
-      SDNav.iFrameSeqOffset = FirstSHPHOffset;
+      navSD.SHOffset        = (dword)(PictHeader - CurrentSeqHeader);
+      navSD.FrameType       = FrameType;
+      navSD.MPEGType        = 0x20;
+      navSD.iFrameSeqOffset = FirstSHPHOffset;
 
       //Some magic for the AUS pvrs
-      SDNav.PHOffset        = (dword)(PictHeader - 4 + PACKETOFFSET);
-      SDNav.PHOffsetHigh    = (dword)((PictHeader - 4 + PACKETOFFSET) >> 32);
-      SDNav.PTS2            = PTS;
+      navSD.PHOffset        = (dword)PictHeader;
+      navSD.PHOffsetHigh    = (dword)(PictHeader >> 32);
+      navSD.PTS2            = PTS;
 
-      SDNav.Timems = (PTS - FirstPTS) / 45;
-      SDNav.Zero5 = 0;
-      SDNav.NextPH = 0;
+      navSD.Timems = (PTS - FirstPTS) / 45;
+      navSD.Zero5 = 0;
+      navSD.NextPH = 0;
 
       LastPictureHeader = PictHeader;
       PictHeader = 0;
@@ -750,49 +771,6 @@ void SDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacke
   return;
 }
 
-bool LoadNavFiles(const char* AbsInNav, const char* AbsOutNav)
-{
-  TRACEENTER;
-  memset(&navHD, 0, sizeof(tnavHD));
-  memset(&SDNav, 0, sizeof(tnavSD));
-
-  fNavIn = fopen(AbsInNav, "rb");
-//  if (fNavIn)
-  {
-//    setvbuf(fNavIn, NULL, _IOFBF, BUFSIZE);
-    fNavOut = fopen(AbsOutNav, "wb");
-    if (fNavOut)
-    {
-//    setvbuf(fNavOut, NULL, _IOFBF, BUFSIZE);
-    }
-    else
-      printf("WARNING: Cannot create nav file %s.\n", AbsOutNav);
-
-    TRACEEXIT;
-    return TRUE;
-  }
-  TRACEEXIT;
-  return FALSE;
-}
-
-bool CloseNavFiles(void)
-{
-  bool                  ret = TRUE;
-
-  TRACEENTER;
-  if (fNavOut && !isHDVideo && (NavPtr > 0))
-    fwrite(&SDNav, sizeof(tnavSD), 1, fNavOut);
-
-  if (fNavIn) fclose(fNavIn);
-  fNavIn = NULL;
-  if (fNavOut)
-    ret = (/*fflush(fNavOut) == 0 &&*/ fclose(fNavOut) == 0);
-  fNavOut = NULL;
-
-  TRACEEXIT;
-  return ret;
-}
-
 void ProcessNavFile(const unsigned long long CurrentPosition, const unsigned long long PositionOffset, tTSPacket *Packet)
 {
   static byte           NavBuffer[sizeof(tnavHD)];
@@ -803,14 +781,6 @@ void ProcessNavFile(const unsigned long long CurrentPosition, const unsigned lon
   TRACEENTER;
   if (FirstRun && fNavIn)
   {
-    // Versuche, nav-Dateien aus Timeshift-Aufnahmen zu unterstützen ***experimentell***
-    dword FirstDword = 0;
-    fread(&FirstDword, 4, 1, fNavIn);
-    if(FirstDword == 0x72767062)  // 'bpvr'
-      fseek(fNavIn, 1056, SEEK_SET);
-    else
-      rewind(fNavIn);
-
     if (fread(NavBuffer, isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD), 1, fNavIn))
       NextPictureHeaderOffset = ((unsigned long long)(curSDNavRec->PHOffsetHigh) << 32) | curSDNavRec->PHOffset;
     else
@@ -819,7 +789,7 @@ void ProcessNavFile(const unsigned long long CurrentPosition, const unsigned lon
       if(fNavOut) fclose(fNavOut); fNavOut = NULL;
     }
 
-    memset(CounterStack, 0, COUNTSTACKSIZE * sizeof(tFrameCtr));
+//    memset(CounterStack, 0, COUNTSTACKSIZE * sizeof(tFrameCtr));
     FirstRun = FALSE;
   }
 
@@ -834,30 +804,32 @@ dbg_PositionOffset = PositionOffset;
     else
       SDNAV_ParsePacket(Packet, CurrentPosition - PositionOffset);
 
-    while(fNavIn &&  ( (isHDVideo  && (CurrentPosition + PACKETSIZE > NextPictureHeaderOffset))
-                    || (!isHDVideo && (CurrentPosition + PACKETSIZE > NextPictureHeaderOffset))) )
+    while(fNavIn && (CurrentPosition + 188 > NextPictureHeaderOffset))
     {
 
 // for Debugging only: CurPictureHeaderOffset sollte IMMER mit der zu schreibenden Position übereinstimmen
 if (isHDVideo)
   dbg_NavPictureHeaderOffset = NextPictureHeaderOffset;
-//printf("%llu: Setze Offset aus nav: %llu\n", CurrentPosition/192, NextPictureHeaderOffset);
+//printf("%llu: Setze Offset aus nav: %llu\n", CurrentPosition/PACKETSIZE, NextPictureHeaderOffset);
 else
 {
-  unsigned long long RefPictureHeaderOffset = NextPictureHeaderOffset + 4 - PACKETOFFSET - PositionOffset;
+  unsigned long long RefPictureHeaderOffset = NextPictureHeaderOffset - PositionOffset;
   if (fNavIn && LastPictureHeader != RefPictureHeaderOffset)
-    printf("DEBUG: Problem! pos=%llu, offset=%llu, Orig-Nav-PHOffset=%llu, Rebuilt-Nav-PHOffset=%llu, Differenz= %lld * 192 + %lld\n", CurrentPosition, PositionOffset, NextPictureHeaderOffset, LastPictureHeader, ((long long int)(LastPictureHeader-RefPictureHeaderOffset))/192, ((long long int)(LastPictureHeader-RefPictureHeaderOffset))%192);
+    printf("DEBUG: Problem! pos=%llu, offset=%llu, Orig-Nav-PHOffset=%llu, Rebuilt-Nav-PHOffset=%llu, Differenz= %lld * %d + %lld\n", CurrentPosition, PositionOffset, NextPictureHeaderOffset, LastPictureHeader, ((long long int)(LastPictureHeader-RefPictureHeaderOffset))/PACKETSIZE, PACKETSIZE, ((long long int)(LastPictureHeader-RefPictureHeaderOffset))%PACKETSIZE);
 }
 
-      if (isHDVideo)
+      if (fNavIn)
       {
-        navHD.Timems = curSDNavRec->Timems;
-//        navHD.FrameIndex = ((tnavHD*)NavBuffer)->FrameIndex;
-      }
-      else if (fNavIn)
-      {
-        SDNav.Timems = curSDNavRec->Timems;
-//        SDNav.FrameIndex = curSDNavRec->FrameIndex;
+        if (isHDVideo)
+        {
+          navHD.Timems = curSDNavRec->Timems;
+//          navHD.FrameIndex = ((tnavHD*)NavBuffer)->FrameIndex;
+        }
+        else if (fNavIn)
+        {
+          navSD.Timems = curSDNavRec->Timems;
+//          navSD.FrameIndex = curSDNavRec->FrameIndex;
+        }
       }
 
       if (fNavIn)
@@ -874,3 +846,57 @@ else
   TRACEEXIT;
 }
 
+void QuickProcNavFile(const unsigned long long CurrentPosition, const unsigned long long PositionOffset, tTSPacket* Packet)
+{
+  //
+}
+
+bool LoadNavFiles(const char* AbsInNav, const char* AbsOutNav)
+{
+  TRACEENTER;
+  memset(&navHD, 0, sizeof(tnavHD));
+  memset(&navSD, 0, sizeof(tnavSD));
+
+  fNavIn = fopen(AbsInNav, "rb");
+  if (fNavIn)
+  {
+//    setvbuf(fNavIn, NULL, _IOFBF, BUFSIZE);
+
+    // Versuche, nav-Dateien aus Timeshift-Aufnahmen zu unterstützen ***experimentell***
+    dword FirstDword = 0;
+    fread(&FirstDword, 4, 1, fNavIn);
+    if(FirstDword == 0x72767062)  // 'bpvr'
+      fseek(fNavIn, 1056, SEEK_SET);
+    else
+      rewind(fNavIn);
+  }
+
+  fNavOut = fopen(AbsOutNav, "wb");
+  if (fNavOut)
+  {
+//  setvbuf(fNavOut, NULL, _IOFBF, BUFSIZE);
+  }
+  else
+    printf("WARNING: Cannot create nav file %s.\n", AbsOutNav);
+
+  TRACEEXIT;
+  return TRUE;
+}
+
+bool CloseNavFiles(void)
+{
+  bool                  ret = TRUE;
+
+  TRACEENTER;
+  if (fNavOut && !isHDVideo && (NavPtr > 0))
+    fwrite(&navSD, sizeof(tnavSD), 1, fNavOut);
+
+  if (fNavIn) fclose(fNavIn);
+  fNavIn = NULL;
+  if (fNavOut)
+    ret = (/*fflush(fNavOut) == 0 &&*/ fclose(fNavOut) == 0);
+  fNavOut = NULL;
+
+  TRACEEXIT;
+  return ret;
+}

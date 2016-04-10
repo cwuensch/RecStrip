@@ -345,7 +345,7 @@ int ProcessTSPacket(unsigned char *Packet, unsigned long long FilePosition)
             if (Buffer[PACKETOFFSET + tmpPayload] == 0 && Buffer[PACKETOFFSET + tmpPayload + 1] == 0)
             {
 //printf(" --> confirmed by NextStartsWith00!\n");
-              fseeko64(fIn, FilePosition + PACKETSIZE, SEEK_SET);
+              fseeko64(fIn, FilePosition + 188, SEEK_SET);
               TRACEEXIT;
               return 2;
             }
@@ -357,7 +357,7 @@ printf("WARNING!!! No StartCode in following packet!!! (pos=%llu)\n", FilePositi
           }
         }
       }
-      fseeko64(fIn, FilePosition + PACKETSIZE, SEEK_SET);
+      fseeko64(fIn, FilePosition + 188, SEEK_SET);
     }
   }
   LastEndedWithNull   = (Packet[TS_SIZE-1] == 0);  // wird nur gesetzt für das zuletzt erhaltene Paket

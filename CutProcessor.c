@@ -21,9 +21,7 @@
 
 
 // Globale Variablen
-static tSegmentMarker  *SegmentMarker = NULL;       //[0]=Start of file, [x]=End of file
-static int              NrSegmentMarker = 0;
-static int              ActiveSegment = 0;
+static bool             WriteCutFile = TRUE, WriteCutInf;
 
 
 // ----------------------------------------------
@@ -156,7 +154,7 @@ static bool CutFileDecodeBin(FILE *fCut, unsigned long long *OutSavedSize)
     if (ret)
     {
       SavedNrSegments = min(SavedNrSegments, NRSEGMENTMARKER);
-      while (fread(SegmentMarker, sizeof(tSegmentMarker)-4, 1, fCut))
+      while (fread(&SegmentMarker[NrSegmentMarker], sizeof(tSegmentMarker)-4, 1, fCut))
       {
         SegmentMarker[NrSegmentMarker].pCaption = NULL;
         NrSegmentMarker++;
@@ -241,7 +239,7 @@ static bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
       if (HeaderMode)
       {
         char            Name[50];
-        unsigned long long Value;
+        unsigned long long       Value;
 
         if (sscanf(Buffer, "%49[^= ] = %lld", Name, &Value) == 2)
         {
@@ -290,6 +288,41 @@ static bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
   return ret;
 }
 
+static bool CutDecodeFromBM(dword Bookmarks[], int NrBookmarks)
+{
+  int                   End = 0, Start, i;
+  bool                  ret = FALSE;
+
+  TRACEENTER;
+
+  ResetSegmentMarkers();
+  ActiveSegment = 0;
+  if (Bookmarks[NRBOOKMARKS - 2] == 0x8E0A4247)       // ID im vorletzen Bookmark-Dword (-> neues SRP-Format und CRP-Format auf SRP)
+    End = NRBOOKMARKS - 2;
+  else if (Bookmarks[NRBOOKMARKS - 1] == 0x8E0A4247)  // ID im letzten Bookmark-Dword (-> CRP- und altes SRP-Format)
+    End = NRBOOKMARKS - 1;
+
+  if(End)
+  {
+    ret = TRUE;
+    NrSegmentMarker = Bookmarks[End - 1];
+    if (NrSegmentMarker > NRSEGMENTMARKER) NrSegmentMarker = NRSEGMENTMARKER;
+
+    Start = End - NrSegmentMarker - 5;
+    for (i = 0; i < NrSegmentMarker; i++)
+    {
+      SegmentMarker[i].Block = Bookmarks[Start + i];
+      SegmentMarker[i].Selected = ((Bookmarks[End-5+(i/32)] & (1 << (i%32))) != 0);
+      SegmentMarker[i].Timems = 0;  // NavGetBlockTimeStamp(SegmentMarker[i].Block);
+      SegmentMarker[i].Percent = 0;
+      SegmentMarker[i].pCaption = NULL;
+    }
+  }
+
+  TRACEEXIT;
+  return ret;
+}
+
 bool CutFileLoad(const char *AbsCutName)
 {
   FILE                 *fCut = NULL;
@@ -299,6 +332,17 @@ bool CutFileLoad(const char *AbsCutName)
 
   TRACEENTER;
 
+  // Puffer allozieren
+  SegmentMarker = (tSegmentMarker*) malloc(NRSEGMENTMARKER * sizeof(tSegmentMarker));
+  if (SegmentMarker)
+    memset(SegmentMarker, 0, NRSEGMENTMARKER * sizeof(tSegmentMarker));
+  else
+  {
+    printf("CutFileLoad: Failed to allocate memory!\n");
+    TRACEEXIT;
+    return FALSE;
+  }
+
   // Schaue zuerst im Cut-File nach
   fCut = fopen(AbsCutName, "rb");
   if(fCut)
@@ -306,20 +350,8 @@ bool CutFileLoad(const char *AbsCutName)
     Version = fgetc(fCut);
     if (Version == '[') Version = 3;
     rewind(fCut);
-
-    // Puffer allozieren
-    SegmentMarker = (tSegmentMarker*) malloc(NRSEGMENTMARKER * sizeof(tSegmentMarker));
-    if (SegmentMarker)
-      memset(SegmentMarker, 0, NRSEGMENTMARKER * sizeof(tSegmentMarker));
-    else
-    {
-      printf("CutFileLoad: Failed to allocate memory!\n");
-      fclose(fCut);
-      TRACEEXIT;
-      return FALSE;
-    }
-  
     printf("CutFileLoad: Importing cut-file version %hhu\n", Version);
+
     switch (Version)
     {
       case 1:
@@ -336,6 +368,8 @@ bool CutFileLoad(const char *AbsCutName)
       }
     }
     fclose(fCut);
+    if (!ret)
+      printf("CutFileLoad: Failed to read cut-info from .cut!\n");
 
     // Check, if size of rec-File has been changed
     if (ret)
@@ -347,15 +381,69 @@ bool CutFileLoad(const char *AbsCutName)
         ResetSegmentMarkers();
         free(SegmentMarker);
         SegmentMarker = NULL;
-        TRACEEXIT;
-        return FALSE;
+        ret = FALSE;
+      }
+    }
+  }
+
+  // sonst schaue in der inf
+  if (!ret && BookmarkInfo)
+  {
+    WriteCutInf = CutDecodeFromBM(BookmarkInfo->Bookmarks, BookmarkInfo->NrBookmarks);
+    if (WriteCutInf)
+    {
+      ret = TRUE;
+      printf("CutFileLoad: Imported segments from Bookmark-area.\n");
+    }
+  }
+
+  // Wenn zu wenig Segmente -> auf Standard zurücksetzen
+  if (NrSegmentMarker < 2)
+  {
+    if(ret) printf("CutFileLoad: Less than two timestamps imported -> resetting!\n"); 
+    ResetSegmentMarkers();
+    free(SegmentMarker);
+    SegmentMarker = NULL;
+    ret = FALSE;
+  }
+
+  TRACEEXIT;
+  return ret;
+}
+
+static bool CutEncodeToBM(dword Bookmarks[], int NrBookmarks)
+{
+  int                   End, Start, i;
+  bool                  ret = TRUE;
+
+  TRACEENTER;
+  if (!Bookmarks)
+  {
+    TRACEEXIT;
+    return FALSE;
+  }
+  memset(&Bookmarks[NrBookmarks], 0, (NRBOOKMARKS - min(NrBookmarks, NRBOOKMARKS)) * sizeof(dword));
+
+  if (SegmentMarker && (NrSegmentMarker > 2))
+  {
+    End   = (SystemType == ST_TMSC) ? NRBOOKMARKS-1 : NRBOOKMARKS-2;  // neu: auf dem SRP das vorletzte Dword nehmen -> CRP-kompatibel
+    Start = End - NrSegmentMarker - 5;
+    if (Start >= NrBookmarks)
+    {
+      Bookmarks[End]   = 0x8E0A4247;  // Magic
+      Bookmarks[End-1] = NrSegmentMarker;
+      for (i = 0; i < NrSegmentMarker; i++)
+      {
+        Bookmarks[Start+i] = SegmentMarker[i].Block;
+        Bookmarks[End-5+(i/32)] = (Bookmarks[End-5+(i/32)] & ~(1 << (i%32))) | (SegmentMarker[i].Selected ? 1 << (i%32) : 0);
       }
     }
     else
-      printf("CutFileLoad: Failed to read cut-info from .cut!\n");
+    {
+      printf("CutEncodeToBM: Error! Not enough space to store segment markers. (NrSegmentMarker=%d, NrBookmarks=%d)\n", NrSegmentMarker, NrBookmarks);
+      ret = FALSE;
+    }
   }
-  else
-    printf("CutFileLoad: Cannot open cut file %s!\n", AbsCutName);
 
   TRACEEXIT;
   return ret;
@@ -371,11 +459,11 @@ bool CutFileClose(const char* AbsCutName, bool Save)
 
   TRACEENTER;
 
-  // neues CutFile speichern
   if (SegmentMarker)
   {
-    if (Save)
+    if (Save && WriteCutFile && (NrSegmentMarker > 2 || SegmentMarker[0].pCaption))
     {
+      // neues CutFile speichern
       if (!HDD_GetFileSize(RecFileOut, &RecFileSize))
         printf("CutFileSave: Could not detect size of recording!\n"); 
 
@@ -393,35 +481,23 @@ bool CutFileClose(const char* AbsCutName, bool Save)
           MSecToTimeString(SegmentMarker[i].Timems, TimeStamp);
           ret = (fprintf(fCut, "%3d ;  %c  ; %10lu ;%14s ;  %5.1f%% ; %s\r\n", i, (SegmentMarker[i].Selected ? '*' : '-'), SegmentMarker[i].Block, TimeStamp, SegmentMarker[i].Percent, (SegmentMarker[i].pCaption ? SegmentMarker[i].pCaption : "")) > 0) && ret;
         }
-//        ret = (fflush(fCut) == 0) && ret;
         ret = (fclose(fCut) == 0) && ret;
+//        HDD_SetFileDateTime(&AbsCutName[1], "", 0);
       }
       else
       {
-        printf("CutFileSave: failed to open .cut!");
+        printf("CutFileSave: failed to open .cut!\n");
         ret = FALSE;
       }
     }
+
+    if (Save && WriteCutInf && BookmarkInfo)
+      CutEncodeToBM(BookmarkInfo->Bookmarks, BookmarkInfo->NrBookmarks);
+
     ResetSegmentMarkers();
     free(SegmentMarker);
     SegmentMarker = NULL;
   }
   TRACEEXIT;
   return ret;
-}
-
-void ProcessCutFile(const dword CurrentPosition, const dword PositionOffset)
-{
-  static int i = 0;
-
-  TRACEENTER;
-  if (SegmentMarker)
-  {
-    while ((i < NrSegmentMarker) && (SegmentMarker[i].Block < CurrentPosition))
-    {
-      SegmentMarker[i].Block -= PositionOffset;
-      i++;
-    }
-  }
-  TRACEEXIT;
 }

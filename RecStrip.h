@@ -1,7 +1,7 @@
 #ifndef __RECSTRIPH__
 #define __RECSTRIPH__
 
-#define VERSION                   "0.6"
+#define VERSION                   "0.7"
 
 #define NRBOOKMARKS                177   // eigentlich werden nur 48 Bookmarks unterstützt!! (SRP2401)
 #define NRSEGMENTMARKER            101
@@ -83,6 +83,21 @@ typedef struct
   byte                  ErrorFlag;
 } tPSBuffer; */
 
+typedef struct
+{
+  dword                 Block;  //Block nr
+  dword                 Timems; //Time in ms
+  float                 Percent;
+  int                   Selected;
+  char                 *pCaption;
+} tSegmentMarker;
+
+typedef struct
+{
+  long                  NrBookmarks;
+  dword                 Bookmarks[177];
+  dword                 Resume;
+} TYPE_Bookmark_Info;
 
 
 // Globale Variablen
@@ -92,6 +107,11 @@ extern byte             PACKETSIZE, PACKETOFFSET;
 extern word             VideoPID;
 extern bool             isHDVideo, AlreadyStripped;
 extern bool             DoStrip, DoCut;
+
+extern TYPE_Bookmark_Info *BookmarkInfo;
+extern tSegmentMarker  *SegmentMarker;       //[0]=Start of file, [x]=End of file
+extern int              NrSegmentMarker;
+extern int              ActiveSegment;
 
 
 bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize);

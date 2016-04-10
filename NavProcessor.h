@@ -90,10 +90,16 @@ typedef struct
   int                   FrameCtr;  // Anzahl Frames, die nach diesem I-Frame kamen (bis ein weiterer Counter eingefügt wurde)
 }tFrameCtr;
 
+
+extern dword            LastTimems, TimeOffset;
+
+
 void HDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacket);
 void SDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacket);
 bool LoadNavFiles(const char* AbsInNav, const char* AbsOutNav);
 bool CloseNavFiles(void);
 void ProcessNavFile(const unsigned long long CurrentPosition, const unsigned long long PositionOffset, tTSPacket* Packet);
+void QuickProcNavFile(const unsigned long long CurrentPosition, const unsigned long long PositionOffset, tTSPacket* Packet);
+void SetFirstPacketAfterBreak(void);
 
 #endif

@@ -41,6 +41,7 @@
 #include <sys/stat.h>
 #include <time.h>
 #include "../../../../../Topfield/API/TMS/include/type.h"
+//#include "../../../../../Topfield/FireBirdLib/time/AddTime.c"
 #include "RecStrip.h"
 #include "InfProcessor.h"
 #include "NavProcessor.h"
@@ -88,11 +89,17 @@ word                    VideoPID = 0;
 bool                    isHDVideo = FALSE, AlreadyStripped = FALSE;
 bool                    DoStrip = FALSE, DoCut = FALSE, RemoveEPGStream = TRUE;
 
+TYPE_Bookmark_Info     *BookmarkInfo = NULL;
+tSegmentMarker         *SegmentMarker = NULL;       //[0]=Start of file, [x]=End of file
+int                     NrSegmentMarker = 0;
+int                     ActiveSegment = 0;
+
 FILE                   *fIn = NULL;  // dirty Hack: erreichbar machen für NALUDump
 static FILE            *fOut = NULL;
 
 static unsigned long long  RecFileSize = 0;
-static unsigned long long  CurrentPosition = 0, PositionOffset = 0, CurrentPacket = 0;
+static unsigned long long  CurrentPosition = 0, PositionOffset = 0, NrPackets;
+static dword               CurPosBlocks = 0, CurBlockBytes = 0;
 static unsigned long long  NrDroppedFillerNALU = 0, NrDroppedZeroStuffing = 0, NrDroppedNullPid = 0, NrDroppedEPGPid = 0;
 
 
@@ -187,6 +194,48 @@ int GetPacketSize(char *RecFileName)
 
 
 // ----------------------------------------------
+// *****  Hilfsfunktionen  *****
+// ----------------------------------------------
+
+static void DeleteSegmentMarker(int MarkerIndex, bool FreeCaption)
+{
+  int i;
+  TRACEENTER;
+
+  if((MarkerIndex >= 0) && (MarkerIndex < NrSegmentMarker - 1))
+  {
+    if (FreeCaption && SegmentMarker[MarkerIndex].pCaption)
+      free(SegmentMarker[MarkerIndex].pCaption);
+
+    for(i = MarkerIndex; i < NrSegmentMarker - 1; i++)
+      memcpy(&SegmentMarker[i], &SegmentMarker[i + 1], sizeof(tSegmentMarker));
+
+    memset(&SegmentMarker[NrSegmentMarker - 1], 0, sizeof(tSegmentMarker));
+    NrSegmentMarker--;
+
+    if(ActiveSegment >= MarkerIndex) ActiveSegment--;
+    if(ActiveSegment >= NrSegmentMarker - 1) ActiveSegment = NrSegmentMarker - 2;
+  }
+  TRACEEXIT;
+}
+
+static void DeleteBookmark(int BookmarkIndex)
+{
+  int i;
+  TRACEENTER;
+
+  if (BookmarkInfo && (BookmarkIndex >= 0) && (BookmarkIndex < BookmarkInfo->NrBookmarks))
+  {
+    for(i = BookmarkIndex; i < BookmarkInfo->NrBookmarks - 1; i++)
+      BookmarkInfo->Bookmarks[i] = BookmarkInfo->Bookmarks[i + 1];
+    BookmarkInfo->Bookmarks[BookmarkInfo->NrBookmarks - 1] = 0;
+    BookmarkInfo->NrBookmarks--;
+  }
+  TRACEEXIT;
+}
+
+
+// ----------------------------------------------
 // *****  MAIN FUNCTION  *****
 // ----------------------------------------------
 
@@ -197,7 +246,9 @@ int main(int argc, const char* argv[])
   int                   ReadBytes;
   bool                  DropCurPacket;
   time_t                startTime, endTime;
-
+  static bool           ResumeSet = FALSE;
+  static int            i = 0, j = 0;
+  
   TRACEENTER;
   #ifndef _WIN32
     setvbuf(stdout, NULL, _IOLBF, 4096);  // zeilenweises Buffering, auch bei Ausgabe in Datei
@@ -237,10 +288,12 @@ int main(int argc, const char* argv[])
   }
   else
   {
-    printf("\nUsage: %s [-s] [-c] [-e] <source-rec> <dest-rec>\n", argv[0]);
-    printf(" -s: Strip recording (default if no option is provided.)\n");
-    printf(" -c: Cut movie (copy only selected parts from cutfile). May be combined with -s\n");
+    printf("\nUsage: %s [-s] [-c] [-e/n/i] <source-rec> <dest-rec>\n", argv[0]);
+    printf(" -s: Strip recording.\n");
+    printf(" -c: Cut movie (copy only selected parts from cutfile). May be combined with -s.\n");
     printf(" -e: Remove the EPG stream (only if -s is provided).\n");
+    printf(" -n: Generate nav file for output, if not present. (Default)\n");
+    printf(" -i: Generate inf file for output, if not present. (not available)\n");
     TRACEEXIT;
     exit(1);
   }
@@ -293,11 +346,9 @@ int main(int argc, const char* argv[])
   }
   else
   {
+    InfFileIn[0] = '\0';
     if (SystemType != ST_UNKNOWN)
-    {
       printf("WARNING: Cannot open inf file %s.\n", InfFileIn);
-      InfFileIn[0] = '\0';
-    }
     else
     {
       printf("ERROR: Unknown SystemType.\n");
@@ -349,10 +400,40 @@ int main(int argc, const char* argv[])
 //  if (!VideoPID)
     GetVideoInfos(fIn);
 
+  // -----------------------------------------------
   // Datei paketweise einlesen und verarbeiten
+  // -----------------------------------------------
   time(&startTime);
   while (fIn)
   {
+    // SCHNEIDEN
+    if (DoCut)
+    {
+      while ((i < NrSegmentMarker) && !SegmentMarker[i].Selected)
+        DeleteSegmentMarker(i, TRUE);
+
+      if ((i < NrSegmentMarker) && SegmentMarker[i].Selected)
+      {
+        unsigned long long ReadBytes = (((unsigned long long)SegmentMarker[i].Block) * 9024) - CurrentPosition;
+        fseeko64(fIn, ((unsigned long long)SegmentMarker[i].Block) * 9024, SEEK_SET);
+
+        PositionOffset += ReadBytes;
+        CurrentPosition += ReadBytes;
+        CurPosBlocks = CalcBlockSize(CurrentPosition);
+        CurBlockBytes = 0;
+
+        while ((j < BookmarkInfo->NrBookmarks) && (BookmarkInfo->Bookmarks[j] <= CurPosBlocks))
+          DeleteBookmark(j);
+      }
+      else
+      {
+        while (j < BookmarkInfo->NrBookmarks)
+          DeleteBookmark(j);
+        break;
+      }
+    }
+
+    // PACKET EINLESEN
     ReadBytes = fread(Buffer, 1, PACKETSIZE, fIn);
     if (ReadBytes > 0)
     {
@@ -361,6 +442,7 @@ int main(int argc, const char* argv[])
         int CurPID = TsGetPID((tTSPacket*) &Buffer[PACKETOFFSET]);
         DropCurPacket = FALSE;
 
+        // STRIPPEN
         if (DoStrip)
         {
           if (CurPID == 0x1FFF)
@@ -375,7 +457,7 @@ int main(int argc, const char* argv[])
           }
           else if (CurPID == VideoPID)
           {
-            switch (ProcessTSPacket(&Buffer[PACKETOFFSET], CurrentPosition))
+            switch (ProcessTSPacket(&Buffer[PACKETOFFSET], CurrentPosition + PACKETOFFSET))
             {
               case 1: 
                 NrDroppedFillerNALU++;
@@ -391,28 +473,41 @@ int main(int argc, const char* argv[])
           }
         }
 
-        if (DropCurPacket)  // nicht bei Reduktion auf 188 Byte Packets
+        // SEGMENTMARKER ANPASSEN
+//        ProcessCutFile(CurPosBlocks, PosOffsetBlocks);
+        while ((i < NrSegmentMarker) && (SegmentMarker[i].Block <= CurPosBlocks))
         {
-          dword CurPosBlocks = CalcBlockSize(CurrentPosition);
-          dword PosOffsetBlocks = CalcBlockSize(PositionOffset);
+          SegmentMarker[i].Block -= CalcBlockSize(PositionOffset);
+          SegmentMarker[i].Timems -= TimeOffset;  // ***
+          i++;
+        }
 
-          // alle Bookmarks / cut-Einträge, deren Position <= CurrentPosition/9024 sind, um PositionOffset/9024 reduzieren
-          ProcessInfFile(CurPosBlocks, PosOffsetBlocks);
-          ProcessCutFile(CurPosBlocks, PosOffsetBlocks);
-        }
-        if (DropCurPacket)
+        // BOOKMARKS ANPASSEN
+//        ProcessInfFile(CurPosBlocks, PosOffsetBlocks);
+        if (BookmarkInfo)
         {
-          // Paket wird entfernt
-          PositionOffset += ReadBytes;
+          while ((j < BookmarkInfo->NrBookmarks) && (BookmarkInfo->Bookmarks[j] <= CurPosBlocks))
+          {
+            BookmarkInfo->Bookmarks[j] -= CalcBlockSize(PositionOffset);
+            j++;
+          }
+
+          if (!ResumeSet && BookmarkInfo->Resume <= CurPosBlocks)
+          {
+            BookmarkInfo->Resume -= CalcBlockSize(PositionOffset);
+            ResumeSet = TRUE;
+          }
         }
-        else
+
+        if (!DropCurPacket)
         {
+          // NAV NEU BERECHNEN
 //          PositionOffset += PACKETOFFSET;  // Reduktion auf 188 Byte Packets
           // nav-Eintrag korrigieren und ausgeben, wenn Position < CurrentPosition ist (um PositionOffset reduzieren)
           if (CurPID == VideoPID)
-            ProcessNavFile(CurrentPosition, PositionOffset, (tTSPacket*) &Buffer[PACKETOFFSET]);
+            ProcessNavFile(CurrentPosition + PACKETOFFSET, PositionOffset, (tTSPacket*) &Buffer[PACKETOFFSET]);
 
-          // (ggf. verändertes) Paket wird in Ausgabe geschrieben
+          // PACKET AUSGEBEN
 //          if (fOut && !fwrite(&Buffer[PACKETOFFSET], ReadBytes-PACKETOFFSET, 1, fOut))  // Reduktion auf 188 Byte Packets
           if (fOut && !fwrite(Buffer, ReadBytes, 1, fOut))
           {
@@ -420,14 +515,23 @@ int main(int argc, const char* argv[])
             fclose(fIn); fIn = NULL;
             fclose(fOut); fOut = NULL;
             CloseNavFiles();
-            CloseInfFile(NULL, NULL, FALSE);
             CutFileClose(NULL, FALSE);
+            CloseInfFile(NULL, NULL, FALSE);
             TRACEEXIT;
             exit(5);
           }
         }
-        CurrentPacket++;
+        else
+          // Paket wird entfernt
+          PositionOffset += ReadBytes;
+      
         CurrentPosition += ReadBytes;
+        CurBlockBytes += ReadBytes;
+        if (CurBlockBytes >= 9024)
+        {
+          CurPosBlocks++;
+          CurBlockBytes = 0;
+        }
       }
       else
       {
@@ -442,26 +546,15 @@ int main(int argc, const char* argv[])
           fclose(fIn); fIn = NULL;
           fclose(fOut); fOut = NULL;
           CloseNavFiles();
-          CloseInfFile(NULL, NULL, FALSE);
           CutFileClose(NULL, FALSE);
+          CloseInfFile(NULL, NULL, FALSE);
           TRACEEXIT;
           exit(6);
         }
       }
     }
     else
-    {
-      fclose(fIn); fIn = NULL;
-    }
-  }
-
-  {
-    dword CurPosBlocks = CalcBlockSize(CurrentPosition);
-    dword PosOffsetBlocks = CalcBlockSize(PositionOffset);
-
-    // alle Bookmarks / cut-Einträge, deren Position <= CurrentPosition/9024 sind, um PositionOffset/9024 reduzieren
-    ProcessInfFile(CurPosBlocks+1, PosOffsetBlocks);
-    ProcessCutFile(CurPosBlocks+1, PosOffsetBlocks);
+      break;
   }
 
   if (fIn)
@@ -474,8 +567,8 @@ int main(int argc, const char* argv[])
     {
       printf("ERROR: Failed closing the output file.\n");
       CloseNavFiles();
-      CloseInfFile(NULL, NULL, FALSE);
       CutFileClose(NULL, FALSE);
+      CloseInfFile(NULL, NULL, FALSE);
       TRACEEXIT;
       exit(7);
     }
@@ -485,14 +578,27 @@ int main(int argc, const char* argv[])
   if (!CloseNavFiles())
     printf("WARNING: Failed closing the nav file.\n");
 
-  if (*InfFileIn && (argc > 2) && !CloseInfFile(InfFileOut, InfFileIn, TRUE))
-    printf("WARNING: Cannot create inf %s.\n", InfFileOut);
+// TODO: Gesamtspielzeit in inf und cut anpassen, Aufnahme-Uhrzeit in inf anpassen!
+/*  //Change the new source play time
+  RecHeaderInfo->HeaderDuration = (word)(SourcePlayTime / 60);
+  RecHeaderInfo->HeaderDurationSec = SourcePlayTime % 60;
+
+  //Set recording time of the source file
+  OrigHeaderStartTime = RecHeaderInfo->HeaderStartTime;
+  if (CutStartPoint->BlockNr == 0)
+    RecHeaderInfo->HeaderStartTime = AddTime(OrigHeaderStartTime, BehindCutPoint->Timems / 60000); */
 
   if (*CutFileIn && (argc > 2) && !CutFileClose(CutFileOut, TRUE))
     printf("WARNING: Cannot create cut %s.\n", CutFileOut);
 
+  if (*InfFileIn && (argc > 2) && !CloseInfFile(InfFileOut, InfFileIn, TRUE))
+    printf("WARNING: Cannot create inf %s.\n", InfFileOut);
 
-  printf("\nPackets: %llu, FillerNALUs: %llu (%llu%%), ZeroByteStuffing: %llu (%llu%%), NullPackets: %llu (%llu%%), EPG: %llu (%llu%%), Dropped (all): %lli (%llu%%)\n", CurrentPacket, NrDroppedFillerNALU, (CurrentPacket ? NrDroppedFillerNALU*100/CurrentPacket : 0), NrDroppedZeroStuffing, (CurrentPacket ? NrDroppedZeroStuffing*100/CurrentPacket : 0), NrDroppedNullPid, (CurrentPacket ? NrDroppedNullPid*100/CurrentPacket : 0), NrDroppedEPGPid, (CurrentPacket ? NrDroppedEPGPid*100/CurrentPacket : 0), NrDroppedFillerNALU+NrDroppedZeroStuffing+NrDroppedNullPid+NrDroppedEPGPid, (CurrentPacket ? (NrDroppedFillerNALU+NrDroppedZeroStuffing+NrDroppedNullPid+NrDroppedEPGPid)*100/CurrentPacket : 0));
+  NrPackets = (RecFileSize / PACKETSIZE);
+  if (NrPackets > 0)
+    printf("\nPackets: %llu, FillerNALUs: %llu (%llu%%), ZeroByteStuffing: %llu (%llu%%), NullPackets: %llu (%llu%%), EPG: %llu (%llu%%), Dropped (all): %lli (%llu%%)\n", NrPackets, NrDroppedFillerNALU, NrDroppedFillerNALU*100/NrPackets, NrDroppedZeroStuffing, NrDroppedZeroStuffing*100/NrPackets, NrDroppedNullPid, NrDroppedNullPid*100/NrPackets, NrDroppedEPGPid, NrDroppedEPGPid*100/NrPackets, NrDroppedFillerNALU+NrDroppedZeroStuffing+NrDroppedNullPid+NrDroppedEPGPid, (NrDroppedFillerNALU+NrDroppedZeroStuffing+NrDroppedNullPid+NrDroppedEPGPid)*100/NrPackets);
+  else
+    printf("\n0 Packets!\n");
 
   time(&endTime);
   printf("\nElapsed time: %f sec.\n", difftime(endTime, startTime));

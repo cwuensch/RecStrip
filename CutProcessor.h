@@ -19,19 +19,9 @@ typedef struct
   word                  Padding;
 }__attribute__((packed)) tCutHeader2;
 
-typedef struct
-{
-  dword                 Block;  //Block nr
-  dword                 Timems; //Time in ms
-  float                 Percent;
-  int                   Selected;
-  char                 *pCaption;
-} tSegmentMarker;
-
 
 void GetCutNameFromRec(const char *RecFileName, char *const OutCutFileName);
 bool CutFileLoad(const char *AbsCutName);
 bool CutFileClose(const char* AbsCutName, bool Save);
-void ProcessCutFile(const dword CurrentPosition, const dword PositionOffset);
 
 #endif

@@ -23,7 +23,6 @@
 // Globale Variablen
 static byte            *InfBuffer = NULL;
 static TYPE_RecHeader_Info *RecHeaderInfo = NULL;
-static TYPE_Bookmark_Info  *BookmarkInfo = NULL;
 static size_t           InfSize = 0;
 
 
@@ -98,9 +97,11 @@ static SYSTEM_TYPE DetermineInfType(const byte *const InfBuffer, const unsigned 
     else if (PointsT >= 4 && PointsS <= 3)
       Result = ST_TMST;
 
-  printf(" -> SystemType=ST_TMS%c\n", (Result==ST_TMSS ? 'S' : ((Result==ST_TMSC) ? 'C' : ((Result==ST_TMST) ? 'T' : '?'))));
+  printf(" -> SystemType=ST_TMS%c\n", (Result==ST_TMSS ? 's' : ((Result==ST_TMSC) ? 'c' : ((Result==ST_TMST) ? 't' : '?'))));
   if (Result != SizeType && !(Result == ST_TMST && SizeType == ST_TMSS))
     printf(" -> DEBUG! Assertion error: SystemType in inf (%u) not consistent to filesize (%u)!\n", Result, SystemType);
+
+Result = ST_TMSS;
 
   TRACEEXIT;
   return Result;
@@ -249,13 +250,15 @@ bool CloseInfFile(const char *AbsDestInf, const char *AbsSourceInf, bool Save)
     {
       RecHeaderInfo->rs_ToBeStripped = FALSE;
       RecHeaderInfo->rs_HasBeenStripped = TRUE;
+      RecHeaderInfo->rbn_HasBeenScanned = TRUE;
       Result = (fwrite(InfBuffer, 1, InfSize, fInfOut) == InfSize);
 
       // Kopiere den Rest der Source-inf (falls vorhanden) in die neue inf hinein
       fInfIn = fopen(AbsSourceInf, "r+b");
       if(fInfIn)
       {
-        RecHeaderInfo->rs_HasBeenStripped = FALSE;
+        RecHeaderInfo->rs_ToBeStripped = FALSE;
+        RecHeaderInfo->rbn_HasBeenScanned = TRUE;
         fwrite(RecHeaderInfo, 1, sizeof(TYPE_RecHeader_Info), fInfIn);
         fseek(fInfIn, InfSize, SEEK_SET);
         do {
@@ -277,59 +280,4 @@ bool CloseInfFile(const char *AbsDestInf, const char *AbsSourceInf, bool Save)
   free(InfBuffer); InfBuffer = NULL;
   TRACEEXIT;
   return Result;
-}
-
-void ProcessInfFile(const dword CurrentPosition, const dword PositionOffset)
-{
-  static bool           FirstRun = TRUE, ResumeSet = FALSE;
-  static int            NrSegments = 0;
-  static int            End = 0, Start = 0, j = 0;
-  static dword          i = 0;
-
-  TRACEENTER;
-
-  if (!InfBuffer || !BookmarkInfo) {
-    TRACEEXIT;
-    return;
-  }
-
-  if (FirstRun)
-  {
-if (BookmarkInfo->NrBookmarks > NRBOOKMARKS)
-  printf("DEBUG: Assertion Error: NrBookmarks=%lu\n", BookmarkInfo->NrBookmarks);
-    BookmarkInfo->NrBookmarks = min(BookmarkInfo->NrBookmarks, NRBOOKMARKS);
-
-    // CutDecodeFromBM
-    if (BookmarkInfo->Bookmarks[NRBOOKMARKS-2] == 0x8E0A4247)       // ID im vorletzen Bookmark-Dword (-> neues SRP-Format und CRP-Format auf SRP)
-      End = NRBOOKMARKS - 2;
-    else if (BookmarkInfo->Bookmarks[NRBOOKMARKS-1] == 0x8E0A4247)  // ID im letzten Bookmark-Dword (-> CRP- und altes SRP-Format)
-      End = NRBOOKMARKS - 1;
-
-    if(End)
-    {
-      NrSegments = BookmarkInfo->Bookmarks[End - 1];
-      if (NrSegments > NRSEGMENTMARKER) NrSegments = NRSEGMENTMARKER;
-      Start = End - NrSegments - 5;
-    }
-    FirstRun = FALSE;
-  }
-
-  while ((i < BookmarkInfo->NrBookmarks) && (BookmarkInfo->Bookmarks[i] < CurrentPosition))
-  {
-    BookmarkInfo->Bookmarks[i] -= PositionOffset;
-    i++;
-  }
-
-  while (Start && (j < NrSegments) && (BookmarkInfo->Bookmarks[Start+j] < CurrentPosition))
-  {
-    BookmarkInfo->Bookmarks[Start+j] -= PositionOffset;
-    j++;
-  }
-
-  if (!ResumeSet && BookmarkInfo->Resume <= CurrentPosition)
-  {
-    BookmarkInfo->Resume -= PositionOffset;
-    ResumeSet = TRUE;
-  }
-  TRACEEXIT;
 }
