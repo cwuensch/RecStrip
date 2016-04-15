@@ -26,6 +26,49 @@ static TYPE_RecHeader_Info *RecHeaderInfo = NULL;
 static size_t           InfSize = 0;
 
 
+dword AddTime(dword pvrDate, int addMinutes)  //add minutes to the day
+{
+  word                  day;
+  short                 hour, min;
+
+  TRACEENTER;
+  day = (pvrDate >> 16) & 0xffff;
+  hour= (pvrDate >> 8) & 0xff;
+  min = (pvrDate) & 0xff;
+
+  min += addMinutes % 60;
+  if(min < 0)
+  {
+    hour-=1;
+    min+=60;
+  }
+  else if(min > 59)
+  {
+    hour+=1;
+    min-=60;
+  }
+
+  hour += addMinutes / 60;
+
+  if(hour < 0)
+  {
+    day-=1;
+    hour+=24;
+  }
+  else
+  {
+    while(hour > 23)
+    {
+      day+=1;
+      hour-=24;
+    }
+  }
+
+  TRACEEXIT;
+  return ((day<<16)|(hour<<8)|min);
+}
+
+
 // ----------------------------------------------
 // *****  READ AND WRITE INF FILE  *****
 // ----------------------------------------------
@@ -100,8 +143,6 @@ static SYSTEM_TYPE DetermineInfType(const byte *const InfBuffer, const unsigned 
   printf(" -> SystemType=ST_TMS%c\n", (Result==ST_TMSS ? 's' : ((Result==ST_TMSC) ? 'c' : ((Result==ST_TMST) ? 't' : '?'))));
   if (Result != SizeType && !(Result == ST_TMST && SizeType == ST_TMSS))
     printf(" -> DEBUG! Assertion error: SystemType in inf (%u) not consistent to filesize (%u)!\n", Result, SystemType);
-
-Result = ST_TMSS;
 
   TRACEEXIT;
   return Result;
@@ -251,15 +292,24 @@ bool CloseInfFile(const char *AbsDestInf, const char *AbsSourceInf, bool Save)
       RecHeaderInfo->rs_ToBeStripped = FALSE;
       RecHeaderInfo->rs_HasBeenStripped = TRUE;
       RecHeaderInfo->rbn_HasBeenScanned = TRUE;
+      if (NewDurationMS)
+      {
+        RecHeaderInfo->HeaderDuration = (word)((NewDurationMS + 500) / 60000);
+        RecHeaderInfo->HeaderDurationSec = ((NewDurationMS + 500) / 1000) % 60;
+      }
+      if (NewStartTimeOffset)
+        RecHeaderInfo->HeaderStartTime = AddTime(RecHeaderInfo->HeaderStartTime, NewStartTimeOffset / 60000);
       Result = (fwrite(InfBuffer, 1, InfSize, fInfOut) == InfSize);
 
       // Kopiere den Rest der Source-inf (falls vorhanden) in die neue inf hinein
       fInfIn = fopen(AbsSourceInf, "r+b");
       if(fInfIn)
       {
+        fread(RecHeaderInfo, 1, 8, fInfIn);
         RecHeaderInfo->rs_ToBeStripped = FALSE;
         RecHeaderInfo->rbn_HasBeenScanned = TRUE;
-        fwrite(RecHeaderInfo, 1, sizeof(TYPE_RecHeader_Info), fInfIn);
+        fwrite(RecHeaderInfo, 1, 8, fInfIn);
+
         fseek(fInfIn, InfSize, SEEK_SET);
         do {
           BytesRead = fread(InfBuffer, 1, 32768, fInfIn);

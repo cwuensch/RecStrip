@@ -93,6 +93,7 @@ TYPE_Bookmark_Info     *BookmarkInfo = NULL;
 tSegmentMarker         *SegmentMarker = NULL;       //[0]=Start of file, [x]=End of file
 int                     NrSegmentMarker = 0;
 int                     ActiveSegment = 0;
+dword                   NewDurationMS = 0, NewStartTimeOffset = 0;
 
 FILE                   *fIn = NULL;  // dirty Hack: erreichbar machen für NALUDump
 static FILE            *fOut = NULL;
@@ -247,7 +248,7 @@ int main(int argc, const char* argv[])
   bool                  DropCurPacket;
   time_t                startTime, endTime;
   static bool           ResumeSet = FALSE;
-  static int            i = 0, j = 0;
+  static int            CurSeg = 0, i = 0, j = 0;
   
   TRACEENTER;
   #ifndef _WIN32
@@ -407,30 +408,38 @@ int main(int argc, const char* argv[])
   while (fIn)
   {
     // SCHNEIDEN
-    if (DoCut)
+    if (DoCut && (NrSegmentMarker > 2) && (CurSeg < NrSegmentMarker-1) && (CurPosBlocks >= SegmentMarker[CurSeg].Block))
     {
-      while ((i < NrSegmentMarker) && !SegmentMarker[i].Selected)
-        DeleteSegmentMarker(i, TRUE);
-
-      if ((i < NrSegmentMarker) && SegmentMarker[i].Selected)
+      while ((CurSeg < NrSegmentMarker-1) && (CurPosBlocks >= SegmentMarker[CurSeg].Block) && !SegmentMarker[CurSeg].Selected)
       {
-        unsigned long long ReadBytes = (((unsigned long long)SegmentMarker[i].Block) * 9024) - CurrentPosition;
-        fseeko64(fIn, ((unsigned long long)SegmentMarker[i].Block) * 9024, SEEK_SET);
+        DeleteSegmentMarker(CurSeg, TRUE);
+    
+        if (CurSeg < NrSegmentMarker-1)
+        {
+          unsigned long long SkippedBytes = (((unsigned long long)SegmentMarker[CurSeg].Block) * 9024) - CurrentPosition;
+          fseeko64(fIn, ((unsigned long long)SegmentMarker[CurSeg].Block) * 9024, SEEK_SET);
 
-        PositionOffset += ReadBytes;
-        CurrentPosition += ReadBytes;
-        CurPosBlocks = CalcBlockSize(CurrentPosition);
-        CurBlockBytes = 0;
+          SetFirstPacketAfterBreak();
+          if (NewStartTimeOffset == 0)
+            NewStartTimeOffset = max(SegmentMarker[CurSeg].Timems, 1);
+          NewDurationMS += (SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems);
 
-        while ((j < BookmarkInfo->NrBookmarks) && (BookmarkInfo->Bookmarks[j] <= CurPosBlocks))
-          DeleteBookmark(j);
+          PositionOffset += SkippedBytes;
+          CurrentPosition += SkippedBytes;
+          CurPosBlocks = CalcBlockSize(CurrentPosition);
+          CurBlockBytes = 0;
+
+          while ((j < BookmarkInfo->NrBookmarks) && (BookmarkInfo->Bookmarks[j] <= CurPosBlocks))
+            DeleteBookmark(j);
+        }
+        else
+        {
+          while (j < BookmarkInfo->NrBookmarks)
+            DeleteBookmark(j);
+          break;
+        }
       }
-      else
-      {
-        while (j < BookmarkInfo->NrBookmarks)
-          DeleteBookmark(j);
-        break;
-      }
+      CurSeg++;
     }
 
     // PACKET EINLESEN
@@ -475,10 +484,11 @@ int main(int argc, const char* argv[])
 
         // SEGMENTMARKER ANPASSEN
 //        ProcessCutFile(CurPosBlocks, PosOffsetBlocks);
-        while ((i < NrSegmentMarker) && (SegmentMarker[i].Block <= CurPosBlocks))
+        while ((i < NrSegmentMarker) && (CurPosBlocks >= SegmentMarker[i].Block))
         {
           SegmentMarker[i].Block -= CalcBlockSize(PositionOffset);
-          SegmentMarker[i].Timems -= TimeOffset;  // ***
+          if (!SegmentMarker[i].Timems)
+            OutputNextTimeStamp = &SegmentMarker[i].Timems;
           i++;
         }
 
@@ -486,7 +496,7 @@ int main(int argc, const char* argv[])
 //        ProcessInfFile(CurPosBlocks, PosOffsetBlocks);
         if (BookmarkInfo)
         {
-          while ((j < BookmarkInfo->NrBookmarks) && (BookmarkInfo->Bookmarks[j] <= CurPosBlocks))
+          while ((j < BookmarkInfo->NrBookmarks) && (CurPosBlocks >= BookmarkInfo->Bookmarks[j]))
           {
             BookmarkInfo->Bookmarks[j] -= CalcBlockSize(PositionOffset);
             j++;
@@ -554,7 +564,7 @@ int main(int argc, const char* argv[])
       }
     }
     else
-      break;
+      break; 
   }
 
   if (fIn)

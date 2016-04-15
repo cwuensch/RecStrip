@@ -25,19 +25,20 @@
 
 // Globale Variablen
 dword                   LastTimems = 0, TimeOffset = 0;
+dword                  *OutputNextTimeStamp = NULL;
 static FILE            *fNavIn = NULL, *fNavOut = NULL;
-static byte             FrameType;
 static unsigned long long PosFirstNull = 0, PosSecondNull = 0, HeaderFound = 0;
 static dword            PTS = 0;
 static byte             PTSBuffer[16];
 static int              PTSBufFill = 0;  // 0: keinen PTS suchen, 1..15 Puffer-Füllstand, bei 16 PTS auslesen und zurücksetzen
-bool                    WaitForIFrame = TRUE, FirstPacketAfterCut = FALSE;
+static byte             FrameCtr = 0, FrameOffset = 0;
+static bool             WaitForIFrame = FALSE, FirstPacketAfterCut = FALSE;
 
 //HDNAV
 static tnavHD           navHD;
 static tPPS             PPS[10];
 static unsigned long long SEI = 0, SPS = 0, AUD = 0;
-static bool             GetPPSID = FALSE, GetSlicePPSID = FALSE;
+static bool             GetPPSID = FALSE, GetSlicePPSID = FALSE, GetPrimPicType = FALSE;
 static byte             SlicePPSID = 0;
 static int              PPSCount = 0;
 static dword            FirstSEIPTS = 0, SEIPTS = 0, IFramePTS = 0, SPSLen = 0;
@@ -54,7 +55,6 @@ static unsigned long long CurrentSeqHeader = 0;
 static dword            FirstPTS = 0 /*, LastdPTS = 0*/;
 static int              NavPtr = 0;
 static word             FirstSHPHOffset = 0;
-static byte             FrameCtr = 0, FrameOffset = 0;
 
 
 // ----------------------------------------------
@@ -211,7 +211,7 @@ static dword FindPictureHeader(byte *Buffer, byte *pFrameType)
   return 0;
 }*/
 
-void SetFirstPacketAfterCut()
+void SetFirstPacketAfterBreak()
 {
   FirstPacketAfterCut = TRUE;
   WaitForIFrame = TRUE;
@@ -222,7 +222,7 @@ void HDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacke
   byte                  PayloadStart, Ptr;
 
   static dword          FirstPCR = 0;
-  byte                  NALType, NALRefIdc;
+  byte                  NALType;
   dword                 PCR;
   bool                  SEIFoundInPacket = FALSE;
   #if DEBUGLOG != 0
@@ -333,6 +333,11 @@ dbg_HeaderPosOffset = dbg_PositionOffset;
       #endif
       GetSlicePPSID = FALSE;
     }
+    if (GetPrimPicType)
+    {
+      navHD.FrameType = ((Packet->Data[Ptr] >> 5) & 7) + 1;
+      GetPrimPicType = FALSE;
+    }
 
     // Process a NALU header
     if (HeaderFound)
@@ -353,7 +358,6 @@ dbg_HeaderPosOffset = dbg_PositionOffset;
       }
       else
       {
-        NALRefIdc = (Packet->Data[Ptr] >> 5) & 3;
         NALType = Packet->Data[Ptr] & 0x1f;
 
         switch(NALType)
@@ -405,9 +409,26 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
               GetPPSID = TRUE;
             }
 
-            FrameType = 1;
+            if (!navHD.FrameType)
+              navHD.FrameType = 1;
             break;
           };
+
+          case NAL_SLICE:
+          case NAL_SLICE + 1:
+          case NAL_SLICE + 2:
+          case NAL_SLICE + 3:
+          case NAL_SLICE_IDR:
+          {
+            byte NALRefIdc = (Packet->Data[Ptr] >> 5) & 3;
+
+            #if DEBUGLOG != 0
+              strcpy(s, "NAL_SLICE");
+            #endif
+            GetSlicePPSID = TRUE;
+            if((navHD.FrameType == 3) && (NALRefIdc > 0)) navHD.FrameType = 2;
+            break;
+          }
 
           case NAL_FILLER_DATA:
           {
@@ -446,7 +467,7 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
             {
 
               // MEINE VARIANTE
-              if((FrameType != 1) && IFramePTS && ((int)(SEIPTS-IFramePTS) >= 0))
+              if((navHD.FrameType != 1) && IFramePTS && ((int)(SEIPTS-IFramePTS) >= 0))
               {
                 FrameOffset = 0;  // P-Frame
                 IFramePTS = 0;
@@ -455,7 +476,7 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
               if (navHD.FrameIndex == 0)
                 navHD.FrameIndex  = FrameCtr + FrameOffset;
 
-              if(FrameType == 1)  // I-Frame
+              if(navHD.FrameType == 1)  // I-Frame
               {
                 FrameOffset     = FrameCtr + ((SystemType==ST_TMSC || !FrameCtr) ? 0 : 1);  // Position des I-Frames in der aktuellen Zählung (diese geht weiter, bis P kommt) - SRP-2401 zählt nach dem I-Frame + 2
                 FrameCtr        = 0;        // zählt die Distanz zum letzten I-Frame
@@ -494,9 +515,6 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
 
 
 
-
-//              memset(&navHD, 0, sizeof(tnavHD));
-
               for(k = 0; k < PPSCount; k++)
                 if(PPS[k].ID == SlicePPSID)
                 {
@@ -504,7 +522,6 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
                   break;
                 }
 
-              navHD.FrameType = FrameType;
               navHD.MPEGType = 0x30;
 
               navHD.PPSLen = 8;
@@ -542,6 +559,12 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
               }
               navHD.Timems -= TimeOffset;
 
+              if (OutputNextTimeStamp)
+              {
+                *OutputNextTimeStamp = navHD.Timems;
+                OutputNextTimeStamp = NULL;
+              }
+
               // sicherstellen, dass Timems monoton ansteigt
               if( ((int)(navHD.Timems - LastTimems)) >= 0)  LastTimems = navHD.Timems;
               else  navHD.Timems = LastTimems;
@@ -550,7 +573,7 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
   unsigned long long RefPictureHeaderOffset = dbg_NavPictureHeaderOffset - dbg_SEIPositionOffset;
   if (fNavIn && SEI != RefPictureHeaderOffset && dbg_CurrentPosition/PACKETSIZE != dbg_SEIFound)
     printf("DEBUG: Problem! pos=%llu, offset=%llu, Orig-Nav-PHOffset=%llu, Rebuilt-Nav-PHOffset=%llu, Differenz= %lld * %d + %lld\n", dbg_CurrentPosition, dbg_SEIPositionOffset, dbg_NavPictureHeaderOffset, SEI, ((long long int)(SEI-RefPictureHeaderOffset))/PACKETSIZE, PACKETSIZE, ((long long int)(SEI-RefPictureHeaderOffset))%PACKETSIZE);
-//printf("%llu: fwrite: SEI=%llu, nav=%llu\n", dbg_CurrentPosition/PACKETSIZE, SEI, CurPictureHeaderOffset);
+//printf("%llu: fwrite: SEI=%llu, nav=%llu\n", dbg_CurrentPosition/PACKETSIZE, SEI, NavPictureHeaderOffset);
 }
 
               if (WaitForIFrame && navHD.FrameType == 1)
@@ -565,24 +588,12 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
 
               SEI = 0;
               AUD = 0;
-              FrameType = 3;
 //memset(&navHD, 0, sizeof(tnavHD));
 //navHD.SEIOffsetHigh = 0; navHD.SEIOffsetLow = 0;
               navHD.Timems = 0;
               navHD.FrameIndex = 0;
+              GetPrimPicType = TRUE;
             }
-            break;
-          }
-
-          case NAL_SLICE_IDR:
-          case NAL_SLICE:
-          {
-            #if DEBUGLOG != 0
-              strcpy(s, "NAL_SLICE");
-            #endif
-            GetSlicePPSID = TRUE;
-
-            if((FrameType == 3) && (NALRefIdc > 0)) FrameType = 2;
             break;
           }
 
@@ -713,6 +724,12 @@ void SDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacke
         FirstPacketAfterCut = FALSE;
       }
       navSD.Timems -= TimeOffset;
+
+      if (OutputNextTimeStamp)
+      {
+        *OutputNextTimeStamp = navSD.Timems;
+        OutputNextTimeStamp = NULL;
+      }
 
       // sicherstellen, dass Timems monoton ansteigt
       if( ((int)(navSD.Timems - LastTimems)) >= 0)  LastTimems = navSD.Timems;

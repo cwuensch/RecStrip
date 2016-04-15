@@ -112,6 +112,7 @@ extern TYPE_Bookmark_Info *BookmarkInfo;
 extern tSegmentMarker  *SegmentMarker;       //[0]=Start of file, [x]=End of file
 extern int              NrSegmentMarker;
 extern int              ActiveSegment;
+extern dword            NewDurationMS, NewStartTimeOffset;
 
 
 bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize);
