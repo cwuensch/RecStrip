@@ -25,7 +25,7 @@
 
 // Globale Variablen
 dword                   LastTimems = 0, TimeOffset = 0;
-dword                  *OutputNextTimeStamp = NULL;
+dword                  *pOutNextTimeStamp = NULL;
 static FILE            *fNavIn = NULL, *fNavOut = NULL;
 static unsigned long long PosFirstNull = 0, PosSecondNull = 0, HeaderFound = 0;
 static dword            PTS = 0;
@@ -478,7 +478,7 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
 
               if(navHD.FrameType == 1)  // I-Frame
               {
-                FrameOffset     = FrameCtr + ((SystemType==ST_TMSC || !FrameCtr) ? 0 : 1);  // Position des I-Frames in der aktuellen Zählung (diese geht weiter, bis P kommt) - SRP-2401 zählt nach dem I-Frame + 2
+                FrameOffset     = FrameCtr + ((/*SystemType==ST_TMSC ||*/ !FrameCtr) ? 0 : 1);  // Position des I-Frames in der aktuellen Zählung (diese geht weiter, bis P kommt) - SRP-2401 zählt nach dem I-Frame + 2 (neuer CRP auch)
                 FrameCtr        = 0;        // zählt die Distanz zum letzten I-Frame
                 IFramePTS       = SEIPTS;
               }
@@ -543,7 +543,7 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
               navHD.SPSLen = SPSLen;
               navHD.IFrame = 0;
 
-              if (AUD == 0 || NavPtr == 0 || SystemType == ST_TMSC)  // CRP-2401 zählt Filler-NALU nicht als Delimiter
+              if (AUD == 0 || NavPtr == 0 /*|| SystemType == ST_TMSC*/)  // CRP-2401 zählt Filler-NALU nicht als Delimiter? (2015Mar26 schon!)
                 AUD = HeaderFound;
               if (AUD >= SEI)
                 navHD.NextAUD = (dword) (AUD - SEI);
@@ -559,10 +559,10 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
               }
               navHD.Timems -= TimeOffset;
 
-              if (OutputNextTimeStamp)
+              if (pOutNextTimeStamp)
               {
-                *OutputNextTimeStamp = navHD.Timems;
-                OutputNextTimeStamp = NULL;
+                *pOutNextTimeStamp = navHD.Timems;
+                pOutNextTimeStamp = NULL;
               }
 
               // sicherstellen, dass Timems monoton ansteigt
@@ -725,10 +725,10 @@ void SDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacke
       }
       navSD.Timems -= TimeOffset;
 
-      if (OutputNextTimeStamp)
+      if (pOutNextTimeStamp)
       {
-        *OutputNextTimeStamp = navSD.Timems;
-        OutputNextTimeStamp = NULL;
+        *pOutNextTimeStamp = navSD.Timems;
+        pOutNextTimeStamp = NULL;
       }
 
       // sicherstellen, dass Timems monoton ansteigt
@@ -821,6 +821,13 @@ dbg_PositionOffset = PositionOffset;
     else
       SDNAV_ParsePacket(Packet, CurrentPosition - PositionOffset);
 
+if (!isHDVideo)
+{
+  unsigned long long RefPictureHeaderOffset = NextPictureHeaderOffset - PositionOffset;
+  if (fNavIn && LastPictureHeader != RefPictureHeaderOffset)
+    printf("DEBUG: Problem! pos=%llu, offset=%llu, Orig-Nav-PHOffset=%llu, Rebuilt-Nav-PHOffset=%llu, Differenz= %lld * %d + %lld\n", CurrentPosition, PositionOffset, NextPictureHeaderOffset, LastPictureHeader, ((long long int)(LastPictureHeader-RefPictureHeaderOffset))/PACKETSIZE, PACKETSIZE, ((long long int)(LastPictureHeader-RefPictureHeaderOffset))%PACKETSIZE);
+}
+
     while(fNavIn && (CurrentPosition + 188 > NextPictureHeaderOffset))
     {
 
@@ -828,12 +835,6 @@ dbg_PositionOffset = PositionOffset;
 if (isHDVideo)
   dbg_NavPictureHeaderOffset = NextPictureHeaderOffset;
 //printf("%llu: Setze Offset aus nav: %llu\n", CurrentPosition/PACKETSIZE, NextPictureHeaderOffset);
-else
-{
-  unsigned long long RefPictureHeaderOffset = NextPictureHeaderOffset - PositionOffset;
-  if (fNavIn && LastPictureHeader != RefPictureHeaderOffset)
-    printf("DEBUG: Problem! pos=%llu, offset=%llu, Orig-Nav-PHOffset=%llu, Rebuilt-Nav-PHOffset=%llu, Differenz= %lld * %d + %lld\n", CurrentPosition, PositionOffset, NextPictureHeaderOffset, LastPictureHeader, ((long long int)(LastPictureHeader-RefPictureHeaderOffset))/PACKETSIZE, PACKETSIZE, ((long long int)(LastPictureHeader-RefPictureHeaderOffset))%PACKETSIZE);
-}
 
       if (fNavIn)
       {

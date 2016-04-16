@@ -92,7 +92,7 @@ typedef struct
 
 
 extern dword            LastTimems, TimeOffset;
-extern dword           *OutputNextTimeStamp;
+extern dword           *pOutNextTimeStamp;
 
 
 void HDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacket);

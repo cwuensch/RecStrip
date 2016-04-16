@@ -431,6 +431,7 @@ int main(int argc, const char* argv[])
 
           while ((j < BookmarkInfo->NrBookmarks) && (BookmarkInfo->Bookmarks[j] <= CurPosBlocks))
             DeleteBookmark(j);
+          // AddBookmark
         }
         else
         {
@@ -487,8 +488,13 @@ int main(int argc, const char* argv[])
         while ((i < NrSegmentMarker) && (CurPosBlocks >= SegmentMarker[i].Block))
         {
           SegmentMarker[i].Block -= CalcBlockSize(PositionOffset);
-          if (!SegmentMarker[i].Timems)
-            OutputNextTimeStamp = &SegmentMarker[i].Timems;
+//          if (!SegmentMarker[i].Timems)
+            pOutNextTimeStamp = &SegmentMarker[i].Timems;
+          if (DoCut)
+          {
+            SegmentMarker[i].Percent = 0;
+            SegmentMarker[i].Selected = FALSE;
+          }
           i++;
         }
 
