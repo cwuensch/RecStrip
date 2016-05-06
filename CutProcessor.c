@@ -396,6 +396,8 @@ bool CutFileLoad(const char *AbsCutName)
       printf("CutFileLoad: Imported segments from Bookmark-area.\n");
     }
   }
+  else if (BookmarkInfo)
+    WriteCutInf = ((BookmarkInfo->Bookmarks[NRBOOKMARKS-2] == 0x8E0A4247) || (BookmarkInfo->Bookmarks[NRBOOKMARKS-1] == 0x8E0A4247));
 
   // Wenn zu wenig Segmente -> auf Standard zurücksetzen
   if (NrSegmentMarker < 2)

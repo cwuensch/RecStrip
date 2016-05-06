@@ -93,14 +93,14 @@ TYPE_Bookmark_Info     *BookmarkInfo = NULL;
 tSegmentMarker         *SegmentMarker = NULL;       //[0]=Start of file, [x]=End of file
 int                     NrSegmentMarker = 0;
 int                     ActiveSegment = 0;
-dword                   NewDurationMS = 0, NewStartTimeOffset = 0;
+dword                   InfDuration = 0, NewDurationMS = 0, NewStartTimeOffset = 0, CutTimeOffset = 0;
 
 FILE                   *fIn = NULL;  // dirty Hack: erreichbar machen für NALUDump
 static FILE            *fOut = NULL;
 
 static unsigned long long  RecFileSize = 0;
 static unsigned long long  CurrentPosition = 0, PositionOffset = 0, NrPackets;
-static dword               CurPosBlocks = 0, CurBlockBytes = 0;
+static dword               CurPosBlocks = 0, CurBlockBytes = 0, BlocksOneSecond = 250;
 static unsigned long long  NrDroppedFillerNALU = 0, NrDroppedZeroStuffing = 0, NrDroppedNullPid = 0, NrDroppedEPGPid = 0;
 
 
@@ -214,7 +214,7 @@ static void DeleteSegmentMarker(int MarkerIndex, bool FreeCaption)
     memset(&SegmentMarker[NrSegmentMarker - 1], 0, sizeof(tSegmentMarker));
     NrSegmentMarker--;
 
-    if(ActiveSegment >= MarkerIndex) ActiveSegment--;
+    if(ActiveSegment >= MarkerIndex && ActiveSegment > 0) ActiveSegment--;
     if(ActiveSegment >= NrSegmentMarker - 1) ActiveSegment = NrSegmentMarker - 2;
   }
   TRACEEXIT;
@@ -231,6 +231,21 @@ static void DeleteBookmark(int BookmarkIndex)
       BookmarkInfo->Bookmarks[i] = BookmarkInfo->Bookmarks[i + 1];
     BookmarkInfo->Bookmarks[BookmarkInfo->NrBookmarks - 1] = 0;
     BookmarkInfo->NrBookmarks--;
+  }
+  TRACEEXIT;
+}
+
+static void AddBookmark(int BookmarkIndex, dword BlockNr)
+{
+  int i;
+  TRACEENTER;
+
+  if (BookmarkInfo && (BookmarkIndex <= BookmarkInfo->NrBookmarks) && (BookmarkInfo->NrBookmarks < 48))
+  {
+    for(i = BookmarkInfo->NrBookmarks; i > BookmarkIndex; i--)
+      BookmarkInfo->Bookmarks[i] = BookmarkInfo->Bookmarks[i - 1];
+    BookmarkInfo->Bookmarks[BookmarkIndex] = BlockNr;
+    BookmarkInfo->NrBookmarks++;
   }
   TRACEEXIT;
 }
@@ -344,6 +359,7 @@ int main(int argc, const char* argv[])
       snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf", RecFileOut);
       printf("Inf output: %s\n", InfFileOut);
     }
+    BlocksOneSecond = CalcBlockSize(RecFileSize) / InfDuration;
   }
   else
   {
@@ -412,35 +428,59 @@ int main(int argc, const char* argv[])
     {
       while ((CurSeg < NrSegmentMarker-1) && (CurPosBlocks >= SegmentMarker[CurSeg].Block) && !SegmentMarker[CurSeg].Selected)
       {
+        CutTimeOffset += SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems;
         DeleteSegmentMarker(CurSeg, TRUE);
     
-        if (CurSeg < NrSegmentMarker-1)
+        if (CurSeg < NrSegmentMarker)
         {
           unsigned long long SkippedBytes = (((unsigned long long)SegmentMarker[CurSeg].Block) * 9024) - CurrentPosition;
           fseeko64(fIn, ((unsigned long long)SegmentMarker[CurSeg].Block) * 9024, SEEK_SET);
+          if (CurrentPosition-PositionOffset > 0) 
+            SetFirstPacketAfterBreak();
 
-          SetFirstPacketAfterBreak();
-          if (NewStartTimeOffset == 0)
-            NewStartTimeOffset = max(SegmentMarker[CurSeg].Timems, 1);
-          NewDurationMS += (SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems);
-
+          // Position neu berechnen
           PositionOffset += SkippedBytes;
           CurrentPosition += SkippedBytes;
           CurPosBlocks = CalcBlockSize(CurrentPosition);
           CurBlockBytes = 0;
 
-          while ((j < BookmarkInfo->NrBookmarks) && (BookmarkInfo->Bookmarks[j] <= CurPosBlocks))
-            DeleteBookmark(j);
-          // AddBookmark
+          if (BookmarkInfo)
+          {
+            // Bookmarks kurz vor der Schnittstelle löschen
+            while ((j > 0) && (BookmarkInfo->Bookmarks[j-1] + 3*BlocksOneSecond >= CalcBlockSize(CurrentPosition-PositionOffset)))
+              j--;
+
+            // Bookmarks im weggeschnittenen Bereich (bzw. kurz nach Schnittstelle) löschen
+            while ((j < BookmarkInfo->NrBookmarks) && (BookmarkInfo->Bookmarks[j] < CurPosBlocks + 3*BlocksOneSecond))
+              DeleteBookmark(j);
+
+            // neues Bookmark an Schnittstelle setzen
+            if (CurrentPosition-PositionOffset > 0)
+              AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset));
+          }
         }
         else
         {
-          while (j < BookmarkInfo->NrBookmarks)
+          // Bookmarks im verworfenen Nachlauf verwerfen
+          while (BookmarkInfo && (j < BookmarkInfo->NrBookmarks))
             DeleteBookmark(j);
           break;
         }
       }
+
+      if (CurSeg < NrSegmentMarker-1)
+      {
+        SegmentMarker[CurSeg].Selected = FALSE;
+        SegmentMarker[CurSeg].Percent = 0;
+
+        // Zeit neu berechnen
+        if (NewStartTimeOffset == 0)
+          NewStartTimeOffset = max(SegmentMarker[CurSeg].Timems, 1);
+        NewDurationMS += (SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems);
+      }
       CurSeg++;
+      if (CurSeg >= NrSegmentMarker)
+        break;
     }
 
     // PACKET EINLESEN
@@ -485,16 +525,12 @@ int main(int argc, const char* argv[])
 
         // SEGMENTMARKER ANPASSEN
 //        ProcessCutFile(CurPosBlocks, PosOffsetBlocks);
-        while ((i < NrSegmentMarker) && (CurPosBlocks >= SegmentMarker[i].Block))
+        while ((i < NrSegmentMarker-1) && (CurPosBlocks >= SegmentMarker[i].Block))
         {
           SegmentMarker[i].Block -= CalcBlockSize(PositionOffset);
-//          if (!SegmentMarker[i].Timems)
+          SegmentMarker[i].Timems -= CutTimeOffset;
+          if (!SegmentMarker[i].Timems)
             pOutNextTimeStamp = &SegmentMarker[i].Timems;
-          if (DoCut)
-          {
-            SegmentMarker[i].Percent = 0;
-            SegmentMarker[i].Selected = FALSE;
-          }
           i++;
         }
 
@@ -502,13 +538,13 @@ int main(int argc, const char* argv[])
 //        ProcessInfFile(CurPosBlocks, PosOffsetBlocks);
         if (BookmarkInfo)
         {
-          while ((j < BookmarkInfo->NrBookmarks) && (CurPosBlocks >= BookmarkInfo->Bookmarks[j]))
+          while ((j < min(BookmarkInfo->NrBookmarks, 48)) && (CurPosBlocks >= BookmarkInfo->Bookmarks[j]))
           {
             BookmarkInfo->Bookmarks[j] -= CalcBlockSize(PositionOffset);
             j++;
           }
 
-          if (!ResumeSet && BookmarkInfo->Resume <= CurPosBlocks)
+          if (!ResumeSet && CurPosBlocks >= BookmarkInfo->Resume)
           {
             BookmarkInfo->Resume -= CalcBlockSize(PositionOffset);
             ResumeSet = TRUE;
@@ -571,6 +607,14 @@ int main(int argc, const char* argv[])
     }
     else
       break; 
+  }
+
+  if (LastTimems)
+    NewDurationMS = LastTimems;
+  if (DoCut && NrSegmentMarker >= 2)
+  {
+    SegmentMarker[NrSegmentMarker-1].Block = CalcBlockSize(CurrentPosition - PositionOffset);
+    SegmentMarker[NrSegmentMarker-1].Timems = NewDurationMS;
   }
 
   if (fIn)

@@ -262,6 +262,9 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
 
 if (RecHeaderInfo->Reserved != 0)
   printf("DEBUG! Assertion Error: Reserved-Flags is not 0.\n");
+
+    InfDuration = RecHeaderInfo->HeaderDuration + RecHeaderInfo->HeaderDurationSec;
+
     if (RecHeaderInfo->rs_HasBeenStripped)
       AlreadyStripped = TRUE;
   }
