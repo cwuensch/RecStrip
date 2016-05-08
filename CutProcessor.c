@@ -379,8 +379,6 @@ bool CutFileLoad(const char *AbsCutName)
       {
         printf("CutFileLoad: .cut file size mismatch!\n");
         ResetSegmentMarkers();
-        free(SegmentMarker);
-        SegmentMarker = NULL;
         ret = FALSE;
       }
     }
@@ -389,10 +387,10 @@ bool CutFileLoad(const char *AbsCutName)
   // sonst schaue in der inf
   if (!ret && BookmarkInfo)
   {
-    WriteCutInf = CutDecodeFromBM(BookmarkInfo->Bookmarks, BookmarkInfo->NrBookmarks);
-    if (WriteCutInf)
+    ret = CutDecodeFromBM(BookmarkInfo->Bookmarks, BookmarkInfo->NrBookmarks);
+    if (ret)
     {
-      ret = TRUE;
+      WriteCutInf = TRUE;
       printf("CutFileLoad: Imported segments from Bookmark-area.\n");
     }
   }

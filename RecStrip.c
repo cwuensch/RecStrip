@@ -272,7 +272,8 @@ int main(int argc, const char* argv[])
   printf("\nRecStrip for Topfield PVR " VERSION "\n");
   printf("(C) 2016 Christian Wuensch\n");
   printf("- based on Naludump 0.1.1 by Udo Richter -\n");
-  printf("- portions of Mpeg2cleaner (S. Poeschel), RebuildNav (Firebird) & MovieCutter -\n");
+  printf("- based on MovieCutter 3.5 -\n");
+  printf("- portions of Mpeg2cleaner (S. Poeschel), RebuildNav (Firebird) & TFTool (jkIT)\n");
 
   // Eingabe-Parameter prüfen
   while ((argc > 1) && (argv && argv[1] && argv[1][0] == '-'))
@@ -638,23 +639,13 @@ int main(int argc, const char* argv[])
   if (!CloseNavFiles())
     printf("WARNING: Failed closing the nav file.\n");
 
-// TODO: Gesamtspielzeit in inf und cut anpassen, Aufnahme-Uhrzeit in inf anpassen!
-/*  //Change the new source play time
-  RecHeaderInfo->HeaderDuration = (word)(SourcePlayTime / 60);
-  RecHeaderInfo->HeaderDurationSec = SourcePlayTime % 60;
-
-  //Set recording time of the source file
-  OrigHeaderStartTime = RecHeaderInfo->HeaderStartTime;
-  if (CutStartPoint->BlockNr == 0)
-    RecHeaderInfo->HeaderStartTime = AddTime(OrigHeaderStartTime, BehindCutPoint->Timems / 60000); */
-
   if (*CutFileIn && (argc > 2) && !CutFileClose(CutFileOut, TRUE))
     printf("WARNING: Cannot create cut %s.\n", CutFileOut);
 
   if (*InfFileIn && (argc > 2) && !CloseInfFile(InfFileOut, InfFileIn, TRUE))
     printf("WARNING: Cannot create inf %s.\n", InfFileOut);
 
-  NrPackets = (RecFileSize / PACKETSIZE);
+  NrPackets = ((CurrentPosition + PACKETSIZE-1) / PACKETSIZE);
   if (NrPackets > 0)
     printf("\nPackets: %llu, FillerNALUs: %llu (%llu%%), ZeroByteStuffing: %llu (%llu%%), NullPackets: %llu (%llu%%), EPG: %llu (%llu%%), Dropped (all): %lli (%llu%%)\n", NrPackets, NrDroppedFillerNALU, NrDroppedFillerNALU*100/NrPackets, NrDroppedZeroStuffing, NrDroppedZeroStuffing*100/NrPackets, NrDroppedNullPid, NrDroppedNullPid*100/NrPackets, NrDroppedEPGPid, NrDroppedEPGPid*100/NrPackets, NrDroppedFillerNALU+NrDroppedZeroStuffing+NrDroppedNullPid+NrDroppedEPGPid, (NrDroppedFillerNALU+NrDroppedZeroStuffing+NrDroppedNullPid+NrDroppedEPGPid)*100/NrPackets);
   else

@@ -515,7 +515,6 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
               CounterStack[LastIFrame].FrameCtr++;  */
 
 
-
               for(k = 0; k < PPSCount; k++)
                 if(PPS[k].ID == SlicePPSID)
                 {
@@ -747,6 +746,12 @@ void SDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacke
 
       if(NavPtr > 0)
       {
+{
+  unsigned long long RefPictureHeaderOffset = dbg_NavPictureHeaderOffset - dbg_HeaderPosOffset;
+  if (fNavIn && LastPictureHeader != RefPictureHeaderOffset)
+    printf("DEBUG: Problem! pos=%llu, offset=%llu, Orig-Nav-PHOffset=%llu, Rebuilt-Nav-PHOffset=%llu, Differenz= %lld * %d + %lld\n", dbg_CurrentPosition, dbg_HeaderPosOffset, dbg_NavPictureHeaderOffset, LastPictureHeader, ((long long int)(LastPictureHeader-RefPictureHeaderOffset))/PACKETSIZE, PACKETSIZE, ((long long int)(LastPictureHeader-RefPictureHeaderOffset))%PACKETSIZE);
+}
+
         // Write the nav record
         if (fNavOut && !WaitForIFrame && !fwrite(&navSD, sizeof(tnavSD), 1, fNavOut))
         {
@@ -793,6 +798,7 @@ void SDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacke
       navSD.NextPH = 0;
 
       LastPictureHeader = PictHeader;
+dbg_HeaderPosOffset = dbg_PositionOffset;
       PictHeader = 0;
       FrameCtr++;
     }
@@ -831,49 +837,27 @@ void ProcessNavFile(const unsigned long long CurrentPosition, const unsigned lon
 dbg_CurrentPosition = CurrentPosition;
 dbg_PositionOffset = PositionOffset;
 
-
     if (isHDVideo)
       HDNAV_ParsePacket(Packet, CurrentPosition - PositionOffset);
     else
       SDNAV_ParsePacket(Packet, CurrentPosition - PositionOffset);
 
-if (!isHDVideo)
-{
-  unsigned long long RefPictureHeaderOffset = NextPictureHeaderOffset - PositionOffset;
-  if (fNavIn && LastPictureHeader != RefPictureHeaderOffset)
-    printf("DEBUG: Problem! pos=%llu, offset=%llu, Orig-Nav-PHOffset=%llu, Rebuilt-Nav-PHOffset=%llu, Differenz= %lld * %d + %lld\n", CurrentPosition, PositionOffset, NextPictureHeaderOffset, LastPictureHeader, ((long long int)(LastPictureHeader-RefPictureHeaderOffset))/PACKETSIZE, PACKETSIZE, ((long long int)(LastPictureHeader-RefPictureHeaderOffset))%PACKETSIZE);
-}
-
     while(fNavIn && !FirstPacketAfterCut && (CurrentPosition + 188 > NextPictureHeaderOffset))
     {
+dbg_NavPictureHeaderOffset = NextPictureHeaderOffset;
 
-// for Debugging only: CurPictureHeaderOffset sollte IMMER mit der zu schreibenden Position übereinstimmen
-if (isHDVideo)
-  dbg_NavPictureHeaderOffset = NextPictureHeaderOffset;
-//printf("%llu: Setze Offset aus nav: %llu\n", CurrentPosition/PACKETSIZE, NextPictureHeaderOffset);
+      if (isHDVideo)
+        navHD.Timems = curSDNavRec->Timems;
+//        navHD.FrameIndex = ((tnavHD*)NavBuffer)->FrameIndex;
+      else
+        navSD.Timems = curSDNavRec->Timems;
+//        navSD.FrameIndex = curSDNavRec->FrameIndex;
 
-      if (fNavIn)
+      if (fread(NavBuffer, isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD), 1, fNavIn))
+        NextPictureHeaderOffset = ((unsigned long long)(curSDNavRec->PHOffsetHigh) << 32) | curSDNavRec->PHOffset;
+      else
       {
-        if (isHDVideo)
-        {
-          navHD.Timems = curSDNavRec->Timems;
-//          navHD.FrameIndex = ((tnavHD*)NavBuffer)->FrameIndex;
-        }
-        else if (fNavIn)
-        {
-          navSD.Timems = curSDNavRec->Timems;
-//          navSD.FrameIndex = curSDNavRec->FrameIndex;
-        }
-      }
-
-      if (fNavIn)
-      {
-        if (fread(NavBuffer, isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD), 1, fNavIn))
-          NextPictureHeaderOffset = ((unsigned long long)(curSDNavRec->PHOffsetHigh) << 32) | curSDNavRec->PHOffset;
-        else
-        {
-          fclose(fNavIn); fNavIn = NULL;
-        }
+        fclose(fNavIn); fNavIn = NULL;
       }
     }
   }
