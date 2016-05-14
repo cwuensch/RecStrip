@@ -15,7 +15,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
-#include "../../../../../Topfield/API/TMS/include/type.h"
+#include "type.h"
 #include "CutProcessor.h"
 #include "RecStrip.h"
 
@@ -39,7 +39,7 @@ static void SecToTimeString(dword Time, char *const OutTimeString)  // needs max
     Min  = (Time / 60) % 60;
     Sec  = Time % 60;
     if (Hour >= 10000) Hour = 9999;
-    snprintf(OutTimeString, 11, "%lu:%02lu:%02lu", Hour, Min, Sec);
+    snprintf(OutTimeString, 11, "%u:%02u:%02u", Hour, Min, Sec);
   }
   TRACEEXIT;
 }
@@ -55,7 +55,7 @@ static void MSecToTimeString(dword Timems, char *const OutTimeString)  // needs 
     Min  = (Timems / 60000) % 60;
     Sec  = (Timems / 1000) % 60;
     Millisec = Timems % 1000;
-    snprintf(OutTimeString, 15, "%lu:%02lu:%02lu,%03lu", Hour, Min, Sec, Millisec);
+    snprintf(OutTimeString, 15, "%u:%02u:%02u,%03u", Hour, Min, Sec, Millisec);
   }
   TRACEEXIT;
 }
@@ -67,7 +67,7 @@ static dword TimeStringToMSec(char *const TimeString)
   TRACEENTER;
   if(TimeString)
   {
-    if (sscanf(TimeString, "%lu:%lu:%lu%*1[.,]%lu", &Hour, &Min, &Sec, &Millisec) == 4)
+    if (sscanf(TimeString, "%u:%u:%u%*1[.,]%u", &Hour, &Min, &Sec, &Millisec) == 4)
       ret = 1000*(60*(60*Hour + Min) + Sec) + Millisec;
   }
   TRACEEXIT;
@@ -260,7 +260,7 @@ static bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
       {
         //[Segments]
         //#Nr. ; Sel ; StartBlock ; StartTime ; Percent
-        if (sscanf(Buffer, "%*i ; %c ; %lu ; %15[^;\r\n] ; %f%%%n", &Selected, &SegmentMarker[NrSegmentMarker].Block, TimeStamp, &SegmentMarker[NrSegmentMarker].Percent, &ReadBytes) >= 3)
+        if (sscanf(Buffer, "%*i ; %c ; %u ; %15[^;\r\n] ; %f%%%n", &Selected, &SegmentMarker[NrSegmentMarker].Block, TimeStamp, &SegmentMarker[NrSegmentMarker].Percent, &ReadBytes) >= 3)
         {
           SegmentMarker[NrSegmentMarker].Selected = (Selected == '*');
           SegmentMarker[NrSegmentMarker].Timems = (TimeStringToMSec(TimeStamp));
@@ -288,7 +288,7 @@ static bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
   return ret;
 }
 
-static bool CutDecodeFromBM(dword Bookmarks[], int NrBookmarks)
+static bool CutDecodeFromBM(dword Bookmarks[])
 {
   int                   End = 0, Start, i;
   bool                  ret = FALSE;
@@ -387,7 +387,7 @@ bool CutFileLoad(const char *AbsCutName)
   // sonst schaue in der inf
   if (!ret && BookmarkInfo)
   {
-    ret = CutDecodeFromBM(BookmarkInfo->Bookmarks, BookmarkInfo->NrBookmarks);
+    ret = CutDecodeFromBM(BookmarkInfo->Bookmarks);
     if (ret)
     {
       WriteCutInf = TRUE;
@@ -479,7 +479,7 @@ bool CutFileClose(const char* AbsCutName, bool Save)
         for (i = 0; i < NrSegmentMarker; i++)
         {
           MSecToTimeString(SegmentMarker[i].Timems, TimeStamp);
-          ret = (fprintf(fCut, "%3d ;  %c  ; %10lu ;%14s ;  %5.1f%% ; %s\r\n", i, (SegmentMarker[i].Selected ? '*' : '-'), SegmentMarker[i].Block, TimeStamp, SegmentMarker[i].Percent, (SegmentMarker[i].pCaption ? SegmentMarker[i].pCaption : "")) > 0) && ret;
+          ret = (fprintf(fCut, "%3d ;  %c  ; %10u ;%14s ;  %5.1f%% ; %s\r\n", i, (SegmentMarker[i].Selected ? '*' : '-'), SegmentMarker[i].Block, TimeStamp, SegmentMarker[i].Percent, (SegmentMarker[i].pCaption ? SegmentMarker[i].pCaption : "")) > 0) && ret;
         }
         ret = (fclose(fCut) == 0) && ret;
 //        HDD_SetFileDateTime(&AbsCutName[1], "", 0);

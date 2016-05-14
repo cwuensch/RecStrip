@@ -15,7 +15,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
-#include "../../../../../Topfield/API/TMS/include/type.h"
+#include "type.h"
 #include "NavProcessor.h"
 #include "RecStrip.h"
 
@@ -42,8 +42,8 @@ static bool             GetPPSID = FALSE, GetSlicePPSID = FALSE, GetPrimPicType 
 static byte             SlicePPSID = 0;
 static int              PPSCount = 0;
 static dword            FirstSEIPTS = 0, SEIPTS = 0, IFramePTS = 0, SPSLen = 0;
-static tFrameCtr        CounterStack[COUNTSTACKSIZE];
-static int              LastIFrame = 0;
+//static tFrameCtr        CounterStack[COUNTSTACKSIZE];
+//static int              LastIFrame = 0;
 
 static unsigned long long dbg_NavPictureHeaderOffset = 0, dbg_SEIFound = 0;
 static unsigned long long dbg_CurrentPosition = 0, dbg_PositionOffset = 0, dbg_HeaderPosOffset = 0, dbg_SEIPositionOffset = 0;
@@ -876,6 +876,17 @@ void QuickNavProcess(const unsigned long long CurrentPosition, const unsigned lo
   static bool           FirstRun = TRUE;
 
   TRACEENTER;
+  if (FirstRun && fNavIn)
+  {
+    if (fread(NavBuffer, isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD), 1, fNavIn))
+      NextPictureHeaderOffset = ((unsigned long long)(curSDNavRec->PHOffsetHigh) << 32) | curSDNavRec->PHOffset;
+    else
+    {
+      fclose(fNavIn); fNavIn = NULL;
+      if(fNavOut) fclose(fNavOut); fNavOut = NULL;
+    }
+    FirstRun = FALSE;
+  }
 
   if (FirstPacketAfterCut)
   {

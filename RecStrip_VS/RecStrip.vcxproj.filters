@@ -30,6 +30,9 @@
     <ClInclude Include="..\RebuildInf.h">
       <Filter>Header</Filter>
     </ClInclude>
+    <ClInclude Include="..\type.h">
+      <Filter>Header</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\RecStrip.c">

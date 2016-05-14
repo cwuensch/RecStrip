@@ -85,6 +85,7 @@
     <ClInclude Include="..\NavProcessor.h" />
     <ClInclude Include="..\RebuildInf.h" />
     <ClInclude Include="..\RecStrip.h" />
+    <ClInclude Include="..\type.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\CutProcessor.c" />

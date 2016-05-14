@@ -40,7 +40,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
-#include "../../../../../Topfield/API/TMS/include/type.h"
+#include "type.h"
 //#include "../../../../../Topfield/FireBirdLib/time/AddTime.c"
 #include "RecStrip.h"
 #include "InfProcessor.h"

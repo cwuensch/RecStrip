@@ -15,7 +15,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <time.h>
-#include "../../../../../Topfield/API/TMS/include/type.h"
+#include "type.h"
 #include "RebuildInf.h"
 #include "RecStrip.h"
 

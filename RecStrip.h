@@ -94,7 +94,7 @@ typedef struct
 
 typedef struct
 {
-  long                  NrBookmarks;
+  int                   NrBookmarks;
   dword                 Bookmarks[177];
   dword                 Resume;
 } TYPE_Bookmark_Info;
