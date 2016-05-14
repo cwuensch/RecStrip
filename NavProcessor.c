@@ -26,7 +26,7 @@
 // Globale Variablen
 dword                   LastTimems = 0, TimeOffset = 0;
 dword                  *pOutNextTimeStamp = NULL;
-static FILE            *fNavIn = NULL, *fNavOut = NULL;
+FILE                   *fNavIn = NULL, *fNavOut = NULL;
 static unsigned long long PosFirstNull = 0, PosSecondNull = 0, HeaderFound = 0;
 static dword            PTS = 0;
 static byte             PTSBuffer[16];
@@ -554,7 +554,7 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
               // nach Schnittpunkt die fehlende Zeit von Timems abziehen
               if (FirstRecordAfterCut)
               {
-                TimeOffset += navHD.Timems - LastTimems;
+                TimeOffset = navHD.Timems - LastTimems;
                 FirstRecordAfterCut = FALSE;
               }
               navHD.Timems -= TimeOffset;
@@ -584,14 +584,17 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
                 printf("ProcessNavFile(): Error writing to nav file!\n");
                 fclose(fNavOut); fNavOut = NULL;
               }
-              NavPtr++;
 
               if (FirstPacketAfterCut)
               {
-                WaitForIFrame = TRUE;
-                FirstRecordAfterCut = TRUE;
+                if (NavPtr > 0)
+                {
+                  WaitForIFrame = TRUE;
+                  FirstRecordAfterCut = TRUE;
+                }
                 FirstPacketAfterCut = FALSE;
               }
+              NavPtr++;
               SEI = 0;
               AUD = 0;
 //memset(&navHD, 0, sizeof(tnavHD));
@@ -726,7 +729,7 @@ void SDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacke
       // nach Schnittpunkt die fehlende Zeit von Timems abziehen
       if (FirstRecordAfterCut)
       {
-        TimeOffset += navSD.Timems - LastTimems;
+        TimeOffset = navSD.Timems - LastTimems;
         FirstRecordAfterCut = FALSE;
       }
       navSD.Timems -= TimeOffset;
@@ -759,16 +762,16 @@ void SDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacke
           fclose(fNavOut); fNavOut = NULL;
         }
       }
-      NavPtr++;
 
-      // NEW NAV RECORD
       if (FirstPacketAfterCut)
       {
         WaitForIFrame = TRUE;
         FirstRecordAfterCut = TRUE;
         FirstPacketAfterCut = FALSE;
       }
+      NavPtr++;
 
+      // NEW NAV RECORD
       FrameType = (Packet->Data[Ptr] >> 3) & 0x03;
       if (WaitForIFrame) {FrameOffset = 0; FrameCtr = 1;}
 
@@ -864,9 +867,78 @@ dbg_NavPictureHeaderOffset = NextPictureHeaderOffset;
   TRACEEXIT;
 }
 
-void QuickProcNavFile(const unsigned long long CurrentPosition, const unsigned long long PositionOffset, tTSPacket* Packet)
+
+void QuickNavProcess(const unsigned long long CurrentPosition, const unsigned long long PositionOffset)
 {
-  //
+  static byte           NavBuffer[sizeof(tnavHD)];
+  static tnavSD        *curSDNavRec = (tnavSD*) &NavBuffer[0];
+  static unsigned long long NextPictureHeaderOffset = 0;
+  static bool           FirstRun = TRUE;
+
+  TRACEENTER;
+
+  if (FirstPacketAfterCut)
+  {
+    while (fNavIn && (NextPictureHeaderOffset <= CurrentPosition))
+    {
+      // nächsten Record einlesen
+      if (fread(NavBuffer, isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD), 1, fNavIn))
+        NextPictureHeaderOffset = ((unsigned long long)(curSDNavRec->PHOffsetHigh) << 32) | curSDNavRec->PHOffset;
+      else
+      {
+        fclose(fNavIn); fNavIn = NULL;
+        if(fNavOut) fclose(fNavOut); fNavOut = NULL;
+      }
+    }
+
+    // nach Schnittpunkt die fehlende Zeit von Timems abziehen
+    TimeOffset = curSDNavRec->Timems - LastTimems;
+
+    WaitForIFrame = TRUE;
+    FirstPacketAfterCut = FALSE;
+  }
+  else
+  {
+    while (fNavIn && (NextPictureHeaderOffset <= CurrentPosition))
+    {
+      // Position anpassen
+      NextPictureHeaderOffset   -= PositionOffset;
+      curSDNavRec->PHOffset      = (dword)NextPictureHeaderOffset;
+      curSDNavRec->PHOffsetHigh  = (dword)(NextPictureHeaderOffset >> 32);
+
+      // Zeit anpassen
+      curSDNavRec->Timems -= TimeOffset;
+      LastTimems = curSDNavRec->Timems;
+      if (pOutNextTimeStamp)
+      {
+        *pOutNextTimeStamp = curSDNavRec->Timems;
+        pOutNextTimeStamp = NULL;
+      }
+
+      // I-Frame prüfen
+      if (WaitForIFrame && (curSDNavRec->FrameType == 1))
+        WaitForIFrame = FALSE;
+
+      // Record schreiben
+      if (fNavOut && !WaitForIFrame && !fwrite(NavBuffer, isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD), 1, fNavOut))
+      {
+        printf("ProcessNavFile(): Error writing to nav file!\n");
+        fclose(fNavIn); fNavIn = NULL;
+        fclose(fNavOut); fNavOut = NULL;
+        break;
+      }
+
+      // nächsten Record einlesen
+      if (fread(NavBuffer, isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD), 1, fNavIn))
+        NextPictureHeaderOffset = ((unsigned long long)(curSDNavRec->PHOffsetHigh) << 32) | curSDNavRec->PHOffset;
+      else
+      {
+        fclose(fNavIn); fNavIn = NULL;
+        if(fNavOut) fclose(fNavOut); fNavOut = NULL;
+      }
+    }
+  }
+  TRACEEXIT;
 }
 
 bool LoadNavFiles(const char* AbsInNav, const char* AbsOutNav)
@@ -907,7 +979,13 @@ bool CloseNavFiles(void)
 
   TRACEENTER;
   if (fNavOut && !isHDVideo && (NavPtr > 0))
+  {
+    navSD.Timems -= TimeOffset;
+    LastTimems = navSD.Timems;
+    if (pOutNextTimeStamp)
+      *pOutNextTimeStamp = navSD.Timems;
     fwrite(&navSD, sizeof(tnavSD), 1, fNavOut);
+  }
 
   if (fNavIn) fclose(fNavIn);
   fNavIn = NULL;

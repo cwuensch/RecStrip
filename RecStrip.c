@@ -436,8 +436,7 @@ int main(int argc, const char* argv[])
         {
           unsigned long long SkippedBytes = (((unsigned long long)SegmentMarker[CurSeg].Block) * 9024) - CurrentPosition;
           fseeko64(fIn, ((unsigned long long)SegmentMarker[CurSeg].Block) * 9024, SEEK_SET);
-          if (CurrentPosition-PositionOffset > 0) 
-            SetFirstPacketAfterBreak();
+          SetFirstPacketAfterBreak();
 
           // Position neu berechnen
           PositionOffset += SkippedBytes;
@@ -469,6 +468,7 @@ int main(int argc, const char* argv[])
         }
       }
 
+      // nächsten (zu erhaltenen) SegmentMarker anpassen
       if (CurSeg < NrSegmentMarker-1)
       {
         SegmentMarker[CurSeg].Selected = FALSE;
@@ -557,8 +557,11 @@ int main(int argc, const char* argv[])
           // NAV NEU BERECHNEN
 //          PositionOffset += PACKETOFFSET;  // Reduktion auf 188 Byte Packets
           // nav-Eintrag korrigieren und ausgeben, wenn Position < CurrentPosition ist (um PositionOffset reduzieren)
-          if (CurPID == VideoPID)
-            ProcessNavFile(CurrentPosition + PACKETOFFSET, PositionOffset, (tTSPacket*) &Buffer[PACKETOFFSET]);
+          if (DoCut && !DoStrip && fNavIn)
+            QuickNavProcess(CurrentPosition, PositionOffset);
+          else
+            if (CurPID == VideoPID)
+              ProcessNavFile(CurrentPosition + PACKETOFFSET, PositionOffset, (tTSPacket*) &Buffer[PACKETOFFSET]);
 
           // PACKET AUSGEBEN
 //          if (fOut && !fwrite(&Buffer[PACKETOFFSET], ReadBytes-PACKETOFFSET, 1, fOut))  // Reduktion auf 188 Byte Packets
@@ -610,6 +613,9 @@ int main(int argc, const char* argv[])
       break; 
   }
 
+  if (!CloseNavFiles())
+    printf("WARNING: Failed closing the nav file.\n");
+
   if (LastTimems)
     NewDurationMS = LastTimems;
   if (DoCut && NrSegmentMarker >= 2)
@@ -627,7 +633,6 @@ int main(int argc, const char* argv[])
     if (/*fflush(fOut) != 0 ||*/ fclose(fOut) != 0)
     {
       printf("ERROR: Failed closing the output file.\n");
-      CloseNavFiles();
       CutFileClose(NULL, FALSE);
       CloseInfFile(NULL, NULL, FALSE);
       TRACEEXIT;
@@ -635,9 +640,6 @@ int main(int argc, const char* argv[])
     }
     fOut = NULL;
   }
-
-  if (!CloseNavFiles())
-    printf("WARNING: Failed closing the nav file.\n");
 
   if (*CutFileIn && (argc > 2) && !CutFileClose(CutFileOut, TRUE))
     printf("WARNING: Cannot create cut %s.\n", CutFileOut);
