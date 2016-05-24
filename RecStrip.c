@@ -526,7 +526,7 @@ int main(int argc, const char* argv[])
 
         // SEGMENTMARKER ANPASSEN
 //        ProcessCutFile(CurPosBlocks, PosOffsetBlocks);
-        while ((i < NrSegmentMarker-1) && (CurPosBlocks >= SegmentMarker[i].Block))
+        while ((i < NrSegmentMarker) && (CurPosBlocks >= SegmentMarker[i].Block))
         {
           SegmentMarker[i].Block -= CalcBlockSize(PositionOffset);
           SegmentMarker[i].Timems -= CutTimeOffset;

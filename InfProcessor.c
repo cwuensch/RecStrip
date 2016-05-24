@@ -309,6 +309,7 @@ bool CloseInfFile(const char *AbsDestInf, const char *AbsSourceInf, bool Save)
       if(fInfIn)
       {
         fread(RecHeaderInfo, 1, 8, fInfIn);
+        rewind(fInfIn);
         RecHeaderInfo->rs_ToBeStripped = FALSE;
         RecHeaderInfo->rbn_HasBeenScanned = TRUE;
         fwrite(RecHeaderInfo, 1, 8, fInfIn);
