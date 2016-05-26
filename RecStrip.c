@@ -99,6 +99,7 @@ FILE                   *fIn = NULL;  // dirty Hack: erreichbar machen für NALUDu
 static FILE            *fOut = NULL;
 
 static unsigned long long  RecFileSize = 0;
+static unsigned int        RecFileBlocks = 0;
 static unsigned long long  CurrentPosition = 0, PositionOffset = 0, NrPackets;
 static dword               CurPosBlocks = 0, CurBlockBytes = 0, BlocksOneSecond = 250;
 static unsigned long long  NrDroppedFillerNALU = 0, NrDroppedZeroStuffing = 0, NrDroppedNullPid = 0, NrDroppedEPGPid = 0;
@@ -264,10 +265,12 @@ int main(int argc, const char* argv[])
   time_t                startTime, endTime;
   static bool           ResumeSet = FALSE;
   static int            CurSeg = 0, i = 0, j = 0;
+  static dword          BlocksOnePercent, Percent = 0, BlocksSincePercent = 0;
   
   TRACEENTER;
   #ifndef _WIN32
     setvbuf(stdout, NULL, _IOLBF, 4096);  // zeilenweises Buffering, auch bei Ausgabe in Datei
+    setvbuf(stderr, NULL, _IOLBF, 4096);  // zeilenweises Buffering, auch bei Ausgabe in Datei
   #endif
   printf("\nRecStrip for Topfield PVR " VERSION "\n");
   printf("(C) 2016 Christian Wuensch\n");
@@ -322,6 +325,8 @@ int main(int argc, const char* argv[])
   if (fIn)
   {
     setvbuf(fIn, NULL, _IOFBF, BUFSIZE);
+    RecFileBlocks = CalcBlockSize(RecFileSize);
+    BlocksOnePercent = RecFileBlocks / 100;
     GetPacketSize(RecFileIn);
     printf("File size of rec: %llu, packet size: %u\n", RecFileSize, PACKETSIZE);
   }
@@ -360,7 +365,7 @@ int main(int argc, const char* argv[])
       snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf", RecFileOut);
       printf("Inf output: %s\n", InfFileOut);
     }
-    BlocksOneSecond = CalcBlockSize(RecFileSize) / InfDuration;
+    BlocksOneSecond = RecFileBlocks / InfDuration;
   }
   else
   {
@@ -421,6 +426,7 @@ int main(int argc, const char* argv[])
   // -----------------------------------------------
   // Datei paketweise einlesen und verarbeiten
   // -----------------------------------------------
+  printf("\n");
   time(&startTime);
   while (fIn)
   {
@@ -586,7 +592,15 @@ int main(int argc, const char* argv[])
         if (CurBlockBytes >= 9024)
         {
           CurPosBlocks++;
+          BlocksSincePercent++;
           CurBlockBytes = 0;
+        }
+
+        if (BlocksSincePercent >= BlocksOnePercent)
+        {
+          Percent++;
+          BlocksSincePercent -= BlocksOnePercent;
+          fprintf(stderr, "%3d %%\r", Percent);
         }
       }
       else
@@ -612,6 +626,7 @@ int main(int argc, const char* argv[])
     else
       break; 
   }
+  printf("\n");
 
   if (!CloseNavFiles())
     printf("WARNING: Failed closing the nav file.\n");
@@ -651,7 +666,7 @@ int main(int argc, const char* argv[])
   if (NrPackets > 0)
     printf("\nPackets: %llu, FillerNALUs: %llu (%llu%%), ZeroByteStuffing: %llu (%llu%%), NullPackets: %llu (%llu%%), EPG: %llu (%llu%%), Dropped (all): %lli (%llu%%)\n", NrPackets, NrDroppedFillerNALU, NrDroppedFillerNALU*100/NrPackets, NrDroppedZeroStuffing, NrDroppedZeroStuffing*100/NrPackets, NrDroppedNullPid, NrDroppedNullPid*100/NrPackets, NrDroppedEPGPid, NrDroppedEPGPid*100/NrPackets, NrDroppedFillerNALU+NrDroppedZeroStuffing+NrDroppedNullPid+NrDroppedEPGPid, (NrDroppedFillerNALU+NrDroppedZeroStuffing+NrDroppedNullPid+NrDroppedEPGPid)*100/NrPackets);
   else
-    printf("\n0 Packets!\n");
+    printf("\n\n0 Packets!\n");
 
   time(&endTime);
   printf("\nElapsed time: %f sec.\n", difftime(endTime, startTime));
