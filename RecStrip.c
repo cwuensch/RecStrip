@@ -270,7 +270,6 @@ int main(int argc, const char* argv[])
   TRACEENTER;
   #ifndef _WIN32
     setvbuf(stdout, NULL, _IOLBF, 4096);  // zeilenweises Buffering, auch bei Ausgabe in Datei
-    setvbuf(stderr, NULL, _IOLBF, 4096);  // zeilenweises Buffering, auch bei Ausgabe in Datei
   #endif
   printf("\nRecStrip for Topfield PVR " VERSION "\n");
   printf("(C) 2016 Christian Wuensch\n");
