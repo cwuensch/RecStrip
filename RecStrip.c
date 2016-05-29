@@ -447,7 +447,9 @@ int main(int argc, const char* argv[])
           PositionOffset += SkippedBytes;
           CurrentPosition += SkippedBytes;
           CurPosBlocks = CalcBlockSize(CurrentPosition);
+          Percent = (100*CurPosBlocks / RecFileBlocks);
           CurBlockBytes = 0;
+          BlocksSincePercent = 0;
 
           if (BookmarkInfo)
           {
@@ -598,7 +600,7 @@ int main(int argc, const char* argv[])
         if (BlocksSincePercent >= BlocksOnePercent)
         {
           Percent++;
-          BlocksSincePercent -= BlocksOnePercent;
+          BlocksSincePercent = 0;
           fprintf(stderr, "%3d %%\r", Percent);
         }
       }
