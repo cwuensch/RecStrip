@@ -1,5 +1,5 @@
-#define _LARGEFILE64_SOURCE
-#define __USE_LARGEFILE64  1
+#define _LARGEFILE_SOURCE   1
+#define _LARGEFILE64_SOURCE 1
 #define _FILE_OFFSET_BITS  64
 #ifdef _MSC_VER
   #define __const const
@@ -263,7 +263,7 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
 if (RecHeaderInfo->Reserved != 0)
   printf("DEBUG! Assertion Error: Reserved-Flags is not 0.\n");
 
-    InfDuration = RecHeaderInfo->HeaderDuration + RecHeaderInfo->HeaderDurationSec;
+    InfDuration = 60*RecHeaderInfo->HeaderDuration + RecHeaderInfo->HeaderDurationSec;
 
     if (RecHeaderInfo->rs_HasBeenStripped)
       AlreadyStripped = TRUE;
@@ -292,8 +292,11 @@ bool CloseInfFile(const char *AbsDestInf, const char *AbsSourceInf, bool Save)
     fInfOut = fopen(AbsDestInf, "wb");
     if(fInfOut)
     {
-      RecHeaderInfo->rs_ToBeStripped = FALSE;
-      RecHeaderInfo->rs_HasBeenStripped = TRUE;
+      if (DoStrip)
+      {
+        RecHeaderInfo->rs_ToBeStripped = FALSE;
+        RecHeaderInfo->rs_HasBeenStripped = TRUE;
+      }
       RecHeaderInfo->rbn_HasBeenScanned = TRUE;
       if (NewDurationMS)
       {
@@ -310,7 +313,8 @@ bool CloseInfFile(const char *AbsDestInf, const char *AbsSourceInf, bool Save)
       {
         fread(RecHeaderInfo, 1, 8, fInfIn);
         rewind(fInfIn);
-        RecHeaderInfo->rs_ToBeStripped = FALSE;
+        if (DoStrip)
+          RecHeaderInfo->rs_ToBeStripped = FALSE;
         RecHeaderInfo->rbn_HasBeenScanned = TRUE;
         fwrite(RecHeaderInfo, 1, 8, fInfIn);
 

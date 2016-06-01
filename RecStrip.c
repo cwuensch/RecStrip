@@ -23,8 +23,8 @@
   along with this program;  if not, write to the Free Software
   Foundation, Inc., 59 Temple Place, Suite 330, Boston, MA 02111-1307 USA
 */
-#define _LARGEFILE64_SOURCE
-#define __USE_LARGEFILE64  1
+#define _LARGEFILE_SOURCE   1
+#define _LARGEFILE64_SOURCE 1
 #define _FILE_OFFSET_BITS  64
 #ifdef _MSC_VER
   #define __const const
@@ -304,6 +304,7 @@ int main(int argc, const char* argv[])
       strncpy(RecFileOut, argv[2], sizeof(RecFileOut));
       RecFileOut[sizeof(RecFileOut)-1] = '\0';
     }
+    printf("\nParameters: DoCut=%s, DoStrip=%s, RemoveEPG=%s, CreateNav=%s\n", (DoCut ? "yes" : "no"), (DoStrip ? "yes" : "no"), (RemoveEPGStream ? "yes" : "no"), "yes");
   }
   else
   {
@@ -462,7 +463,7 @@ int main(int argc, const char* argv[])
               DeleteBookmark(j);
 
             // neues Bookmark an Schnittstelle setzen
-            if (CurrentPosition-PositionOffset > 0)
+            if ((CurrentPosition-PositionOffset > 0) && (CurPosBlocks + 3*BlocksOneSecond < RecFileBlocks))
               AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset));
           }
         }
