@@ -164,6 +164,7 @@ typedef struct
 
 
 bool LoadInfFile(const char *AbsInfName);
+bool SetInfCryptFlag(const char *AbsInfFile);
 bool CloseInfFile(const char *AbsDestInf, const char *AbsSourceInf, bool Save);
 
 #endif

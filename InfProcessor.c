@@ -184,7 +184,7 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
   if(!fInfIn)
   {
     SystemType = ST_TMSS;
-    free(InfBuffer); InfBuffer = NULL;
+//    free(InfBuffer); InfBuffer = NULL;
     printf("LoadInfFile() E0902: Source inf not found.\n");
     TRACEEXIT;
     return FALSE;
@@ -268,8 +268,30 @@ if (RecHeaderInfo->Reserved != 0)
     if (RecHeaderInfo->rs_HasBeenStripped)
       AlreadyStripped = TRUE;
   }
+
+  if (!Result)
+  {
+    free(InfBuffer); InfBuffer = NULL;
+  }
   TRACEEXIT;
   return Result;
+}
+
+bool SetInfCryptFlag(const char *AbsInfFile)
+{
+  FILE                 *fInfIn;
+  TYPE_RecHeader_Info   RecHeaderInfo;
+  bool                  ret = FALSE;
+
+  if ((fInfIn = fopen(AbsInfFile, "r+b")))
+  {
+    fread(&RecHeaderInfo, 1, 18, fInfIn);
+    rewind(fInfIn);
+    RecHeaderInfo.CryptFlag = RecHeaderInfo.CryptFlag | 1;
+    ret = (fwrite(&RecHeaderInfo, 1, 18, fInfIn) == 18);
+    ret = ret && fclose(fInfIn);
+  }
+  return ret;
 }
 
 bool CloseInfFile(const char *AbsDestInf, const char *AbsSourceInf, bool Save)

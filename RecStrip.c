@@ -87,7 +87,7 @@ SYSTEM_TYPE             SystemType = ST_UNKNOWN;
 byte                    PACKETSIZE, PACKETOFFSET;
 word                    VideoPID = 0;
 bool                    isHDVideo = FALSE, AlreadyStripped = FALSE;
-bool                    DoStrip = FALSE, DoCut = FALSE, RemoveEPGStream = TRUE;
+bool                    DoStrip = FALSE, DoCut = FALSE, RemoveEPGStream = FALSE;
 
 TYPE_Bookmark_Info     *BookmarkInfo = NULL;
 tSegmentMarker         *SegmentMarker = NULL;       //[0]=Start of file, [x]=End of file
@@ -369,7 +369,6 @@ int main(int argc, const char* argv[])
   }
   else
   {
-    InfFileIn[0] = '\0';
     if (SystemType != ST_UNKNOWN)
       printf("WARNING: Cannot open inf file %s.\n", InfFileIn);
     else
@@ -381,6 +380,7 @@ int main(int argc, const char* argv[])
       TRACEEXIT;
       exit(4);
     }
+    InfFileIn[0] = '\0';
   }
   if (AlreadyStripped)
   {
@@ -420,7 +420,7 @@ int main(int argc, const char* argv[])
   printf("\n");
 
   // Aufnahme analysieren
-//  if (!VideoPID)
+  if (!VideoPID)
     GetVideoInfos(fIn);
 
   // -----------------------------------------------
@@ -496,7 +496,7 @@ int main(int argc, const char* argv[])
     ReadBytes = fread(Buffer, 1, PACKETSIZE, fIn);
     if (ReadBytes > 0)
     {
-      if (Buffer[PACKETOFFSET] == 'G' || ((tTSPacket*) &Buffer[PACKETOFFSET])->Scrambling_Ctrl > 0x01)
+      if (Buffer[PACKETOFFSET] == 'G' && ((tTSPacket*) &Buffer[PACKETOFFSET])->Scrambling_Ctrl <= 0x01)
       {
         int CurPID = TsGetPID((tTSPacket*) &Buffer[PACKETOFFSET]);
         DropCurPacket = FALSE;
@@ -614,7 +614,13 @@ int main(int argc, const char* argv[])
         }
         else
         {
-          printf("ERROR: Incorrect TS - Missing sync byte at position %llu.\n", CurrentPosition);
+          if (Buffer[PACKETOFFSET] == 'G')
+          {
+            printf("ERROR: Scrambled TS - Scrambling bit at position %llu.\n", CurrentPosition);
+            SetInfCryptFlag(InfFileIn);
+          }
+          else
+            printf("ERROR: Incorrect TS - Missing sync byte at position %llu.\n", CurrentPosition);
           fclose(fIn); fIn = NULL;
           fclose(fOut); fOut = NULL;
           CloseNavFiles();
