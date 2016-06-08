@@ -308,12 +308,19 @@ int main(int argc, const char* argv[])
   }
   else
   {
-    printf("\nUsage: %s [-s] [-c] [-e/n/i] <source-rec> <dest-rec>\n", argv[0]);
-    printf(" -s: Strip recording.\n");
-    printf(" -c: Cut movie (copy only selected parts from cutfile). May be combined with -s.\n");
-    printf(" -e: Remove the EPG stream (only if -s is provided).\n");
-    printf(" -n: Generate nav file for output, if not present. (Default)\n");
-    printf(" -i: Generate inf file for output, if not present. (not available)\n");
+    printf("\nUsage:\n------\n");
+    printf("  RecStrip <RecFile> \t\tScan the rec file and set Crypt- und RbN-Flag \n\t\t\t\tin source inf. \n\t\t\t\tIf source inf/nav not present generate them new.\n\n");
+    printf("  RecStrip <InFile> <OutFile> \tCreate a copy of the input rec. \n\t\t\t\tIf a inf/nav/cut file exists copy and adapt it.\n\t\t\t\tIf present set Crypt and RbN-Flag in source inf\n\t\t\t\tand reset ToBeStripped if successfully stripped.\n");
+    printf("\nParameters:\n-----------\n");
+    printf("  -n/-i: \tAlways generate a new nav/inf file from the rec. \n\t\tIf no OutFile is specified, source nav/inf will be overwritten!\n\n");
+    printf("  -c: \t\tCut the recording according to cut-file. (if OutFile specified)\n\n");
+    printf("  -s: \t\tStrip the recording. (if OutFile specified) \n\t\tMay be combined with -c and -e.\n\n");
+    printf("  -e: \t\tRemove also the EPG data. (only in combination with -s)\n\n");
+    printf("  -o0/-o1/-o2: \tSet the packet size for output-rec: \n\t\t0: same as input, 1: 192 Byte packets, 2: 188 Byte packets.\n");
+    printf("\nExamples:\n---------\n");
+    printf("  RecStrip 'RecFile.rec' \t\t\tRebuildNav.\n\n");
+    printf("  RecStrip -s -e InFile.rec OutFile.rec \tStrip recording.\n\n");
+    printf("  RecStrip -n -i -o1 InFile.ts OutFile.rec \tConvert TS to Topfield rec.\n\n");
     TRACEEXIT;
     exit(1);
   }
@@ -420,7 +427,7 @@ int main(int argc, const char* argv[])
   printf("\n");
 
   // Aufnahme analysieren
-  if (!VideoPID)
+//  if (!VideoPID)
     GetVideoInfos(fIn);
 
   // -----------------------------------------------
