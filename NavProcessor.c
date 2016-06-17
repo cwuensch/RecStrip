@@ -150,7 +150,7 @@ static bool GetPTS(byte *Buffer, dword *pPTS, dword *pDTS)
     return GetPTS2(&Buffer[3], pPTS, pDTS);
 }
 
-static bool GetPCR(byte *pBuffer, dword *pPCR)
+bool GetPCR(byte *pBuffer, dword *pPCR)
 {
   TRACEENTER;
   if (pPCR && (pBuffer[0] == 0x47) && ((pBuffer[3] & 0x20) != 0) && (pBuffer[4] > 0) && (pBuffer[5] & 0x10))
@@ -167,7 +167,7 @@ static bool GetPCR(byte *pBuffer, dword *pPCR)
   return FALSE;
 }
 
-static dword DeltaPCR(dword FirstPCR, dword SecondPCR)
+dword DeltaPCR(dword FirstPCR, dword SecondPCR)
 {
   if(FirstPCR <= SecondPCR)
     return (SecondPCR - FirstPCR);

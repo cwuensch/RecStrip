@@ -96,6 +96,9 @@ extern dword           *pOutNextTimeStamp;
 extern FILE            *fNavIn;
 
 
+bool GetPCR(byte *pBuffer, dword *pPCR);
+dword DeltaPCR(dword FirstPCR, dword SecondPCR);
+
 void HDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacket);
 void SDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacket);
 bool LoadNavFiles(const char* AbsInNav, const char* AbsOutNav);

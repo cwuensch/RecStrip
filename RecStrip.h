@@ -1,6 +1,8 @@
 #ifndef __RECSTRIPH__
 #define __RECSTRIPH__
 
+#include "RecHeader.h"
+
 #define VERSION                   "0.9"
 
 #define NRBOOKMARKS                177   // eigentlich werden nur 48 Bookmarks unterstützt!! (SRP2401)
@@ -9,15 +11,35 @@
 #define FBLIB_DIR_SIZE             512
 #define RECBUFFERENTRIES          5000
 
-#define STREAM_VIDEO_MPEG1        0x01
-#define STREAM_VIDEO_MPEG2        0x02
-#define STREAM_VIDEO_MPEG4_PART2  0x10
-#define STREAM_VIDEO_MPEG4_H263   0x1A
-#define STREAM_VIDEO_MPEG4_H264   0x1B
-#define STREAM_VIDEO_VC1          0xEA
-#define STREAM_VIDEO_VC1SM        0xEB
-#define STREAM_UNKNOWN            0xFF
+//audio & video format
+#define STREAM_AUDIO_MP3             0x01
+#define STREAM_AUDIO_MPEG1           0x03
+#define STREAM_AUDIO_MPEG2           0x04
+#define STREAM_AUDIO_MPEG4_AC3_PLUS  0x06
+#define STREAM_AUDIO_MPEG4_AAC       0x0F
+#define STREAM_AUDIO_MPEG4_AAC_PLUS  0x11
+#define STREAM_AUDIO_MPEG4_AC3       0x81
+#define STREAM_AUDIO_MPEG4_DTS       0x82
 
+#define STREAM_VIDEO_MPEG1           0x01
+#define STREAM_VIDEO_MPEG2           0x02
+#define STREAM_VIDEO_MPEG4_PART2     0x10
+#define STREAM_VIDEO_MPEG4_H263      0x1A
+#define STREAM_VIDEO_MPEG4_H264      0x1B
+#define STREAM_VIDEO_VC1             0xEA
+#define STREAM_VIDEO_VC1SM           0xEB
+#define STREAM_UNKNOWN               0xFF
+
+
+#ifdef _WIN32
+  #define fstat64 _fstat64
+  #define stat64 _stat64
+  #define fseeko64 _fseeki64
+  #define ftello64 _ftelli64
+//  #define fopen fopen_s
+//  #define strncpy strncpy_s
+//  #define sprintf sprintf_s
+#endif
 
 #if defined(_MSC_VER) && _MSC_VER < 1900
   extern int c99_vsnprintf(char *outBuf, size_t size, const char *format, va_list ap);
@@ -68,21 +90,6 @@ typedef struct
   byte Data[184];
 } tTSPacket;
 
-/*typedef struct
-{
-  word                  PID;
-  int                   ValidBuffer;    //0: no data yet, Buffer1 gets filled
-                                        //1: Buffer1 is valid, Buffer2 gets filled
-                                        //2: Buffer2 is valid, Buffer1 gets filled
-  int                   BufferSize;
-  int                   BufferPtr;
-  byte                 *pBuffer;
-  byte                  LastCCCounter;
-  byte                 *Buffer1, *Buffer2;
-  int                   PSFileCtr;
-  byte                  ErrorFlag;
-} tPSBuffer; */
-
 typedef struct
 {
   dword                 Block;  //Block nr
@@ -92,16 +99,10 @@ typedef struct
   char                 *pCaption;
 } tSegmentMarker;
 
-typedef struct
-{
-  int                   NrBookmarks;
-  dword                 Bookmarks[177];
-  dword                 Resume;
-} TYPE_Bookmark_Info;
-
 
 // Globale Variablen
 extern char             RecFileIn[], RecFileOut[];
+extern unsigned long long RecFileSize;
 extern SYSTEM_TYPE      SystemType;
 extern byte             PACKETSIZE, PACKETOFFSET;
 extern word             VideoPID;

@@ -17,6 +17,7 @@
 #include <time.h>
 #include "type.h"
 #include "InfProcessor.h"
+#include "RebuildInf.h"
 #include "RecStrip.h"
 
 
@@ -113,8 +114,8 @@ static SYSTEM_TYPE DetermineInfType(const byte *const InfBuffer, const unsigned 
 
   if ((Inf_TMSS->TransponderInfo.Frequency      >=     10700)  &&  (Inf_TMSS->TransponderInfo.Frequency  <=     12750))  PointsS++;
   if ((Inf_TMSS->TransponderInfo.SymbolRate     >=     10000)  &&  (Inf_TMSS->TransponderInfo.SymbolRate <=     30000))  PointsS++;
-  if ((Inf_TMSS->TransponderInfo.unused2        ==         0)  &&  (Inf_TMSS->TransponderInfo.unused3    ==         0))  PointsS++;
-//  if  (Inf_TMSS->TransponderInfo.TPMode         ==         0)   PointsS++;
+  if ((Inf_TMSS->TransponderInfo.UnusedFlags1   ==         0)  &&  (Inf_TMSS->TransponderInfo.Unknown2   ==         0))  PointsS++;
+//  if  (Inf_TMSS->TransponderInfo.TPMode       ==         0)   PointsS++;
 
   if ((Inf_TMST->TransponderInfo.Frequency      >=     47000)  &&  (Inf_TMST->TransponderInfo.Frequency  <=    862000))  PointsT++;
   if ((Inf_TMST->TransponderInfo.Bandwidth      >=         6)  &&  (Inf_TMST->TransponderInfo.Bandwidth  <=         8))  PointsT++;
@@ -157,6 +158,18 @@ bool LoadInfFile(const char *AbsInfName)
 
   TRACEENTER;
 
+  //Allocate and clear the buffer
+  InfSize = sizeof(TYPE_RecHeader_TMSS);
+  InfBuffer = (byte*) malloc(max(InfSize, 32768));
+  if(InfBuffer)
+    memset(InfBuffer, 0, max(InfSize, 32768));
+  else
+  {
+    printf("LoadInfFile() E0901: Not enough memory.\n");
+    TRACEEXIT;
+    return FALSE;
+  }
+
   //Calculate inf header size
   if (HDD_GetFileSize(AbsInfName, &InfFileSize))
   {
@@ -171,40 +184,20 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
 
     printf(" -> SystemType: %s\n", ((SystemType==ST_TMSC) ? "ST_TMSC" : "ST_TMSS"));
   }
-  else
-  {
-    SystemType = ST_TMSS;
-    printf("LoadInfFile() E0901: Source inf not found.\n");
-    TRACEEXIT;
-    return FALSE;
-  }
+
+  // Get inf infos from rec
+  GenerateInfFile(fIn, (TYPE_RecHeader_TMSS*)InfBuffer);
 
   //Read the source .inf
-  fInfIn = fopen(AbsInfName, "rb");
-  if(!fInfIn)
+  if (AbsInfName)
+    fInfIn = fopen(AbsInfName, "rb");
+  if(fInfIn)
   {
-    SystemType = ST_TMSS;
-//    free(InfBuffer); InfBuffer = NULL;
-    printf("LoadInfFile() E0902: Source inf not found.\n");
-    TRACEEXIT;
-    return FALSE;
-  }
-
-  //Allocate and clear the buffer
-  InfSize = sizeof(TYPE_RecHeader_TMSS);
-  InfBuffer = (byte*) malloc(max(InfSize, 32768));
-  if(InfBuffer)
-    memset(InfBuffer, 0, max(InfSize, 32768));
-  else
-  {
+    Result = (fread(InfBuffer, 1, InfSize, fInfIn) + 4 >= InfSize);
     fclose(fInfIn);
-    printf("LoadInfFile() E0903: Not enough memory.\n");
-    TRACEEXIT;
-    return FALSE;
   }
-
-  Result = (fread(InfBuffer, 1, InfSize, fInfIn) + 4 >= InfSize);
-  fclose(fInfIn);
+  else
+    SystemType = ST_TMSS;
 
   //Decode the source .inf
   if (Result)
@@ -263,16 +256,12 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
 if (RecHeaderInfo->Reserved != 0)
   printf("DEBUG! Assertion Error: Reserved-Flags is not 0.\n");
 
-    InfDuration = 60*RecHeaderInfo->HeaderDuration + RecHeaderInfo->HeaderDurationSec;
+    InfDuration = 60*RecHeaderInfo->DurationMin + RecHeaderInfo->DurationSec;
 
     if (RecHeaderInfo->rs_HasBeenStripped)
       AlreadyStripped = TRUE;
   }
 
-  if (!Result)
-  {
-    free(InfBuffer); InfBuffer = NULL;
-  }
   TRACEEXIT;
   return Result;
 }
@@ -322,11 +311,11 @@ bool CloseInfFile(const char *AbsDestInf, const char *AbsSourceInf, bool Save)
       RecHeaderInfo->rbn_HasBeenScanned = TRUE;
       if (NewDurationMS)
       {
-        RecHeaderInfo->HeaderDuration = (word)((NewDurationMS + 500) / 60000);
-        RecHeaderInfo->HeaderDurationSec = ((NewDurationMS + 500) / 1000) % 60;
+        RecHeaderInfo->DurationMin = (word)((NewDurationMS + 500) / 60000);
+        RecHeaderInfo->DurationSec = ((NewDurationMS + 500) / 1000) % 60;
       }
       if (NewStartTimeOffset)
-        RecHeaderInfo->HeaderStartTime = AddTime(RecHeaderInfo->HeaderStartTime, NewStartTimeOffset / 60000);
+        RecHeaderInfo->StartTime = AddTime(RecHeaderInfo->StartTime, NewStartTimeOffset / 60000);
       Result = (fwrite(InfBuffer, 1, InfSize, fInfOut) == InfSize);
 
       // Kopiere den Rest der Source-inf (falls vorhanden) in die neue inf hinein

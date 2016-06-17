@@ -49,14 +49,6 @@
 #include "RebuildInf.h"
 #include "NALUDump.h"
 
-#ifdef _WIN32
-  #define stat64 _stat64
-  #define fseeko64 _fseeki64
-  #define ftello64 _ftelli64
-//  #define fopen fopen_s
-//  #define strncpy strncpy_s
-//  #define sprintf sprintf_s
-#endif
 
 #if defined(_MSC_VER) && _MSC_VER < 1900
   int c99_vsnprintf(char *outBuf, size_t size, const char *format, va_list ap)
@@ -83,11 +75,12 @@
 
 // Globale Variablen
 char                    RecFileIn[FBLIB_DIR_SIZE], RecFileOut[FBLIB_DIR_SIZE];
+unsigned long long      RecFileSize = 0;
 SYSTEM_TYPE             SystemType = ST_UNKNOWN;
-byte                    PACKETSIZE, PACKETOFFSET;
+byte                    PACKETSIZE, PACKETOFFSET, OutPacketSize = 0;
 word                    VideoPID = 0;
 bool                    isHDVideo = FALSE, AlreadyStripped = FALSE;
-bool                    DoStrip = FALSE, DoCut = FALSE, RemoveEPGStream = FALSE;
+bool                    DoStrip = FALSE, DoCut = FALSE, RemoveEPGStream = FALSE, RebuildNav = FALSE, RebuildInf = FALSE;
 
 TYPE_Bookmark_Info     *BookmarkInfo = NULL;
 tSegmentMarker         *SegmentMarker = NULL;       //[0]=Start of file, [x]=End of file
@@ -98,7 +91,6 @@ dword                   InfDuration = 0, NewDurationMS = 0, NewStartTimeOffset =
 FILE                   *fIn = NULL;  // dirty Hack: erreichbar machen für NALUDump
 static FILE            *fOut = NULL;
 
-static unsigned long long  RecFileSize = 0;
 static unsigned int        RecFileBlocks = 0;
 static unsigned long long  CurrentPosition = 0, PositionOffset = 0, NrPackets;
 static dword               CurPosBlocks = 0, CurBlockBytes = 0, BlocksOneSecond = 250;
@@ -190,6 +182,8 @@ int GetPacketSize(char *RecFileName)
       free(RecStartArray);
     }
   }
+  if (!OutPacketSize)
+    OutPacketSize = PACKETSIZE;
   TRACEEXIT;
   return (ret ? PACKETSIZE : 0);
 }
@@ -282,45 +276,60 @@ int main(int argc, const char* argv[])
   {
     switch (argv[1][1])
     {
+      case 'n':   RebuildNav = TRUE;      break;
+      case 'i':   RebuildInf = TRUE;      break;
       case 'c':   DoCut = TRUE;           break;
       case 's':   DoStrip = TRUE;         break;
       case 'e':   RemoveEPGStream = TRUE; break;
+      case 'o':   OutPacketSize = (argv[1][2] == '2') ? 188 : 192; break;
       default:    printf("\nUnknown argument: -%c\n", argv[1][1]);
     }
     argv[1] = argv[0];
     argv++;
     argc--;
   }
-//  if (!DoCut && !DoStrip) DoStrip = TRUE;
-  if (!DoStrip) RemoveEPGStream = FALSE;
+  if (DoStrip) RebuildNav = TRUE;
+  printf("\nParameters:\nDoCut=%s, DoStrip=%s, RemoveEPG=%s, RbldNav=%s, RbldInf=%s, OutPackSize=%hhu\n", (DoCut ? "yes" : "no"), (DoStrip ? "yes" : "no"), (RemoveEPGStream ? "yes" : "no"), (RebuildNav ? "yes" : "no"), (RebuildInf ? "yes" : "no"), OutPacketSize);
 
   // Eingabe-Dateinamen lesen
-  if (argc > 2)
+  if (argc > 1)
   {
     strncpy(RecFileIn, argv[1], sizeof(RecFileIn));
     RecFileIn[sizeof(RecFileIn)-1] = '\0';
-//    if (argc > 2)
-    {
-      strncpy(RecFileOut, argv[2], sizeof(RecFileOut));
-      RecFileOut[sizeof(RecFileOut)-1] = '\0';
-    }
-    printf("\nParameters: DoCut=%s, DoStrip=%s, RemoveEPG=%s, CreateNav=%s\n", (DoCut ? "yes" : "no"), (DoStrip ? "yes" : "no"), (RemoveEPGStream ? "yes" : "no"), "yes");
   }
-  else
+  else RecFileIn[0] = '\0';
+  if (argc > 2)
+  {
+    strncpy(RecFileOut, argv[2], sizeof(RecFileOut));
+    RecFileOut[sizeof(RecFileOut)-1] = '\0';
+  }
+  else RecFileOut[0] = '\0';
+
+  if (!RecFileIn || ((DoCut || DoStrip || OutPacketSize) && !*RecFileOut) || (RemoveEPGStream && !DoStrip))
   {
     printf("\nUsage:\n------\n");
-    printf("  RecStrip <RecFile> \t\tScan the rec file and set Crypt- und RbN-Flag \n\t\t\t\tin source inf. \n\t\t\t\tIf source inf/nav not present generate them new.\n\n");
-    printf("  RecStrip <InFile> <OutFile> \tCreate a copy of the input rec. \n\t\t\t\tIf a inf/nav/cut file exists copy and adapt it.\n\t\t\t\tIf present set Crypt and RbN-Flag in source inf\n\t\t\t\tand reset ToBeStripped if successfully stripped.\n");
+    printf(" RecStrip <RecFile>           Scan the rec file and set Crypt- und RbN-Flag in\n"
+           "                              the source inf.\n"
+           "                              If source inf/nav not present, generate them new.\n\n");
+    printf(" RecStrip <InFile> <OutFile>  Create a copy of the input rec.\n"
+           "                              If a inf/nav/cut file exists, copy and adapt it.\n"
+           "                              If source inf is present, set Crypt and RbN-Flag\n"
+           "                              and reset ToBeStripped if successfully stripped.\n");
     printf("\nParameters:\n-----------\n");
-    printf("  -n/-i: \tAlways generate a new nav/inf file from the rec. \n\t\tIf no OutFile is specified, source nav/inf will be overwritten!\n\n");
-    printf("  -c: \t\tCut the recording according to cut-file. (if OutFile specified)\n\n");
-    printf("  -s: \t\tStrip the recording. (if OutFile specified) \n\t\tMay be combined with -c and -e.\n\n");
-    printf("  -e: \t\tRemove also the EPG data. (only in combination with -s)\n\n");
-    printf("  -o0/-o1/-o2: \tSet the packet size for output-rec: \n\t\t0: same as input, 1: 192 Byte packets, 2: 188 Byte packets.\n");
+    printf("  -n/-i:     Always generate a new nav/inf file from the rec.\n"
+           "             If no OutFile is specified, source nav/inf will be overwritten!\n\n");
+    printf("  -c:        Cut the recording according to cut-file. (if OutFile specified)\n"
+           "             Copies only the selected segments into the new rec.\n\n");
+    printf("  -s:        Strip the recording. (if OutFile specified)\n"
+           "             Removes unneeded filler packets. May be combined with -c and -e.\n\n");
+    printf("  -e:        Remove also the EPG data. (only in combination with -s)\n\n");
+    printf("  -o1/-o2:   Set the packet size for output-rec: \n"
+           "             1: PacketSize = 192 Bytes, 2: PacketSize = 188 Bytes.\n");
     printf("\nExamples:\n---------\n");
-    printf("  RecStrip 'RecFile.rec' \t\t\tRebuildNav.\n\n");
-    printf("  RecStrip -s -e InFile.rec OutFile.rec \tStrip recording.\n\n");
-    printf("  RecStrip -n -i -o1 InFile.ts OutFile.rec \tConvert TS to Topfield rec.\n\n");
+    printf("  RecStrip 'RecFile.rec'                     RebuildNav.\n\n");
+    printf("  RecStrip -s -e InFile.rec OutFile.rec      Strip recording.\n\n");
+    printf("  RecStrip -n -i -o1 InFile.ts OutFile.rec   Convert TS to Topfield rec.\n\n");
+    printf("  RecStrip -c -s -e -o2 InRec.rec OutMpg.ts  Strip & cut rec and convert to TS.\n");
     TRACEEXIT;
     exit(1);
   }
@@ -336,6 +345,7 @@ int main(int argc, const char* argv[])
     BlocksOnePercent = RecFileBlocks / 100;
     GetPacketSize(RecFileIn);
     printf("File size of rec: %llu, packet size: %u\n", RecFileSize, PACKETSIZE);
+    if (PACKETSIZE != OutPacketSize) RebuildNav = TRUE;
   }
   else
   {
@@ -345,7 +355,7 @@ int main(int argc, const char* argv[])
   }
 
   // ggf. Output-File öffnen
-  if (argc > 2)
+  if (*RecFileOut)
   {
     printf("Output file: %s\n", RecFileOut);
     fOut = fopen(RecFileOut, "wb");
@@ -365,19 +375,22 @@ int main(int argc, const char* argv[])
   // ggf. inf-File einlesen
   snprintf(InfFileIn, sizeof(InfFileIn), "%s.inf", RecFileIn);
   printf("\nInf file: %s\n", InfFileIn);
-  if (LoadInfFile(InfFileIn))
+  if (LoadInfFile(InfFileIn) || RebuildInf)
   {
-    if (argc > 2)
+    if (*RecFileOut)
     {
       snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf", RecFileOut);
       printf("Inf output: %s\n", InfFileOut);
     }
-    BlocksOneSecond = RecFileBlocks / InfDuration;
   }
   else
   {
     if (SystemType != ST_UNKNOWN)
+    {
       printf("WARNING: Cannot open inf file %s.\n", InfFileIn);
+      snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf", RecFileIn);
+      printf("Inf output: %s\n", InfFileOut);
+    }
     else
     {
       printf("ERROR: Unknown SystemType.\n");
@@ -389,6 +402,9 @@ int main(int argc, const char* argv[])
     }
     InfFileIn[0] = '\0';
   }
+  if (InfDuration)
+    BlocksOneSecond = RecFileBlocks / InfDuration;
+
   if (AlreadyStripped)
   {
     printf("INFO: File has already been stripped.\n");
@@ -402,7 +418,7 @@ int main(int argc, const char* argv[])
   // ggf. nav-Files öffnen
   snprintf(NavFileIn, sizeof(NavFileIn), "%s.nav", RecFileIn);
   printf("\nNav file: %s\n", NavFileIn);
-  if (argc > 2)
+  if (*RecFileOut)
   {
     snprintf(NavFileOut, sizeof(NavFileOut), "%s.nav", RecFileOut);
     printf("Nav output: %s\n", NavFileOut);
@@ -416,7 +432,7 @@ int main(int argc, const char* argv[])
 
   if (CutFileLoad(CutFileIn))
   {
-    if (argc > 2)
+    if (*RecFileOut)
     {
       GetCutNameFromRec(RecFileOut, CutFileOut);
       printf("Cut output: %s\n", CutFileOut);
@@ -426,15 +442,12 @@ int main(int argc, const char* argv[])
     CutFileIn[0] = '\0';
   printf("\n");
 
-  // Aufnahme analysieren
-//  if (!VideoPID)
-    GetVideoInfos(fIn);
-
   // -----------------------------------------------
   // Datei paketweise einlesen und verarbeiten
   // -----------------------------------------------
   printf("\n");
   time(&startTime);
+  memset(Buffer, 0, sizeof(Buffer));
   while (fIn)
   {
     // SCHNEIDEN
@@ -500,12 +513,12 @@ int main(int argc, const char* argv[])
     }
 
     // PACKET EINLESEN
-    ReadBytes = fread(Buffer, 1, PACKETSIZE, fIn);
+    ReadBytes = fread(&Buffer[4-PACKETOFFSET], 1, PACKETSIZE, fIn);
     if (ReadBytes > 0)
     {
-      if (Buffer[PACKETOFFSET] == 'G' && ((tTSPacket*) &Buffer[PACKETOFFSET])->Scrambling_Ctrl <= 0x01)
+      if (Buffer[4] == 'G' && ((tTSPacket*) &Buffer[4])->Scrambling_Ctrl <= 0x01)
       {
-        int CurPID = TsGetPID((tTSPacket*) &Buffer[PACKETOFFSET]);
+        int CurPID = TsGetPID((tTSPacket*) &Buffer[4]);
         DropCurPacket = FALSE;
 
         // STRIPPEN
@@ -523,7 +536,7 @@ int main(int argc, const char* argv[])
           }
           else if (CurPID == VideoPID)
           {
-            switch (ProcessTSPacket(&Buffer[PACKETOFFSET], CurrentPosition + PACKETOFFSET))
+            switch (ProcessTSPacket(&Buffer[4], CurrentPosition + PACKETOFFSET))
             {
               case 1: 
                 NrDroppedFillerNALU++;
@@ -570,17 +583,20 @@ int main(int argc, const char* argv[])
         if (!DropCurPacket)
         {
           // NAV NEU BERECHNEN
-//          PositionOffset += PACKETOFFSET;  // Reduktion auf 188 Byte Packets
+          if (PACKETSIZE > OutPacketSize)       PositionOffset += 4;  // Reduktion auf 188 Byte Packets
+          else if (PACKETSIZE < OutPacketSize)  PositionOffset -= 4;
+
           // nav-Eintrag korrigieren und ausgeben, wenn Position < CurrentPosition ist (um PositionOffset reduzieren)
-          if (DoCut && !DoStrip && fNavIn)
-            QuickNavProcess(CurrentPosition, PositionOffset);
-          else
+          if (RebuildNav)
+          {
             if (CurPID == VideoPID)
-              ProcessNavFile(CurrentPosition + PACKETOFFSET, PositionOffset, (tTSPacket*) &Buffer[PACKETOFFSET]);
+              ProcessNavFile(CurrentPosition + PACKETOFFSET, PositionOffset, (tTSPacket*) &Buffer[4]);
+          }
+          else if (DoCut && !RebuildNav && fNavIn)
+            QuickNavProcess(CurrentPosition, PositionOffset);
 
           // PACKET AUSGEBEN
-//          if (fOut && !fwrite(&Buffer[PACKETOFFSET], ReadBytes-PACKETOFFSET, 1, fOut))  // Reduktion auf 188 Byte Packets
-          if (fOut && !fwrite(Buffer, ReadBytes, 1, fOut))
+          if (fOut && !fwrite(&Buffer[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut))  // Reduktion auf 188 Byte Packets
           {
             printf("ERROR: Failed writing to output file.\n");
             fclose(fIn); fIn = NULL;
@@ -621,7 +637,7 @@ int main(int argc, const char* argv[])
         }
         else
         {
-          if (Buffer[PACKETOFFSET] == 'G')
+          if (Buffer[4] == 'G')
           {
             printf("ERROR: Scrambled TS - Scrambling bit at position %llu.\n", CurrentPosition);
             SetInfCryptFlag(InfFileIn);
@@ -671,10 +687,10 @@ int main(int argc, const char* argv[])
     fOut = NULL;
   }
 
-  if (*CutFileIn && (argc > 2) && !CutFileClose(CutFileOut, TRUE))
+  if (*CutFileIn && *RecFileOut && !CutFileClose(CutFileOut, TRUE))
     printf("WARNING: Cannot create cut %s.\n", CutFileOut);
 
-  if (*InfFileIn && (argc > 2) && !CloseInfFile(InfFileOut, InfFileIn, TRUE))
+  if (*InfFileIn && !CloseInfFile(InfFileOut, InfFileIn, TRUE))
     printf("WARNING: Cannot create inf %s.\n", InfFileOut);
 
   NrPackets = ((CurrentPosition + PACKETSIZE-1) / PACKETSIZE);
