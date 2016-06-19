@@ -149,7 +149,7 @@ static SYSTEM_TYPE DetermineInfType(const byte *const InfBuffer, const unsigned 
   return Result;
 }
 
-bool LoadInfFile(const char *AbsInfName)
+bool LoadInfFile(char *AbsInfName)
 {
   FILE                 *fInfIn = NULL;
   TYPE_Service_Info    *ServiceInfo = NULL;
@@ -197,7 +197,10 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
     fclose(fInfIn);
   }
   else
+  {
+    AbsInfName[0] = '\0';
     SystemType = ST_TMSS;
+  }
 
   //Decode the source .inf
   if (Result)
@@ -263,7 +266,7 @@ if (RecHeaderInfo->Reserved != 0)
   }
 
   TRACEEXIT;
-  return Result;
+  return TRUE;
 }
 
 bool SetInfCryptFlag(const char *AbsInfFile)

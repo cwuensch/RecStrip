@@ -4,7 +4,7 @@
 #include "RecHeader.h"
 #include "RecStrip.h"
 
-bool LoadInfFile(const char *AbsInfName);
+bool LoadInfFile(char *AbsInfName);
 bool SetInfCryptFlag(const char *AbsInfFile);
 bool CloseInfFile(const char *AbsDestInf, const char *AbsSourceInf, bool Save);
 

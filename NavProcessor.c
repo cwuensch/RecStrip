@@ -158,6 +158,22 @@ bool GetPCR(byte *pBuffer, dword *pPCR)
     //Extract the time out of the PCR bit pattern
     //The PCR is clocked by a 90kHz generator. To convert to milliseconds
     //the 33 bit number can be shifted right and divided by 45
+    *pPCR = (dword)((((dword)pBuffer[6] << 24) | (pBuffer[7] << 16) | (pBuffer[8] << 8) | pBuffer[9]));
+
+    TRACEEXIT;
+    return TRUE;
+  }
+  TRACEEXIT;
+  return FALSE;
+}
+bool GetPCRms(byte *pBuffer, dword *pPCR)
+{
+  TRACEENTER;
+  if (pPCR && (pBuffer[0] == 0x47) && ((pBuffer[3] & 0x20) != 0) && (pBuffer[4] > 0) && (pBuffer[5] & 0x10))
+  {
+    //Extract the time out of the PCR bit pattern
+    //The PCR is clocked by a 90kHz generator. To convert to milliseconds
+    //the 33 bit number can be shifted right and divided by 45
     *pPCR = (dword)((((dword)pBuffer[6] << 24) | (pBuffer[7] << 16) | (pBuffer[8] << 8) | pBuffer[9]) / 45);
 
     TRACEEXIT;
@@ -253,7 +269,7 @@ void HDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacke
   if(Packet->Adapt_Field_Exists)
   {
     // If available, get the PCR
-    if(GetPCR((byte*)Packet, &PCR))
+    if(GetPCRms((byte*)Packet, &PCR))
     {
       if(FirstPCR == 0) FirstPCR = PCR;
       #if DEBUGLOG != 0
@@ -952,7 +968,7 @@ void QuickNavProcess(const unsigned long long CurrentPosition, const unsigned lo
   TRACEEXIT;
 }
 
-bool LoadNavFiles(const char* AbsInNav, const char* AbsOutNav)
+bool LoadNavFileIn(const char* AbsInNav)
 {
   TRACEENTER;
   memset(&navHD, 0, sizeof(tnavHD));
@@ -972,6 +988,13 @@ bool LoadNavFiles(const char* AbsInNav, const char* AbsOutNav)
       rewind(fNavIn);
   }
 
+  TRACEEXIT;
+  return (fNavIn != NULL);
+}
+bool LoadNavFileOut(const char* AbsOutNav)
+{
+  TRACEENTER;
+
   fNavOut = fopen(AbsOutNav, "wb");
   if (fNavOut)
   {
@@ -981,7 +1004,7 @@ bool LoadNavFiles(const char* AbsInNav, const char* AbsOutNav)
     printf("WARNING: Cannot create nav file %s.\n", AbsOutNav);
 
   TRACEEXIT;
-  return TRUE;
+  return (fNavOut != NULL);
 }
 
 bool CloseNavFiles(void)

@@ -95,6 +95,8 @@ static unsigned int        RecFileBlocks = 0;
 static unsigned long long  CurrentPosition = 0, PositionOffset = 0, NrPackets;
 static dword               CurPosBlocks = 0, CurBlockBytes = 0, BlocksOneSecond = 250;
 static unsigned long long  NrDroppedFillerNALU = 0, NrDroppedZeroStuffing = 0, NrDroppedNullPid = 0, NrDroppedEPGPid = 0;
+static dword               LastPCR = 0, CurPCR = 0, LastTimeStamp = 0, CurTimeStep = 7240;
+static unsigned long long  PosLastPCR = 0;
 
 
 bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize)
@@ -252,7 +254,7 @@ static void AddBookmark(int BookmarkIndex, dword BlockNr)
 
 int main(int argc, const char* argv[])
 {
-  char                  NavFileIn[FBLIB_DIR_SIZE], NavFileOut[FBLIB_DIR_SIZE], InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], CutFileIn[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE];
+  char                  NavFileIn[FBLIB_DIR_SIZE], NavFileOut[FBLIB_DIR_SIZE], NavFileOld[FBLIB_DIR_SIZE], InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], CutFileIn[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE];
   byte                  Buffer[192];
   int                   ReadBytes;
   bool                  DropCurPacket;
@@ -288,7 +290,6 @@ int main(int argc, const char* argv[])
     argv++;
     argc--;
   }
-  if (DoStrip) RebuildNav = TRUE;
   printf("\nParameters:\nDoCut=%s, DoStrip=%s, RemoveEPG=%s, RbldNav=%s, RbldInf=%s, OutPackSize=%hhu\n", (DoCut ? "yes" : "no"), (DoStrip ? "yes" : "no"), (RemoveEPGStream ? "yes" : "no"), (RebuildNav ? "yes" : "no"), (RebuildInf ? "yes" : "no"), OutPacketSize);
 
   // Eingabe-Dateinamen lesen
@@ -345,7 +346,6 @@ int main(int argc, const char* argv[])
     BlocksOnePercent = RecFileBlocks / 100;
     GetPacketSize(RecFileIn);
     printf("File size of rec: %llu, packet size: %u\n", RecFileSize, PACKETSIZE);
-    if (PACKETSIZE != OutPacketSize) RebuildNav = TRUE;
   }
   else
   {
@@ -375,33 +375,43 @@ int main(int argc, const char* argv[])
   // ggf. inf-File einlesen
   snprintf(InfFileIn, sizeof(InfFileIn), "%s.inf", RecFileIn);
   printf("\nInf file: %s\n", InfFileIn);
-  if (LoadInfFile(InfFileIn) || RebuildInf)
+
+/*
+WENN inf existiert
+  -> einlesen
+
+WENN OutFile nicht existiert
+  -> inf = in
+SONST
+  WENN inf existiert oder Rebuildinf
+    -> inf = out
+  SONST
+    -> inf = NULL */
+
+  if (LoadInfFile(InfFileIn))
   {
     if (*RecFileOut)
-    {
-      snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf", RecFileOut);
+      if (RebuildInf || (*InfFileIn && OutPacketSize == PACKETSIZE))
+        snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf", RecFileOut);
+      else
+        InfFileOut[0] = '\0';
+    else
+      snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf", RecFileIn);
+    if (*InfFileOut)
       printf("Inf output: %s\n", InfFileOut);
-    }
   }
   else
   {
-    if (SystemType != ST_UNKNOWN)
-    {
-      printf("WARNING: Cannot open inf file %s.\n", InfFileIn);
-      snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf", RecFileIn);
-      printf("Inf output: %s\n", InfFileOut);
-    }
-    else
-    {
+    if (SystemType == ST_UNKNOWN)
       printf("ERROR: Unknown SystemType.\n");
-      fclose(fIn); fIn = NULL;
-      fclose(fOut); fOut = NULL;
-      CloseInfFile(NULL, NULL, FALSE);
-      TRACEEXIT;
-      exit(4);
-    }
-    InfFileIn[0] = '\0';
+
+    fclose(fIn); fIn = NULL;
+    fclose(fOut); fOut = NULL;
+    CloseInfFile(NULL, NULL, FALSE);
+    TRACEEXIT;
+    exit(4);
   }
+
   if (InfDuration)
     BlocksOneSecond = RecFileBlocks / InfDuration;
 
@@ -415,16 +425,51 @@ int main(int argc, const char* argv[])
     exit(0); */
   }
 
+
+/*
+WENN nav existiert
+  -> einlesen
+
+WENN OutFile nicht existiert
+  -> nav = in
+SONST
+  WENN nav existiert oder Rebuildinf
+    -> nav = out
+  SONST
+    -> nav = NULL */
+
   // ggf. nav-Files öffnen
   snprintf(NavFileIn, sizeof(NavFileIn), "%s.nav", RecFileIn);
   printf("\nNav file: %s\n", NavFileIn);
-  if (*RecFileOut)
+  if (!LoadNavFileIn(NavFileIn))
   {
-    snprintf(NavFileOut, sizeof(NavFileOut), "%s.nav", RecFileOut);
-    printf("Nav output: %s\n", NavFileOut);
-  }
-  if (!LoadNavFiles(NavFileIn, NavFileOut))
     printf("WARNING: Cannot open nav file %s.\n", NavFileIn);
+    NavFileIn[0] = '\0';
+  }
+  
+  NavFileOld[0] = '\0';
+  if (*RecFileOut)
+    if (RebuildNav || (*NavFileIn && OutPacketSize == PACKETSIZE))
+      snprintf(NavFileOut, sizeof(NavFileOut), "%s.nav", RecFileOut);
+    else
+      NavFileOut[0] = '\0';
+  else
+  {
+    RebuildNav = TRUE;
+    if (*NavFileIn)
+    {
+      snprintf(NavFileOld, sizeof(NavFileOld), "%s.nav", RecFileIn);
+      snprintf(NavFileOut, sizeof(NavFileOut), "%s.nav_new", RecFileIn);
+    }
+    else
+      snprintf(NavFileOut, sizeof(NavFileOut), "%s.nav", RecFileIn);
+  }
+  if (*NavFileOut && LoadNavFileOut(NavFileOut))
+    printf("Nav output: %s\n", NavFileOut);
+
+  if (*NavFileIn && DoStrip) RebuildNav = TRUE;
+  if (*NavFileIn && (PACKETSIZE != OutPacketSize)) RebuildNav = TRUE;
+
 
   // ggf. cut-File einlesen
   GetCutNameFromRec(RecFileIn, CutFileIn);
@@ -580,6 +625,20 @@ int main(int argc, const char* argv[])
           }
         }
 
+        // PCR berechnen
+        if (OutPacketSize != PACKETSIZE)
+        {
+          if (GetPCR(&Buffer[4], &CurPCR))
+          {
+            if (LastPCR)
+              CurTimeStep = (CurPCR - LastPCR) / ((dword)(PosLastPCR-CurrentPosition) / PACKETSIZE);
+            LastPCR = CurPCR;
+            PosLastPCR = CurrentPosition;
+          }
+          LastTimeStamp += CurTimeStep;
+          *((dword*)Buffer) = LastTimeStamp;
+        }
+
         if (!DropCurPacket)
         {
           // NAV NEU BERECHNEN
@@ -592,7 +651,7 @@ int main(int argc, const char* argv[])
             if (CurPID == VideoPID)
               ProcessNavFile(CurrentPosition + PACKETOFFSET, PositionOffset, (tTSPacket*) &Buffer[4]);
           }
-          else if (DoCut && !RebuildNav && fNavIn)
+          else if (DoCut && !RebuildNav && *NavFileIn)
             QuickNavProcess(CurrentPosition, PositionOffset);
 
           // PACKET AUSGEBEN
@@ -661,6 +720,13 @@ int main(int argc, const char* argv[])
 
   if (!CloseNavFiles())
     printf("WARNING: Failed closing the nav file.\n");
+  if (*NavFileOld)
+  {
+    char NavFileBak[FBLIB_DIR_SIZE];
+    snprintf(NavFileBak, sizeof(NavFileBak), "%s_bak", NavFileOld);
+    rename(NavFileOld, NavFileBak);
+    rename(NavFileOut, NavFileOld);
+  }
 
   if (LastTimems)
     NewDurationMS = LastTimems;
@@ -690,7 +756,7 @@ int main(int argc, const char* argv[])
   if (*CutFileIn && *RecFileOut && !CutFileClose(CutFileOut, TRUE))
     printf("WARNING: Cannot create cut %s.\n", CutFileOut);
 
-  if (*InfFileIn && !CloseInfFile(InfFileOut, InfFileIn, TRUE))
+  if (*InfFileOut && !CloseInfFile(InfFileOut, InfFileIn, TRUE))
     printf("WARNING: Cannot create inf %s.\n", InfFileOut);
 
   NrPackets = ((CurrentPosition + PACKETSIZE-1) / PACKETSIZE);

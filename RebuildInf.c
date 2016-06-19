@@ -499,7 +499,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   for(i = 0; i < RECBUFFERENTRIES; i++)
   {
     //Find the first PCR (for duration calculation)
-    if(FirstPCR == 0) GetPCR(p, &FirstPCR);
+    if(FirstPCR == 0) GetPCRms(p, &FirstPCR);
 
     if(PMTBuffer.ValidBuffer == 0) PSBuffer_ProcessTSPacket(&PMTBuffer, p);
 
@@ -564,7 +564,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   for(i = ReadPackets; i >= 0; i--)
   {
     //Find the last PCR
-    if(GetPCR(p, &LastPCR)) break;
+    if(GetPCRms(p, &LastPCR)) break;
     p += PACKETSIZE;
   }
 

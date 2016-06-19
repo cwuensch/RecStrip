@@ -107,7 +107,7 @@ extern SYSTEM_TYPE      SystemType;
 extern byte             PACKETSIZE, PACKETOFFSET;
 extern word             VideoPID;
 extern bool             isHDVideo, AlreadyStripped;
-extern bool             DoStrip, DoCut;
+extern bool             DoStrip, DoCut, RemoveEPGStream, RebuildNav, RebuildInf;
 
 extern TYPE_Bookmark_Info *BookmarkInfo;
 extern tSegmentMarker  *SegmentMarker;       //[0]=Start of file, [x]=End of file
