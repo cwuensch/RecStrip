@@ -96,7 +96,7 @@ extern dword           *pOutNextTimeStamp;
 extern FILE            *fNavIn;
 
 
-bool GetPCR(byte *pBuffer, dword *pPCR);
+bool GetPCR(byte *pBuffer, long long *pPCR);
 bool GetPCRms(byte *pBuffer, dword *pPCR);
 dword DeltaPCR(dword FirstPCR, dword SecondPCR);
 

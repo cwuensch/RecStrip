@@ -95,7 +95,7 @@ static unsigned int        RecFileBlocks = 0;
 static unsigned long long  CurrentPosition = 0, PositionOffset = 0, NrPackets;
 static dword               CurPosBlocks = 0, CurBlockBytes = 0, BlocksOneSecond = 250;
 static unsigned long long  NrDroppedFillerNALU = 0, NrDroppedZeroStuffing = 0, NrDroppedNullPid = 0, NrDroppedEPGPid = 0;
-static dword               LastPCR = 0, CurPCR = 0, LastTimeStamp = 0, CurTimeStep = 7240;
+static dword               LastPCR = 0, LastTimeStamp = 0, CurTimeStep = 5000;
 static unsigned long long  PosLastPCR = 0;
 
 
@@ -180,6 +180,7 @@ int GetPacketSize(char *RecFileName)
           PACKETOFFSET = 4;
           ret = isPacketStart(RecStartArray, 1733);
         }
+        fseeko64(fIn, -1733, SEEK_CUR);
       }
       free(RecStartArray);
     }
@@ -259,6 +260,7 @@ int main(int argc, const char* argv[])
   int                   ReadBytes;
   bool                  DropCurPacket;
   time_t                startTime, endTime;
+  long long             CurPCR = 0;
   static bool           ResumeSet = FALSE;
   static int            CurSeg = 0, i = 0, j = 0;
   static dword          BlocksOnePercent, Percent = 0, BlocksSincePercent = 0;
@@ -402,12 +404,8 @@ SONST
   }
   else
   {
-    if (SystemType == ST_UNKNOWN)
-      printf("ERROR: Unknown SystemType.\n");
-
     fclose(fIn); fIn = NULL;
-    fclose(fOut); fOut = NULL;
-    CloseInfFile(NULL, NULL, FALSE);
+    if (fOut) fclose(fOut); fOut = NULL;
     TRACEEXIT;
     exit(4);
   }
@@ -419,7 +417,7 @@ SONST
   {
     printf("INFO: File has already been stripped.\n");
 /*    fclose(fIn); fIn = NULL;
-    fclose(fOut); fOut = NULL;
+    if (fOut) fclose(fOut); fOut = NULL;
     CloseInfFile(NULL, NULL, FALSE);
     TRACEEXIT;
     exit(0); */
@@ -631,12 +629,15 @@ SONST
           if (GetPCR(&Buffer[4], &CurPCR))
           {
             if (LastPCR)
-              CurTimeStep = (CurPCR - LastPCR) / ((dword)(PosLastPCR-CurrentPosition) / PACKETSIZE);
-            LastPCR = CurPCR;
+              CurTimeStep = ((dword)CurPCR - LastPCR) / ((dword)(CurrentPosition-PosLastPCR) / PACKETSIZE);
+            LastPCR = (dword)CurPCR;
             PosLastPCR = CurrentPosition;
           }
           LastTimeStamp += CurTimeStep;
-          *((dword*)Buffer) = LastTimeStamp;
+          Buffer[0] = ((byte*)&LastTimeStamp)[3];
+          Buffer[1] = ((byte*)&LastTimeStamp)[2];
+          Buffer[2] = ((byte*)&LastTimeStamp)[1];
+          Buffer[3] = ((byte*)&LastTimeStamp)[0];
         }
 
         if (!DropCurPacket)
@@ -704,10 +705,10 @@ SONST
           else
             printf("ERROR: Incorrect TS - Missing sync byte at position %llu.\n", CurrentPosition);
           fclose(fIn); fIn = NULL;
-          fclose(fOut); fOut = NULL;
+          if (fOut) fclose(fOut); fOut = NULL;
           CloseNavFiles();
           CutFileClose(NULL, FALSE);
-          CloseInfFile(NULL, NULL, FALSE);
+          CloseInfFile(InfFileOut, InfFileIn, TRUE);
           TRACEEXIT;
           exit(6);
         }
@@ -728,7 +729,7 @@ SONST
     rename(NavFileOut, NavFileOld);
   }
 
-  if (LastTimems)
+  if ((DoCut || RebuildInf) && LastTimems)
     NewDurationMS = LastTimems;
   if (DoCut && NrSegmentMarker >= 2)
   {
