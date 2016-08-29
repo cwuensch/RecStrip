@@ -239,7 +239,7 @@ static void InitInfStruct(TYPE_RecHeader_TMSS *RecInf)
 static bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
 {
   dword                 DescrPt;
-  short                 SectionLength, DescriptorType, DescriptorLength, ProgramInfoLength;
+  short                 SectionLength, DescriptorLength, ProgramInfoLength;  // DescriptorType
   word                  PID;
   char                  Log[512];
   bool                  VideoFound = FALSE;
@@ -260,7 +260,7 @@ static bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
 
   while(ProgramInfoLength > 0)
   {
-    DescriptorType   = PSBuffer[DescrPt];
+//    DescriptorType   = PSBuffer[DescrPt];
     DescriptorLength = PSBuffer[DescrPt + 1];
     DescrPt           += (DescriptorLength + 2);
     SectionLength     -= (DescriptorLength + 2);

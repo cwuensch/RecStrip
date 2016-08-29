@@ -308,7 +308,7 @@ int main(int argc, const char* argv[])
   }
   else RecFileOut[0] = '\0';
 
-  if (!RecFileIn || ((DoCut || DoStrip || OutPacketSize) && !*RecFileOut) || (RemoveEPGStream && !DoStrip))
+  if (!*RecFileIn || ((DoCut || DoStrip || OutPacketSize) && !*RecFileOut) || (RemoveEPGStream && !DoStrip))
   {
     printf("\nUsage:\n------\n");
     printf(" RecStrip <RecFile>           Scan the rec file and set Crypt- und RbN-Flag in\n"
