@@ -255,7 +255,7 @@ static void AddBookmark(int BookmarkIndex, dword BlockNr)
 
 int main(int argc, const char* argv[])
 {
-  char                  NavFileIn[FBLIB_DIR_SIZE], NavFileOut[FBLIB_DIR_SIZE], NavFileOld[FBLIB_DIR_SIZE], InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], CutFileIn[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE];
+  char                  NavFileIn[FBLIB_DIR_SIZE], NavFileOut[FBLIB_DIR_SIZE], NavFileOld[FBLIB_DIR_SIZE], InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], InfFileOld[FBLIB_DIR_SIZE], CutFileIn[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE];
   byte                  Buffer[192];
   int                   ReadBytes;
   bool                  DropCurPacket;
@@ -393,12 +393,31 @@ SONST
   if (LoadInfFile(InfFileIn))
   {
     if (*RecFileOut)
-      if (RebuildInf || (*InfFileIn && OutPacketSize == PACKETSIZE))
+    {
+      if (RebuildInf || *InfFileIn)
         snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf", RecFileOut);
       else
         InfFileOut[0] = '\0';
+    }
     else
-      snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf", RecFileIn);
+    {
+      if (*InfFileIn)
+      {
+        if (RebuildInf)
+        {
+          InfFileIn[0] = '\0';
+          snprintf(InfFileOld, sizeof(InfFileOld), "%s.inf", RecFileIn);
+          snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf_new", RecFileIn);
+        }
+        else
+          InfFileOut[0] = '\0';
+      }
+      else
+      {
+        RebuildInf = TRUE;
+        snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf", RecFileIn);
+      }
+    }
     if (*InfFileOut)
       printf("Inf output: %s\n", InfFileOut);
   }
@@ -447,27 +466,35 @@ SONST
   
   NavFileOld[0] = '\0';
   if (*RecFileOut)
-    if (RebuildNav || (*NavFileIn && OutPacketSize == PACKETSIZE))
-      snprintf(NavFileOut, sizeof(NavFileOut), "%s.nav", RecFileOut);
-    else
-      NavFileOut[0] = '\0';
-  else
   {
-    RebuildNav = TRUE;
-    if (*NavFileIn)
+    if (RebuildNav || *NavFileIn)
     {
-      snprintf(NavFileOld, sizeof(NavFileOld), "%s.nav", RecFileIn);
-      snprintf(NavFileOut, sizeof(NavFileOut), "%s.nav_new", RecFileIn);
+      if (DoStrip || OutPacketSize != PACKETSIZE) RebuildNav = TRUE;
+      snprintf(NavFileOut, sizeof(NavFileOut), "%s.nav", RecFileOut);
     }
     else
+      NavFileOut[0] = '\0';
+  }
+  else
+  {
+    if (*NavFileIn)
+    {
+      if (RebuildNav)
+      {
+        snprintf(NavFileOld, sizeof(NavFileOld), "%s.nav", RecFileIn);
+        snprintf(NavFileOut, sizeof(NavFileOut), "%s.nav_new", RecFileIn);
+      }
+      else
+        NavFileOut[0] = '\0';
+    }
+    else
+    {
+      RebuildNav = TRUE;
       snprintf(NavFileOut, sizeof(NavFileOut), "%s.nav", RecFileIn);
+    }
   }
   if (*NavFileOut && LoadNavFileOut(NavFileOut))
     printf("Nav output: %s\n", NavFileOut);
-
-  if (*NavFileIn && DoStrip) RebuildNav = TRUE;
-  if (*NavFileIn && (PACKETSIZE != OutPacketSize)) RebuildNav = TRUE;
-
 
   // ggf. cut-File einlesen
   GetCutNameFromRec(RecFileIn, CutFileIn);
@@ -557,7 +584,7 @@ SONST
 
     // PACKET EINLESEN
     ReadBytes = fread(&Buffer[4-PACKETOFFSET], 1, PACKETSIZE, fIn);
-    if (ReadBytes > 0)
+    if (ReadBytes == PACKETSIZE)
     {
       if (Buffer[4] == 'G' && ((tTSPacket*) &Buffer[4])->Scrambling_Ctrl <= 0x01)
       {
@@ -624,7 +651,7 @@ SONST
         }
 
         // PCR berechnen
-        if (OutPacketSize != PACKETSIZE)
+        if (OutPacketSize > PACKETSIZE)
         {
           if (GetPCR(&Buffer[4], &CurPCR))
           {
@@ -707,8 +734,8 @@ SONST
           fclose(fIn); fIn = NULL;
           if (fOut) fclose(fOut); fOut = NULL;
           CloseNavFiles();
-          CutFileClose(NULL, FALSE);
-          CloseInfFile(InfFileOut, InfFileIn, TRUE);
+          CutFileClose(CutFileOut, TRUE);
+          CloseInfFile(InfFileOut, NULL, TRUE);
           TRACEEXIT;
           exit(6);
         }
@@ -721,13 +748,6 @@ SONST
 
   if (!CloseNavFiles())
     printf("WARNING: Failed closing the nav file.\n");
-  if (*NavFileOld)
-  {
-    char NavFileBak[FBLIB_DIR_SIZE];
-    snprintf(NavFileBak, sizeof(NavFileBak), "%s_bak", NavFileOld);
-    rename(NavFileOld, NavFileBak);
-    rename(NavFileOut, NavFileOld);
-  }
 
   if ((DoCut || RebuildInf) && LastTimems)
     NewDurationMS = LastTimems;
@@ -746,8 +766,8 @@ SONST
     if (/*fflush(fOut) != 0 ||*/ fclose(fOut) != 0)
     {
       printf("ERROR: Failed closing the output file.\n");
-      CutFileClose(NULL, FALSE);
-      CloseInfFile(NULL, NULL, FALSE);
+      CutFileClose(CutFileOut, TRUE);
+      CloseInfFile(InfFileOut, NULL, TRUE);
       TRACEEXIT;
       exit(7);
     }
@@ -759,6 +779,23 @@ SONST
 
   if (*InfFileOut && !CloseInfFile(InfFileOut, InfFileIn, TRUE))
     printf("WARNING: Cannot create inf %s.\n", InfFileOut);
+
+  if (*NavFileOld)
+  {
+    char NavFileBak[FBLIB_DIR_SIZE];
+    snprintf(NavFileBak, sizeof(NavFileBak), "%s_bak", NavFileOld);
+    remove(NavFileBak);
+    rename(NavFileOld, NavFileBak);
+    rename(NavFileOut, NavFileOld);
+  }
+  if (*InfFileOld)
+  {
+    char InfFileBak[FBLIB_DIR_SIZE];
+    snprintf(InfFileBak, sizeof(InfFileBak), "%s_bak", InfFileOld);
+    remove(InfFileBak);
+    rename(InfFileOld, InfFileBak);
+    rename(InfFileOut, InfFileOld);
+  }
 
   NrPackets = ((CurrentPosition + PACKETSIZE-1) / PACKETSIZE);
   if (NrPackets > 0)

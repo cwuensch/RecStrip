@@ -143,7 +143,7 @@ static SYSTEM_TYPE DetermineInfType(const byte *const InfBuffer, const unsigned 
       Result = ST_TMSS;
 
   printf(" -> SystemType=ST_TMS%c\n", (Result==ST_TMSS ? 's' : ((Result==ST_TMSC) ? 'c' : ((Result==ST_TMST) ? 't' : '?'))));
-  if (Result != SizeType && !(Result == ST_TMST && SizeType == ST_TMSS))
+  if (Result != SizeType && SizeType && !(Result == ST_TMST && SizeType == ST_TMSS))
     printf(" -> DEBUG! Assertion error: SystemType in inf (%u) not consistent to filesize (%u)!\n", Result, SizeType);
 
   TRACEEXIT;
@@ -194,7 +194,7 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
   GenerateInfFile(fIn, (TYPE_RecHeader_TMSS*)InfBuffer);
 
   //Read the source .inf
-  if (AbsInfName)
+  if (AbsInfName && !RebuildInf)
     fInfIn = fopen(AbsInfName, "rb");
   if(fInfIn)
   {
@@ -203,7 +203,7 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
   }
   else
   {
-    AbsInfName[0] = '\0';
+    if (AbsInfName) AbsInfName[0] = '\0';
     SystemType = ST_TMSS;
   }
 
@@ -331,26 +331,35 @@ bool CloseInfFile(const char *AbsDestInf, const char *AbsSourceInf, bool Save)
       if (NewStartTimeOffset)
         RecHeaderInfo->StartTime = AddTime(RecHeaderInfo->StartTime, NewStartTimeOffset / 60000);
       Result = (fwrite(InfBuffer, 1, InfSize, fInfOut) == InfSize);
+    }
 
-      // Kopiere den Rest der Source-inf (falls vorhanden) in die neue inf hinein
-      fInfIn = fopen(AbsSourceInf, "r+b");
-      if(fInfIn)
-      {
-        fread(RecHeaderInfo, 1, 8, fInfIn);
-        rewind(fInfIn);
-        if (DoStrip)
-          RecHeaderInfo->rs_ToBeStripped = FALSE;
-        RecHeaderInfo->rbn_HasBeenScanned = TRUE;
-        fwrite(RecHeaderInfo, 1, 8, fInfIn);
+    // Passe die Source-inf (falls vorhanden) an
+    fInfIn = fopen(AbsSourceInf, "r+b");
+    if(fInfIn)
+    {
+      fread(RecHeaderInfo, 1, 8, fInfIn);
+      rewind(fInfIn);
+      if (DoStrip)
+        RecHeaderInfo->rs_ToBeStripped = FALSE;
+      RecHeaderInfo->rbn_HasBeenScanned = TRUE;
+      fwrite(RecHeaderInfo, 1, 8, fInfIn);
+    }
 
-        fseek(fInfIn, InfSize, SEEK_SET);
-        do {
-          BytesRead = fread(InfBuffer, 1, 32768, fInfIn);
-          if (BytesRead > 0)
-            Result = (fwrite(InfBuffer, 1, BytesRead, fInfOut) == BytesRead) && Result;
-        } while (BytesRead > 0);
-        fclose(fInfIn);
-      }
+    // Kopiere den Rest der Source-inf (falls vorhanden) in die neue inf hinein
+    if (fInfOut && fInfIn && !RebuildInf)
+    {
+      fseek(fInfIn, InfSize, SEEK_SET);
+      do {
+        BytesRead = fread(InfBuffer, 1, 32768, fInfIn);
+        if (BytesRead > 0)
+          Result = (fwrite(InfBuffer, 1, BytesRead, fInfOut) == BytesRead) && Result;
+      } while (BytesRead > 0);
+    }
+
+    // Schlieﬂe die bearbeiteten Dateien
+    if (fInfIn) fclose(fInfIn);
+    if (fInfOut)
+    {
 //      Result = (fflush(fInfOut) == 0) && Result;
       Result = (fclose(fInfOut) == 0) && Result;
     }

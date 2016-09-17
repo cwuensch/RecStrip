@@ -845,7 +845,6 @@ void ProcessNavFile(const unsigned long long CurrentPosition, const unsigned lon
     else
     {
       fclose(fNavIn); fNavIn = NULL;
-      if(fNavOut) fclose(fNavOut); fNavOut = NULL;
     }
 
 //    memset(CounterStack, 0, COUNTSTACKSIZE * sizeof(tFrameCtr));
