@@ -80,6 +80,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\CutProcessor.h" />
+    <ClInclude Include="..\HumaxHeader.h" />
     <ClInclude Include="..\InfProcessor.h" />
     <ClInclude Include="..\NALUDump.h" />
     <ClInclude Include="..\NavProcessor.h" />

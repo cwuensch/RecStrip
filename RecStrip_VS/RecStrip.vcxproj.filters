@@ -36,6 +36,9 @@
     <ClInclude Include="..\RecHeader.h">
       <Filter>Header</Filter>
     </ClInclude>
+    <ClInclude Include="..\HumaxHeader.h">
+      <Filter>Header</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\RecStrip.c">

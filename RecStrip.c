@@ -352,7 +352,11 @@ int main(int argc, const char* argv[])
     RecFileBlocks = CalcBlockSize(RecFileSize);
     BlocksOnePercent = RecFileBlocks / 100;
     if (GetPacketSize(RecFileIn))  // Verschiebt ggf. den Dateianfang bis zum ersten 'G'
+    {
+      CurrentPosition = ftello64(fIn);
+      PositionOffset = CurrentPosition;
       printf("File size of rec: %llu, packet size: %u\n", RecFileSize, PACKETSIZE);
+    }
     else
     {
       printf("ERROR: Ivalid TS packet size.\n");
