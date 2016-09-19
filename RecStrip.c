@@ -151,6 +151,7 @@ bool isPacketStart(const byte PacketArray[], int ArrayLen)
 int GetPacketSize(char *RecFileName)
 {
   char                 *p;
+  int                   i = 0;
   bool                  ret = FALSE;
 
   TRACEENTER;
@@ -165,23 +166,27 @@ int GetPacketSize(char *RecFileName)
   {
     byte               *RecStartArray = NULL;
 
-    RecStartArray = (byte*) malloc(1733);  // 1733 = 9*192 + 5
+    RecStartArray = (byte*) malloc(1925);  // 1925 = 10*192 + 5
     if (RecStartArray)
     {
-      if (fread(RecStartArray, 1, 1733, fIn) == 1733)
+      if (fread(RecStartArray, 1, 1925, fIn) == 1925)
       {
-        PACKETSIZE = 188;
-        PACKETOFFSET = 0;
-        ret = isPacketStart(RecStartArray, 1733);
-
-        if (!ret)
+        while (!ret && (i < 192))
         {
-          PACKETSIZE = 192;
-          PACKETOFFSET = 4;
-          ret = isPacketStart(RecStartArray, 1733);
+          PACKETSIZE = 188;
+          PACKETOFFSET = 0;
+          ret = isPacketStart(&RecStartArray[i], 1925-i);
+
+          if (!ret)
+          {
+            PACKETSIZE = 192;
+            PACKETOFFSET = 4;
+            ret = isPacketStart(&RecStartArray[i], 1925-i);
+          }
+          i++;
         }
-        fseeko64(fIn, -1733, SEEK_CUR);
       }
+      fseeko64(fIn, i-1, SEEK_SET);
       free(RecStartArray);
     }
   }
@@ -346,8 +351,14 @@ int main(int argc, const char* argv[])
     setvbuf(fIn, NULL, _IOFBF, BUFSIZE);
     RecFileBlocks = CalcBlockSize(RecFileSize);
     BlocksOnePercent = RecFileBlocks / 100;
-    GetPacketSize(RecFileIn);
-    printf("File size of rec: %llu, packet size: %u\n", RecFileSize, PACKETSIZE);
+    if (GetPacketSize(RecFileIn))  // Verschiebt ggf. den Dateianfang bis zum ersten 'G'
+      printf("File size of rec: %llu, packet size: %u\n", RecFileSize, PACKETSIZE);
+    else
+    {
+      printf("ERROR: Ivalid TS packet size.\n");
+      TRACEEXIT;
+      exit(3);
+    }
   }
   else
   {
@@ -370,7 +381,7 @@ int main(int argc, const char* argv[])
       fclose(fIn);
       printf("ERROR: Cannot create %s.\n", RecFileOut);
       TRACEEXIT;
-      exit(3);
+      exit(4);
     }
   }
 
@@ -392,6 +403,7 @@ SONST
 
   if (LoadInfFile(InfFileIn))
   {
+    InfFileOld[0] = '\0';
     if (*RecFileOut)
     {
       if (RebuildInf || *InfFileIn)
@@ -426,7 +438,7 @@ SONST
     fclose(fIn); fIn = NULL;
     if (fOut) fclose(fOut); fOut = NULL;
     TRACEEXIT;
-    exit(4);
+    exit(5);
   }
 
   if (InfDuration)
@@ -692,7 +704,7 @@ SONST
             CutFileClose(NULL, FALSE);
             CloseInfFile(NULL, NULL, FALSE);
             TRACEEXIT;
-            exit(5);
+            exit(6);
           }
         }
         else
@@ -737,7 +749,7 @@ SONST
           CutFileClose(CutFileOut, TRUE);
           CloseInfFile(InfFileOut, NULL, TRUE);
           TRACEEXIT;
-          exit(6);
+          exit(7);
         }
       }
     }
@@ -769,7 +781,7 @@ SONST
       CutFileClose(CutFileOut, TRUE);
       CloseInfFile(InfFileOut, NULL, TRUE);
       TRACEEXIT;
-      exit(7);
+      exit(8);
     }
     fOut = NULL;
   }

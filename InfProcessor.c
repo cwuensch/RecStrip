@@ -286,13 +286,16 @@ bool SetInfCryptFlag(const char *AbsInfFile)
   TYPE_RecHeader_Info   RecHeaderInfo;
   bool                  ret = FALSE;
 
-  if ((fInfIn = fopen(AbsInfFile, "r+b")))
+  if (AbsInfFile)
   {
-    fread(&RecHeaderInfo, 1, 18, fInfIn);
-    rewind(fInfIn);
-    RecHeaderInfo.CryptFlag = RecHeaderInfo.CryptFlag | 1;
-    ret = (fwrite(&RecHeaderInfo, 1, 18, fInfIn) == 18);
-    ret = ret && fclose(fInfIn);
+    if ((fInfIn = fopen(AbsInfFile, "r+b")))
+    {
+      fread(&RecHeaderInfo, 1, 18, fInfIn);
+      rewind(fInfIn);
+      RecHeaderInfo.CryptFlag = RecHeaderInfo.CryptFlag | 1;
+      ret = (fwrite(&RecHeaderInfo, 1, 18, fInfIn) == 18);
+      ret = ret && fclose(fInfIn);
+    }
   }
   return ret;
 }
@@ -314,7 +317,8 @@ bool CloseInfFile(const char *AbsDestInf, const char *AbsSourceInf, bool Save)
     }
 
     //Encode the new inf and write it to the disk
-    fInfOut = fopen(AbsDestInf, "wb");
+    if(AbsDestInf)
+      fInfOut = fopen(AbsDestInf, "wb");
     if(fInfOut)
     {
       if (DoStrip)
@@ -334,7 +338,8 @@ bool CloseInfFile(const char *AbsDestInf, const char *AbsSourceInf, bool Save)
     }
 
     // Passe die Source-inf (falls vorhanden) an
-    fInfIn = fopen(AbsSourceInf, "r+b");
+    if(AbsSourceInf)
+      fInfIn = fopen(AbsSourceInf, "r+b");
     if(fInfIn)
     {
       fread(RecHeaderInfo, 1, 8, fInfIn);

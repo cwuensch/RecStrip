@@ -323,7 +323,7 @@ int ProcessTSPacket(unsigned char *Packet, unsigned long long FilePosition)
       // dirty Hack: Greife auf den FileStream von RecStrip zu (unschön, aber ich weiß keine bessere Lösung)
       byte               Buffer[192];
       tTSPacket         *tmpPacket = (tTSPacket*) &Buffer[PACKETOFFSET];
-//      unsigned long long OldFilePos = ftello64(fIn);
+      unsigned long long OldFilePos = ftello64(fIn);
       int                CurPid, tmpPayload, i;
 
 //printf("Potential zero-byte-stuffing found at position %llu", FilePosition);
@@ -357,7 +357,7 @@ printf("WARNING!!! No StartCode in following packet!!! (pos=%llu)\n", FilePositi
           }
         }
       }
-      fseeko64(fIn, FilePosition + 188, SEEK_SET);
+      fseeko64(fIn, OldFilePos, SEEK_SET);
     }
   }
   LastEndedWithNull   = (Packet[TS_SIZE-1] == 0);  // wird nur gesetzt für das zuletzt erhaltene Paket

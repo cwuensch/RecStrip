@@ -426,6 +426,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   int                   ReadPackets;
   bool                  EITOK;
   byte                 *p;
+  unsigned long long    FilePos;
   int                   i, j;
 
   const byte            ANDMask[6] = {0xFF, 0xC0, 0x00, 0xD0, 0xFF, 0xFF};
@@ -450,6 +451,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   }
 
   // Read the first RECBUFFERENTRIES TS packets
+  FilePos = ftello64(fIn);
   ReadPackets = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn);
   if(ReadPackets != RECBUFFERENTRIES)
   {
@@ -469,7 +471,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   }
 
   // Springe in die Mitte der Aufnahme
-  fseeko64(fIn, ((RecFileSize/2))/PACKETSIZE*PACKETSIZE, SEEK_SET);
+  fseeko64(fIn, FilePos + ((RecFileSize/2)/PACKETSIZE*PACKETSIZE), SEEK_SET);
 
   //Read RECBUFFERENTRIES TS pakets for analysis
   ReadPackets = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn);
@@ -569,9 +571,9 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   PSBuffer_Reset(&EITBuffer);
 
   //Read the last RECBUFFERENTRIES TS pakets
-  fseeko64(fIn, ((RecFileSize/PACKETSIZE) - RECBUFFERENTRIES) * PACKETSIZE, SEEK_SET);
+  fseeko64(fIn, FilePos + ((((RecFileSize-FilePos)/PACKETSIZE) - RECBUFFERENTRIES) * PACKETSIZE), SEEK_SET);
   ReadPackets = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn);
-  rewind(fIn);
+  fseeko64(fIn, FilePos, SEEK_SET);
   if(ReadPackets != RECBUFFERENTRIES)
   {
     printf ("  Failed to read the last %d TS packets.", RECBUFFERENTRIES);
