@@ -65,7 +65,7 @@ typedef struct
 typedef struct
 {
   byte Unbekannt3[620];
-  byte Ende[30];             // vielleicht zur Markierug des Endes (-> eher nicht!)
+  byte Ende[30];             // vielleicht zur Markierung des Endes (-> eher nicht!)
 } THumaxBlock_Ende;
 
 
@@ -91,5 +91,75 @@ typedef struct
   byte ZusInfos[404];          // z.B. 3. Header: Bookmarks, 4. Header: Tonspuren
   THumaxBlock_Ende Ende;
 } THumaxHeader;
+
+
+
+typedef struct
+{
+  byte TableID;
+  word SectionLen1:4;
+  word Reserved1:2;
+  word Reserved0:1;
+  word SectionSyntax:1;
+  word SectionLen2:8;
+  word TS_ID1:8;
+  word TS_ID2:8;
+  byte CurNextInd:1;
+  byte VersionNr:5;
+  byte Reserved11:2;
+  byte SectionNr;
+  byte LastSection;
+//  for i = 0 to N  {
+    word ProgramNr1:8;
+    word ProgramNr2:8;
+    word PMTPID1:5;  // oder NetworkPID, falls ProgramNr==0
+    word Reserved111:3;
+    word PMTPID2:8;  // oder NetworkPID, falls ProgramNr==0
+//  }
+  dword CRC32;
+} TTSPAT;
+
+
+typedef struct
+{
+  byte stream_type;
+  word ESPID1:5;
+  word ReservedZ:3;
+  word ESPID2:8;
+  word ESInfoLen1:4;
+  word ReservedQ:4;
+  word ESInfoLen2:8;
+} TElemStream;
+
+typedef struct
+{
+  byte TableID;
+  word SectionLen1:4;
+  word Reserved1:2;
+  word Reserved0:1;
+  word SectionSyntax:1;
+  word SectionLen2:8;
+  word ProgramNr1:8;
+  word ProgramNr2:8;
+  byte CurNextInd:1;
+  byte VersionNr:5;
+  byte Reserved11:2;
+  byte SectionNr;
+  byte LastSection;
+
+  word PCRPID1:5;
+  word ReservedX:3;
+  word PCRPID2:8;
+
+  word ProgInfoLen1:4;
+  word ReservedY:4;
+  word ProgInfoLen2:8;
+} TTSPMT;
+
+
+extern char PATPMTBuf[];
+
+
+bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf);
 
 #endif

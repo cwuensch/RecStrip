@@ -28,6 +28,6 @@ typedef struct
 
 int TsGetPID(tTSPacket *Packet);
 int TsPayloadOffset(tTSPacket *Packet);
-int ProcessTSPacket(unsigned char *Packet, unsigned long long FilePosition);
+int ProcessTSPacket(unsigned char *Packet, long long FilePosition);
 
 #endif

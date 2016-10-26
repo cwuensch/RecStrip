@@ -39,6 +39,9 @@
     <ClInclude Include="..\HumaxHeader.h">
       <Filter>Header</Filter>
     </ClInclude>
+    <ClInclude Include="..\crcmodel.h">
+      <Filter>Header</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\RecStrip.c">
@@ -57,6 +60,12 @@
       <Filter>source</Filter>
     </ClCompile>
     <ClCompile Include="..\RebuildInf.c">
+      <Filter>source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\HumaxImport.c">
+      <Filter>source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\crcmodel.c">
       <Filter>source</Filter>
     </ClCompile>
   </ItemGroup>

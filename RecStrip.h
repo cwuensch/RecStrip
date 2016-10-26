@@ -3,7 +3,7 @@
 
 #include "RecHeader.h"
 
-#define VERSION                  "v0.9"
+#define VERSION                  "v1.0"
 
 #define NRBOOKMARKS                177   // eigentlich werden nur 48 Bookmarks unterstützt!! (SRP2401)
 #define NRSEGMENTMARKER            101
@@ -80,7 +80,7 @@ typedef struct
   byte Payload_Unit_Start:1;
   byte Transport_Error:1;
   
-  byte PID2:8;
+  byte PID2;
   
   byte ContinuityCount:4;
   byte Payload_Exists:1;
@@ -105,9 +105,9 @@ extern char             RecFileIn[], RecFileOut[];
 extern unsigned long long RecFileSize;
 extern SYSTEM_TYPE      SystemType;
 extern byte             PACKETSIZE, PACKETOFFSET;
-extern word             VideoPID;
-extern bool             isHDVideo, AlreadyStripped;
-extern bool             DoStrip, DoCut, RemoveEPGStream, RebuildNav, RebuildInf;
+extern word             VideoPID, TeletextPID;
+extern bool             isHDVideo, AlreadyStripped, HumaxSource;
+extern bool             DoStrip, DoCut, RemoveEPGStream, RemoveTeletext, RebuildNav, RebuildInf;
 
 extern TYPE_Bookmark_Info *BookmarkInfo;
 extern tSegmentMarker  *SegmentMarker;       //[0]=Start of file, [x]=End of file
@@ -117,8 +117,9 @@ extern dword            InfDuration, NewDurationMS, NewStartTimeOffset;
 
 
 bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize);
-bool isPacketStart(const byte PacketArray[], int ArrayLen);
-int  GetPacketSize(char *RecFileName);
+bool isPacketStart(const byte PacketArray[], int ArrayLen);        // braucht 9*192+5 = 1733 / 3*192+5 = 581
+int  FindNextPacketStart(const byte PacketArray[], int ArrayLen);  // braucht 20*192+1733 = 5573 / 1185+1733 = 2981
+//int GetPacketSize(FILE *RecFile, int *OutOffset);
 int  main(int argc, const char* argv[]);
 
 #endif

@@ -21,7 +21,7 @@
 
 
 // Globale Variablen
-static bool             WriteCutFile = TRUE, WriteCutInf;
+static bool             WriteCutFile = TRUE, WriteCutInf = FALSE;
 
 
 // ----------------------------------------------
@@ -239,7 +239,7 @@ static bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
       if (HeaderMode)
       {
         char            Name[50];
-        unsigned long long       Value;
+        long long       Value;
 
         if (sscanf(Buffer, "%49[^= ] = %lld", Name, &Value) == 2)
         {

@@ -79,6 +79,7 @@
     <None Include="..\Makefile" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\crcmodel.h" />
     <ClInclude Include="..\CutProcessor.h" />
     <ClInclude Include="..\HumaxHeader.h" />
     <ClInclude Include="..\InfProcessor.h" />
@@ -90,7 +91,9 @@
     <ClInclude Include="..\type.h" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\crcmodel.c" />
     <ClCompile Include="..\CutProcessor.c" />
+    <ClCompile Include="..\HumaxImport.c" />
     <ClCompile Include="..\InfProcessor.c" />
     <ClCompile Include="..\NALUDump.c" />
     <ClCompile Include="..\NavProcessor.c" />

@@ -19,6 +19,7 @@
 #include "InfProcessor.h"
 #include "RebuildInf.h"
 #include "RecStrip.h"
+#include "HumaxHeader.h"
 
 
 // Globale Variablen
@@ -130,7 +131,7 @@ static SYSTEM_TYPE DetermineInfType(const byte *const InfBuffer, const unsigned 
   if (Inf_TMSC->TransponderInfo.SatIdx != 0)  AntiC++;
   if ((dword)Inf_TMSC->BookmarkInfo.NrBookmarks > 64)  AntiC++;
 
-  printf("Determine SystemType: DVBs = %d, DVBt = %d, DVBc = %d Points\n", -AntiS, -AntiT, -AntiC);
+  printf("  Determine SystemType: DVBs = %d, DVBt = %d, DVBc = %d Points\n", -AntiS, -AntiT, -AntiC);
 
   if ((AntiC == 0 && AntiS > 0 && AntiT > 0) || (AntiC == 1 && AntiS > 1 && AntiT > 1))
     Result = ST_TMSC;
@@ -142,9 +143,9 @@ static SYSTEM_TYPE DetermineInfType(const byte *const InfBuffer, const unsigned 
     else if ((Inf_TMSS->BookmarkInfo.NrBookmarks == 0) && (Inf_TMSC->BookmarkInfo.NrBookmarks == 0))
       Result = ST_TMSS;
 
-  printf(" -> SystemType=ST_TMS%c\n", (Result==ST_TMSS ? 's' : ((Result==ST_TMSC) ? 'c' : ((Result==ST_TMST) ? 't' : '?'))));
+  printf("   -> SystemType=ST_TMS%c\n", (Result==ST_TMSS ? 's' : ((Result==ST_TMSC) ? 'c' : ((Result==ST_TMST) ? 't' : '?'))));
   if (Result != SizeType && SizeType && !(Result == ST_TMST && SizeType == ST_TMSS))
-    printf(" -> DEBUG! Assertion error: SystemType in inf (%u) not consistent to filesize (%u)!\n", Result, SizeType);
+    printf("   -> DEBUG! Assertion error: SystemType in inf (%u) not consistent to filesize (%u)!\n", Result, SizeType);
 
   TRACEEXIT;
   return Result;
@@ -170,7 +171,7 @@ bool LoadInfFile(char *AbsInfName)
   }
   else
   {
-    printf("LoadInfFile() E0901: Not enough memory.\n");
+    printf("  LoadInfFile() E0901: Not enough memory.\n");
     TRACEEXIT;
     return FALSE;
   }
@@ -226,7 +227,7 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
         BookmarkInfo = &(((TYPE_RecHeader_TMST*)InfBuffer)->BookmarkInfo);
         break;
       default:
-        printf("LoadInfFile() E0904: Incompatible system type.\n");
+        printf("  LoadInfFile() E0904: Incompatible system type.\n");
         free(InfBuffer); InfBuffer = NULL;
         TRACEEXIT;
         return FALSE;
@@ -235,46 +236,59 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
     // Prüfe auf verschlüsselte Aufnahme
     if (((RecHeaderInfo->CryptFlag & 1) != 0) && !*RecFileOut)
     {
-      printf("LoadInfFile() E0905: Recording is encrypted.\n");
+      printf("  LoadInfFile() E0905: Recording is encrypted.\n");
       free(InfBuffer); InfBuffer = NULL;
       TRACEEXIT;
       return FALSE;
     }
 
     // Prüfe auf HD-Video
-    VideoPID = ServiceInfo->VideoPID;
     if ((ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_PART2) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_H264) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_H263))
     {
       HDFound = TRUE;
-      printf("VideoStream=0x%x, VideoPID=0x%4.4x, HD=%d\n", ServiceInfo->VideoStreamType, VideoPID, isHDVideo);
+      printf("  INF: VideoStream=0x%x, VideoPID=0x%4.4x, HD=%d\n", ServiceInfo->VideoStreamType, VideoPID, isHDVideo);
     }
     else if ((ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG1) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG2))
     {
       HDFound = FALSE;
-      printf("VideoStream=0x%x, VideoPID=0x%4.4x, HD=%d\n", ServiceInfo->VideoStreamType, VideoPID, isHDVideo);
+      printf("  INF: VideoStream=0x%x, VideoPID=0x%4.4x, HD=%d\n", ServiceInfo->VideoStreamType, VideoPID, isHDVideo);
     }
     else
     {
       VideoPID = 0;
-      printf("LoadInfFile() W0901: Unknown video stream type.\n");
+      printf("  LoadInfFile() W0901: Unknown video stream type.\n");
     }
 
 if (RecHeaderInfo->Reserved != 0)
-  printf("DEBUG! Assertion Error: Reserved-Flags is not 0.\n");
+  printf("  DEBUG! Assertion Error: Reserved-Flags is not 0.\n");
 
+    if (VideoPID != ServiceInfo->VideoPID)
+    {
+      printf("  LoadInfFile() E0907: Inconsistant video PID: inf=0x%4.4x, rec=0x%4.4x.\n", ServiceInfo->VideoPID, VideoPID);
+      free(InfBuffer); InfBuffer = NULL;
+      TRACEEXIT;
+      return FALSE;
+    }
     if (HDFound != isHDVideo)
     {
-      printf("LoadInfFile() E0907: Inconsistant video type: inf=%s, rec=%s.\n", (HDFound ? "HD" : "SD"), (isHDVideo ? "HD" : "SD"));
+      printf("  LoadInfFile() E0908: Inconsistant video type: inf=%s, rec=%s.\n", (HDFound ? "HD" : "SD"), (isHDVideo ? "HD" : "SD"));
       free(InfBuffer); InfBuffer = NULL;
       TRACEEXIT;
       return FALSE;
     }
 
-    InfDuration = 60*RecHeaderInfo->DurationMin + RecHeaderInfo->DurationSec;
-
     if (RecHeaderInfo->rs_HasBeenStripped)
       AlreadyStripped = TRUE;
   }
+  else
+    if (HumaxSource)
+    {
+      Result = LoadHumaxHeader(fIn, (TYPE_RecHeader_TMSS*)InfBuffer);
+      if (!Result) HumaxSource = FALSE;
+    }
+
+  if (Result)
+    InfDuration = 60*RecHeaderInfo->DurationMin + RecHeaderInfo->DurationSec;
 
   TRACEEXIT;
   return TRUE;
@@ -370,7 +384,7 @@ bool CloseInfFile(const char *AbsDestInf, const char *AbsSourceInf, bool Save)
     }
     else
     {
-      printf("PatchInfFiles() E0902: New inf not created.\n");
+      printf("SaveInfFile() E0902: New inf not created.\n");
       Result = FALSE;
     }
   }

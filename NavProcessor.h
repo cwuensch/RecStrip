@@ -100,13 +100,13 @@ bool GetPCR(byte *pBuffer, long long *pPCR);
 bool GetPCRms(byte *pBuffer, dword *pPCR);
 dword DeltaPCR(dword FirstPCR, dword SecondPCR);
 
-void HDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacket);
-void SDNAV_ParsePacket(tTSPacket *Packet, unsigned long long FilePositionOfPacket);
+void HDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket);
+void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket);
 bool LoadNavFileIn(const char* AbsInNav);
 bool LoadNavFileOut(const char* AbsOutNav);
 bool CloseNavFiles(void);
-void ProcessNavFile(const unsigned long long CurrentPosition, const unsigned long long PositionOffset, tTSPacket* Packet);
-void QuickNavProcess(const unsigned long long CurrentPosition, const unsigned long long PositionOffset);
+void ProcessNavFile(const long long CurrentPosition, const long long PositionOffset, tTSPacket* Packet);
+void QuickNavProcess(const long long CurrentPosition, const long long PositionOffset);
 void SetFirstPacketAfterBreak(void);
 
 #endif

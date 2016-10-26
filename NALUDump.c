@@ -19,10 +19,6 @@
 #include "NALUDump.h"
 #include "RecStrip.h"
 
-#ifdef _WIN32
-  #define fseeko64 _fseeki64
-  #define ftello64 _ftelli64
-#endif
 
 extern FILE            *fIn;  // dirty Hack
 
@@ -239,7 +235,7 @@ static void ProcessPayload_SD(unsigned char *Payload, int size, bool PayloadStar
   TRACEEXIT;
 }
 
-int ProcessTSPacket(unsigned char *Packet, unsigned long long FilePosition)
+int ProcessTSPacket(unsigned char *Packet, long long FilePosition)
 {
   int ContinuityOffset = 0;
   int ContinuityInput;
@@ -254,7 +250,7 @@ int ProcessTSPacket(unsigned char *Packet, unsigned long long FilePosition)
     int NewContinuityInput = TSPacket->Payload_Exists ? (LastContinuityInput + 1) % 16 : LastContinuityInput;
     ContinuityOffset = (NewContinuityInput - ContinuityInput) % 16;
     if (ContinuityOffset > 0)
-      printf("cNaluDumper: TS continuity offset %i (pos=%llu)\n", ContinuityOffset, FilePosition);
+      printf("cNaluDumper: TS continuity offset %d (pos=%lld)\n", ContinuityOffset, FilePosition);
 //    if (Offset > ContinuityOffset)
 //      ContinuityOffset = Offset; // max if packets get dropped, otherwise always the current one.
   }
@@ -323,10 +319,10 @@ int ProcessTSPacket(unsigned char *Packet, unsigned long long FilePosition)
       // dirty Hack: Greife auf den FileStream von RecStrip zu (unschön, aber ich weiß keine bessere Lösung)
       byte               Buffer[192];
       tTSPacket         *tmpPacket = (tTSPacket*) &Buffer[PACKETOFFSET];
-      unsigned long long OldFilePos = ftello64(fIn);
+//      unsigned long long OldFilePos = ftello64(fIn);
       int                CurPid, tmpPayload, i;
 
-//printf("Potential zero-byte-stuffing found at position %llu", FilePosition);
+//printf("Potential zero-byte-stuffing found at position %lld", FilePosition);
       if (LastEndedWith3Nulls)  // wenn 3 Nullen am Ende -> dann darf FolgePaket ohne anfangen
       {
 //printf(" --> confirmed by LastEndedWith3Nulls!\n");
@@ -351,13 +347,13 @@ int ProcessTSPacket(unsigned char *Packet, unsigned long long FilePosition)
             }
             else
             {
-printf("WARNING!!! No StartCode in following packet!!! (pos=%llu)\n", FilePosition);
+printf("WARNING!!! No StartCode in following packet!!! (pos=%lld)\n", FilePosition);
               break;
             }
           }
         }
       }
-      fseeko64(fIn, OldFilePos, SEEK_SET);
+      fseeko64(fIn, FilePosition + 188, SEEK_SET);
     }
   }
   LastEndedWithNull   = (Packet[TS_SIZE-1] == 0);  // wird nur gesetzt für das zuletzt erhaltene Paket

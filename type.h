@@ -18,10 +18,10 @@ extern "C" {
 #endif
 
 #ifndef dword
-typedef unsigned long    dword;
+typedef unsigned int     dword;
 #endif
 #ifndef word
-typedef unsigned short    word;
+typedef unsigned short   word;
 #endif
 #ifndef byte
 typedef unsigned char    byte;
