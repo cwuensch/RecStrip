@@ -593,10 +593,13 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
 //printf("%lld: fwrite: SEI=%lld, nav=%lld\n", dbg_CurrentPosition/PACKETSIZE, SEI, NavPictureHeaderOffset);
 }
 
-              if (WaitForIFrame && navHD.FrameType == 1)
-                WaitForIFrame = FALSE;
+              if (WaitForPFrame && navHD.FrameType <= 2)
+                WaitForPFrame = FALSE;
 
-              if (fNavOut && !WaitForIFrame && !fwrite(&navHD, sizeof(tnavHD), 1, fNavOut))
+              if (WaitForIFrame && navHD.FrameType == 1) {
+                WaitForIFrame = FALSE;  WaitForPFrame = TRUE; }
+      
+              if (fNavOut && !WaitForIFrame && (!WaitForPFrame || navHD.FrameType<=2) && !fwrite(&navHD, sizeof(tnavHD), 1, fNavOut))
               {
                 printf("ProcessNavFile(): Error writing to nav file!\n");
                 fclose(fNavOut); fNavOut = NULL;
@@ -761,13 +764,13 @@ void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
       if( ((int)(navSD.Timems - LastTimems)) >= 0)  LastTimems = navSD.Timems;
       else  navSD.Timems = LastTimems;
 
-      if (WaitForIFrame && navSD.FrameType == 1) {
-        WaitForIFrame = FALSE;  WaitForPFrame = TRUE; }
-
       if (WaitForPFrame && navSD.FrameType <= 2)
         WaitForPFrame = FALSE;
 
-      if(NavPtr > 0 && !WaitForIFrame && (!WaitForPFrame || navSD.FrameType==1))
+      if (WaitForIFrame && navSD.FrameType == 1) {
+        WaitForIFrame = FALSE;  WaitForPFrame = TRUE; }
+
+      if(NavPtr > 0 && !WaitForIFrame && (!WaitForPFrame || navSD.FrameType<=2))
       {
 {
   unsigned long long RefPictureHeaderOffset = dbg_NavPictureHeaderOffset - dbg_HeaderPosOffset;
@@ -945,14 +948,14 @@ void QuickNavProcess(const long long CurrentPosition, const long long PositionOf
       }
 
       // I-Frame prüfen
-      if (WaitForIFrame && (curSDNavRec->FrameType == 1)) {
-        WaitForIFrame = FALSE; WaitForPFrame = TRUE; }
-
       if (WaitForPFrame && curSDNavRec->FrameType <= 2)
         WaitForPFrame = FALSE;
 
+      if (WaitForIFrame && (curSDNavRec->FrameType == 1)) {
+        WaitForIFrame = FALSE; WaitForPFrame = TRUE; }
+
       // Record schreiben
-      if (fNavOut && !WaitForIFrame && (isHDVideo || !WaitForPFrame || navSD.FrameType==1) && !fwrite(NavBuffer, isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD), 1, fNavOut))
+      if (fNavOut && !WaitForIFrame && (/*isHDVideo ||*/ !WaitForPFrame || curSDNavRec->FrameType<=2) && !fwrite(NavBuffer, isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD), 1, fNavOut))
       {
         printf("ProcessNavFile(): Error writing to nav file!\n");
         fclose(fNavIn); fNavIn = NULL;

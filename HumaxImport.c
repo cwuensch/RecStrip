@@ -26,27 +26,24 @@ char PATPMTBuf[2*192];  // Generiert eine PAT/PMT aus der Humax Header-Informati
 dword rocksoft_crc(byte data[], int len)
 {
   cm_t cm;
-  byte crc[4], crc_inv[4];
-  dword crc_old, crc_new;
+  p_cm_t pcm = &cm;
+  ulong crc;
   int i;
 
-  cm.cm_width = 32;
-  cm.cm_poly  = 0x04c11db7;
-  cm.cm_init  = 0xffffffff;
-  cm.cm_refin = FALSE;
-  cm.cm_refot = FALSE;
-  cm.cm_xorot = 0;
-  cm_ini(&cm);
+  pcm->cm_width = 32;
+  pcm->cm_poly  = 0x04c11db7L;
+  pcm->cm_init  = 0xffffffffL;
+  pcm->cm_refin = FALSE;
+  pcm->cm_refot = FALSE;
+  pcm->cm_xorot = 0L;
+  cm_ini(pcm);
 
   for (i = 0; i < len; i++)
-    cm_nxt(&cm, data[i]);
+    cm_nxt(pcm, data[i]);
 
-  crc_old = cm_crc(&cm);
-  memcpy(crc, &crc_old, 4);
-  for (i = 0; i < 4; i++)
-    crc_inv[3-i] = crc[i];
-  memcpy(&crc_new, crc_inv, 4);
-  return crc_new;
+  crc = cm_crc(pcm);
+  crc = ((crc & 0x000000ff) << 24 | (crc & 0x0000ff00) << 8 | (crc & 0x00ff0000) >> 8 | (crc & 0xff000000) >> 24);
+  return crc;
 }
 
 
@@ -200,8 +197,8 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               }
               else
               {
-                elem->stream_type     = STREAM_AUDIO_MPEG2;
-                elem->ESInfoLen2      = 6;
+                elem->stream_type   = STREAM_AUDIO_MPEG2;
+                elem->ESInfoLen2    = 6;
                 strcpy(&packet->Data[offset], "\x0A\x04" "deu");
               }
             }

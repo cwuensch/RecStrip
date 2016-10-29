@@ -287,15 +287,29 @@ static bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
           VideoPID = PID;
           RecInf->ServiceInfo.VideoPID = PID;
           RecInf->ServiceInfo.VideoStreamType = PSBuffer[DescrPt];
-          snprintf(&Log[strlen(Log)], sizeof(Log)-strlen(Log), ", Stream=0x%x, VPID=0x%4.4x, HD=%d", RecInf->ServiceInfo.VideoStreamType, RecInf->ServiceInfo.VideoPID, isHDVideo);
+          snprintf(&Log[strlen(Log)], sizeof(Log)-strlen(Log), ", Stream=0x%x, VPID=0x%4.4x, HD=%d", RecInf->ServiceInfo.VideoStreamType, VideoPID, isHDVideo);
         }
         break;
+      }
+
+      case STREAM_AUDIO_MPEG4_AC3_PLUS:  // Teletext?
+      {
+        int i;
+        for (i = 0; i < DescriptorLength-1; i++)
+          if ((PSBuffer[DescrPt+5+i] == 'V') && (PSBuffer[DescrPt+5+i+1] == '\x05'))
+          {
+            TeletextPID = PID;
+            PID = 0;
+            snprintf(&Log[strlen(Log)], sizeof(Log)-strlen(Log), "\n  TS: TeletxtPID=0x%x", TeletextPID);
+            break;
+          }
+        if (PID == 0) break;
+        // sonst fortsetzen mit Audio
       }
 
       //case STREAM_AUDIO_MP3:  //Ignored because it crashes with STREAM_VIDEO_MPEG1
       case STREAM_AUDIO_MPEG1:
       case STREAM_AUDIO_MPEG2:
-//      case STREAM_AUDIO_MPEG4_AC3_PLUS:  // Teletext?
       case STREAM_AUDIO_MPEG4_AAC:
       case STREAM_AUDIO_MPEG4_AAC_PLUS:
       case STREAM_AUDIO_MPEG4_AC3:
@@ -306,12 +320,6 @@ static bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
           RecInf->ServiceInfo.AudioStreamType = PSBuffer[DescrPt];
           RecInf->ServiceInfo.AudioPID = PID;
         }
-        break;
-      }
-
-      case 6:
-      {
-        if(!TeletextPID) TeletextPID = PID;
         break;
       }
     }
