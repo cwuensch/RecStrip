@@ -66,14 +66,14 @@ typedef long long        long64;
 #define vslong           volatile static long
 #define vsint            volatile static int
 
-#define ef                else if
+#define ef               else if
 
 #ifndef NULL
-#define NULL            0
+#define NULL             0
 #endif
 
 #ifndef TRUE
-#define TRUE            1
+#define TRUE             1
 #endif
 #ifndef FALSE
 #define FALSE            0

@@ -26,22 +26,21 @@ char PATPMTBuf[2*192];  // Generiert eine PAT/PMT aus der Humax Header-Informati
 dword rocksoft_crc(byte data[], int len)
 {
   cm_t cm;
-  p_cm_t pcm = &cm;
   ulong crc;
   int i;
 
-  pcm->cm_width = 32;
-  pcm->cm_poly  = 0x04c11db7L;
-  pcm->cm_init  = 0xffffffffL;
-  pcm->cm_refin = FALSE;
-  pcm->cm_refot = FALSE;
-  pcm->cm_xorot = 0L;
-  cm_ini(pcm);
+  cm.cm_width = 32;
+  cm.cm_poly  = 0x04c11db7L;
+  cm.cm_init  = 0xffffffffL;
+  cm.cm_refin = FALSE;
+  cm.cm_refot = FALSE;
+  cm.cm_xorot = 0L;
+  cm_ini(&cm);
 
   for (i = 0; i < len; i++)
-    cm_nxt(pcm, data[i]);
+    cm_nxt(&cm, data[i]);
 
-  crc = cm_crc(pcm);
+  crc = cm_crc(&cm);
   crc = ((crc & 0x000000ff) << 24 | (crc & 0x0000ff00) << 8 | (crc & 0x00ff0000) >> 8 | (crc & 0xff000000) >> 24);
   return crc;
 }
