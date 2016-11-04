@@ -30,11 +30,11 @@ dword rocksoft_crc(byte data[], int len)
   int i;
 
   cm.cm_width = 32;
-  cm.cm_poly  = 0x04c11db7L;
-  cm.cm_init  = 0xffffffffL;
+  cm.cm_poly  = 0x04c11db7;
+  cm.cm_init  = 0xffffffff;
   cm.cm_refin = FALSE;
   cm.cm_refot = FALSE;
-  cm.cm_xorot = 0L;
+  cm.cm_xorot = 0;
   cm_ini(&cm);
 
   for (i = 0; i < len; i++)
