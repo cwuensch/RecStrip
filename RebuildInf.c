@@ -340,7 +340,6 @@ static bool AnalyseSDT(byte *PSBuffer, word ServiceID, TYPE_RecHeader_TMSS *RecI
   TTSSDT               *SDT = (TTSSDT*)PSBuffer;
   TTSService           *pService = NULL;
   TTSServiceDesc       *pServiceDesc = NULL;
-  bool                  ret = FALSE;
 
   TRACEENTER;
 
