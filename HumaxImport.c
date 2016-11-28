@@ -55,7 +55,7 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   TElemStream          *elem = NULL;
   dword                *CRC = NULL;
   int                   offset = 0;
-  long long             FilePos = ftello64(fIn);
+//  long long             FilePos = ftello64(fIn);
   int                   i, j;
   bool                  ret = TRUE;
 
@@ -226,7 +226,7 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   offset               += 4;
   memset(&packet->Data[offset], 0xff, 184 - offset);
 
-  fseeko64(fIn, FilePos, SEEK_SET);
+//  fseeko64(fIn, FilePos, SEEK_SET);
   if (!ret)
     printf("  Failed to read the Humax header from rec.\n");
   TRACEEXIT;

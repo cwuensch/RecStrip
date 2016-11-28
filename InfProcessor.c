@@ -153,7 +153,7 @@ static SYSTEM_TYPE DetermineInfType(const byte *const InfBuffer, const unsigned 
 
 bool LoadInfFile(char *AbsInfName)
 {
-  FILE                 *fInfIn = NULL;
+  FILE                 *fInfIn = NULL, *fIn = NULL;
   TYPE_Service_Info    *ServiceInfo = NULL;
   unsigned long long    InfFileSize = 0;
   bool                  HDFound = FALSE, Result = FALSE;
@@ -192,6 +192,20 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
   } */
 
   // Get inf infos from rec
+  fIn = fopen(RecFileIn, "rb");
+  if (fIn)
+  {
+    setvbuf(fIn, NULL, _IOFBF, BUFSIZE);
+//    if (GetPacketSize(fIn, &FileOffset))
+//      fseeko64(fIn, FileOffset, SEEK_SET);
+  }
+  else
+  {
+    printf("  LoadInfFile() E0902: Cannot open source rec file.\n");
+    free(InfBuffer); InfBuffer = NULL;
+    TRACEEXIT;
+    return FALSE;
+  }
   GenerateInfFile(fIn, (TYPE_RecHeader_TMSS*)InfBuffer);
 
   //Read the source .inf
@@ -227,7 +241,8 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
         BookmarkInfo = &(((TYPE_RecHeader_TMST*)InfBuffer)->BookmarkInfo);
         break;
       default:
-        printf("  LoadInfFile() E0904: Incompatible system type.\n");
+        printf("  LoadInfFile() E0903: Incompatible system type.\n");
+        fclose(fIn);
         free(InfBuffer); InfBuffer = NULL;
         TRACEEXIT;
         return FALSE;
@@ -236,7 +251,8 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
     // Prüfe auf verschlüsselte Aufnahme
     if (((RecHeaderInfo->CryptFlag & 1) != 0) && !*RecFileOut)
     {
-      printf("  LoadInfFile() E0905: Recording is encrypted.\n");
+      printf("  LoadInfFile() E0904: Recording is encrypted.\n");
+      fclose(fIn);
       free(InfBuffer); InfBuffer = NULL;
       TRACEEXIT;
       return FALSE;
@@ -264,14 +280,16 @@ if (RecHeaderInfo->Reserved != 0)
 
     if (VideoPID != ServiceInfo->VideoPID)
     {
-      printf("  LoadInfFile() E0907: Inconsistant video PID: inf=0x%4.4x, rec=0x%4.4x.\n", ServiceInfo->VideoPID, VideoPID);
+      printf("  LoadInfFile() E0905: Inconsistant video PID: inf=0x%4.4x, rec=0x%4.4x.\n", ServiceInfo->VideoPID, VideoPID);
+      fclose(fIn);
       free(InfBuffer); InfBuffer = NULL;
       TRACEEXIT;
       return FALSE;
     }
     if (HDFound != isHDVideo)
     {
-      printf("  LoadInfFile() E0908: Inconsistant video type: inf=%s, rec=%s.\n", (HDFound ? "HD" : "SD"), (isHDVideo ? "HD" : "SD"));
+      printf("  LoadInfFile() E0906: Inconsistant video type: inf=%s, rec=%s.\n", (HDFound ? "HD" : "SD"), (isHDVideo ? "HD" : "SD"));
+      fclose(fIn);
       free(InfBuffer); InfBuffer = NULL;
       TRACEEXIT;
       return FALSE;
@@ -290,6 +308,7 @@ if (RecHeaderInfo->Reserved != 0)
   if (Result)
     InfDuration = 60*RecHeaderInfo->DurationMin + RecHeaderInfo->DurationSec;
 
+  fclose(fIn);
   TRACEEXIT;
   return TRUE;
 }
@@ -326,7 +345,7 @@ bool CloseInfFile(const char *AbsDestInf, const char *AbsSourceInf, bool Save)
   {
     if(!InfBuffer)
     {
-      printf("SaveInfFile() E0901: Buffer not allocated.\n");
+      printf("SaveInfFile() E0907: Buffer not allocated.\n");
       return FALSE;
     }
 
@@ -384,7 +403,7 @@ bool CloseInfFile(const char *AbsDestInf, const char *AbsSourceInf, bool Save)
     }
     else
     {
-      printf("SaveInfFile() E0902: New inf not created.\n");
+      printf("SaveInfFile() E0908: New inf not created.\n");
       Result = FALSE;
     }
   }

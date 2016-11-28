@@ -89,15 +89,19 @@ int                     NrSegmentMarker = 0;
 int                     ActiveSegment = 0;
 dword                   InfDuration = 0, NewDurationMS = 0, NewStartTimeOffset = 0, CutTimeOffset = 0;
 
-FILE                   *fIn = NULL;  // dirty Hack: erreichbar machen für NALUDump
+// Lokale Variablen
+static FILE            *fIn = NULL;  // dirty Hack: erreichbar machen für InfProcessor
 static FILE            *fOut = NULL;
+static byte            *PendingBuf = NULL;
+static int              PendingBufLen = 0, PendingBufStart = 0;
+static bool             isPending = FALSE;
 
-static unsigned int        RecFileBlocks = 0;
-static long long           CurrentPosition = 0, PositionOffset = 0, NrPackets;
-static unsigned int        CurPosBlocks = 0, CurBlockBytes = 0, BlocksOneSecond = 250;
-static long long           NrDroppedFillerNALU = 0, NrDroppedZeroStuffing = 0, NrDroppedNullPid = 0, NrDroppedEPGPid = 0, NrDroppedTxtPid=0, NrIgnoredPackets = 0;
-static dword               LastPCR = 0, LastTimeStamp = 0, CurTimeStep = 5000;
-static long long           PosLastPCR = 0;
+static unsigned int     RecFileBlocks = 0;
+static long long        CurrentPosition = 0, PositionOffset = 0, NrPackets;
+static unsigned int     CurPosBlocks = 0, CurBlockBytes = 0, BlocksOneSecond = 250;
+static long long        NrDroppedFillerNALU = 0, NrDroppedZeroStuffing = 0, NrDroppedAdaptation = 0, NrDroppedNullPid = 0, NrDroppedEPGPid = 0, NrDroppedTxtPid=0, NrIgnoredPackets = 0;
+static dword            LastPCR = 0, LastTimeStamp = 0, CurTimeStep = 5000;
+static long long        PosLastPCR = 0;
 
 
 bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize)
@@ -300,10 +304,11 @@ int main(int argc, const char* argv[])
   bool                  DropCurPacket;
   time_t                startTime, endTime;
   long long             CurPCR = 0;
-  static bool           ResumeSet = FALSE;
-  static int            CurSeg = 0, i = 0, j = 0;
-  static dword          BlocksOnePercent, Percent = 0, BlocksSincePercent = 0;
-  
+  bool                  ResumeSet = FALSE;
+  int                   CurSeg = 0, i = 0, j = 0;
+  dword                 BlocksOnePercent, Percent = 0, BlocksSincePercent = 0;
+  bool                  ret = TRUE;
+
   TRACEENTER;
   #ifndef _WIN32
     setvbuf(stdout, NULL, _IOLBF, 4096);  // zeilenweises Buffering, auch bei Ausgabe in Datei
@@ -400,6 +405,7 @@ int main(int argc, const char* argv[])
     else
     {
       printf("ERROR: Ivalid TS packet size.\n");
+      fclose(fIn); fIn = NULL;
       TRACEEXIT;
       exit(3);
     }
@@ -422,7 +428,7 @@ int main(int argc, const char* argv[])
     }
     else
     {
-      fclose(fIn);
+      fclose(fIn); fIn = NULL;
       printf("ERROR: Cannot create %s.\n", RecFileOut);
       TRACEEXIT;
       exit(4);
@@ -510,9 +516,9 @@ SONST
   if (HumaxSource && fOut)
   {
     printf("Generate new PAT/PMT for Humax recording.\n");
-    if (fwrite(&PATPMTBuf[(OutPacketSize==188) ? 4 : 0], OutPacketSize, 1, fOut))
+    if (fwrite(&PATPMTBuf[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut))
       PositionOffset -= OutPacketSize;
-    if (fwrite(&PATPMTBuf[((OutPacketSize==188) ? 4 : 0) + 192], OutPacketSize, 1, fOut))
+    if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], OutPacketSize, 1, fOut))
       PositionOffset -= OutPacketSize;
   }
 
@@ -586,6 +592,22 @@ SONST
     CutFileIn[0] = '\0';
   printf("\n");
 
+  // Pending Buffer initialisieren
+  if (DoStrip)
+  {
+    PendingBuf = (byte*) malloc(PENDINGBUFSIZE);
+    if (!PendingBuf)
+    {
+      printf("ERROR: Memory allocation failed.\n");
+      fclose(fIn); fIn = NULL;
+      fclose(fOut); fOut = NULL;
+      CloseNavFiles();
+      CutFileClose(NULL, FALSE);
+      CloseInfFile(NULL, NULL, FALSE);
+      TRACEEXIT;
+      exit(7);
+    }
+  }
 
   // -----------------------------------------------
   // Datei paketweise einlesen und verarbeiten
@@ -688,15 +710,47 @@ SONST
           {
             switch (ProcessTSPacket(&Buffer[4], CurrentPosition + PACKETOFFSET))
             {
-              case 1: 
+              case 1:
                 NrDroppedFillerNALU++;
                 DropCurPacket = TRUE;
                 break;
+
               case 2:
                 NrDroppedZeroStuffing++;
                 DropCurPacket = TRUE;
                 break;
+
+              case 3:
+                // PendingPacket -> PendingBuffer aktivieren, Pakete werden ab jetzt dort hineinkopiert
+                isPending = TRUE;
+                PendingBufStart = OutPacketSize;
+                break;
+
+              case 4:
+                NrDroppedAdaptation++;
+                DropCurPacket = TRUE;
+                break;
+
+              case -1:
+                // PendingPacket soll nicht gelöscht werden
+                PendingBufStart = 0;
+//                break;
+
               default:
+                // ein Paket wird behalten -> vorher PendingBuffer in Ausgabe schreiben, ggf. PendingPacket löschen
+                if (isPending)
+                {
+                  if (PendingBufStart > 0)
+                  {
+                    PositionOffset += OutPacketSize;
+                    NrDroppedZeroStuffing++;
+                  }
+                  if (fOut && (PendingBufLen > PendingBufStart))
+                    if (!fwrite(&PendingBuf[PendingBufStart], PendingBufLen-PendingBufStart, 1, fOut))
+                      ret = FALSE;
+                  isPending = FALSE;
+                  PendingBufLen = 0;
+                }
                 break;
             }
           }
@@ -763,16 +817,40 @@ SONST
             QuickNavProcess(CurrentPosition, PositionOffset);
 
           // PACKET AUSGEBEN
-          if (fOut && !fwrite(&Buffer[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut))  // Reduktion auf 188 Byte Packets
+          if (fOut)
           {
-            printf("ERROR: Failed writing to output file.\n");
-            fclose(fIn); fIn = NULL;
-            fclose(fOut); fOut = NULL;
-            CloseNavFiles();
-            CutFileClose(NULL, FALSE);
-            CloseInfFile(NULL, NULL, FALSE);
-            TRACEEXIT;
-            exit(7);
+            // Wenn PendingPacket -> Daten in Puffer schreiben
+            if (isPending)
+            {
+              // Wenn PendingBuffer voll ist -> alle Pakete außer PendingPacket in Ausgabe schreiben
+              if (PendingBufLen + OutPacketSize > PENDINGBUFSIZE)
+              {
+                if (!fwrite(&PendingBuf[OutPacketSize], PendingBufLen-OutPacketSize, 1, fOut))
+                  ret = FALSE;
+                PendingBufLen = OutPacketSize;
+              }
+
+              // Dann neues Paket in den PendingBuffer schreiben
+              memcpy(&PendingBuf[PendingBufLen], &Buffer[(OutPacketSize==192 ? 0 : 4)], OutPacketSize);
+              PendingBufLen += OutPacketSize;
+            }
+            else
+              // Daten direkt in Ausgabe schreiben
+              if (!fwrite(&Buffer[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut))  // Reduktion auf 188 Byte Packets
+                ret = FALSE;
+
+            if (!ret)
+            {
+              printf("ERROR: Failed writing to output file.\n");
+              fclose(fIn); fIn = NULL;
+              fclose(fOut); fOut = NULL;
+              CloseNavFiles();
+              CutFileClose(NULL, FALSE);
+              CloseInfFile(NULL, NULL, FALSE);
+              free(PendingBuf);
+              TRACEEXIT;
+              exit(8);
+            }
           }
         }
         else
@@ -810,8 +888,10 @@ SONST
             {
               ((tTSPacket*) &PATPMTBuf[4])->ContinuityCount++;
               ((tTSPacket*) &PATPMTBuf[196])->ContinuityCount++;
-              fwrite(PATPMTBuf, 192, 2, fOut);
-              PositionOffset -= 2*192;
+              if (fwrite(&PATPMTBuf[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut))
+                PositionOffset -= OutPacketSize;
+              if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], OutPacketSize, 1, fOut))
+                PositionOffset -= OutPacketSize;
             }  */
           }
           else
@@ -852,8 +932,9 @@ SONST
             CloseNavFiles();
             CutFileClose(CutFileOut, TRUE);
             CloseInfFile(InfFileOut, NULL, TRUE);
+            free(PendingBuf);
             TRACEEXIT;
-            exit(8);
+            exit(9);
           }
         }
       }
@@ -873,8 +954,9 @@ SONST
       }
     }
     else
-      break; 
+      break;
   }
+  free(PendingBuf); PendingBuf = NULL;
   printf("\n");
 
   if (!CloseNavFiles())
@@ -900,7 +982,7 @@ SONST
       CutFileClose(CutFileOut, TRUE);
       CloseInfFile(InfFileOut, NULL, TRUE);
       TRACEEXIT;
-      exit(9);
+      exit(10);
     }
     fOut = NULL;
   }
@@ -930,7 +1012,7 @@ SONST
 
   NrPackets = ((CurrentPosition + PACKETSIZE-1) / PACKETSIZE);
   if (NrPackets > 0)
-    printf("\nPackets: %lld, FillerNALUs: %lld (%lld%%), ZeroByteStuffing: %lld (%lld%%), NullPackets: %lld (%lld%%), EPG: %lld (%lld%%), Teletext: %lld (%lld%%), Dropped (all): %lld (%lld%%)\n", NrPackets, NrDroppedFillerNALU, NrDroppedFillerNALU*100/NrPackets, NrDroppedZeroStuffing, NrDroppedZeroStuffing*100/NrPackets, NrDroppedNullPid, NrDroppedNullPid*100/NrPackets, NrDroppedEPGPid, NrDroppedEPGPid*100/NrPackets, NrDroppedTxtPid, NrDroppedTxtPid*100/NrPackets, NrDroppedFillerNALU+NrDroppedZeroStuffing+NrDroppedNullPid+NrDroppedEPGPid+NrDroppedTxtPid, (NrDroppedFillerNALU+NrDroppedZeroStuffing+NrDroppedNullPid+NrDroppedEPGPid+NrDroppedTxtPid)*100/NrPackets);
+    printf("\nPackets: %lld, FillerNALUs: %lld (%lld%%), ZeroByteStuffing: %lld (%lld%%), AdaptationFields: %lld (%lld%%), NullPackets: %lld (%lld%%), EPG: %lld (%lld%%), Teletext: %lld (%lld%%), Dropped (all): %lld (%lld%%)\n", NrPackets, NrDroppedFillerNALU, NrDroppedFillerNALU*100/NrPackets, NrDroppedZeroStuffing, NrDroppedZeroStuffing*100/NrPackets, NrDroppedAdaptation, NrDroppedAdaptation*100/NrPackets, NrDroppedNullPid, NrDroppedNullPid*100/NrPackets, NrDroppedEPGPid, NrDroppedEPGPid*100/NrPackets, NrDroppedTxtPid, NrDroppedTxtPid*100/NrPackets, NrDroppedFillerNALU+NrDroppedZeroStuffing+NrDroppedAdaptation+NrDroppedNullPid+NrDroppedEPGPid+NrDroppedTxtPid, (NrDroppedFillerNALU+NrDroppedZeroStuffing+NrDroppedAdaptation+NrDroppedNullPid+NrDroppedEPGPid+NrDroppedTxtPid)*100/NrPackets);
   else
     printf("\n\n0 Packets!\n");
 

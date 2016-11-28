@@ -153,14 +153,16 @@ static bool GetPTS(byte *Buffer, dword *pPTS, dword *pDTS)
 bool GetPCR(byte *pBuffer, long long *pPCR)
 {
   TRACEENTER;
-  if (pPCR && (pBuffer[0] == 0x47) && ((pBuffer[3] & 0x20) != 0) && (pBuffer[4] > 0) && (pBuffer[5] & 0x10))
+  if ((pBuffer[0] == 0x47) && ((pBuffer[3] & 0x20) != 0) && (pBuffer[4] > 0) && (pBuffer[5] & 0x10))
   {
-    //Extract the time out of the PCR bit pattern
-    //The PCR is clocked by a 90kHz generator. To convert to milliseconds
-    //the 33 bit number can be shifted right and divided by 45
-    *pPCR = (((long long)pBuffer[6] << 25) | (pBuffer[7] << 17) | (pBuffer[8] << 9) | pBuffer[9] << 1 | pBuffer[10] >> 7);
-    *pPCR = *pPCR * 300 + ((pBuffer[10] & 0x1) << 8 | pBuffer[11]);
-
+    if (pPCR)
+    {
+      //Extract the time out of the PCR bit pattern
+      //The PCR is clocked by a 90kHz generator. To convert to milliseconds
+      //the 33 bit number can be shifted right and divided by 45
+      *pPCR = (((long long)pBuffer[6] << 25) | (pBuffer[7] << 17) | (pBuffer[8] << 9) | pBuffer[9] << 1 | pBuffer[10] >> 7);
+      *pPCR = *pPCR * 300 + ((pBuffer[10] & 0x1) << 8 | pBuffer[11]);
+    }
     TRACEEXIT;
     return TRUE;
   }
@@ -170,13 +172,15 @@ bool GetPCR(byte *pBuffer, long long *pPCR)
 bool GetPCRms(byte *pBuffer, dword *pPCR)
 {
   TRACEENTER;
-  if (pPCR && (pBuffer[0] == 0x47) && ((pBuffer[3] & 0x20) != 0) && (pBuffer[4] > 0) && (pBuffer[5] & 0x10))
+  if ((pBuffer[0] == 0x47) && ((pBuffer[3] & 0x20) != 0) && (pBuffer[4] > 0) && (pBuffer[5] & 0x10))
   {
-    //Extract the time out of the PCR bit pattern
-    //The PCR is clocked by a 90kHz generator. To convert to milliseconds
-    //the 33 bit number can be shifted right and divided by 45
-    *pPCR = (dword)((((dword)pBuffer[6] << 24) | (pBuffer[7] << 16) | (pBuffer[8] << 8) | pBuffer[9]) / 45);
-
+    if (pPCR)
+    {
+      //Extract the time out of the PCR bit pattern
+      //The PCR is clocked by a 90kHz generator. To convert to milliseconds
+      //the 33 bit number can be shifted right and divided by 45
+      *pPCR = (dword)((((dword)pBuffer[6] << 24) | (pBuffer[7] << 16) | (pBuffer[8] << 8) | pBuffer[9]) / 45);
+    }
     TRACEEXIT;
     return TRUE;
   }

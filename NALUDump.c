@@ -17,10 +17,9 @@
 #include <time.h>
 #include "type.h"
 #include "NALUDump.h"
+#include "NavProcessor.h"
 #include "RecStrip.h"
 
-
-extern FILE            *fIn;  // dirty Hack
 
 // Globale Variablen
 static eNaluFillState   NaluFillState = NALU_NONE;
@@ -30,6 +29,7 @@ static unsigned int     History = 0xffffffff;
 
 static int              LastContinuityInput = -1;
 static int              LastContinuityOutput = -1;
+static int              PendingContinuity = -1;
 //static int              ContinuityOffset = 0;
 
 static bool             DropAllPayload = FALSE;
@@ -38,7 +38,8 @@ static int              PesId = -1;
 static int              PesOffset = 0;
 static int              NaluOffset = 0;
 
-static bool             LastEndedWithNull = TRUE, LastEndedWith3Nulls = FALSE;
+static int              LastEndNulls = 1;
+static bool             PendingPacket = FALSE;
 
 // ----------------------------------------------
 // *****  NALU Dump  *****
@@ -56,7 +57,7 @@ inline int TsPayloadOffset(tTSPacket *Packet)
 
 static void TsExtendAdaptionField(byte *Packet, int ToLength)
 {
-  // Hint: ExtenAdaptionField(p, TsPayloadOffset(p) - 4) is a null operation
+  // Hint: ExtendAdaptionField(p, TsPayloadOffset(p) - 4) is a null operation
   tTSPacket *TSPacket;
   int Offset;
   int NewPayload;
@@ -137,6 +138,12 @@ static void ProcessPayload_HD(unsigned char *Payload, int size, bool PayloadStar
       int NaluId = History & 0xff;
       NaluOffset = 0;
       NaluFillState = ((NaluId & 0x1f) == 0x0c) ? NALU_FILL : NALU_NONE;
+      if ((NaluFillState == NALU_FILL) && (i == 3))
+      {
+        DropByte = TRUE;        // CW
+        LastKeepByte = -1;      // CW
+        DropAllPayload = TRUE;  // CW
+      }
     }
 
     if (PesId >= 0xe0 && PesId <= 0xef // video stream
@@ -237,9 +244,10 @@ static void ProcessPayload_SD(unsigned char *Payload, int size, bool PayloadStar
 
 int ProcessTSPacket(unsigned char *Packet, long long FilePosition)
 {
+  tTSPacket *TSPacket = (tTSPacket*) Packet;
   int ContinuityOffset = 0;
   int ContinuityInput;
-  tTSPacket *TSPacket = (tTSPacket*) Packet;
+  int Result = 0;
 
   TRACEENTER;
 
@@ -285,7 +293,7 @@ int ProcessTSPacket(unsigned char *Packet, long long FilePosition)
       }
 
       DropThisPayload = DropAllPayload;
-      if (!DropAllPayload && Info.DropPayloadEndBytes > 0) // Payload ends with 0xff NALU Fill
+      if (!DropAllPayload && Info.DropPayloadEndBytes > 0)  // Payload ends with 0xff NALU Fill
       {
         // Last packet of useful data
         // Do early termination of NALU fill data
@@ -313,51 +321,53 @@ int ProcessTSPacket(unsigned char *Packet, long long FilePosition)
       }
     }
 
-    if (Info.ZerosOnly && !TSPacket->Adapt_Field_Exists && (isHDVideo || SliceState) && LastEndedWithNull)
+    if (Info.ZerosOnly && !TSPacket->Adapt_Field_Exists && (isHDVideo || SliceState) /*&& LastEndNulls>0*/)
     {
-      // Prüfe ob Folgepaket mit 00 00 anfängt
-      // dirty Hack: Greife auf den FileStream von RecStrip zu (unschön, aber ich weiß keine bessere Lösung)
-      byte               Buffer[192];
-      tTSPacket         *tmpPacket = (tTSPacket*) &Buffer[PACKETOFFSET];
-//      unsigned long long OldFilePos = ftello64(fIn);
-      int                CurPid, tmpPayload, i;
-
-//printf("Potential zero-byte-stuffing found at position %lld", FilePosition);
-      if (LastEndedWith3Nulls)  // wenn 3 Nullen am Ende -> dann darf FolgePaket ohne anfangen
+//printf("Potential zero-byte-stuffing at position %lld", FilePosition);
+      if (LastEndNulls >= 3 || PendingPacket)  // wenn 3 Nullen am Ende -> dann darf FolgePaket ohne anfangen
       {
-//printf(" --> confirmed by LastEndedWith3Nulls!\n");
+//printf(" --> confirmed by 3 Nulls!\n");
         TRACEEXIT;
-        return 2;
+        return 2;  // Drop packet
+      }
+      else
+      {
+//printf(" --> UNSURE, pending packet!\n");
+        PendingPacket = TRUE;
+        Result = 3;  // Pending packet
+      }
+    }
+
+    if (Result == 0)
+    {
+      if (PendingPacket)
+      {
+        if (Packet[Offset]==0 && (Packet[Offset+1]==0 || LastEndNulls>=2) && (Packet[Offset+2]==0 || LastEndNulls>=1))
+        {
+//printf("PENDING PACKET --> confirmed by next packet!\n");
+        }
+        else
+        {
+//printf("PENDING PACKET --> NOT confirmed, will be re-inserted!\n");
+          Result = -1;  // Pending Packet doch noch einfügen
+          LastContinuityOutput = PendingContinuity;
+        }
+        PendingPacket = FALSE;
       }
 
-      CurPid = TsGetPID(TSPacket);
-      for (i = 0; i < 10; i++)
-      {
-        size_t ReadBytes = fread(Buffer, 1, PACKETSIZE, fIn);
-        if (ReadBytes > 0)
-        {
-          if ((tmpPacket->SyncByte=='G') && (TsGetPID(tmpPacket)==CurPid) && ((tmpPayload = TsPayloadOffset(tmpPacket)) < TS_SIZE-2))
-          {
-            if (Buffer[PACKETOFFSET + tmpPayload] == 0 && Buffer[PACKETOFFSET + tmpPayload + 1] == 0)
-            {
-//printf(" --> confirmed by NextStartsWith00!\n");
-              fseeko64(fIn, FilePosition + 188, SEEK_SET);
-              TRACEEXIT;
-              return 2;
-            }
-            else
-            {
-printf("WARNING!!! No StartCode in following packet!!! (pos=%lld)\n", FilePosition);
-              break;
-            }
-          }
-        }
-      }
-      fseeko64(fIn, FilePosition + 188, SEEK_SET);
+      // wird nur gesetzt für das zuletzt erhaltene Paket
+      LastEndNulls = 3;
+      if (Packet[TS_SIZE-3] != 0)  LastEndNulls = 2;
+      if (Packet[TS_SIZE-2] != 0)  LastEndNulls = 1;
+      if (Packet[TS_SIZE-1] != 0)  LastEndNulls = 0;
     }
   }
-  LastEndedWithNull   = (Packet[TS_SIZE-1] == 0);  // wird nur gesetzt für das zuletzt erhaltene Paket
-  LastEndedWith3Nulls = (Packet[TS_SIZE-1] == 0 && Packet[TS_SIZE-2] == 0 && Packet[TS_SIZE-3] == 0);
+  else
+  {
+    // Adaptation Field ohne PCR verwerfen (experimentell!!)
+    if (!TSPacket->Payload_Unit_Start && TSPacket->Adapt_Field_Exists && !GetPCR(Packet, NULL))
+      return 4;
+  }
 
   // Fix Continuity Counter and reproduce incoming offsets:
   {
@@ -366,9 +376,12 @@ printf("WARNING!!! No StartCode in following packet!!! (pos=%lld)\n", FilePositi
       NewContinuityOutput = (TSPacket->Payload_Exists) ? (LastContinuityOutput + 1) % 16 : LastContinuityOutput;
     NewContinuityOutput = (NewContinuityOutput + ContinuityOffset) % 16;
     TSPacket->ContinuityCount = NewContinuityOutput;
-    LastContinuityOutput = NewContinuityOutput;
-    ContinuityOffset = 0;
+    if (Result == 3)
+      PendingContinuity = NewContinuityOutput;
+    else
+      LastContinuityOutput = NewContinuityOutput;
   }
+
   TRACEEXIT;
-  return 0; // Keep packet
+  return Result;  // Keep packet
 }

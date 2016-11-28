@@ -122,7 +122,7 @@ static void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, byte *TSBuffer)
 
   //Stimmt die PID?
   PID = ((TSBuffer[1] & 0x1f) << 8) | TSBuffer[2];
-  if(PID == PSBuffer->PID)
+  if(TSBuffer[0] == 'G' && PSBuffer->PID == PID)
   {
     if(PSBuffer->BufferPtr >= PSBuffer->BufferSize)
     {
@@ -334,6 +334,44 @@ static bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
   return VideoFound;
 }
 
+static bool AnalyseSDT(byte *PSBuffer, word ServiceID, TYPE_RecHeader_TMSS *RecInf)
+{
+  int                   SectionLength, p;
+  TTSSDT               *SDT = (TTSSDT*)PSBuffer;
+  TTSService           *pService = NULL;
+  TTSServiceDesc       *pServiceDesc = NULL;
+  bool                  ret = FALSE;
+
+  TRACEENTER;
+
+  if (SDT->TableID == 0x42)
+  {
+    SectionLength = SDT->SectionLen1 * 256 | SDT->SectionLen2;
+
+    p = sizeof(TTSSDT);
+    while (p + (int)sizeof(TTSService) <= SectionLength)
+    {
+      pService = (TTSService*) &PSBuffer[p];
+      pServiceDesc = (TTSServiceDesc*) &PSBuffer[p + sizeof(TTSService)];
+      
+      if (pServiceDesc->DescriptorTag=='H')
+      {
+        if ((pService->ServiceID1 * 256 | pService->ServiceID2) == ServiceID)
+        {
+          memset(RecInf->ServiceInfo.ServiceName, 0, sizeof(RecInf->ServiceInfo.ServiceName));
+          strncpy(RecInf->ServiceInfo.ServiceName, (&pServiceDesc->ProviderName + pServiceDesc->ProviderNameLen+1), min(((&pServiceDesc->ProviderNameLen)[pServiceDesc->ProviderNameLen+1]), sizeof(RecInf->ServiceInfo.ServiceName)-1));
+printf("  TS: ServiceName = %s\n", RecInf->ServiceInfo.ServiceName);
+          TRACEEXIT;
+          return TRUE;
+        }
+      }
+      p += sizeof(TTSService) + (pService->DescriptorLen1 * 256 | pService->DescriptorLen2);
+    }
+  }
+  TRACEEXIT;
+  return FALSE;
+}
+
 static bool AnalyseEIT(byte *Buffer, word ServiceID, TYPE_RecHeader_TMSS *RecInf)
 {
   word                  SectionLength, p;
@@ -444,7 +482,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   dword                 FileTimeStamp;
   dword                 FirstPCR = 0, LastPCR = 0, dPCR = 0;
   int                   ReadPackets, Offset;
-  bool                  EITOK;
+  bool                  EITOK = FALSE, PMTOK = FALSE;
   byte                 *p;
   long long             FilePos = 0;
   int                   i, j;
@@ -472,7 +510,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   }
 
   // Read the first RECBUFFERENTRIES TS packets
-  FilePos = ftello64(fIn);
+//  FilePos = ftello64(fIn);
   ReadPackets = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn);
   if(ReadPackets != RECBUFFERENTRIES)
   {
@@ -501,6 +539,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       p += PACKETSIZE;
     }
   }
+
 
   // Springe in die Mitte der Aufnahme
   fseeko64(fIn, FilePos + ((RecFileSize/2)/PACKETSIZE * PACKETSIZE), SEEK_SET);
@@ -552,9 +591,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 //    p = &Buffer[Offset + PACKETOFFSET];
       for(i = p-Buffer; i < ReadPackets*PACKETSIZE; i+=PACKETSIZE)
       {
-        if(PMTBuffer.ValidBuffer == 0)
-          PSBuffer_ProcessTSPacket(&PMTBuffer, p);
-        else
+        PSBuffer_ProcessTSPacket(&PMTBuffer, p);
+        if(PMTBuffer.ValidBuffer != 0)
           break;
         p += PACKETSIZE;
       }
@@ -569,47 +607,59 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     }
 
     //If we're here, it should be possible to find the associated EPG event
-    PSBuffer_Init(&EITBuffer, 0x0012, 16384);
-    LastBuffer = 0;
-    EITOK = FALSE;
-
-    fseeko64(fIn, FilePos + ((RecFileSize/2)/PACKETSIZE * PACKETSIZE) + Offset, SEEK_SET);
-    for(j = 0; j < 10; j++)
+    if (RecInf->ServiceInfo.ServiceID)
     {
-      ReadPackets = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn);
-      p = &Buffer[PACKETOFFSET];
+      PSBuffer_Init(&PMTBuffer, 0x0011, 16384);
+      PSBuffer_Init(&EITBuffer, 0x0012, 16384);
+      LastBuffer = 0;
 
-      for(i = 0; i < ReadPackets; i++)
+      fseeko64(fIn, FilePos + ((RecFileSize/2)/PACKETSIZE * PACKETSIZE) + Offset, SEEK_SET);
+      for(j = 0; j < 10; j++)
       {
-        PSBuffer_ProcessTSPacket(&EITBuffer, p);
-        if(EITBuffer.ValidBuffer != LastBuffer)
+        ReadPackets = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn);
+        p = &Buffer[PACKETOFFSET];
+
+        for(i = 0; i < ReadPackets; i++)
         {
-          byte       *pBuffer;
+          if (!EITOK)
+          {
+            PSBuffer_ProcessTSPacket(&EITBuffer, p);
+            if(EITBuffer.ValidBuffer != LastBuffer)
+            {
+              byte *pBuffer = (EITBuffer.ValidBuffer==1) ? EITBuffer.Buffer1 : EITBuffer.Buffer2;
+              EITOK = AnalyseEIT(pBuffer, RecInf->ServiceInfo.ServiceID, RecInf);
+              LastBuffer = EITBuffer.ValidBuffer;
+            }
+          }
 
-          if(EITBuffer.ValidBuffer == 1)
-            pBuffer = EITBuffer.Buffer1;
-          else
-            pBuffer = EITBuffer.Buffer2;
+          if (!PMTOK)
+          {
+            PSBuffer_ProcessTSPacket(&PMTBuffer, p);
+            if(PMTBuffer.ValidBuffer)
+            {
+              byte* pBuffer = (PMTBuffer.ValidBuffer==1) ? PMTBuffer.Buffer1 : PMTBuffer.Buffer2;
+              PMTOK = AnalyseSDT(pBuffer, RecInf->ServiceInfo.ServiceID, RecInf);
+            }
+          }
 
-          EITOK = AnalyseEIT(pBuffer, RecInf->ServiceInfo.ServiceID, RecInf);
-          if(EITOK) break;
-
-          LastBuffer = EITBuffer.ValidBuffer;
+          if(EITOK && PMTOK) break;
+          p += PACKETSIZE;
         }
-        p += PACKETSIZE;
+        if(EITOK && PMTOK) break;
       }
-      if(EITOK) break;
+      if(!PMTOK)
+        printf ("  Failed to locate an SDT packet.\n");
+      if(!EITOK)
+        printf ("  Failed to locate an EIT packet.\n");
+      PSBuffer_Reset(&EITBuffer);
+      PSBuffer_Reset(&PMTBuffer);
     }
-    if(!EITOK)
-      printf ("  Failed to locate an EIT packet.\n");
-    PSBuffer_Reset(&EITBuffer);
   }
-
 
   //Read the last RECBUFFERENTRIES TS pakets
   fseeko64(fIn, FilePos + ((((RecFileSize-FilePos)/PACKETSIZE) - RECBUFFERENTRIES) * PACKETSIZE), SEEK_SET);
   ReadPackets = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn);
-  fseeko64(fIn, FilePos, SEEK_SET);
+//  fseeko64(fIn, FilePos, SEEK_SET);
   if(ReadPackets != RECBUFFERENTRIES)
   {
     printf ("  Failed to read the last %d TS packets.\n", RECBUFFERENTRIES);
