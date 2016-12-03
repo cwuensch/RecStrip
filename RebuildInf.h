@@ -4,6 +4,7 @@
 typedef struct
 {
   word                  PID;
+  bool                  TablePacket;
   int                   ValidBuffer;    //0: no data yet, Buffer1 gets filled
                                         //1: Buffer1 is valid, Buffer2 gets filled
                                         //2: Buffer2 is valid, Buffer1 gets filled

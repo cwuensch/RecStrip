@@ -72,6 +72,46 @@ static dword AddTime(dword pvrDate, int addMinutes)  //add minutes to the day
 }
 
 
+// from ProjectX
+static byte byte_reverse(byte b)
+{
+  b = (((b >> 1) & 0x55) | ((b << 1) & 0xaa));
+  b = (((b >> 2) & 0x33) | ((b << 2) & 0xcc));
+  b = (((b >> 4) & 0x0f) | ((b << 4) & 0xf0));
+  return b;
+}
+
+static byte nibble_reverse(byte b)
+{
+  return byte_reverse(b << 4);
+}
+
+static byte hamming_decode(byte b)
+{
+  switch (b)
+  {
+    case 0xa8: return 0;
+    case 0x0b: return 1;
+    case 0x26: return 2;
+    case 0x85: return 3;
+    case 0x92: return 4;
+    case 0x31: return 5;
+    case 0x1c: return 6;
+    case 0xbf: return 7;
+    case 0x40: return 8;
+    case 0xe3: return 9;
+    case 0xce: return 10;
+    case 0x6d: return 11;
+    case 0x7a: return 12;
+    case 0xd9: return 13;
+    case 0xf4: return 14;
+    case 0x57: return 15;
+    default:
+      return 0xFF;     // decode error , not yet corrected
+  }
+}
+
+
 //------ TS to PS converter
 static void PSBuffer_Reset(tPSBuffer *PSBuffer)
 {
@@ -95,12 +135,13 @@ static void PSBuffer_Reset(tPSBuffer *PSBuffer)
   TRACEEXIT;
 }
 
-static void PSBuffer_Init(tPSBuffer *PSBuffer, word PID, int BufferSize)
+static void PSBuffer_Init(tPSBuffer *PSBuffer, word PID, int BufferSize, bool TablePacket)
 {
   TRACEENTER;
 
   memset(PSBuffer, 0, sizeof(tPSBuffer));
   PSBuffer->PID = PID;
+  PSBuffer->TablePacket = TablePacket;
   PSBuffer->BufferSize = BufferSize;
 
   PSBuffer->Buffer1 = (byte*) malloc(BufferSize);
@@ -111,18 +152,14 @@ static void PSBuffer_Init(tPSBuffer *PSBuffer, word PID, int BufferSize)
   TRACEEXIT;
 }
 
-static void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, byte *TSBuffer)
+static void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
 {
-  word                  PID;
-  byte                  RemainingBytes;
+  byte                  RemainingBytes, Start = 0;
   
   TRACEENTER;
 
-  //Adaptation field gibt es nur bei PES Paketen
-
   //Stimmt die PID?
-  PID = ((TSBuffer[1] & 0x1f) << 8) | TSBuffer[2];
-  if(TSBuffer[0] == 'G' && PSBuffer->PID == PID)
+  if((Packet->SyncByte == 'G') && ((Packet->PID1 *256) + Packet->PID2 == PSBuffer->PID) && Packet->Payload_Exists)
   {
     if(PSBuffer->BufferPtr >= PSBuffer->BufferSize)
     {
@@ -135,18 +172,34 @@ static void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, byte *TSBuffer)
     else
     {
       //Continuity Counter ok? Falls nicht Buffer komplett verwerfen
-      if((PSBuffer->LastCCCounter = 255) || ((TSBuffer[3] & 0x0f) == ((PSBuffer->LastCCCounter + 1) & 0x0f)))
+      if((PSBuffer->LastCCCounter == 255) || (Packet->ContinuityCount == ((PSBuffer->LastCCCounter + 1) % 16)))
       {
+        //Adaptation field gibt es nur bei PES Paketen
+        if(Packet->Adapt_Field_Exists)
+          Start += Packet->Data[0];
+
         //Startet ein neues PES-Paket?
-        if((TSBuffer[1] & 0x40) != 0)
+        if(Packet->Payload_Unit_Start)
         {
-          RemainingBytes = TSBuffer[4];
+          // PES-Packet oder Table?
+          if (PSBuffer->TablePacket)
+          {
+            RemainingBytes = Packet->Data[Start];
+            Start++;
+          }
+          else
+          {
+            for (RemainingBytes = 0; RemainingBytes < 184-Start-2; RemainingBytes++)
+              if (Packet->Data[Start+RemainingBytes]==0 && Packet->Data[Start+RemainingBytes+1]==0 && Packet->Data[Start+RemainingBytes+2]==1)
+                break;
+          }
+
           if(PSBuffer->BufferPtr != 0)
           {
             //Restliche Bytes umkopieren und neuen Buffer beginnen
             if(RemainingBytes != 0)
             {
-              memcpy(PSBuffer->pBuffer, &TSBuffer[5], RemainingBytes);
+              memcpy(PSBuffer->pBuffer, &Packet[Start], RemainingBytes);
               PSBuffer->BufferPtr += RemainingBytes;
             }
 
@@ -172,18 +225,18 @@ static void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, byte *TSBuffer)
 
           //Erste Daten kopieren
           memset(PSBuffer->pBuffer, 0, PSBuffer->BufferSize);
-          memcpy(PSBuffer->pBuffer, &TSBuffer[5 + RemainingBytes], 183 - RemainingBytes);
-          PSBuffer->pBuffer += (183 - RemainingBytes);
-          PSBuffer->BufferPtr += (183 - RemainingBytes);
+          memcpy(PSBuffer->pBuffer, &Packet->Data[Start+RemainingBytes], 184-Start-RemainingBytes);
+          PSBuffer->pBuffer += (184-Start-RemainingBytes);
+          PSBuffer->BufferPtr += (184-Start-RemainingBytes);
         }
         else
         {
           //Weiterkopieren
           if(PSBuffer->BufferPtr != 0)
           {
-            memcpy(PSBuffer->pBuffer, &TSBuffer[4], 184);
-            PSBuffer->pBuffer += 184;
-            PSBuffer->BufferPtr += 184;
+            memcpy(PSBuffer->pBuffer, &Packet->Data[Start], 184-Start);
+            PSBuffer->pBuffer += (184-Start);
+            PSBuffer->BufferPtr += (184-Start);
           }
         }
       }
@@ -204,7 +257,7 @@ static void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, byte *TSBuffer)
         }
       }
 
-      PSBuffer->LastCCCounter = TSBuffer[3] & 0x0f;
+      PSBuffer->LastCCCounter = Packet->ContinuityCount;
     }
   }
   TRACEEXIT;
@@ -292,11 +345,11 @@ static bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
         break;
       }
 
-      case STREAM_AUDIO_MPEG4_AC3_PLUS:  // Teletext?
+      case 0x06:  // Teletext!
       {
         int i;
         for (i = 0; i < DescriptorLength-1; i++)
-          if ((PSBuffer[DescrPt+5+i] == 'V') && (PSBuffer[DescrPt+5+i+1] == '\x05'))
+          if ((PSBuffer[DescrPt+5+i] == 'V') /*&& (PSBuffer[DescrPt+5+i+1] == '\x05')*/)
           {
             TeletextPID = PID;
             PID = 0;
@@ -471,17 +524,140 @@ printf("  TS:  ExtEvent = %s\n", RecInf->ExtEventInfo.Text);
   return FALSE;
 }
 
+static bool AnalyseTtx(byte *PSBuffer, dword *TtxTime)
+{
+  int                   PESLength = 0, p = 0;
+  int                   magazin, row;
+  byte                  b1, b2;
+  dword                 pvrTime = 0;
+  byte                 *data_block = NULL;
+
+  TRACEENTER;
+
+  if (PSBuffer[0]==0 && PSBuffer[1]==0 && PSBuffer[2]==1)
+  {
+    p = 6;
+    PESLength = PSBuffer[4] * 256 + PSBuffer[5];
+    if ((PSBuffer[p] & 0xf0) == 0x80)  // Additional header
+      p += PSBuffer[8] + 3;
+  }
+
+  if (PSBuffer[p] == 0x10)
+  {
+    p++;
+    while (p < PESLength - 46)
+    {
+      if (PSBuffer[p] == 0x02 && PSBuffer[p+1] == 44)
+      {
+        b1 = PSBuffer[p+4];
+        b2 = PSBuffer[p+5];
+        data_block = &PSBuffer[p+6];
+
+        row = byte_reverse(((hamming_decode(b1) & 0x0f) << 4) | (hamming_decode(b2) & 0x0f));
+        magazin = row & 7;
+        if (magazin == 0) magazin = 8;
+        row = row >> 3;
+
+        if (magazin == 8 && row == 30 && data_block[1] == 0xA8)
+        {
+          byte dc, packet_format;
+
+          dc = hamming_decode(data_block[0]);
+          switch (dc & 0x0e)
+          {
+            case 0: packet_format = 1; break;
+            case 4: packet_format = 2; break;
+            default: packet_format = 0; break;
+          }
+
+          if (packet_format == 1)
+          {
+            // get initial page
+/*            byte initialPageUnits = nibble_reverse(hamming_decode(data_block[1]));
+            byte initialPageTens  = nibble_reverse(hamming_decode(data_block[2]));
+            //byte initialPageSub1  = nibble_reverse(hammingDecode(data_block[3]));
+            byte initialPageSub2  = nibble_reverse(hamming_decode(data_block[4]));
+            //byte initialPageSub3  = nibble_reverse(hamming_decode(data_block[5]));
+            byte initialPageSub4  = nibble_reverse(hamming_decode(data_block[6]));
+            dword InitialPage = initialPageUnits + 10 * initialPageTens + 100 * (((initialPageSub2 >> 3) & 1) + ((initialPageSub4 >> 1) & 6));
+*/
+            // offset in half hours
+            byte timeOffsetCode   = byte_reverse(data_block[9]);
+            byte timeOffsetH2     = ((timeOffsetCode >> 1) & 0x1F);
+
+            // get current time
+            byte mjd1             = byte_reverse(data_block[10]);
+            byte mjd2             = byte_reverse(data_block[11]);
+            byte mjd3             = byte_reverse(data_block[12]);
+            dword mdj = ((mjd1 & 0x0F)-1)*10000 + ((mjd2 >> 4)-1)*1000 + ((mjd2 & 0x0F)-1)*100 + ((mjd3 >> 4)-1)*10 + ((mjd3 & 0x0F)-1);
+
+            byte utc1             = byte_reverse(data_block[13]);
+            byte utc2             = byte_reverse(data_block[14]);
+            byte utc3             = byte_reverse(data_block[15]);
+
+            int localH = 10 * ((utc1 >> 4) - 1) + ((utc1 & 0x0f) - 1);
+            int localM = 10 * ((utc2 >> 4) - 1) + ((utc2 & 0x0f) - 1);
+            int localS = 10 * ((utc3 >> 4) - 1) + ((utc3 & 0x0f) - 1);
+
+            pvrTime = (mdj & 0xffff) << 16 | localH << 8 | localM;
+
+            if ((timeOffsetCode & 0x40) == 0)
+              pvrTime = AddTime(pvrTime, timeOffsetH2 * 30);
+            else
+              pvrTime = AddTime(pvrTime, -timeOffsetH2 * 30);
+
+            if(TtxTime) *TtxTime = pvrTime;
+
+            if ((timeOffsetCode & 0x40) == 0)
+            {
+              // positive offset polarity
+              localM += (timeOffsetH2 * 30);
+              localH += (localM / 60);
+              mdj    += (localH / 24);
+              localM  = localM % 60;
+              localH  = localH % 24;
+            }
+            else
+            {
+              // negative offset polarity
+              localM -= (timeOffsetH2 * 30);
+              while (localM < 0) 
+              {
+                localM += 60;
+                localH--;
+              }
+              while (localH < 0)
+              {
+                localH += 24;
+                mdj--;
+              }
+            }
+
+printf("  TS: Teletext date: mdj=%u, %02hhu:%02hhu:%02hhu\n", mdj, localH, localM, localS);
+            
+            TRACEEXIT;
+            return TRUE;
+          }
+        }
+      }
+      p += max(PSBuffer[p+1], 1);
+    }
+  }
+
+  TRACEEXIT;
+  return FALSE;
+}
+
 bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 {
-  tPSBuffer             PMTBuffer;
-  tPSBuffer             EITBuffer;
+  tPSBuffer             PMTBuffer, EITBuffer, TtxBuffer;
   byte                 *Buffer = NULL;
-  int                   LastBuffer = 0;
+  int                   LastBuffer = 0, LastTtxBuffer = 0;
   word                  PMTPID = 0;
-  dword                 FileTimeStamp;
-  dword                 FirstPCR = 0, LastPCR = 0, dPCR = 0;
-  int                   ReadPackets, Offset;
-  bool                  EITOK = FALSE, PMTOK = FALSE;
+  dword                 FileTimeStamp, TtxTime = 0;
+  dword                 FirstPCR = 0, LastPCR = 0, TtxPCR = 0, dPCR = 0;
+  int                   ReadPackets, Offset, FirstOffset;
+  bool                  EITOK = FALSE, PMTOK = FALSE, TtxFound = FALSE, TtxOK = FALSE;
   byte                 *p;
   long long             FilePos = 0;
   int                   i, j;
@@ -519,7 +695,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     return FALSE;
   }
 
-  Offset = FindNextPacketStart(Buffer, ReadPackets*PACKETSIZE);
+  FirstOffset = FindNextPacketStart(Buffer, ReadPackets*PACKETSIZE);
+  Offset = FirstOffset;
   if (Offset >= 0)
   {
     p = &Buffer[Offset];
@@ -585,12 +762,12 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       printf("  TS: PMTPID=0x%4.4x", PMTPID);
 
       //Analyse the PMT
-      PSBuffer_Init(&PMTBuffer, PMTPID, 16384);
+      PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE);
 
 //    p = &Buffer[Offset + PACKETOFFSET];
       for(i = p-Buffer; i < ReadPackets*PACKETSIZE; i+=PACKETSIZE)
       {
-        PSBuffer_ProcessTSPacket(&PMTBuffer, p);
+        PSBuffer_ProcessTSPacket(&PMTBuffer, (tTSPacket*)p);
         if(PMTBuffer.ValidBuffer != 0)
           break;
         p += PACKETSIZE;
@@ -608,9 +785,11 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     //If we're here, it should be possible to find the associated EPG event
     if (RecInf->ServiceInfo.ServiceID)
     {
-      PSBuffer_Init(&PMTBuffer, 0x0011, 16384);
-      PSBuffer_Init(&EITBuffer, 0x0012, 16384);
-      LastBuffer = 0;
+      PSBuffer_Init(&PMTBuffer, 0x0011, 16384, TRUE);
+      PSBuffer_Init(&EITBuffer, 0x0012, 16384, TRUE);
+      if (TeletextPID)
+        PSBuffer_Init(&TtxBuffer, TeletextPID, 16384, FALSE);
+      LastBuffer = 0; LastTtxBuffer = 0;
 
       fseeko64(fIn, FilePos + ((RecFileSize/2)/PACKETSIZE * PACKETSIZE) + Offset, SEEK_SET);
       for(j = 0; j < 10; j++)
@@ -620,9 +799,18 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 
         for(i = 0; i < ReadPackets; i++)
         {
+          if (!PMTOK)
+          {
+            PSBuffer_ProcessTSPacket(&PMTBuffer, (tTSPacket*)p);
+            if(PMTBuffer.ValidBuffer)
+            {
+              byte* pBuffer = (PMTBuffer.ValidBuffer==1) ? PMTBuffer.Buffer1 : PMTBuffer.Buffer2;
+              PMTOK = AnalyseSDT(pBuffer, RecInf->ServiceInfo.ServiceID, RecInf);
+            }
+          }
           if (!EITOK)
           {
-            PSBuffer_ProcessTSPacket(&EITBuffer, p);
+            PSBuffer_ProcessTSPacket(&EITBuffer, (tTSPacket*)p);
             if(EITBuffer.ValidBuffer != LastBuffer)
             {
               byte *pBuffer = (EITBuffer.ValidBuffer==1) ? EITBuffer.Buffer1 : EITBuffer.Buffer2;
@@ -630,30 +818,39 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               LastBuffer = EITBuffer.ValidBuffer;
             }
           }
-
-          if (!PMTOK)
+          if (TeletextPID && !TtxOK)
           {
-            PSBuffer_ProcessTSPacket(&PMTBuffer, p);
-            if(PMTBuffer.ValidBuffer)
+            if (!TtxFound)
             {
-              byte* pBuffer = (PMTBuffer.ValidBuffer==1) ? PMTBuffer.Buffer1 : PMTBuffer.Buffer2;
-              PMTOK = AnalyseSDT(pBuffer, RecInf->ServiceInfo.ServiceID, RecInf);
+              PSBuffer_ProcessTSPacket(&TtxBuffer, (tTSPacket*)p);
+              if(TtxBuffer.ValidBuffer != LastTtxBuffer)
+              {
+                byte *pBuffer = (TtxBuffer.ValidBuffer==1) ? TtxBuffer.Buffer1 : TtxBuffer.Buffer2;
+                TtxFound = AnalyseTtx(pBuffer, &TtxTime);
+                LastTtxBuffer = TtxBuffer.ValidBuffer;
+              }
             }
           }
+          if(TtxFound && !TtxOK)
+            TtxOK = (GetPCRms(p, &TtxPCR) && TtxPCR != 0);
 
-          if(EITOK && PMTOK) break;
+          if(EITOK && PMTOK && (TtxOK || !TeletextPID)) break;
           p += PACKETSIZE;
         }
-        if(EITOK && PMTOK) break;
+        if(EITOK && PMTOK && (TtxOK || !TeletextPID)) break;
       }
       if(!PMTOK)
-        printf ("  Failed to locate an SDT packet.\n");
+        printf ("  Failed to get service name from SDT.\n");
       if(!EITOK)
-        printf ("  Failed to locate an EIT packet.\n");
-      PSBuffer_Reset(&EITBuffer);
+        printf ("  Failed to get the EIT information.\n");
+      if(TeletextPID && !TtxOK)
+        printf ("  Failed to get start time from Teletext.\n");
       PSBuffer_Reset(&PMTBuffer);
+      PSBuffer_Reset(&EITBuffer);
+      PSBuffer_Reset(&TtxBuffer);
     }
   }
+
 
   //Read the last RECBUFFERENTRIES TS pakets
   fseeko64(fIn, FilePos + ((((RecFileSize-FilePos)/PACKETSIZE) - RECBUFFERENTRIES) * PACKETSIZE), SEEK_SET);
@@ -698,10 +895,20 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     RecInf->RecHeaderInfo.DurationMin = (int)(dPCR / 60000);
     RecInf->RecHeaderInfo.DurationSec = (dPCR / 1000) % 60;
   }
-  RecInf->RecHeaderInfo.StartTime = RecInf->EventInfo.StartTime + 0x0100;  // GMT+1
-  if (!RecInf->EventInfo.StartTime || ((FileTimeStamp >> 16) - (RecInf->EventInfo.StartTime >> 16) <= 1))
-    RecInf->RecHeaderInfo.StartTime = AddTime(FileTimeStamp, -RecInf->RecHeaderInfo.DurationMin);
 printf("  TS: Duration = %2.2d min %2.2d sec\n", RecInf->RecHeaderInfo.DurationMin, RecInf->RecHeaderInfo.DurationSec);
+
+  if(TtxTime && TtxPCR)
+  {
+    dPCR = DeltaPCR(FirstPCR, TtxPCR);
+    RecInf->RecHeaderInfo.StartTime = AddTime(TtxTime, -1 * (int)(dPCR/60000));
+  }
+  else
+  {
+    RecInf->RecHeaderInfo.StartTime = RecInf->EventInfo.StartTime + 0x0100;  // GMT+1
+    if (!RecInf->EventInfo.StartTime || ((FileTimeStamp >> 16) - (RecInf->EventInfo.StartTime >> 16) <= 1))
+      RecInf->RecHeaderInfo.StartTime = AddTime(FileTimeStamp, -1 * (int)RecInf->RecHeaderInfo.DurationMin);
+  }
+printf("  TS: StartTime = %u\n", RecInf->RecHeaderInfo.StartTime);
 
   free(Buffer);
   TRACEEXIT;
