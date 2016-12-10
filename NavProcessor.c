@@ -393,12 +393,22 @@ dbg_HeaderPosOffset = dbg_PositionOffset;
             {
               SEI = HeaderFound;
               SEIPTS = PTS;
-              if(FirstSEIPTS == 0) FirstSEIPTS = PTS;
+              if(FirstSEIPTS == 0 || (PTS < FirstSEIPTS && FirstSEIPTS-PTS < 10000)) FirstSEIPTS = PTS;
               SEIFoundInPacket = TRUE;
 
 dbg_SEIPositionOffset = dbg_HeaderPosOffset;
 dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
 //printf("%lld: SEI found: %lld\n", dbg_CurrentPosition/PACKETSIZE, SEI);
+
+              if (FirstPacketAfterCut)
+              {
+                if (NavPtr > 0)
+                {
+                  WaitForIFrame = TRUE;
+                  FirstRecordAfterCut = TRUE;
+                }
+                FirstPacketAfterCut = FALSE;
+              }
             }            
             break;
           };
@@ -609,15 +619,6 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
                 fclose(fNavOut); fNavOut = NULL;
               }
 
-              if (FirstPacketAfterCut)
-              {
-                if (NavPtr > 0)
-                {
-                  WaitForIFrame = TRUE;
-                  FirstRecordAfterCut = TRUE;
-                }
-                FirstPacketAfterCut = FALSE;
-              }
               NavPtr++;
               SEI = 0;
               AUD = 0;
@@ -705,7 +706,7 @@ void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
       if (PTSBufFill > 10)
       {
         if (GetPTS2(PTSBuffer, &PTS, NULL))
-          if((FirstPTS == 0) && (PTS > 0)) FirstPTS = PTS;
+          if((FirstPTS == 0) || (PTS < FirstPTS && FirstPTS-PTS < 10000)) FirstPTS = PTS;
         PTSBufFill = 0;
       }
     }

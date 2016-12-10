@@ -632,7 +632,6 @@ static bool AnalyseTtx(byte *PSBuffer, dword *TtxTime)
                 mdj--;
               }
             }
-
 printf("  TS: Teletext date: mdj=%u, %02hhu:%02hhu:%02hhu\n", mdj, localH, localM, localS);
             
             TRACEEXIT;
@@ -904,11 +903,11 @@ printf("  TS: Duration = %2.2d min %2.2d sec\n", RecInf->RecHeaderInfo.DurationM
   }
   else
   {
-    RecInf->RecHeaderInfo.StartTime = RecInf->EventInfo.StartTime + 0x0100;  // GMT+1
+    RecInf->RecHeaderInfo.StartTime = AddTime(RecInf->EventInfo.StartTime, 60);  // GMT+1
     if (!RecInf->EventInfo.StartTime || ((FileTimeStamp >> 16) - (RecInf->EventInfo.StartTime >> 16) <= 1))
       RecInf->RecHeaderInfo.StartTime = AddTime(FileTimeStamp, -1 * (int)RecInf->RecHeaderInfo.DurationMin);
   }
-printf("  TS: StartTime = %u\n", RecInf->RecHeaderInfo.StartTime);
+printf("  TS: StartTime = 0x%8.8x\n", RecInf->RecHeaderInfo.StartTime);
 
   free(Buffer);
   TRACEEXIT;
