@@ -100,6 +100,7 @@ bool GetPCR(byte *pBuffer, long long *pPCR);
 bool GetPCRms(byte *pBuffer, dword *pPCR);
 dword DeltaPCR(dword FirstPCR, dword SecondPCR);
 
+void NavProcessor_Init(void);
 void HDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket);
 void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket);
 bool LoadNavFileIn(const char* AbsInNav);

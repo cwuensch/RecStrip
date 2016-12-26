@@ -37,11 +37,12 @@ static bool             WaitForIFrame = TRUE, WaitForPFrame = FALSE, FirstPacket
 //HDNAV
 static tnavHD           navHD;
 static tPPS             PPS[10];
+static int              PPSCount = 0;
 static unsigned long long SEI = 0, SPS = 0, AUD = 0;
 static bool             GetPPSID = FALSE, GetSlicePPSID = FALSE, GetPrimPicType = FALSE;
 static byte             SlicePPSID = 0;
-static int              PPSCount = 0;
 static dword            FirstSEIPTS = 0, SEIPTS = 0, IFramePTS = 0, SPSLen = 0;
+static dword            FirstPCR = 0;
 //static tFrameCtr        CounterStack[COUNTSTACKSIZE];
 //static int              LastIFrame = 0;
 
@@ -56,21 +57,16 @@ static dword            FirstPTS = 0 /*, LastdPTS = 0*/;
 static int              NavPtr = 0;
 static word             FirstSHPHOffset = 0;
 
+//ProcessNavFile / QuickNavProcess
+static byte             NavBuffer[sizeof(tnavHD)];
+static tnavSD          *curSDNavRec = (tnavSD*) &NavBuffer[0];
+static long long        NextPictureHeaderOffset = 0;
+static bool             FirstRun = TRUE;
+
 
 // ----------------------------------------------
 // *****  PROCESS NAV FILE  *****
 // ----------------------------------------------
-
-/*void HDNAV_Init(void)
-{
-  SPS = 0;
-  PPSCount = 0;
-  SEI = 0;
-  FirstSEIPTS = 0;
-  PTS = 0;
-  FrameIndex = 0;
-  LastTimems = 0;
-}*/
 
 static int get_ue_golomb32(byte *p, byte *StartBit)
 {
@@ -232,6 +228,47 @@ static dword FindPictureHeader(byte *Buffer, byte *pFrameType)
   return 0;
 }*/
 
+
+void NavProcessor_Init(void)
+{
+  TRACEENTER;
+
+  // Globale Variablen
+  LastTimems = 0; TimeOffset = 0;
+  pOutNextTimeStamp = NULL;
+//  *fNavIn = NULL; *fNavOut = NULL;
+  PosFirstNull = 0; PosSecondNull = 0; HeaderFound = 0;
+  PTS = 0;
+  PTSBufFill = 0;  // 0: keinen PTS suchen, 1..15 Puffer-Füllstand, bei 16 PTS auslesen und zurücksetzen
+  FrameCtr = 0; FrameOffset = 0;
+  WaitForIFrame = TRUE; WaitForPFrame = FALSE; FirstPacketAfterCut = FALSE; FirstRecordAfterCut = TRUE;
+
+  //HDNAV
+  PPSCount = 0;
+  SEI = 0; SPS = 0; AUD = 0;
+  GetPPSID = FALSE; GetSlicePPSID = FALSE; GetPrimPicType = FALSE;
+  SlicePPSID = 0;
+  FirstSEIPTS = 0; SEIPTS = 0; IFramePTS = 0; SPSLen = 0;
+  FirstPCR = 0;
+//  LastIFrame = 0;
+
+  dbg_NavPictureHeaderOffset = 0; dbg_SEIFound = 0;
+  dbg_CurrentPosition = 0; dbg_PositionOffset = 0; dbg_HeaderPosOffset = 0; dbg_SEIPositionOffset = 0;
+
+  //SDNAV
+  PictHeader = 0; LastPictureHeader = 0;
+  CurrentSeqHeader = 0;
+  FirstPTS = 0 /*, LastdPTS = 0*/;
+  NavPtr = 0;
+  FirstSHPHOffset = 0;
+
+  //ProcessNavFile / QuickNavProcess
+  NextPictureHeaderOffset = 0;
+  FirstRun = TRUE;
+
+  TRACEEXIT;
+}
+
 void SetFirstPacketAfterBreak()
 {
   FirstPacketAfterCut = TRUE;
@@ -241,8 +278,6 @@ void SetFirstPacketAfterBreak()
 void HDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
 {
   byte                  PayloadStart, Ptr;
-
-  static dword          FirstPCR = 0;
   byte                  NALType;
   dword                 PCR;
   bool                  SEIFoundInPacket = FALSE;
@@ -842,11 +877,6 @@ dbg_HeaderPosOffset = dbg_PositionOffset;
 
 void ProcessNavFile(const long long CurrentPosition, const long long PositionOffset, tTSPacket *Packet)
 {
-  static byte           NavBuffer[sizeof(tnavHD)];
-  static tnavSD        *curSDNavRec = (tnavSD*) &NavBuffer[0];
-  static long long      NextPictureHeaderOffset = 0;
-  static bool           FirstRun = TRUE;
-
   TRACEENTER;
   if (FirstRun && fNavIn)
   {
@@ -896,11 +926,6 @@ dbg_NavPictureHeaderOffset = NextPictureHeaderOffset;
 
 void QuickNavProcess(const long long CurrentPosition, const long long PositionOffset)
 {
-  static byte           NavBuffer[sizeof(tnavHD)];
-  static tnavSD        *curSDNavRec = (tnavSD*) &NavBuffer[0];
-  static long long      NextPictureHeaderOffset = 0;
-  static bool           FirstRun = TRUE;
-
   TRACEENTER;
   if (FirstRun && fNavIn)
   {

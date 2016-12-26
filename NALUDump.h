@@ -28,6 +28,7 @@ typedef struct
 
 int TsGetPID(tTSPacket *Packet);
 int TsPayloadOffset(tTSPacket *Packet);
+void NALUDump_Init(void);
 int ProcessTSPacket(unsigned char *Packet, long long FilePosition);
 
 #endif

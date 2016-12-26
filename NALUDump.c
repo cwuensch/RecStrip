@@ -55,6 +55,32 @@ inline int TsPayloadOffset(tTSPacket *Packet)
   return (o <= TS_SIZE ? o : TS_SIZE);
 }
 
+void NALUDump_Init(void)
+{
+  TRACEENTER;
+
+  NaluFillState = NALU_NONE;
+  SliceState = TRUE;
+
+  History = 0xffffffff;
+
+  LastContinuityInput = -1;
+  LastContinuityOutput = -1;
+  PendingContinuity = -1;
+//  ContinuityOffset = 0;
+
+  DropAllPayload = FALSE;
+
+  PesId = -1;
+  PesOffset = 0;
+  NaluOffset = 0;
+
+  LastEndNulls = 1;
+  PendingPacket = FALSE;
+
+  TRACEEXIT;
+}
+
 static void TsExtendAdaptionField(byte *Packet, int ToLength)
 {
   // Hint: ExtendAdaptionField(p, TsPayloadOffset(p) - 4) is a null operation
@@ -78,7 +104,7 @@ static void TsExtendAdaptionField(byte *Packet, int ToLength)
   TSPacket->Adapt_Field_Exists = 1;
 
   // Set new length of adaption field:
-  TSPacket->Data[0] = (ToLength <= TS_SIZE-4) ? ToLength-1 : TS_SIZE-4-1;
+  TSPacket->Data[0] = min(ToLength-1, TS_SIZE-4-1);
 
   if (TSPacket->Data[0] == TS_SIZE-4-1)
   {

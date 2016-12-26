@@ -573,6 +573,7 @@ SONST
       snprintf(NavFileOut, sizeof(NavFileOut), "%s.nav", RecFileIn);
     }
   }
+  NavProcessor_Init();
   if (*NavFileOut && LoadNavFileOut(NavFileOut))
     printf("Nav output: %s\n", NavFileOut);
 
@@ -595,6 +596,7 @@ SONST
   // Pending Buffer initialisieren
   if (DoStrip)
   {
+    NALUDump_Init();
     PendingBuf = (byte*) malloc(PENDINGBUFSIZE);
     if (!PendingBuf)
     {
@@ -608,6 +610,7 @@ SONST
       exit(7);
     }
   }
+
 
   // -----------------------------------------------
   // Datei paketweise einlesen und verarbeiten
