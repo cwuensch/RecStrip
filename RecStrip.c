@@ -81,7 +81,8 @@ SYSTEM_TYPE             SystemType = ST_UNKNOWN;
 byte                    PACKETSIZE, PACKETOFFSET, OutPacketSize = 0;
 word                    VideoPID = 0, TeletextPID = 0;
 bool                    isHDVideo = FALSE, AlreadyStripped = FALSE, HumaxSource = FALSE;
-bool                    DoStrip = FALSE, DoCut = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE;
+bool                    DoStrip = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE;
+int                     DoCut = FALSE;
 
 TYPE_Bookmark_Info     *BookmarkInfo = NULL;
 tSegmentMarker         *SegmentMarker = NULL;       //[0]=Start of file, [x]=End of file
@@ -326,7 +327,8 @@ int main(int argc, const char* argv[])
     {
       case 'n':   RebuildNav = TRUE;      break;
       case 'i':   RebuildInf = TRUE;      break;
-      case 'c':   DoCut = TRUE;           break;
+      case 'r':   if(!DoCut) DoCut = 1;   break;
+      case 'c':   DoCut = 2;              break;
       case 's':   DoStrip = TRUE;         break;
       case 'e':   RemoveEPGStream = TRUE; break;
       case 't':   RemoveTeletext = TRUE;  break;
@@ -337,7 +339,7 @@ int main(int argc, const char* argv[])
     argv++;
     argc--;
   }
-  printf("\nParameters:\nDoCut=%s, DoStrip=%s, RmEPG=%s, RmTxt=%s, RbldNav=%s, RbldInf=%s, PkSize=%hhu\n", (DoCut ? "yes" : "no"), (DoStrip ? "yes" : "no"), (RemoveEPGStream ? "yes" : "no"), (RemoveTeletext ? "yes" : "no"), (RebuildNav ? "yes" : "no"), (RebuildInf ? "yes" : "no"), OutPacketSize);
+  printf("\nParameters:\nDoCut=%d, DoStrip=%s, RmEPG=%s, RmTxt=%s, RbldNav=%s, RbldInf=%s, PkSize=%hhu\n", DoCut, (DoStrip ? "yes" : "no"), (RemoveEPGStream ? "yes" : "no"), (RemoveTeletext ? "yes" : "no"), (RebuildNav ? "yes" : "no"), (RebuildInf ? "yes" : "no"), OutPacketSize);
 
   // Eingabe-Dateinamen lesen
   if (argc > 1)
@@ -366,8 +368,10 @@ int main(int argc, const char* argv[])
     printf("\nParameters:\n-----------\n");
     printf("  -n/-i:     Always generate a new nav/inf file from the rec.\n"
            "             If no OutFile is specified, source nav/inf will be overwritten!\n\n");
-    printf("  -c:        Cut the recording according to cut-file. (if OutFile specified)\n"
+    printf("  -r:        Cut the recording according to cut-file. (if OutFile specified)\n"
            "             Copies only the selected segments into the new rec.\n\n");
+    printf("  -c:        Copy the selected segments from cut-file. (OutFiles auto-named)\n"
+           "             Copies each selected segment into a single new rec.\n\n");
     printf("  -s:        Strip the recording. (if OutFile specified)\n"
            "             Removes unneeded filler packets. May be combined with -c, -e, -t.\n\n");
     printf("  -e:        Remove also the EPG data. (only with -s)\n\n");
