@@ -4,8 +4,14 @@
 #include "RecHeader.h"
 #include "RecStrip.h"
 
+extern TYPE_RecHeader_Info *RecHeaderInfo;
+
+bool InfProcessor_Init(void);
+bool LoadInfFromRec(char *AbsRecFileName);
 bool LoadInfFile(char *AbsInfName);
 bool SetInfCryptFlag(const char *AbsInfFile);
-bool CloseInfFile(const char *AbsDestInf, const char *AbsSourceInf, bool Save);
+bool SetInfStripFlags(const char *AbsInfFile, bool SetHasBeenScanned, bool ResetToBeStripped);
+bool SaveInfFile(const char *AbsDestInf, const char *AbsSourceInf);
+void InfProcessor_Free(void);
 
 #endif

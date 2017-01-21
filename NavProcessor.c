@@ -275,7 +275,7 @@ void SetFirstPacketAfterBreak()
 //  WaitForIFrame = TRUE;
 }
 
-void HDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
+static void HDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
 {
   byte                  PayloadStart, Ptr;
   byte                  NALType;
@@ -685,7 +685,7 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
   TRACEEXIT;
 }
 
-void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
+static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
 {
   byte                  PayloadStart, Ptr;
   byte                  FrameType;
@@ -1045,7 +1045,16 @@ bool LoadNavFileOut(const char* AbsOutNav)
   return (fNavOut != NULL);
 }
 
-bool CloseNavFiles(void)
+void CloseNavFileIn(void)
+{
+  TRACEENTER;
+
+  if (fNavIn) fclose(fNavIn);
+  fNavIn = NULL;
+
+  TRACEEXIT;
+}
+bool CloseNavFileOut(void)
 {
   bool                  ret = TRUE;
 
@@ -1059,8 +1068,6 @@ bool CloseNavFiles(void)
     fwrite(&navSD, sizeof(tnavSD), 1, fNavOut);
   }
 
-  if (fNavIn) fclose(fNavIn);
-  fNavIn = NULL;
   if (fNavOut)
     ret = (/*fflush(fNavOut) == 0 &&*/ fclose(fNavOut) == 0);
   fNavOut = NULL;

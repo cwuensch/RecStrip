@@ -38,10 +38,18 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
+
+#ifdef _WIN32
+  #include <io.h>
+  #include <sys/utime.h>
+#else
+  #include <unistd.h>
+  #include <utime.h>
+#endif
+
 #include <sys/stat.h>
 #include <time.h>
 #include "type.h"
-//#include "../../../../../Topfield/FireBirdLib/time/AddTime.c"
 #include "RecStrip.h"
 #include "InfProcessor.h"
 #include "NavProcessor.h"
@@ -82,7 +90,7 @@ byte                    PACKETSIZE, PACKETOFFSET, OutPacketSize = 0;
 word                    VideoPID = 0, TeletextPID = 0;
 bool                    isHDVideo = FALSE, AlreadyStripped = FALSE, HumaxSource = FALSE;
 bool                    DoStrip = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE;
-int                     DoCut = FALSE;
+int                     DoCut = 0;
 
 TYPE_Bookmark_Info     *BookmarkInfo = NULL;
 tSegmentMarker         *SegmentMarker = NULL;       //[0]=Start of file, [x]=End of file
@@ -91,6 +99,7 @@ int                     ActiveSegment = 0;
 dword                   InfDuration = 0, NewDurationMS = 0, NewStartTimeOffset = 0, CutTimeOffset = 0;
 
 // Lokale Variablen
+static char             NavFileIn[FBLIB_DIR_SIZE], NavFileOut[FBLIB_DIR_SIZE], NavFileOld[FBLIB_DIR_SIZE], InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], InfFileOld[FBLIB_DIR_SIZE], CutFileIn[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE];
 static FILE            *fIn = NULL;  // dirty Hack: erreichbar machen für InfProcessor
 static FILE            *fOut = NULL;
 static byte            *PendingBuf = NULL;
@@ -104,6 +113,11 @@ static long long        NrDroppedFillerNALU = 0, NrDroppedZeroStuffing = 0, NrDr
 static dword            LastPCR = 0, LastTimeStamp = 0, CurTimeStep = 5000;
 static long long        PosLastPCR = 0;
 
+
+static bool HDD_FileExist(const char *AbsFileName)
+{
+  return (AbsFileName && (access(AbsFileName, 0) == 0));
+}
 
 bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize)
 {
@@ -119,6 +133,62 @@ bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize)
   }
   TRACEEXIT;
   return ret;
+}
+
+static inline time_t TF2UnixTime(dword TFTimeStamp)
+{ 
+  return ((TFTimeStamp >> 16) - 0x9e8b) * 86400 + ((TFTimeStamp >> 8 ) & 0xff) * 3600 + (TFTimeStamp & 0xff) * 60;
+}
+
+static bool HDD_SetFileDateTime(char const *AbsFileName, time_t NewDateTime)
+{
+  struct stat64         statbuf;
+  struct utimbuf        timebuf;
+
+  if(NewDateTime == 0)
+    NewDateTime = time(NULL);
+
+  if(AbsFileName && (NewDateTime > 0xd0790000))
+  {
+    if(stat64(AbsFileName, &statbuf) == 0)
+    {
+      timebuf.actime = statbuf.st_atime;
+      timebuf.modtime = NewDateTime;
+      utime(AbsFileName, &timebuf);
+      TRACEEXIT;
+      return TRUE;
+    }
+  }
+  TRACEEXIT;
+  return FALSE;
+}
+
+static void GetNextFreeCutName(const char *AbsSourceFileName, char *const OutCutFileName)
+{
+  char                  CheckFileName[2048];
+  size_t                NameLen, ExtStart;
+  int                   FreeIndices = 0, i = 0;
+
+  TRACEENTER;
+  if(OutCutFileName) OutCutFileName[0] = '\0';
+
+  if (AbsSourceFileName && OutCutFileName)
+  {
+    const char *p = strrchr(AbsSourceFileName, '.');  // ".rec" entfernen
+    NameLen = ExtStart = ((p) ? (size_t)(p - AbsSourceFileName) : strlen(AbsSourceFileName));
+//    if((p = strstr(&SourceFileName[NameLen - 10], " (Cut-")) != NULL)
+//      NameLen = p - SourceFileName;        // wenn schon ein ' (Cut-xxx)' vorhanden ist, entfernen
+    strncpy(CheckFileName, AbsSourceFileName, NameLen);
+
+    do
+    {
+      i++;
+      snprintf(&CheckFileName[NameLen], sizeof(CheckFileName) - NameLen, " (Cut-%d)%s", i, &AbsSourceFileName[ExtStart]);
+    } while (HDD_FileExist(CheckFileName));
+
+    strcpy(OutCutFileName, CheckFileName);
+  }
+  TRACEEXIT;
 }
 
 
@@ -293,13 +363,215 @@ static void AddBookmark(int BookmarkIndex, dword BlockNr)
 }
 
 
+// --------------------------------------------------
+// *****  Öffnen / Schließen der Output-Files  *****
+// --------------------------------------------------
+
+static bool OpenOutputFiles(void)
+{
+  TRACEENTER;
+
+  // ggf. Output-File öffnen
+  if (*RecFileOut)
+  {
+    printf("Output file: %s\n", RecFileOut);
+    fOut = fopen(RecFileOut, "wb");
+    if (fOut)
+      setvbuf(fOut, NULL, _IOFBF, BUFSIZE);
+    else
+    {
+      TRACEEXIT;
+      return FALSE;
+    }
+  }
+
+  // Output-inf ermitteln
+/*
+WENN OutFile nicht existiert
+  -> inf = in
+SONST
+  WENN inf existiert oder Rebuildinf
+    -> inf = out
+  SONST
+    -> inf = NULL */
+
+  if (*RecFileOut)
+  {
+    if (RebuildInf || *InfFileIn)
+      snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf", RecFileOut);
+    else
+      InfFileOut[0] = '\0';
+  }
+  else
+  {
+    if (RebuildInf)
+    {
+      InfFileIn[0] = '\0';
+      snprintf(InfFileOld, sizeof(InfFileOld), "%s.inf", RecFileIn);
+      snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf_new", RecFileIn);
+    }
+    else if (*InfFileIn)
+    {
+      InfFileOut[0] = '\0';
+    }
+    else
+    {
+      RebuildInf = TRUE;
+      snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf", RecFileIn);
+    }
+  }
+  if (*InfFileOut)
+    printf("Inf output: %s\n", InfFileOut);
+
+  // ggf. Output-nav öffnen
+/*
+WENN OutFile nicht existiert
+  -> nav = in
+SONST
+  WENN nav existiert oder Rebuildinf
+    -> nav = out
+  SONST
+    -> nav = NULL */
+
+  NavFileOld[0] = '\0';
+  if (*RecFileOut)
+  {
+    if (RebuildNav || *NavFileIn)
+    {
+      if (DoStrip || RemoveEPGStream || RemoveTeletext || OutPacketSize != PACKETSIZE) RebuildNav = TRUE;
+      snprintf(NavFileOut, sizeof(NavFileOut), "%s.nav", RecFileOut);
+    }
+    else
+      NavFileOut[0] = '\0';
+  }
+  else
+  {
+    if (*NavFileIn)
+    {
+      if (RebuildNav)
+      {
+        snprintf(NavFileOld, sizeof(NavFileOld), "%s.nav", RecFileIn);
+        snprintf(NavFileOut, sizeof(NavFileOut), "%s.nav_new", RecFileIn);
+      }
+      else
+        NavFileOut[0] = '\0';
+    }
+    else
+    {
+      RebuildNav = TRUE;
+      snprintf(NavFileOut, sizeof(NavFileOut), "%s.nav", RecFileIn);
+    }
+  }
+
+  if (*NavFileOut && LoadNavFileOut(NavFileOut))
+    printf("Nav output: %s\n", NavFileOut);
+
+  // CutFileOut ermitteln
+  if (*CutFileIn && *RecFileOut)
+  {
+    GetCutNameFromRec(RecFileOut, CutFileOut);
+    printf("Cut output: %s\n", CutFileOut);
+  }
+  else CutFileOut[0] = '\0';
+
+  TRACEEXIT;
+  return TRUE;
+}
+
+bool CloseOutputFiles(void)
+{
+  TRACEENTER;
+
+  CloseNavFileIn();
+  if (!CloseNavFileOut())
+    printf("WARNING: Failed closing the nav file.\n");
+
+  if ((DoCut || RebuildInf) && LastTimems)
+    NewDurationMS = LastTimems;
+  if (DoCut && NrSegmentMarker >= 2)
+  {
+    SegmentMarker[NrSegmentMarker-1].Block = CalcBlockSize(CurrentPosition - PositionOffset);
+    SegmentMarker[NrSegmentMarker-1].Timems = NewDurationMS;
+  }
+
+  if (fIn)
+  {
+    fclose(fIn); fIn = NULL;
+  }
+  if(fOut)
+  {
+    if (PendingBufLen > 0)
+      if (!fwrite(PendingBuf, PendingBufLen, 1, fOut))
+        printf("WARNING: Pending buffer could not be written.\n");
+    isPending = FALSE;
+    PendingBufLen = 0;
+
+    if (/*fflush(fOut) != 0 ||*/ fclose(fOut) != 0)
+    {
+      printf("ERROR: Failed closing the output file.\n");
+      CutFileSave(CutFileOut);
+      SaveInfFile(InfFileOut, InfFileIn);
+      CutProcessor_Free();
+      InfProcessor_Free();
+      free(PendingBuf); PendingBuf = NULL;
+      TRACEEXIT;
+      return FALSE;
+    }
+    fOut = NULL;
+  }
+
+  if (*CutFileOut && !CutFileSave(CutFileOut))
+    printf("WARNING: Cannot create cut %s.\n", CutFileOut);
+
+  if (*InfFileOut && !SaveInfFile(InfFileOut, InfFileIn))
+    printf("WARNING: Cannot create inf %s.\n", InfFileOut);
+
+  if (*InfFileIn)
+  {
+    struct stat64 statbuf;
+    SetInfStripFlags(InfFileIn, TRUE, DoStrip);
+    if (stat64(RecFileIn, &statbuf) == 0)
+      HDD_SetFileDateTime(InfFileIn, statbuf.st_mtime);
+  }
+
+  if (*RecFileOut)
+    HDD_SetFileDateTime(RecFileOut, TF2UnixTime(RecHeaderInfo->StartTime));
+  if (*InfFileOut)
+    HDD_SetFileDateTime(InfFileOut, TF2UnixTime(RecHeaderInfo->StartTime));
+  if (*NavFileOut)
+    HDD_SetFileDateTime(NavFileOut, TF2UnixTime(RecHeaderInfo->StartTime));
+  if (*CutFileOut)
+    HDD_SetFileDateTime(CutFileOut, TF2UnixTime(RecHeaderInfo->StartTime));
+
+
+  if (*NavFileOld)
+  {
+    char NavFileBak[FBLIB_DIR_SIZE];
+    snprintf(NavFileBak, sizeof(NavFileBak), "%s_bak", NavFileOld);
+    remove(NavFileBak);
+    rename(NavFileOld, NavFileBak);
+    rename(NavFileOut, NavFileOld);
+  }
+  if (*InfFileOld)
+  {
+    char InfFileBak[FBLIB_DIR_SIZE];
+    snprintf(InfFileBak, sizeof(InfFileBak), "%s_bak", InfFileOld);
+    remove(InfFileBak);
+    rename(InfFileOld, InfFileBak);
+    rename(InfFileOut, InfFileOld);
+  }
+
+  TRACEEXIT;
+  return TRUE;
+}
+
+
 // ----------------------------------------------
 // *****  MAIN FUNCTION  *****
 // ----------------------------------------------
 
 int main(int argc, const char* argv[])
 {
-  char                  NavFileIn[FBLIB_DIR_SIZE], NavFileOut[FBLIB_DIR_SIZE], NavFileOld[FBLIB_DIR_SIZE], InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], InfFileOld[FBLIB_DIR_SIZE], CutFileIn[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE];
   byte                  Buffer[192];
   int                   ReadBytes;
   bool                  DropCurPacket;
@@ -348,7 +620,9 @@ int main(int argc, const char* argv[])
     RecFileIn[sizeof(RecFileIn)-1] = '\0';
   }
   else RecFileIn[0] = '\0';
-  if (argc > 2)
+  if (DoCut == 2)
+    GetNextFreeCutName(RecFileIn, RecFileOut);
+  else if (argc > 2)
   {
     strncpy(RecFileOut, argv[2], sizeof(RecFileOut));
     RecFileOut[sizeof(RecFileOut)-1] = '\0';
@@ -382,10 +656,37 @@ int main(int argc, const char* argv[])
     printf("  RecStrip 'RecFile.rec'                     RebuildNav.\n\n");
     printf("  RecStrip -s -e InFile.rec OutFile.rec      Strip recording.\n\n");
     printf("  RecStrip -n -i -o1 InFile.ts OutFile.rec   Convert TS to Topfield rec.\n\n");
-    printf("  RecStrip -c -s -e -o2 InRec.rec OutMpg.ts  Strip & cut rec and convert to TS.\n");
+    printf("  RecStrip -r -s -e -o2 InRec.rec OutMpg.ts  Strip & cut rec and convert to TS.\n");
     TRACEEXIT;
     exit(1);
   }
+
+  // Buffer und Sub-Klassen initialisieren
+  if (!InfProcessor_Init() || !CutProcessor_Init())
+  {
+    printf("ERROR: Initialization failed.\n");
+    CutProcessor_Free();
+    InfProcessor_Free();
+    TRACEEXIT;
+    exit(2);
+  }
+  NavProcessor_Init();
+
+  // Pending Buffer initialisieren
+  if (DoStrip)
+  {
+    NALUDump_Init();
+    PendingBuf = (byte*) malloc(PENDINGBUFSIZE);
+    if (!PendingBuf)
+    {
+      printf("ERROR: Memory allocation failed.\n");
+      CutProcessor_Free();
+      InfProcessor_Free();
+      TRACEEXIT;
+      exit(2);
+    }
+  }
+
 
   // Input-File öffnen
   printf("\nInput file: %s\n", RecFileIn);
@@ -410,33 +711,21 @@ int main(int argc, const char* argv[])
     {
       printf("ERROR: Ivalid TS packet size.\n");
       fclose(fIn); fIn = NULL;
+      CutProcessor_Free();
+      InfProcessor_Free();
+      free(PendingBuf); PendingBuf = NULL;      
       TRACEEXIT;
-      exit(3);
+      exit(4);
     }
   }
   else
   {
     printf("ERROR: Cannot open %s.\n", RecFileIn);
+    CutProcessor_Free();
+    InfProcessor_Free();
+    free(PendingBuf); PendingBuf = NULL;      
     TRACEEXIT;
-    exit(2);
-  }
-
-  // ggf. Output-File öffnen
-  if (*RecFileOut)
-  {
-    printf("Output file: %s\n", RecFileOut);
-    fOut = fopen(RecFileOut, "wb");
-    if (fOut)
-    {
-      setvbuf(fOut, NULL, _IOFBF, BUFSIZE);
-    }
-    else
-    {
-      fclose(fIn); fIn = NULL;
-      printf("ERROR: Cannot create %s.\n", RecFileOut);
-      TRACEEXIT;
-      exit(4);
-    }
+    exit(3);
   }
 
   // ggf. inf-File einlesen
@@ -444,53 +733,13 @@ int main(int argc, const char* argv[])
   printf("\nInf file: %s\n", InfFileIn);
   InfFileOld[0] = '\0';
 
-/*
-WENN inf existiert
-  -> einlesen
-
-WENN OutFile nicht existiert
-  -> inf = in
-SONST
-  WENN inf existiert oder Rebuildinf
-    -> inf = out
-  SONST
-    -> inf = NULL */
-
-  if (LoadInfFile(InfFileIn))
-  {
-    fseeko64(fIn, CurrentPosition, SEEK_SET);
-    if (*RecFileOut)
-    {
-      if (RebuildInf || *InfFileIn)
-        snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf", RecFileOut);
-      else
-        InfFileOut[0] = '\0';
-    }
-    else
-    {
-      if (RebuildInf)
-      {
-        InfFileIn[0] = '\0';
-        snprintf(InfFileOld, sizeof(InfFileOld), "%s.inf", RecFileIn);
-        snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf_new", RecFileIn);
-      }
-      else if (*InfFileIn)
-      {
-        InfFileOut[0] = '\0';
-      }
-      else
-      {
-        RebuildInf = TRUE;
-        snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf", RecFileIn);
-      }
-    }
-    if (*InfFileOut)
-      printf("Inf output: %s\n", InfFileOut);
-  }
-  else
+  LoadInfFromRec(RecFileIn);
+  if (!LoadInfFile(InfFileIn))
   {
     fclose(fIn); fIn = NULL;
-    if (fOut) fclose(fOut); fOut = NULL;
+    CutProcessor_Free();
+    InfProcessor_Free();
+    free(PendingBuf); PendingBuf = NULL;      
     TRACEEXIT;
     exit(5);
   }
@@ -502,8 +751,10 @@ SONST
   {
     printf("INFO: File has already been stripped.\n");
 /*    fclose(fIn); fIn = NULL;
-    if (fOut) fclose(fOut); fOut = NULL;
     CloseInfFile(NULL, NULL, FALSE);
+    CutProcessor_Free();
+    InfProcessor_Free();
+    free(PendingBuf); PendingBuf = NULL;      
     TRACEEXIT;
     exit(0); */
   }
@@ -511,8 +762,9 @@ SONST
   {
     printf("ERROR: No video PID determined.\n");
     fclose(fIn); fIn = NULL;
-    if (fOut) fclose(fOut); fOut = NULL;
-    CloseInfFile(NULL, NULL, FALSE);
+    CutProcessor_Free();
+    InfProcessor_Free();
+    free(PendingBuf); PendingBuf = NULL;      
     TRACEEXIT;
     exit(6);
   }
@@ -526,20 +778,7 @@ SONST
       PositionOffset -= OutPacketSize;
   }
 
-
-/*
-WENN nav existiert
-  -> einlesen
-
-WENN OutFile nicht existiert
-  -> nav = in
-SONST
-  WENN nav existiert oder Rebuildinf
-    -> nav = out
-  SONST
-    -> nav = NULL */
-
-  // ggf. nav-Files öffnen
+  // ggf. nav-File öffnen
   snprintf(NavFileIn, sizeof(NavFileIn), "%s.nav", RecFileIn);
   printf("\nNav file: %s\n", NavFileIn);
   if (!LoadNavFileIn(NavFileIn))
@@ -548,71 +787,26 @@ SONST
     NavFileIn[0] = '\0';
   }
   
-  NavFileOld[0] = '\0';
-  if (*RecFileOut)
-  {
-    if (RebuildNav || *NavFileIn)
-    {
-      if (DoStrip || RemoveEPGStream || RemoveTeletext || OutPacketSize != PACKETSIZE) RebuildNav = TRUE;
-      snprintf(NavFileOut, sizeof(NavFileOut), "%s.nav", RecFileOut);
-    }
-    else
-      NavFileOut[0] = '\0';
-  }
-  else
-  {
-    if (*NavFileIn)
-    {
-      if (RebuildNav)
-      {
-        snprintf(NavFileOld, sizeof(NavFileOld), "%s.nav", RecFileIn);
-        snprintf(NavFileOut, sizeof(NavFileOut), "%s.nav_new", RecFileIn);
-      }
-      else
-        NavFileOut[0] = '\0';
-    }
-    else
-    {
-      RebuildNav = TRUE;
-      snprintf(NavFileOut, sizeof(NavFileOut), "%s.nav", RecFileIn);
-    }
-  }
-  NavProcessor_Init();
-  if (*NavFileOut && LoadNavFileOut(NavFileOut))
-    printf("Nav output: %s\n", NavFileOut);
-
   // ggf. cut-File einlesen
   GetCutNameFromRec(RecFileIn, CutFileIn);
   printf("\nCut file: %s\n", CutFileIn);
 
-  if (CutFileLoad(CutFileIn))
-  {
-    if (*RecFileOut)
-    {
-      GetCutNameFromRec(RecFileOut, CutFileOut);
-      printf("Cut output: %s\n", CutFileOut);
-    }
-  }
-  else
+  if (!CutFileLoad(CutFileIn))
     CutFileIn[0] = '\0';
   printf("\n");
 
-  // Pending Buffer initialisieren
-  if (DoStrip)
+
+  // Output-Files öffnen
+  if (DoCut < 2 && !OpenOutputFiles())
   {
-    NALUDump_Init();
-    PendingBuf = (byte*) malloc(PENDINGBUFSIZE);
-    if (!PendingBuf)
-    {
-      printf("ERROR: Memory allocation failed.\n");
-      fclose(fIn); fIn = NULL;
-      fclose(fOut); fOut = NULL;
-      CloseNavFiles();
-      CutFileClose(NULL, FALSE);
-      CloseInfFile(NULL, NULL, FALSE);
-      TRACEEXIT;
-      exit(7);
-    }
+    fclose(fIn); fIn = NULL;
+    CloseNavFileIn();
+    CutProcessor_Free();
+    InfProcessor_Free();
+    free(PendingBuf); PendingBuf = NULL;      
+    printf("ERROR: Cannot create %s.\n", RecFileOut);
+    TRACEEXIT;
+    exit(7);
   }
 
 
@@ -627,12 +821,34 @@ SONST
     // SCHNEIDEN
     if (DoCut && (NrSegmentMarker > 2) && (CurSeg < NrSegmentMarker-1) && (CurPosBlocks >= SegmentMarker[CurSeg].Block))
     {
+      // Wir sind am Sprung zu einem neuen Segment CurSeg angekommen
+
+      // TEILE KOPIEREN: Output-Files schließen
+      if (fOut && DoCut == 2)
+      {
+        int NrSegmentMarker_bak = NrSegmentMarker;
+        TYPE_Bookmark_Info BookmarkInfo_bak;
+        memcpy(&BookmarkInfo_bak, BookmarkInfo, sizeof(TYPE_Bookmark_Info));
+
+        // Alle SegmentMarker und Bookmarks bis CurSeg ausgeben
+        NrSegmentMarker = 2;
+        BookmarkInfo->NrBookmarks = j;
+          
+        // aktuelle Output-Files schließen
+        if (!CloseOutputFiles())
+          exit(10);
+
+        NrSegmentMarker = NrSegmentMarker_bak;
+        memcpy(BookmarkInfo, &BookmarkInfo_bak, sizeof(TYPE_Bookmark_Info));
+      }
+
+      // SEGMENT ÜBERSPRINGEN (wenn nicht-markiert)
       while ((CurSeg < NrSegmentMarker-1) && (CurPosBlocks >= SegmentMarker[CurSeg].Block) && !SegmentMarker[CurSeg].Selected)
       {
         CutTimeOffset += SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems;
         DeleteSegmentMarker(CurSeg, TRUE);
     
-        if (CurSeg < NrSegmentMarker)
+        if (CurSeg < NrSegmentMarker-1)
         {
           long long SkippedBytes = (((unsigned long long)SegmentMarker[CurSeg].Block) * 9024) - CurrentPosition;
           fseeko64(fIn, ((unsigned long long)SegmentMarker[CurSeg].Block) * 9024, SEEK_SET);
@@ -657,8 +873,9 @@ SONST
               DeleteBookmark(j);
 
             // neues Bookmark an Schnittstelle setzen
-            if ((CurrentPosition-PositionOffset > 0) && (CurPosBlocks + 3*BlocksOneSecond < RecFileBlocks))
-              AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset));
+            if (DoCut == 1)
+              if ((CurrentPosition-PositionOffset > 0) && (CurPosBlocks + 3*BlocksOneSecond < RecFileBlocks))
+                AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset));
           }
         }
         else
@@ -670,21 +887,54 @@ SONST
         }
       }
 
-      // nächsten (zu erhaltenen) SegmentMarker anpassen
+      // Wir sind am nächsten (zu erhaltenden) SegmentMarker angekommen
       if (CurSeg < NrSegmentMarker-1)
       {
         SegmentMarker[CurSeg].Selected = FALSE;
         SegmentMarker[CurSeg].Percent = 0;
 
-        // Zeit neu berechnen
-        if (NewStartTimeOffset == 0)
-          NewStartTimeOffset = max(SegmentMarker[CurSeg].Timems, 1);
-        NewDurationMS += (SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems);
+        if (DoCut == 1)
+        {
+          // SCHNEIDEN: Zeit neu berechnen
+          if (NewStartTimeOffset == 0)
+            NewStartTimeOffset = max(SegmentMarker[CurSeg].Timems, 1);
+          NewDurationMS += (SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems);
+        }
+        else if (DoCut == 2)
+        {
+          // TEILE KOPIEREN
+          // bisher ausgegebene SegmentMarker / Bookmarks löschen
+          while (CurSeg > 0)
+            DeleteSegmentMarker(CurSeg--, TRUE);
+          while (BookmarkInfo && (j > 0))
+            DeleteBookmark(j--);
+
+          // neue Output-Files öffnen
+          GetNextFreeCutName(RecFileIn, RecFileOut);
+          if (!OpenOutputFiles())
+          {
+            fclose(fIn); fIn = NULL;
+            CloseNavFileIn();
+            CutProcessor_Free();
+            InfProcessor_Free();
+            free(PendingBuf); PendingBuf = NULL;      
+            printf("ERROR: Cannot create %s.\n", RecFileOut);
+            TRACEEXIT;
+            exit(7);
+          }
+
+          // Positionen anpassen
+          PositionOffset = CurrentPosition;
+          NewStartTimeOffset = SegmentMarker[CurSeg].Timems;
+          NewDurationMS = (SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems);
+        }
       }
+
       CurSeg++;
       if (CurSeg >= NrSegmentMarker)
         break;
     }
+
 
     // PACKET EINLESEN
     ReadBytes = fread(&Buffer[4-PACKETOFFSET], 1, PACKETSIZE, fIn);
@@ -851,9 +1101,10 @@ SONST
               printf("ERROR: Failed writing to output file.\n");
               fclose(fIn); fIn = NULL;
               fclose(fOut); fOut = NULL;
-              CloseNavFiles();
-              CutFileClose(NULL, FALSE);
-              CloseInfFile(NULL, NULL, FALSE);
+              CloseNavFileIn();
+              CloseNavFileOut();
+              CutProcessor_Free();
+              InfProcessor_Free();
               free(PendingBuf);
               TRACEEXIT;
               exit(8);
@@ -936,9 +1187,12 @@ SONST
               printf("ERROR: Too many ignored packets: %lld -> aborted.\n", NrIgnoredPackets);
             fclose(fIn); fIn = NULL;
             if (fOut) fclose(fOut); fOut = NULL;
-            CloseNavFiles();
-            CutFileClose(CutFileOut, TRUE);
-            CloseInfFile(InfFileOut, NULL, TRUE);
+            CloseNavFileIn();
+            CloseNavFileOut();
+            CutFileSave(CutFileOut);
+            SaveInfFile(InfFileOut, InfFileIn);
+            CutProcessor_Free();
+            InfProcessor_Free();
             free(PendingBuf);
             TRACEEXIT;
             exit(9);
@@ -963,59 +1217,15 @@ SONST
     else
       break;
   }
-  free(PendingBuf); PendingBuf = NULL;
   printf("\n");
 
-  if (!CloseNavFiles())
-    printf("WARNING: Failed closing the nav file.\n");
+  if (!CloseOutputFiles())
+    exit(10);
 
-  if ((DoCut || RebuildInf) && LastTimems)
-    NewDurationMS = LastTimems;
-  if (DoCut && NrSegmentMarker >= 2)
-  {
-    SegmentMarker[NrSegmentMarker-1].Block = CalcBlockSize(CurrentPosition - PositionOffset);
-    SegmentMarker[NrSegmentMarker-1].Timems = NewDurationMS;
-  }
 
-  if (fIn)
-  {
-    fclose(fIn); fIn = NULL;
-  }
-  if(fOut)
-  {
-    if (/*fflush(fOut) != 0 ||*/ fclose(fOut) != 0)
-    {
-      printf("ERROR: Failed closing the output file.\n");
-      CutFileClose(CutFileOut, TRUE);
-      CloseInfFile(InfFileOut, NULL, TRUE);
-      TRACEEXIT;
-      exit(10);
-    }
-    fOut = NULL;
-  }
-
-  if (*CutFileIn && *RecFileOut && !CutFileClose(CutFileOut, TRUE))
-    printf("WARNING: Cannot create cut %s.\n", CutFileOut);
-
-  if (*InfFileOut && !CloseInfFile(InfFileOut, InfFileIn, TRUE))
-    printf("WARNING: Cannot create inf %s.\n", InfFileOut);
-
-  if (*NavFileOld)
-  {
-    char NavFileBak[FBLIB_DIR_SIZE];
-    snprintf(NavFileBak, sizeof(NavFileBak), "%s_bak", NavFileOld);
-    remove(NavFileBak);
-    rename(NavFileOld, NavFileBak);
-    rename(NavFileOut, NavFileOld);
-  }
-  if (*InfFileOld)
-  {
-    char InfFileBak[FBLIB_DIR_SIZE];
-    snprintf(InfFileBak, sizeof(InfFileBak), "%s_bak", InfFileOld);
-    remove(InfFileBak);
-    rename(InfFileOld, InfFileBak);
-    rename(InfFileOut, InfFileOld);
-  }
+  CutProcessor_Free();
+  InfProcessor_Free();
+  free(PendingBuf); PendingBuf = NULL;
 
   NrPackets = ((CurrentPosition + PACKETSIZE-1) / PACKETSIZE);
   if (NrPackets > 0)

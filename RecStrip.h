@@ -3,7 +3,7 @@
 
 #include "RecHeader.h"
 
-#define VERSION                  "v1.0"
+#define VERSION                  "v0.9.1"
 
 #define NRBOOKMARKS                177   // eigentlich werden nur 48 Bookmarks unterstützt!! (SRP2401)
 #define NRSEGMENTMARKER            101
@@ -108,11 +108,12 @@ extern SYSTEM_TYPE      SystemType;
 extern byte             PACKETSIZE, PACKETOFFSET;
 extern word             VideoPID, TeletextPID;
 extern bool             isHDVideo, AlreadyStripped, HumaxSource;
-extern bool             DoStrip, DoCut, RemoveEPGStream, RemoveTeletext, RebuildNav, RebuildInf;
+extern bool             DoStrip, RemoveEPGStream, RemoveTeletext, RebuildNav, RebuildInf;
+extern int              DoCut;
 
-extern TYPE_Bookmark_Info *BookmarkInfo;
-extern tSegmentMarker  *SegmentMarker;       //[0]=Start of file, [x]=End of file
-extern int              NrSegmentMarker;
+extern TYPE_Bookmark_Info *BookmarkInfo, BookmarkInfo_In;
+extern tSegmentMarker  *SegmentMarker,  *SegmentMarker_In;       //[0]=Start of file, [x]=End of file
+extern int              NrSegmentMarker, NrSegmentMarker_In;
 extern int              ActiveSegment;
 extern dword            InfDuration, NewDurationMS, NewStartTimeOffset;
 

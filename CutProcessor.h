@@ -21,7 +21,9 @@ typedef struct
 
 
 void GetCutNameFromRec(const char *RecFileName, char *const OutCutFileName);
+bool CutProcessor_Init(void);
 bool CutFileLoad(const char *AbsCutName);
-bool CutFileClose(const char* AbsCutName, bool Save);
+bool CutFileSave(const char* AbsCutName);
+void CutProcessor_Free(void);
 
 #endif

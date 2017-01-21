@@ -24,7 +24,7 @@
 
 // Globale Variablen
 static byte            *InfBuffer = NULL;
-static TYPE_RecHeader_Info *RecHeaderInfo = NULL;
+TYPE_RecHeader_Info    *RecHeaderInfo = NULL;
 static size_t           InfSize = 0;
 
 
@@ -151,13 +151,9 @@ static SYSTEM_TYPE DetermineInfType(const byte *const InfBuffer, const unsigned 
   return Result;
 }
 
-bool LoadInfFile(char *AbsInfName)
-{
-  FILE                 *fInfIn = NULL, *fIn = NULL;
-  TYPE_Service_Info    *ServiceInfo = NULL;
-  unsigned long long    InfFileSize = 0;
-  bool                  HDFound = FALSE, Result = FALSE;
 
+bool InfProcessor_Init()
+{
   TRACEENTER;
 
   //Allocate and clear the buffer
@@ -167,7 +163,8 @@ bool LoadInfFile(char *AbsInfName)
   {
     memset(InfBuffer, 0, max(InfSize, 32768));
     RecHeaderInfo = (TYPE_RecHeader_Info*) InfBuffer;
-    ServiceInfo   = &(((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo);
+    TRACEEXIT;
+    return TRUE;
   }
   else
   {
@@ -175,24 +172,22 @@ bool LoadInfFile(char *AbsInfName)
     TRACEEXIT;
     return FALSE;
   }
+}
 
-  //Calculate inf header size
-/*  if (HDD_GetFileSize(AbsInfName, &InfFileSize))
+bool LoadInfFromRec(char *AbsRecFileName)
+{
+  FILE *fIn = NULL;
+  bool Result = FALSE;
+
+  TRACEENTER;
+  if(!InfBuffer || !RecHeaderInfo)
   {
-    printf("File size of inf: %llu", InfFileSize);
-
-    if (((InfFileSize % 122312) % 1024 == 84) || ((InfFileSize % 122312) % 1024 == 248))
-      SystemType = ST_TMSS;
-    else if (((InfFileSize % 122312) % 1024 == 80) || ((InfFileSize % 122312) % 1024 == 244))
-      SystemType = ST_TMSC;
-    else
-printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
-
-    printf(" -> SystemType: %s\n", ((SystemType==ST_TMSC) ? "ST_TMSC" : "ST_TMSS"));
-  } */
+    TRACEEXIT;
+    return FALSE;
+  }
 
   // Get inf infos from rec
-  fIn = fopen(RecFileIn, "rb");
+  fIn = fopen(AbsRecFileName, "rb");
   if (fIn)
   {
     setvbuf(fIn, NULL, _IOFBF, BUFSIZE);
@@ -202,11 +197,37 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
   else
   {
     printf("  LoadInfFile() E0902: Cannot open source rec file.\n");
-    free(InfBuffer); InfBuffer = NULL;
+    InfProcessor_Free();
     TRACEEXIT;
     return FALSE;
   }
-  GenerateInfFile(fIn, (TYPE_RecHeader_TMSS*)InfBuffer);
+  Result = GenerateInfFile(fIn, (TYPE_RecHeader_TMSS*)InfBuffer);
+
+  if (HumaxSource)
+  {
+    Result = LoadHumaxHeader(fIn, (TYPE_RecHeader_TMSS*)InfBuffer);
+    if (!Result) HumaxSource = FALSE;
+  }
+
+  fclose(fIn);
+  TRACEEXIT;
+  return Result;
+}
+
+bool LoadInfFile(char *AbsInfName)
+{
+  FILE                 *fInfIn = NULL;
+  TYPE_Service_Info    *ServiceInfo = NULL;
+  unsigned long long    InfFileSize = 0;
+  bool                  HDFound = FALSE, Result = FALSE;
+
+  TRACEENTER;
+  if(!InfBuffer || !RecHeaderInfo)
+  {
+    TRACEEXIT;
+    return FALSE;
+  }
+  ServiceInfo = &(((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo);
 
   //Read the source .inf
   if (AbsInfName && !RebuildInf)
@@ -242,8 +263,7 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
         break;
       default:
         printf("  LoadInfFile() E0903: Incompatible system type.\n");
-        fclose(fIn);
-        free(InfBuffer); InfBuffer = NULL;
+        InfProcessor_Free();
         TRACEEXIT;
         return FALSE;
     }
@@ -252,8 +272,7 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
     if (((RecHeaderInfo->CryptFlag & 1) != 0) && !*RecFileOut)
     {
       printf("  LoadInfFile() E0904: Recording is encrypted.\n");
-      fclose(fIn);
-      free(InfBuffer); InfBuffer = NULL;
+      InfProcessor_Free();
       TRACEEXIT;
       return FALSE;
     }
@@ -262,12 +281,12 @@ printf(" -> DEBUG! Assertion error: SystemType not detected!\n");
     if ((ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_PART2) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_H264) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_H263))
     {
       HDFound = TRUE;
-      printf("  INF: VideoStream=0x%x, VideoPID=0x%4.4x, HD=%d\n", ServiceInfo->VideoStreamType, VideoPID, isHDVideo);
+      printf("  INF: VideoStream=0x%x, VideoPID=0x%4.4x, HD=%d\n", ServiceInfo->VideoStreamType, ServiceInfo->VideoPID, HDFound);
     }
     else if ((ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG1) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG2))
     {
       HDFound = FALSE;
-      printf("  INF: VideoStream=0x%x, VideoPID=0x%4.4x, HD=%d\n", ServiceInfo->VideoStreamType, VideoPID, isHDVideo);
+      printf("  INF: VideoStream=0x%x, VideoPID=0x%4.4x, HD=%d\n", ServiceInfo->VideoStreamType, ServiceInfo->VideoPID, HDFound);
     }
     else
     {
@@ -281,16 +300,14 @@ if (RecHeaderInfo->Reserved != 0)
     if (VideoPID != ServiceInfo->VideoPID)
     {
       printf("  LoadInfFile() E0905: Inconsistant video PID: inf=0x%4.4x, rec=0x%4.4x.\n", ServiceInfo->VideoPID, VideoPID);
-      fclose(fIn);
-      free(InfBuffer); InfBuffer = NULL;
+      InfProcessor_Free();
       TRACEEXIT;
       return FALSE;
     }
     if (HDFound != isHDVideo)
     {
       printf("  LoadInfFile() E0906: Inconsistant video type: inf=%s, rec=%s.\n", (HDFound ? "HD" : "SD"), (isHDVideo ? "HD" : "SD"));
-      fclose(fIn);
-      free(InfBuffer); InfBuffer = NULL;
+      InfProcessor_Free();
       TRACEEXIT;
       return FALSE;
     }
@@ -298,17 +315,10 @@ if (RecHeaderInfo->Reserved != 0)
     if (RecHeaderInfo->rs_HasBeenStripped)
       AlreadyStripped = TRUE;
   }
-  else
-    if (HumaxSource)
-    {
-      Result = LoadHumaxHeader(fIn, (TYPE_RecHeader_TMSS*)InfBuffer);
-      if (!Result) HumaxSource = FALSE;
-    }
 
   if (Result)
     InfDuration = 60*RecHeaderInfo->DurationMin + RecHeaderInfo->DurationSec;
 
-  fclose(fIn);
   TRACEEXIT;
   return TRUE;
 }
@@ -319,6 +329,7 @@ bool SetInfCryptFlag(const char *AbsInfFile)
   TYPE_RecHeader_Info   RecHeaderInfo;
   bool                  ret = FALSE;
 
+  TRACEENTER;
   if (AbsInfFile)
   {
     if ((fInfIn = fopen(AbsInfFile, "r+b")))
@@ -330,84 +341,106 @@ bool SetInfCryptFlag(const char *AbsInfFile)
       ret = ret && fclose(fInfIn);
     }
   }
+  TRACEEXIT;
   return ret;
 }
 
-bool CloseInfFile(const char *AbsDestInf, const char *AbsSourceInf, bool Save)
+bool SetInfStripFlags(const char *AbsInfFile, bool SetHasBeenScanned, bool ResetToBeStripped)
+{
+  FILE                 *fInfIn;
+  TYPE_RecHeader_Info   RecHeaderInfo;
+  bool                  ret = FALSE;
+
+  TRACEENTER;
+  if(AbsInfFile)
+  {
+    if ((fInfIn = fopen(AbsInfFile, "r+b")))
+    {
+      fread(&RecHeaderInfo, 1, 8, fInfIn);
+      rewind(fInfIn);
+      if (SetHasBeenScanned)
+        RecHeaderInfo.rbn_HasBeenScanned = TRUE;
+      if (ResetToBeStripped)
+        RecHeaderInfo.rs_ToBeStripped = FALSE;
+      fwrite(&RecHeaderInfo, 1, 8, fInfIn);
+    }
+  }
+  TRACEEXIT;
+  return ret;
+}
+
+
+bool SaveInfFile(const char *AbsDestInf, const char *AbsSourceInf)
 {
   FILE                 *fInfIn = NULL, *fInfOut = NULL;
   size_t                BytesRead;
   bool                  Result = FALSE;
 
   TRACEENTER;
-
-  if (Save)
+  if(!InfBuffer || !RecHeaderInfo)
   {
-    if(!InfBuffer)
-    {
-      printf("SaveInfFile() E0907: Buffer not allocated.\n");
-      return FALSE;
-    }
-
-    //Encode the new inf and write it to the disk
-    if(AbsDestInf)
-      fInfOut = fopen(AbsDestInf, "wb");
-    if(fInfOut)
-    {
-      if (DoStrip)
-      {
-        RecHeaderInfo->rs_ToBeStripped = FALSE;
-        RecHeaderInfo->rs_HasBeenStripped = TRUE;
-      }
-      RecHeaderInfo->rbn_HasBeenScanned = TRUE;
-      if (NewDurationMS)
-      {
-        RecHeaderInfo->DurationMin = (word)((NewDurationMS + 500) / 60000);
-        RecHeaderInfo->DurationSec = ((NewDurationMS + 500) / 1000) % 60;
-      }
-      if (NewStartTimeOffset)
-        RecHeaderInfo->StartTime = AddTime(RecHeaderInfo->StartTime, NewStartTimeOffset / 60000);
-      Result = (fwrite(InfBuffer, 1, InfSize, fInfOut) == InfSize);
-    }
-
-    // Passe die Source-inf (falls vorhanden) an
-    if(AbsSourceInf)
-      fInfIn = fopen(AbsSourceInf, "r+b");
-    if(fInfIn)
-    {
-      fread(RecHeaderInfo, 1, 8, fInfIn);
-      rewind(fInfIn);
-      if (DoStrip)
-        RecHeaderInfo->rs_ToBeStripped = FALSE;
-      RecHeaderInfo->rbn_HasBeenScanned = TRUE;
-      fwrite(RecHeaderInfo, 1, 8, fInfIn);
-    }
-
-    // Kopiere den Rest der Source-inf (falls vorhanden) in die neue inf hinein
-    if (fInfOut && fInfIn && !RebuildInf)
-    {
-      fseek(fInfIn, InfSize, SEEK_SET);
-      do {
-        BytesRead = fread(InfBuffer, 1, 32768, fInfIn);
-        if (BytesRead > 0)
-          Result = (fwrite(InfBuffer, 1, BytesRead, fInfOut) == BytesRead) && Result;
-      } while (BytesRead > 0);
-    }
-
-    // Schlieﬂe die bearbeiteten Dateien
-    if (fInfIn) fclose(fInfIn);
-    if (fInfOut)
-    {
-//      Result = (fflush(fInfOut) == 0) && Result;
-      Result = (fclose(fInfOut) == 0) && Result;
-    }
-    else
-    {
-      printf("SaveInfFile() E0908: New inf not created.\n");
-      Result = FALSE;
-    }
+    TRACEEXIT;
+    return FALSE;
   }
-  free(InfBuffer); InfBuffer = NULL;
+
+  //Encode the new inf and write it to the disk
+  if(AbsDestInf)
+    fInfOut = fopen(AbsDestInf, "wb");
+  if(fInfOut)
+  {
+    if (DoStrip)
+    {
+      RecHeaderInfo->rs_ToBeStripped = FALSE;
+      RecHeaderInfo->rs_HasBeenStripped = TRUE;
+    }
+    RecHeaderInfo->rbn_HasBeenScanned = TRUE;
+    if (NewDurationMS)
+    {
+      RecHeaderInfo->DurationMin = (word)((NewDurationMS + 500) / 60000);
+      RecHeaderInfo->DurationSec = ((NewDurationMS + 500) / 1000) % 60;
+    }
+    if (NewStartTimeOffset)
+      RecHeaderInfo->StartTime = AddTime(RecHeaderInfo->StartTime, NewStartTimeOffset / 60000);
+    Result = (fwrite(InfBuffer, 1, InfSize, fInfOut) == InfSize);
+  }
+
+  // ÷ffne die Source-inf (falls vorhanden)
+  if(AbsSourceInf)
+    fInfIn = fopen(AbsSourceInf, "r+b");
+
+  // Kopiere den Rest der Source-inf (falls vorhanden) in die neue inf hinein
+  if (fInfOut && fInfIn && !RebuildInf)
+  {
+    fseek(fInfIn, InfSize, SEEK_SET);
+    do {
+      BytesRead = fread(InfBuffer, 1, 32768, fInfIn);
+      if (BytesRead > 0)
+        Result = (fwrite(InfBuffer, 1, BytesRead, fInfOut) == BytesRead) && Result;
+    } while (BytesRead > 0);
+  }
+
+  // Schlieﬂe die bearbeiteten Dateien
+  if (fInfIn) fclose(fInfIn);
+  if (fInfOut)
+  {
+//      Result = (fflush(fInfOut) == 0) && Result;
+    Result = (fclose(fInfOut) == 0) && Result;
+  }
+  else
+  {
+    printf("SaveInfFile() E0908: New inf not created.\n");
+    Result = FALSE;
+  }
+  
   TRACEEXIT;
   return Result;
+}
+
+void InfProcessor_Free()
+{
+  TRACEENTER;
+  free(InfBuffer); InfBuffer = NULL;
+  RecHeaderInfo = NULL;
+  BookmarkInfo = NULL;
+  TRACEEXIT;
 }

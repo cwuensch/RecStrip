@@ -74,7 +74,7 @@ static dword TimeStringToMSec(char *const TimeString)
   return ret;
 }
 
-static void ResetSegmentMarkers(void)
+static void ResetSegmentMarkers()
 {
   int i;
   TRACEENTER;
@@ -323,6 +323,27 @@ static bool CutDecodeFromBM(dword Bookmarks[])
   return ret;
 }
 
+bool CutProcessor_Init(void)
+{
+  TRACEENTER;
+
+  // Puffer allozieren
+  SegmentMarker = (tSegmentMarker*) malloc(NRSEGMENTMARKER * sizeof(tSegmentMarker));
+  if (SegmentMarker)
+  {
+    memset(SegmentMarker, 0, NRSEGMENTMARKER * sizeof(tSegmentMarker));
+    TRACEEXIT;
+    return TRUE;
+  }
+  else
+  {
+    free(SegmentMarker); SegmentMarker = NULL;
+    printf("CutFileLoad: Failed to allocate memory!\n");
+    TRACEEXIT;
+    return FALSE;
+  }
+}
+
 bool CutFileLoad(const char *AbsCutName)
 {
   FILE                 *fCut = NULL;
@@ -332,13 +353,8 @@ bool CutFileLoad(const char *AbsCutName)
 
   TRACEENTER;
 
-  // Puffer allozieren
-  SegmentMarker = (tSegmentMarker*) malloc(NRSEGMENTMARKER * sizeof(tSegmentMarker));
-  if (SegmentMarker)
-    memset(SegmentMarker, 0, NRSEGMENTMARKER * sizeof(tSegmentMarker));
-  else
+  if (!SegmentMarker)
   {
-    printf("CutFileLoad: Failed to allocate memory!\n");
     TRACEEXIT;
     return FALSE;
   }
@@ -449,7 +465,7 @@ static bool CutEncodeToBM(dword Bookmarks[], int NrBookmarks)
   return ret;
 }
 
-bool CutFileClose(const char* AbsCutName, bool Save)
+bool CutFileSave(const char* AbsCutName)
 {
   FILE                 *fCut = NULL;
   char                  TimeStamp[16];
@@ -461,7 +477,7 @@ bool CutFileClose(const char* AbsCutName, bool Save)
 
   if (SegmentMarker)
   {
-    if (Save && WriteCutFile && (NrSegmentMarker > 2 || SegmentMarker[0].pCaption))
+    if (WriteCutFile && (NrSegmentMarker > 2 || SegmentMarker[0].pCaption))
     {
       // neues CutFile speichern
       if (!HDD_GetFileSize(RecFileOut, &RecFileSize))
@@ -491,13 +507,20 @@ bool CutFileClose(const char* AbsCutName, bool Save)
       }
     }
 
-    if (Save && WriteCutInf && BookmarkInfo)
+    if (WriteCutInf && BookmarkInfo)
       CutEncodeToBM(BookmarkInfo->Bookmarks, BookmarkInfo->NrBookmarks);
-
-    ResetSegmentMarkers();
-    free(SegmentMarker);
-    SegmentMarker = NULL;
   }
   TRACEEXIT;
   return ret;
+}
+
+void CutProcessor_Free(void)
+{
+  TRACEEXIT;
+  if (SegmentMarker)
+  {
+    ResetSegmentMarkers();
+    free(SegmentMarker);  SegmentMarker = NULL;
+  }
+  TRACEEXIT;
 }
