@@ -161,7 +161,7 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           THumaxBlock_Bookmarks* HumaxBookmarks = (THumaxBlock_Bookmarks*)HumaxHeader.ZusInfos;
           RecInf->BookmarkInfo.NrBookmarks = HumaxBookmarks->Anzahl;
           for (j = 0; j < HumaxBookmarks->Anzahl; j++)
-            RecInf->BookmarkInfo.Bookmarks[j] = HumaxBookmarks->Items[j] * 32768 / 9024;
+            RecInf->BookmarkInfo.Bookmarks[j] = (dword) ((long long)HumaxBookmarks->Items[j] * 32768 / 9024);
         }
         else if (HumaxHeader.ZusInfoID == HumaxTonSpurenID)
         {

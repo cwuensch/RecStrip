@@ -93,7 +93,7 @@ bool                    DoStrip = FALSE, RemoveEPGStream = FALSE, RemoveTeletext
 int                     DoCut = 0;
 
 TYPE_Bookmark_Info     *BookmarkInfo = NULL;
-tSegmentMarker         *SegmentMarker = NULL;       //[0]=Start of file, [x]=End of file
+tSegmentMarker2        *SegmentMarker = NULL;       //[0]=Start of file, [x]=End of file
 int                     NrSegmentMarker = 0;
 int                     ActiveSegment = 0;
 dword                   InfDuration = 0, NewDurationMS = 0, NewStartTimeOffset = 0, CutTimeOffset = 0;
@@ -321,9 +321,9 @@ static void DeleteSegmentMarker(int MarkerIndex, bool FreeCaption)
       free(SegmentMarker[MarkerIndex].pCaption);
 
     for(i = MarkerIndex; i < NrSegmentMarker - 1; i++)
-      memcpy(&SegmentMarker[i], &SegmentMarker[i + 1], sizeof(tSegmentMarker));
+      memcpy(&SegmentMarker[i], &SegmentMarker[i + 1], sizeof(tSegmentMarker2));
 
-    memset(&SegmentMarker[NrSegmentMarker - 1], 0, sizeof(tSegmentMarker));
+    memset(&SegmentMarker[NrSegmentMarker - 1], 0, sizeof(tSegmentMarker2));
     NrSegmentMarker--;
 
     if(ActiveSegment >= MarkerIndex && ActiveSegment > 0) ActiveSegment--;
@@ -490,7 +490,7 @@ bool CloseOutputFiles(void)
     NewDurationMS = LastTimems;
   if (DoCut && NrSegmentMarker >= 2)
   {
-    SegmentMarker[NrSegmentMarker-1].Block = CalcBlockSize(CurrentPosition - PositionOffset);
+    SegmentMarker[NrSegmentMarker-1].Position = CurrentPosition - PositionOffset;
     SegmentMarker[NrSegmentMarker-1].Timems = NewDurationMS;
   }
   if (BookmarkInfo && BookmarkInfo->Resume >= CalcBlockSize(CurrentPosition - PositionOffset))
@@ -810,7 +810,7 @@ int main(int argc, const char* argv[])
   while (fIn)
   {
     // SCHNEIDEN
-    if (DoCut && (NrSegmentMarker > 2) && (CurSeg < NrSegmentMarker-1) && (CurPosBlocks >= SegmentMarker[CurSeg].Block))
+    if (DoCut && (NrSegmentMarker > 2) && (CurSeg < NrSegmentMarker-1) && (CurrentPosition >= SegmentMarker[CurSeg].Position))
     {
       // Wir sind am Sprung zu einem neuen Segment CurSeg angekommen
 
@@ -836,16 +836,19 @@ int main(int argc, const char* argv[])
       }
 
       // SEGMENT ÜBERSPRINGEN (wenn nicht-markiert)
-      while ((CurSeg < NrSegmentMarker-1) && (CurPosBlocks >= SegmentMarker[CurSeg].Block) && !SegmentMarker[CurSeg].Selected)
+      while ((CurSeg < NrSegmentMarker-1) && (CurrentPosition >= SegmentMarker[CurSeg].Position) && !SegmentMarker[CurSeg].Selected)
       {
-        printf("[Segment %d]  -%12llu %10u-%-10u %s\n", n++, CurrentPosition, SegmentMarker[CurSeg].Block+CalcBlockSize(PositionOffset), SegmentMarker[CurSeg+1].Block, SegmentMarker[CurSeg].pCaption);
+        if (OutCutVersion >= 4)
+          printf("[Segment %d]  -%12llu %12lld-%-12lld %s\n", n++, CurrentPosition, SegmentMarker[CurSeg].Position+PositionOffset, SegmentMarker[CurSeg+1].Position, SegmentMarker[CurSeg].pCaption);
+        else
+          printf("[Segment %d]  -%12llu %10u-%-10u %s\n",     n++, CurrentPosition, CalcBlockSize(SegmentMarker[CurSeg].Position+PositionOffset), SegmentMarker[CurSeg+1].Position, SegmentMarker[CurSeg].pCaption);
         CutTimeOffset += SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems;
         DeleteSegmentMarker(CurSeg, TRUE);
 
         if (CurSeg < NrSegmentMarker-1)
         {
-          long long SkippedBytes = (((unsigned long long)SegmentMarker[CurSeg].Block) * 9024) - CurrentPosition;
-          fseeko64(fIn, ((unsigned long long)SegmentMarker[CurSeg].Block) * 9024, SEEK_SET);
+          long long SkippedBytes = (((SegmentMarker[CurSeg].Position) /* / PACKETSIZE) * PACKETSIZE */) ) - CurrentPosition;
+          fseeko64(fIn, ((SegmentMarker[CurSeg].Position) /* / PACKETSIZE) * PACKETSIZE */), SEEK_SET);
           SetFirstPacketAfterBreak();
 
           // Position neu berechnen
@@ -884,7 +887,10 @@ int main(int argc, const char* argv[])
       // Wir sind am nächsten (zu erhaltenden) SegmentMarker angekommen
       if (CurSeg < NrSegmentMarker-1)
       {
-        printf("[Segment %d]  *%12llu %10u-%-10u %s\n", n++, CurrentPosition, SegmentMarker[CurSeg].Block, SegmentMarker[CurSeg+1].Block, SegmentMarker[CurSeg].pCaption);
+        if (OutCutVersion >= 4)
+          printf("[Segment %d]  *%12llu %12lld-%-12lld %s\n", n++, CurrentPosition, SegmentMarker[CurSeg].Position, SegmentMarker[CurSeg+1].Position, SegmentMarker[CurSeg].pCaption);
+        else
+          printf("[Segment %d]  *%12llu %10u-%-10u %s\n",     n++, CurrentPosition, CalcBlockSize(SegmentMarker[CurSeg].Position), SegmentMarker[CurSeg+1].Position, SegmentMarker[CurSeg].pCaption);
         SegmentMarker[CurSeg].Selected = FALSE;
         SegmentMarker[CurSeg].Percent = 0;
 
@@ -1018,9 +1024,9 @@ int main(int argc, const char* argv[])
 
         // SEGMENTMARKER ANPASSEN
 //        ProcessCutFile(CurPosBlocks, PosOffsetBlocks);
-        while ((i < NrSegmentMarker) && (CurPosBlocks >= SegmentMarker[i].Block))
+        while ((i < NrSegmentMarker) && (CurrentPosition >= SegmentMarker[i].Position))
         {
-          SegmentMarker[i].Block -= CalcBlockSize(PositionOffset);
+          SegmentMarker[i].Position -= PositionOffset;
           SegmentMarker[i].Timems -= CutTimeOffset;
           if (!SegmentMarker[i].Timems)
             pOutNextTimeStamp = &SegmentMarker[i].Timems;

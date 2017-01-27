@@ -19,10 +19,19 @@
 #include "CutProcessor.h"
 #include "RecStrip.h"
 
+typedef struct
+{
+  dword                 Block;
+  dword                 Timems; //Time in ms
+  float                 Percent;
+  int                   Selected;
+  char                 *pCaption;
+} tSegmentMarker1;
+
 
 // Globale Variablen
+int                     OutCutVersion = 3;
 static bool             WriteCutFile = TRUE, WriteCutInf = FALSE;
-static int              OutCutVersion = 3;
 
 
 // ----------------------------------------------
@@ -83,7 +92,7 @@ static void ResetSegmentMarkers()
   for (i = 0; i < NrSegmentMarker; i++)
     if (SegmentMarker[i].pCaption)
       free(SegmentMarker[i].pCaption);
-  memset(SegmentMarker, 0, NRSEGMENTMARKER * sizeof(tSegmentMarker));
+  memset(SegmentMarker, 0, NRSEGMENTMARKER * sizeof(tSegmentMarker2));
   NrSegmentMarker = 0;
 
   TRACEEXIT;
@@ -154,9 +163,15 @@ static bool CutFileDecodeBin(FILE *fCut, unsigned long long *OutSavedSize)
 
     if (ret)
     {
+      tSegmentMarker1   curSeg;
+
       SavedNrSegments = min(SavedNrSegments, NRSEGMENTMARKER);
-      while (fread(&SegmentMarker[NrSegmentMarker], sizeof(tSegmentMarker)-4, 1, fCut))
+      while (fread(&curSeg, sizeof(tSegmentMarker1)-sizeof(char*), 1, fCut))
       {
+        SegmentMarker[NrSegmentMarker].Position = curSeg.Block * 9024;
+        SegmentMarker[NrSegmentMarker].Timems   = curSeg.Timems;
+        SegmentMarker[NrSegmentMarker].Percent  = curSeg.Percent;
+        SegmentMarker[NrSegmentMarker].Selected = curSeg.Selected;
         SegmentMarker[NrSegmentMarker].pCaption = NULL;
         NrSegmentMarker++;
       }
@@ -264,13 +279,8 @@ static bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
         //#Nr. ; Sel ; StartPosition ; StartTime ; Percent
         if (sscanf(Buffer, "%*i ; %c ; %lld ; %15[^;\r\n] ; %f%%%n", &Selected, &SegmentMarker[NrSegmentMarker].Position, TimeStamp, &SegmentMarker[NrSegmentMarker].Percent, &ReadBytes) >= 3)
         {
-          if (Version >= 4)
-            SegmentMarker[NrSegmentMarker].Block  = (dword)(SegmentMarker[NrSegmentMarker].Position / 9024);
-          else
-          {
-            SegmentMarker[NrSegmentMarker].Block  = (dword) SegmentMarker[NrSegmentMarker].Position;
+          if (Version <= 3)
             SegmentMarker[NrSegmentMarker].Position = (SegmentMarker[NrSegmentMarker].Position * 9024);
-          }
           SegmentMarker[NrSegmentMarker].Selected = (Selected == '*');
           SegmentMarker[NrSegmentMarker].Timems   = (TimeStringToMSec(TimeStamp));
           SegmentMarker[NrSegmentMarker].pCaption = NULL;
@@ -321,7 +331,6 @@ static bool CutDecodeFromBM(dword Bookmarks[])
     Start = End - NrSegmentMarker - 5;
     for (i = 0; i < NrSegmentMarker; i++)
     {
-      SegmentMarker[i].Block = Bookmarks[Start + i];
       SegmentMarker[i].Position = Bookmarks[Start + i] * 9024;
       SegmentMarker[i].Selected = ((Bookmarks[End-5+(i/32)] & (1 << (i%32))) != 0);
       SegmentMarker[i].Timems = 0;  // NavGetBlockTimeStamp(SegmentMarker[i].Block);
@@ -339,10 +348,10 @@ bool CutProcessor_Init(void)
   TRACEENTER;
 
   // Puffer allozieren
-  SegmentMarker = (tSegmentMarker*) malloc(NRSEGMENTMARKER * sizeof(tSegmentMarker));
+  SegmentMarker = (tSegmentMarker2*) malloc(NRSEGMENTMARKER * sizeof(tSegmentMarker2));
   if (SegmentMarker)
   {
-    memset(SegmentMarker, 0, NRSEGMENTMARKER * sizeof(tSegmentMarker));
+    memset(SegmentMarker, 0, NRSEGMENTMARKER * sizeof(tSegmentMarker2));
     TRACEEXIT;
     return TRUE;
   }
@@ -388,8 +397,8 @@ bool CutFileLoad(const char *AbsCutName)
       case 1:
       case 2:
       {
-        printf("  CutFileLoad: Binary .cut versions not longer supported!\n");
-//        ret = CutFileDecodeBin(fCut, &SavedSize);
+        printf("  CutFileLoad: Binary .cut versions are deprecated!\n");
+        ret = CutFileDecodeBin(fCut, &SavedSize);
         break;
       }
       case 3:
@@ -514,7 +523,7 @@ bool CutFileSave(const char* AbsCutName)
           if (OutCutVersion >= 4)
             ret = (fprintf(fCut, "%3d ;  %c  ; %13lld ;%14s ;  %5.1f%% ; %s\r\n", i, (SegmentMarker[i].Selected ? '*' : '-'), SegmentMarker[i].Position, TimeStamp, SegmentMarker[i].Percent, (SegmentMarker[i].pCaption ? SegmentMarker[i].pCaption : "")) > 0) && ret;
           else
-            ret = (fprintf(fCut, "%3d ;  %c  ; %10u ;%14s ;  %5.1f%% ; %s\r\n", i, (SegmentMarker[i].Selected ? '*' : '-'), (dword)(SegmentMarker[i].Block), TimeStamp, SegmentMarker[i].Percent, (SegmentMarker[i].pCaption ? SegmentMarker[i].pCaption : "")) > 0) && ret;
+            ret = (fprintf(fCut, "%3d ;  %c  ; %10u ;%14s ;  %5.1f%% ; %s\r\n", i, (SegmentMarker[i].Selected ? '*' : '-'), (dword)(SegmentMarker[i].Position/9024), TimeStamp, SegmentMarker[i].Percent, (SegmentMarker[i].pCaption ? SegmentMarker[i].pCaption : "")) > 0) && ret;
         }
         ret = (fclose(fCut) == 0) && ret;
 //        HDD_SetFileDateTime(&AbsCutName[1], "", 0);

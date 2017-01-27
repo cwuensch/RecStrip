@@ -20,6 +20,8 @@ typedef struct
 }__attribute__((packed)) tCutHeader2;
 
 
+extern int              OutCutVersion;
+
 void GetCutNameFromRec(const char *RecFileName, char *const OutCutFileName);
 bool CutProcessor_Init(void);
 bool CutFileLoad(const char *AbsCutName);

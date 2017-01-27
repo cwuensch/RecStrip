@@ -94,12 +94,11 @@ typedef struct
 typedef struct
 {
   long long             Position;
-  dword                 Block;
   dword                 Timems; //Time in ms
   float                 Percent;
   int                   Selected;
   char                 *pCaption;
-} tSegmentMarker;
+} tSegmentMarker2;
 
 
 // Globale Variablen
@@ -113,7 +112,7 @@ extern bool             DoStrip, RemoveEPGStream, RemoveTeletext, RebuildNav, Re
 extern int              DoCut;
 
 extern TYPE_Bookmark_Info *BookmarkInfo, BookmarkInfo_In;
-extern tSegmentMarker  *SegmentMarker,  *SegmentMarker_In;       //[0]=Start of file, [x]=End of file
+extern tSegmentMarker2 *SegmentMarker,  *SegmentMarker_In;       //[0]=Start of file, [x]=End of file
 extern int              NrSegmentMarker, NrSegmentMarker_In;
 extern int              ActiveSegment;
 extern dword            InfDuration, NewDurationMS, NewStartTimeOffset;
