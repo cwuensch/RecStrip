@@ -93,7 +93,8 @@ typedef struct
 
 typedef struct
 {
-  dword                 Block;  //Block nr
+  long long             Position;
+  dword                 Block;
   dword                 Timems; //Time in ms
   float                 Percent;
   int                   Selected;

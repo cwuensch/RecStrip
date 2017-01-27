@@ -411,12 +411,14 @@ bool SaveInfFile(const char *AbsDestInf, const char *AbsSourceInf)
   // Kopiere den Rest der Source-inf (falls vorhanden) in die neue inf hinein
   if (fInfOut && fInfIn && !RebuildInf)
   {
+    byte *InfBuffer2 = (byte*) malloc(32768);
     fseek(fInfIn, InfSize, SEEK_SET);
     do {
-      BytesRead = fread(InfBuffer, 1, 32768, fInfIn);
+      BytesRead = fread(InfBuffer2, 1, 32768, fInfIn);
       if (BytesRead > 0)
-        Result = (fwrite(InfBuffer, 1, BytesRead, fInfOut) == BytesRead) && Result;
+        Result = (fwrite(InfBuffer2, 1, BytesRead, fInfOut) == BytesRead) && Result;
     } while (BytesRead > 0);
+    free(InfBuffer2);
   }
 
   // Schließe die bearbeiteten Dateien

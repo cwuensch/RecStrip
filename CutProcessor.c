@@ -22,6 +22,7 @@
 
 // Globale Variablen
 static bool             WriteCutFile = TRUE, WriteCutInf = FALSE;
+static int              OutCutVersion = 3;
 
 
 // ----------------------------------------------
@@ -171,6 +172,7 @@ static bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
 {
   char                  Buffer[4096];
   unsigned long long    SavedSize = 0;
+  int                   Version = 3;
   int                   SavedNrSegments = 0;
   bool                  HeaderMode=FALSE, SegmentsMode=FALSE;
   char                  TimeStamp[16];
@@ -189,7 +191,7 @@ static bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
     // Check the first line
     if (fgets(Buffer, sizeof(Buffer), fCut))
     {
-      if (strncmp(Buffer, "[MCCut3]", 8) == 0)
+      if ((strncmp(Buffer, "[MCCut3]", 8)==0) || ((strncmp(Buffer, "[MCCut4]", 8)==0) && ((Version = 4))))
       {
         HeaderMode = TRUE;
         ret = TRUE;
@@ -259,11 +261,18 @@ static bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
       else if (SegmentsMode)
       {
         //[Segments]
-        //#Nr. ; Sel ; StartBlock ; StartTime ; Percent
-        if (sscanf(Buffer, "%*i ; %c ; %u ; %15[^;\r\n] ; %f%%%n", &Selected, &SegmentMarker[NrSegmentMarker].Block, TimeStamp, &SegmentMarker[NrSegmentMarker].Percent, &ReadBytes) >= 3)
+        //#Nr. ; Sel ; StartPosition ; StartTime ; Percent
+        if (sscanf(Buffer, "%*i ; %c ; %lld ; %15[^;\r\n] ; %f%%%n", &Selected, &SegmentMarker[NrSegmentMarker].Position, TimeStamp, &SegmentMarker[NrSegmentMarker].Percent, &ReadBytes) >= 3)
         {
+          if (Version >= 4)
+            SegmentMarker[NrSegmentMarker].Block  = (dword)(SegmentMarker[NrSegmentMarker].Position / 9024);
+          else
+          {
+            SegmentMarker[NrSegmentMarker].Block  = (dword) SegmentMarker[NrSegmentMarker].Position;
+            SegmentMarker[NrSegmentMarker].Position = (SegmentMarker[NrSegmentMarker].Position * 9024);
+          }
           SegmentMarker[NrSegmentMarker].Selected = (Selected == '*');
-          SegmentMarker[NrSegmentMarker].Timems = (TimeStringToMSec(TimeStamp));
+          SegmentMarker[NrSegmentMarker].Timems   = (TimeStringToMSec(TimeStamp));
           SegmentMarker[NrSegmentMarker].pCaption = NULL;
           while (Buffer[ReadBytes] && (Buffer[ReadBytes] == ' ' || Buffer[ReadBytes] == ';'))  ReadBytes++;
           if (Buffer[ReadBytes])
@@ -278,6 +287,7 @@ static bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
 
     if (ret)
     {
+      OutCutVersion = Version;
       if (NrSegmentMarker != SavedNrSegments)
         printf("CutFileDecodeTxt: Invalid number of segments read (%d of %d)!\n", NrSegmentMarker, SavedNrSegments);
     }
@@ -312,6 +322,7 @@ static bool CutDecodeFromBM(dword Bookmarks[])
     for (i = 0; i < NrSegmentMarker; i++)
     {
       SegmentMarker[i].Block = Bookmarks[Start + i];
+      SegmentMarker[i].Position = Bookmarks[Start + i] * 9024;
       SegmentMarker[i].Selected = ((Bookmarks[End-5+(i/32)] & (1 << (i%32))) != 0);
       SegmentMarker[i].Timems = 0;  // NavGetBlockTimeStamp(SegmentMarker[i].Block);
       SegmentMarker[i].Percent = 0;
@@ -364,20 +375,25 @@ bool CutFileLoad(const char *AbsCutName)
   if(fCut)
   {
     Version = fgetc(fCut);
-    if (Version == '[') Version = 3;
+    if (Version == '[')
+    {
+      fseek(fCut, 6, SEEK_SET);
+      Version = fgetc(fCut) - '0';
+    }
     rewind(fCut);
-    printf("CutFileLoad: Importing cut-file version %hhu\n", Version);
+    printf("  CutFileLoad: Importing cut-file version %hhu\n", Version);
 
     switch (Version)
     {
       case 1:
       case 2:
       {
-        ret = CutFileDecodeBin(fCut, &SavedSize);
+        printf("  CutFileLoad: Binary .cut versions not longer supported!\n");
+//        ret = CutFileDecodeBin(fCut, &SavedSize);
         break;
       }
       case 3:
-      default:
+      case 4:
       {
         ret = CutFileDecodeTxt(fCut, &SavedSize);
         break;
@@ -385,7 +401,7 @@ bool CutFileLoad(const char *AbsCutName)
     }
     fclose(fCut);
     if (!ret)
-      printf("CutFileLoad: Failed to read cut-info from .cut!\n");
+      printf("  CutFileLoad: Failed to read cut-info from .cut!\n");
 
     // Check, if size of rec-File has been changed
     if (ret)
@@ -393,7 +409,7 @@ bool CutFileLoad(const char *AbsCutName)
       HDD_GetFileSize(RecFileIn, &RecFileSize);
       if (RecFileSize != SavedSize)
       {
-        printf("CutFileLoad: .cut file size mismatch!\n");
+        printf("  CutFileLoad: .cut file size mismatch!\n");
         ResetSegmentMarkers();
         ret = FALSE;
       }
@@ -407,7 +423,7 @@ bool CutFileLoad(const char *AbsCutName)
     if (ret)
     {
       WriteCutInf = TRUE;
-      printf("CutFileLoad: Imported segments from Bookmark-area.\n");
+      printf("  CutFileLoad: Imported segments from Bookmark-area.\n");
     }
   }
   else if (BookmarkInfo)
@@ -416,7 +432,7 @@ bool CutFileLoad(const char *AbsCutName)
   // Wenn zu wenig Segmente -> auf Standard zurücksetzen
   if (NrSegmentMarker < 2)
   {
-    if(ret) printf("CutFileLoad: Less than two timestamps imported -> resetting!\n"); 
+    if(ret) printf("  CutFileLoad: Less than two timestamps imported -> resetting!\n"); 
     ResetSegmentMarkers();
     free(SegmentMarker);
     SegmentMarker = NULL;
@@ -450,7 +466,7 @@ static bool CutEncodeToBM(dword Bookmarks[], int NrBookmarks)
       Bookmarks[End-1] = NrSegmentMarker;
       for (i = 0; i < NrSegmentMarker; i++)
       {
-        Bookmarks[Start+i] = SegmentMarker[i].Block;
+        Bookmarks[Start+i] = (dword) (SegmentMarker[i].Position / 9024);
         Bookmarks[End-5+(i/32)] = (Bookmarks[End-5+(i/32)] & ~(1 << (i%32))) | (SegmentMarker[i].Selected ? 1 << (i%32) : 0);
       }
     }
@@ -486,7 +502,7 @@ bool CutFileSave(const char* AbsCutName)
       fCut = fopen(AbsCutName, "wb");
       if(fCut)
       {
-        ret = (fprintf(fCut, "[MCCut3]\r\n") > 0) && ret;
+        ret = (fprintf(fCut, "[MCCut%c]\r\n", OutCutVersion + '0') > 0) && ret;
         ret = (fprintf(fCut, "RecFileSize=%llu\r\n", RecFileSize) > 0) && ret;
         ret = (fprintf(fCut, "NrSegmentMarker=%d\r\n", NrSegmentMarker) > 0) && ret;
         ret = (fprintf(fCut, "ActiveSegment=%d\r\n\r\n", ActiveSegment) > 0) && ret;  // sicher!?
@@ -495,7 +511,10 @@ bool CutFileSave(const char* AbsCutName)
         for (i = 0; i < NrSegmentMarker; i++)
         {
           MSecToTimeString(SegmentMarker[i].Timems, TimeStamp);
-          ret = (fprintf(fCut, "%3d ;  %c  ; %10u ;%14s ;  %5.1f%% ; %s\r\n", i, (SegmentMarker[i].Selected ? '*' : '-'), SegmentMarker[i].Block, TimeStamp, SegmentMarker[i].Percent, (SegmentMarker[i].pCaption ? SegmentMarker[i].pCaption : "")) > 0) && ret;
+          if (OutCutVersion >= 4)
+            ret = (fprintf(fCut, "%3d ;  %c  ; %13lld ;%14s ;  %5.1f%% ; %s\r\n", i, (SegmentMarker[i].Selected ? '*' : '-'), SegmentMarker[i].Position, TimeStamp, SegmentMarker[i].Percent, (SegmentMarker[i].pCaption ? SegmentMarker[i].pCaption : "")) > 0) && ret;
+          else
+            ret = (fprintf(fCut, "%3d ;  %c  ; %10u ;%14s ;  %5.1f%% ; %s\r\n", i, (SegmentMarker[i].Selected ? '*' : '-'), (dword)(SegmentMarker[i].Block), TimeStamp, SegmentMarker[i].Percent, (SegmentMarker[i].pCaption ? SegmentMarker[i].pCaption : "")) > 0) && ret;
         }
         ret = (fclose(fCut) == 0) && ret;
 //        HDD_SetFileDateTime(&AbsCutName[1], "", 0);

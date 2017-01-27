@@ -32,7 +32,7 @@ static dword            PTS = 0;
 static byte             PTSBuffer[16];
 static int              PTSBufFill = 0;  // 0: keinen PTS suchen, 1..15 Puffer-Füllstand, bei 16 PTS auslesen und zurücksetzen
 static byte             FrameCtr = 0, FrameOffset = 0;
-static bool             WaitForIFrame = TRUE, WaitForPFrame = FALSE, FirstPacketAfterCut = FALSE, FirstRecordAfterCut = TRUE;
+static bool             WaitForIFrame = TRUE, WaitForPFrame = FALSE, FirstPacketAfterCut = TRUE, FirstRecordAfterCut = TRUE;
 
 //HDNAV
 static tnavHD           navHD;
@@ -241,7 +241,7 @@ void NavProcessor_Init(void)
   PTS = 0;
   PTSBufFill = 0;  // 0: keinen PTS suchen, 1..15 Puffer-Füllstand, bei 16 PTS auslesen und zurücksetzen
   FrameCtr = 0; FrameOffset = 0;
-  WaitForIFrame = TRUE; WaitForPFrame = FALSE; FirstPacketAfterCut = FALSE; FirstRecordAfterCut = TRUE;
+  WaitForIFrame = TRUE; WaitForPFrame = FALSE; FirstPacketAfterCut = TRUE; FirstRecordAfterCut = TRUE;
 
   //HDNAV
   PPSCount = 0;

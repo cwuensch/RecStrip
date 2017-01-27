@@ -374,7 +374,7 @@ static bool OpenOutputFiles(void)
   // ggf. Output-File ˆffnen
   if (*RecFileOut)
   {
-    printf("Output file: %s\n", RecFileOut);
+    printf("\nOutput rec: %s\n", RecFileOut);
     fOut = fopen(RecFileOut, "wb");
     if (fOut)
       setvbuf(fOut, NULL, _IOFBF, BUFSIZE);
@@ -474,6 +474,7 @@ SONST
   }
   else CutFileOut[0] = '\0';
 
+  printf("\n");
   TRACEEXIT;
   return TRUE;
 }
@@ -482,9 +483,8 @@ bool CloseOutputFiles(void)
 {
   TRACEENTER;
 
-  CloseNavFileIn();
   if (!CloseNavFileOut())
-    printf("WARNING: Failed closing the nav file.\n");
+    printf("  WARNING: Failed closing the nav file.\n");
 
   if ((DoCut || RebuildInf) && LastTimems)
     NewDurationMS = LastTimems;
@@ -493,22 +493,20 @@ bool CloseOutputFiles(void)
     SegmentMarker[NrSegmentMarker-1].Block = CalcBlockSize(CurrentPosition - PositionOffset);
     SegmentMarker[NrSegmentMarker-1].Timems = NewDurationMS;
   }
+  if (BookmarkInfo && BookmarkInfo->Resume >= CalcBlockSize(CurrentPosition - PositionOffset))
+    BookmarkInfo->Resume = 0;
 
-  if (fIn)
-  {
-    fclose(fIn); fIn = NULL;
-  }
   if(fOut)
   {
     if (PendingBufLen > 0)
       if (!fwrite(PendingBuf, PendingBufLen, 1, fOut))
-        printf("WARNING: Pending buffer could not be written.\n");
+        printf("  WARNING: Pending buffer could not be written.\n");
     isPending = FALSE;
     PendingBufLen = 0;
 
     if (/*fflush(fOut) != 0 ||*/ fclose(fOut) != 0)
     {
-      printf("ERROR: Failed closing the output file.\n");
+      printf("  ERROR: Failed closing the output file.\n");
       CutFileSave(CutFileOut);
       SaveInfFile(InfFileOut, InfFileIn);
       CutProcessor_Free();
@@ -521,18 +519,11 @@ bool CloseOutputFiles(void)
   }
 
   if (*CutFileOut && !CutFileSave(CutFileOut))
-    printf("WARNING: Cannot create cut %s.\n", CutFileOut);
+    printf("  WARNING: Cannot create cut %s.\n", CutFileOut);
 
   if (*InfFileOut && !SaveInfFile(InfFileOut, InfFileIn))
-    printf("WARNING: Cannot create inf %s.\n", InfFileOut);
+    printf("  WARNING: Cannot create inf %s.\n", InfFileOut);
 
-  if (*InfFileIn)
-  {
-    struct stat64 statbuf;
-    SetInfStripFlags(InfFileIn, TRUE, DoStrip);
-    if (stat64(RecFileIn, &statbuf) == 0)
-      HDD_SetFileDateTime(InfFileIn, statbuf.st_mtime);
-  }
 
   if (*RecFileOut)
     HDD_SetFileDateTime(RecFileOut, TF2UnixTime(RecHeaderInfo->StartTime));
@@ -576,9 +567,8 @@ int main(int argc, const char* argv[])
   int                   ReadBytes;
   bool                  DropCurPacket;
   time_t                startTime, endTime;
-  long long             CurPCR = 0;
   bool                  ResumeSet = FALSE;
-  int                   CurSeg = 0, i = 0, j = 0;
+  int                   CurSeg = 0, i = 0, j = 0, n = 0;
   dword                 BlocksOnePercent, Percent = 0, BlocksSincePercent = 0;
   bool                  ret = TRUE;
 
@@ -705,11 +695,13 @@ int main(int argc, const char* argv[])
       if (!OutPacketSize)
         OutPacketSize = PACKETSIZE;
       fseeko64(fIn, CurrentPosition, SEEK_SET);
-      printf("File size of rec: %llu, packet size: %hhu\n", RecFileSize, PACKETSIZE);
+      printf("  File size: %llu, packet size: %hhu\n", RecFileSize, PACKETSIZE);
+
+      LoadInfFromRec(RecFileIn);
     }
     else
     {
-      printf("ERROR: Ivalid TS packet size.\n");
+      printf("  ERROR: Ivalid TS packet size.\n");
       fclose(fIn); fIn = NULL;
       CutProcessor_Free();
       InfProcessor_Free();
@@ -720,7 +712,7 @@ int main(int argc, const char* argv[])
   }
   else
   {
-    printf("ERROR: Cannot open %s.\n", RecFileIn);
+    printf("  ERROR: Cannot open %s.\n", RecFileIn);
     CutProcessor_Free();
     InfProcessor_Free();
     free(PendingBuf); PendingBuf = NULL;      
@@ -733,7 +725,6 @@ int main(int argc, const char* argv[])
   printf("\nInf file: %s\n", InfFileIn);
   InfFileOld[0] = '\0';
 
-  LoadInfFromRec(RecFileIn);
   if (!LoadInfFile(InfFileIn))
   {
     fclose(fIn); fIn = NULL;
@@ -749,7 +740,7 @@ int main(int argc, const char* argv[])
 
   if (AlreadyStripped)
   {
-    printf("INFO: File has already been stripped.\n");
+    printf("  INFO: File has already been stripped.\n");
 /*    fclose(fIn); fIn = NULL;
     CloseInfFile(NULL, NULL, FALSE);
     CutProcessor_Free();
@@ -760,7 +751,7 @@ int main(int argc, const char* argv[])
   }
   if (VideoPID == 0)
   {
-    printf("ERROR: No video PID determined.\n");
+    printf("  ERROR: No video PID determined.\n");
     fclose(fIn); fIn = NULL;
     CutProcessor_Free();
     InfProcessor_Free();
@@ -771,7 +762,7 @@ int main(int argc, const char* argv[])
 
   if (HumaxSource && fOut)
   {
-    printf("Generate new PAT/PMT for Humax recording.\n");
+    printf("  Generate new PAT/PMT for Humax recording.\n");
     if (fwrite(&PATPMTBuf[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut))
       PositionOffset -= OutPacketSize;
     if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], OutPacketSize, 1, fOut))
@@ -783,7 +774,7 @@ int main(int argc, const char* argv[])
   printf("\nNav file: %s\n", NavFileIn);
   if (!LoadNavFileIn(NavFileIn))
   {
-    printf("WARNING: Cannot open nav file %s.\n", NavFileIn);
+    printf("  WARNING: Cannot open nav file %s.\n", NavFileIn);
     NavFileIn[0] = '\0';
   }
   
@@ -832,8 +823,10 @@ int main(int argc, const char* argv[])
 
         // Alle SegmentMarker und Bookmarks bis CurSeg ausgeben
         NrSegmentMarker = 2;
+        SegmentMarker[1].Percent = 100;
+        ActiveSegment = 0;
         BookmarkInfo->NrBookmarks = j;
-          
+
         // aktuelle Output-Files schlieﬂen
         if (!CloseOutputFiles())
           exit(10);
@@ -845,9 +838,10 @@ int main(int argc, const char* argv[])
       // SEGMENT ‹BERSPRINGEN (wenn nicht-markiert)
       while ((CurSeg < NrSegmentMarker-1) && (CurPosBlocks >= SegmentMarker[CurSeg].Block) && !SegmentMarker[CurSeg].Selected)
       {
+        printf("[Segment %d]  -%12llu %10u-%-10u %s\n", n++, CurrentPosition, SegmentMarker[CurSeg].Block+CalcBlockSize(PositionOffset), SegmentMarker[CurSeg+1].Block, SegmentMarker[CurSeg].pCaption);
         CutTimeOffset += SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems;
         DeleteSegmentMarker(CurSeg, TRUE);
-    
+
         if (CurSeg < NrSegmentMarker-1)
         {
           long long SkippedBytes = (((unsigned long long)SegmentMarker[CurSeg].Block) * 9024) - CurrentPosition;
@@ -890,6 +884,7 @@ int main(int argc, const char* argv[])
       // Wir sind am n‰chsten (zu erhaltenden) SegmentMarker angekommen
       if (CurSeg < NrSegmentMarker-1)
       {
+        printf("[Segment %d]  *%12llu %10u-%-10u %s\n", n++, CurrentPosition, SegmentMarker[CurSeg].Block, SegmentMarker[CurSeg+1].Block, SegmentMarker[CurSeg].pCaption);
         SegmentMarker[CurSeg].Selected = FALSE;
         SegmentMarker[CurSeg].Percent = 0;
 
@@ -905,9 +900,12 @@ int main(int argc, const char* argv[])
           // TEILE KOPIEREN
           // bisher ausgegebene SegmentMarker / Bookmarks lˆschen
           while (CurSeg > 0)
-            DeleteSegmentMarker(CurSeg--, TRUE);
+          {
+            DeleteSegmentMarker(--CurSeg, TRUE);
+            i--;
+          }
           while (BookmarkInfo && (j > 0))
-            DeleteBookmark(j--);
+            DeleteBookmark(--j);
 
           // neue Output-Files ˆffnen
           GetNextFreeCutName(RecFileIn, RecFileOut);
@@ -922,9 +920,14 @@ int main(int argc, const char* argv[])
             TRACEEXIT;
             exit(7);
           }
+          NavProcessor_Init();
+          LastTimems = 0;
+          LastPCR = 0;
+          LastTimeStamp = 0;
 
           // Positionen anpassen
           PositionOffset = CurrentPosition;
+          CutTimeOffset = SegmentMarker[CurSeg].Timems;
           NewStartTimeOffset = SegmentMarker[CurSeg].Timems;
           NewDurationMS = (SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems);
         }
@@ -1044,6 +1047,7 @@ int main(int argc, const char* argv[])
         // PCR berechnen
         if (OutPacketSize > PACKETSIZE)
         {
+          long long CurPCR = 0;
           if (GetPCR(&Buffer[4], &CurPCR))
           {
             if (LastPCR)
@@ -1219,10 +1223,24 @@ int main(int argc, const char* argv[])
   }
   printf("\n");
 
-  if (!CloseOutputFiles())
+  if (fOut && !CloseOutputFiles())
     exit(10);
 
-
+  if (fIn)
+  {
+    fclose(fIn); fIn = NULL;
+  }
+  if (*InfFileIn)
+  {
+    struct stat64 statbuf;
+    time_t OldInfTime = 0;
+    if (stat64(RecFileIn, &statbuf) == 0)
+      OldInfTime = statbuf.st_mtime;
+    SetInfStripFlags(InfFileIn, TRUE, DoStrip);
+    if (OldInfTime)
+      HDD_SetFileDateTime(InfFileIn, statbuf.st_mtime);
+  }
+  CloseNavFileIn();
   CutProcessor_Free();
   InfProcessor_Free();
   free(PendingBuf); PendingBuf = NULL;

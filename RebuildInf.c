@@ -33,6 +33,11 @@ static inline dword Unix2TFTime(dword UnixTimeStamp)
   return ret;
 }
 
+static inline time_t TF2UnixTime(dword TFTimeStamp)
+{ 
+  return ((TFTimeStamp >> 16) - 0x9e8b) * 86400 + ((TFTimeStamp >> 8 ) & 0xff) * 3600 + (TFTimeStamp & 0xff) * 60;
+}
+
 static dword AddTime(dword pvrDate, int addMinutes)  //add minutes to the day
 {
   word                  day;
@@ -412,7 +417,7 @@ static bool AnalyseSDT(byte *PSBuffer, word ServiceID, TYPE_RecHeader_TMSS *RecI
         {
           memset(RecInf->ServiceInfo.ServiceName, 0, sizeof(RecInf->ServiceInfo.ServiceName));
           strncpy(RecInf->ServiceInfo.ServiceName, (&pServiceDesc->ProviderName + pServiceDesc->ProviderNameLen+1), min(((&pServiceDesc->ProviderNameLen)[pServiceDesc->ProviderNameLen+1]), sizeof(RecInf->ServiceInfo.ServiceName)-1));
-printf("  TS: ServiceName = %s\n", RecInf->ServiceInfo.ServiceName);
+printf("  TS: SvcName   = %s\n", RecInf->ServiceInfo.ServiceName);
           TRACEEXIT;
           return TRUE;
         }
@@ -432,7 +437,6 @@ static bool AnalyseEIT(byte *Buffer, word ServiceID, TYPE_RecHeader_TMSS *RecInf
   byte                  Descriptor;
   byte                  DescriptorLen;
   byte                  StartTimeUTC[5];
-  time_t                StartTimeUnix = 0;
   byte                  Duration[3];
   word                  EventID;
 
@@ -464,6 +468,7 @@ static bool AnalyseEIT(byte *Buffer, word ServiceID, TYPE_RecHeader_TMSS *RecInf
           if(Descriptor == 0x4d)
           {
             byte        NameLen, TextLen;
+            time_t      StartTimeUnix;
 
 //            RecInf->EventInfo.ServiceID = ServiceID;
             RecInf->EventInfo.EventID = EventID;
@@ -472,8 +477,9 @@ static bool AnalyseEIT(byte *Buffer, word ServiceID, TYPE_RecHeader_TMSS *RecInf
             RecInf->EventInfo.DurationHour = BCD2BIN(Duration[0]);
             RecInf->EventInfo.DurationMin = BCD2BIN(Duration[1]);
             RecInf->EventInfo.EndTime = AddTime(RecInf->EventInfo.StartTime, RecInf->EventInfo.DurationHour * 60 + RecInf->EventInfo.DurationMin);
-            StartTimeUnix = 86400*((RecInf->EventInfo.StartTime>>16) - 40587) + 3600*BCD2BIN(StartTimeUTC[2]) + 60*BCD2BIN(StartTimeUTC[3]);
-printf("  TS: StartTime = %s", ctime(&StartTimeUnix));
+//            StartTimeUnix = 86400*((RecInf->EventInfo.StartTime>>16) - 40587) + 3600*BCD2BIN(StartTimeUTC[2]) + 60*BCD2BIN(StartTimeUTC[3]);
+            StartTimeUnix = TF2UnixTime(RecInf->EventInfo.StartTime);
+printf("  TS: EvtStart  = %s", ctime(&StartTimeUnix));
 
             NameLen = Buffer[p + 5];
             TextLen = Buffer[p + 5 + NameLen+1];
@@ -501,7 +507,7 @@ printf("  TS: EventDesc = %s\n", &RecInf->EventInfo.EventNameDescription[NameLen
               strncpy(&RecInf->ExtEventInfo.Text[RecInf->ExtEventInfo.TextLength], &Buffer[p+8], Buffer[p+7]);
               RecInf->ExtEventInfo.TextLength += Buffer[p+7];
             }
-printf("  TS:  ExtEvent = %s\n", RecInf->ExtEventInfo.Text);
+printf("  TS: ExtEvent  = %s\n", RecInf->ExtEventInfo.Text);
           }
 
           SectionLength -= (DescriptorLen + 2);
@@ -657,6 +663,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   dword                 FirstPCR = 0, LastPCR = 0, TtxPCR = 0, dPCR = 0;
   int                   ReadPackets, Offset, FirstOffset;
   bool                  EITOK = FALSE, PMTOK = FALSE, TtxFound = FALSE, TtxOK = FALSE;
+  time_t                StartTimeUnix;
   byte                 *p;
   long long             FilePos = 0;
   int                   i, j;
@@ -899,7 +906,7 @@ printf("  TS: Duration = %2.2d min %2.2d sec\n", RecInf->RecHeaderInfo.DurationM
   if(TtxTime && TtxPCR)
   {
     dPCR = DeltaPCR(FirstPCR, TtxPCR);
-    RecInf->RecHeaderInfo.StartTime = AddTime(TtxTime, -1 * (int)(dPCR/60000));
+    RecInf->RecHeaderInfo.StartTime = AddTime(TtxTime, -1 * (int)((dPCR/1000+59)/60));
   }
   else
   {
@@ -907,7 +914,8 @@ printf("  TS: Duration = %2.2d min %2.2d sec\n", RecInf->RecHeaderInfo.DurationM
     if (!RecInf->EventInfo.StartTime || ((FileTimeStamp >> 16) - (RecInf->EventInfo.StartTime >> 16) <= 1))
       RecInf->RecHeaderInfo.StartTime = AddTime(FileTimeStamp, -1 * (int)RecInf->RecHeaderInfo.DurationMin);
   }
-printf("  TS: StartTime = 0x%8.8x\n", RecInf->RecHeaderInfo.StartTime);
+  StartTimeUnix = TF2UnixTime(RecInf->RecHeaderInfo.StartTime) - 3600;
+printf("  TS: StartTime = %s", (ctime(&StartTimeUnix)));
 
   free(Buffer);
   TRACEEXIT;
