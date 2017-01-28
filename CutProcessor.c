@@ -18,6 +18,7 @@
 #include "type.h"
 #include "CutProcessor.h"
 #include "RecStrip.h"
+#include "NavProcessor.h"
 
 typedef struct
 {
@@ -168,7 +169,7 @@ static bool CutFileDecodeBin(FILE *fCut, unsigned long long *OutSavedSize)
       SavedNrSegments = min(SavedNrSegments, NRSEGMENTMARKER);
       while (fread(&curSeg, sizeof(tSegmentMarker1)-sizeof(char*), 1, fCut))
       {
-        SegmentMarker[NrSegmentMarker].Position = curSeg.Block * 9024;
+        SegmentMarker[NrSegmentMarker].Position = curSeg.Block * 9024LL;
         SegmentMarker[NrSegmentMarker].Timems   = curSeg.Timems;
         SegmentMarker[NrSegmentMarker].Percent  = curSeg.Percent;
         SegmentMarker[NrSegmentMarker].Selected = curSeg.Selected;
@@ -186,9 +187,9 @@ static bool CutFileDecodeBin(FILE *fCut, unsigned long long *OutSavedSize)
 static bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
 {
   char                  Buffer[4096];
-  unsigned long long    SavedSize = 0;
+  long long             SavedSize = -1;
   int                   Version = 3;
-  int                   SavedNrSegments = 0;
+  int                   SavedNrSegments = -1;
   bool                  HeaderMode=FALSE, SegmentsMode=FALSE;
   char                  TimeStamp[16];
   char                 *c, Selected;
@@ -241,7 +242,7 @@ static bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
         {
           HeaderMode = FALSE;
           // Header überprüfen
-          if ((SavedSize <= 0) || (SavedNrSegments < 0))
+          if ((SavedSize < 0) || (SavedNrSegments < 0))
           {
             ret = FALSE;
             break;
@@ -324,6 +325,9 @@ static bool CutDecodeFromBM(dword Bookmarks[])
 
   if(End)
   {
+    int NrTimeStamps;
+    tTimeStamp2 *TimeStamps = NavLoad(RecFileIn, &NrTimeStamps);
+
     ret = TRUE;
     NrSegmentMarker = Bookmarks[End - 1];
     if (NrSegmentMarker > NRSEGMENTMARKER) NrSegmentMarker = NRSEGMENTMARKER;
@@ -331,9 +335,9 @@ static bool CutDecodeFromBM(dword Bookmarks[])
     Start = End - NrSegmentMarker - 5;
     for (i = 0; i < NrSegmentMarker; i++)
     {
-      SegmentMarker[i].Position = Bookmarks[Start + i] * 9024;
+      SegmentMarker[i].Position = Bookmarks[Start + i] * 9024LL;
       SegmentMarker[i].Selected = ((Bookmarks[End-5+(i/32)] & (1 << (i%32))) != 0);
-      SegmentMarker[i].Timems = 0;  // NavGetBlockTimeStamp(SegmentMarker[i].Block);
+      SegmentMarker[i].Timems = (TimeStamps) ? NavGetPosTimeStamp(TimeStamps, NrTimeStamps, SegmentMarker[i].Position) : 0;
       SegmentMarker[i].Percent = 0;
       SegmentMarker[i].pCaption = NULL;
     }
@@ -368,7 +372,8 @@ bool CutFileLoad(const char *AbsCutName)
 {
   FILE                 *fCut = NULL;
   byte                  Version;
-  unsigned long long    RecFileSize, SavedSize;
+  unsigned long long    SavedSize;
+  int                   i;
   bool                  ret = FALSE;
 
   TRACEENTER;
@@ -412,18 +417,92 @@ bool CutFileLoad(const char *AbsCutName)
     if (!ret)
       printf("  CutFileLoad: Failed to read cut-info from .cut!\n");
 
+
     // Check, if size of rec-File has been changed
-    if (ret)
+    if (ret && (RecFileSize != SavedSize))
     {
-      HDD_GetFileSize(RecFileIn, &RecFileSize);
-      if (RecFileSize != SavedSize)
+      tTimeStamp2      *TimeStamps = NULL;
+      int               NrTimeStamps;
+
+      printf("  CutFileLoad: .cut file size mismatch!\n");
+
+      // Sonderfunktion: Import von Cut-Files mit unpassender Aufnahme-Größe
+      if (NrSegmentMarker > 2)
+        TimeStamps = NavLoad(RecFileIn, &NrTimeStamps);
+
+      if (TimeStamps != NULL)
       {
-        printf("  CutFileLoad: .cut file size mismatch!\n");
+        char            curTimeStr[16];
+        dword           Offsetms;
+        tTimeStamp2    *CurTimeStamp;
+
+        printf("  CutFileLoad: Importing timestamps only, recalculating block numbers...\n");
+        SegmentMarker[0].Position = 0;
+        SegmentMarker[0].Timems = 0;  // NavGetBlockTimeStamp(0);
+//        SegmentMarker[0].Selected = FALSE;
+        if (SegmentMarker[NrSegmentMarker-1].Position == RecFileSize)
+          SegmentMarker[NrSegmentMarker - 1].Position = 0;
+
+        Offsetms = 0;
+        CurTimeStamp = TimeStamps;
+        for (i = 1; i <= NrSegmentMarker-2; i++)
+        {
+          if (Version == 1)
+            SegmentMarker[i].Timems = SegmentMarker[i].Timems * 1000;
+
+          // Wenn ein Bookmark gesetzt ist, dann verschiebe die SegmentMarker so, dass der erste auf dem Bookmark steht
+          if (i == 1 && BookmarkInfo && BookmarkInfo->NrBookmarks > 0)
+          {
+            Offsetms = NavGetPosTimeStamp(TimeStamps, NrTimeStamps, BookmarkInfo->Bookmarks[0] * 9024LL) - SegmentMarker[1].Timems;
+            MSecToTimeString(SegmentMarker[i].Timems + Offsetms, curTimeStr);
+            printf("  Bookmark found! - First segment marker will be moved to time %s. (Offset=%d ms)\n", curTimeStr, (int)Offsetms);
+          }
+
+          MSecToTimeString(SegmentMarker[i].Timems, curTimeStr);
+          printf("  %2u.)  oldTimeStamp=%s   oldPos=%lld", i, curTimeStr, SegmentMarker[i].Position);
+          if (Offsetms > 0)
+          {
+            SegmentMarker[i].Timems += Offsetms;
+            MSecToTimeString(SegmentMarker[i].Timems, curTimeStr);
+            printf("  -  movedTimeStamp=%s\n", curTimeStr);
+          }
+
+          if ((SegmentMarker[i].Timems <= CurTimeStamp->Timems) || (CurTimeStamp >= TimeStamps + NrTimeStamps-1))
+          {
+            DeleteSegmentMarker(i--, TRUE);
+            printf("  -->  Smaller than previous TimeStamp or end of nav reached. Deleted!\n");
+          }
+          else
+          {
+            while ((CurTimeStamp->Timems < SegmentMarker[i].Timems) && (CurTimeStamp < TimeStamps + NrTimeStamps-1))
+              CurTimeStamp++;
+            if (CurTimeStamp->Timems > SegmentMarker[i].Timems)
+              CurTimeStamp--;
+        
+            if (CurTimeStamp->Position < (long long)RecFileSize)
+            {
+              SegmentMarker[i].Position = CurTimeStamp->Position;
+              SegmentMarker[i].Timems = CurTimeStamp->Timems;  // NavGetPosTimeStamp(TimeStamps, NrTimeStamps, SegmentMarker[i].Position);
+//              SegmentMarker[i].Selected = FALSE;
+              MSecToTimeString(SegmentMarker[i].Timems, curTimeStr);
+              printf("  -->  newPos=%lld   newTimeStamp=%s\n", SegmentMarker[i].Position, curTimeStr);
+            }
+            else
+            {
+              DeleteSegmentMarker(i--, TRUE);
+              printf("  -->  TotalBlocks exceeded. Deleted!\n");
+            }
+          }
+        }
+      }
+      else
+      {
+        if(TimeStamps) free(TimeStamps);
         ResetSegmentMarkers();
-        ret = FALSE;
       }
     }
   }
+
 
   // sonst schaue in der inf
   if (!ret && BookmarkInfo)
@@ -437,6 +516,39 @@ bool CutFileLoad(const char *AbsCutName)
   }
   else if (BookmarkInfo)
     WriteCutInf = ((BookmarkInfo->Bookmarks[NRBOOKMARKS-2] == 0x8E0A4247) || (BookmarkInfo->Bookmarks[NRBOOKMARKS-1] == 0x8E0A4247));
+
+
+  if (ret && NrSegmentMarker > 0)
+  {
+    // erstes Segment auf 0 setzen?
+    if (SegmentMarker[0].Position != 0)
+    {
+      SegmentMarker[0].Position = 0;
+      SegmentMarker[0].Timems = 0;
+    }
+    
+    // Wenn letzter Segment-Marker ungleich TotalBlock ist -> anpassen
+    if (SegmentMarker[NrSegmentMarker - 1].Position != RecFileSize)
+    {
+      SegmentMarker[NrSegmentMarker - 1].Position = RecFileSize;
+      SegmentMarker[NrSegmentMarker - 1].Timems = (InfDuration*60000);
+    }
+
+    // Prozent-Angaben neu berechnen (müssen künftig nicht mehr in der .cut gespeichert werden)
+    for (i = NrSegmentMarker-1; i >= 0; i--)
+    {
+      if ((i < NrSegmentMarker-1) && (SegmentMarker[i].Position >= (long long)RecFileSize))
+      {
+        printf("  SegmentMarker %d (%lu): TotalBlocks exceeded. -> Deleting!\n", i, SegmentMarker[i].Position);
+        DeleteSegmentMarker(i, TRUE);
+      }
+      else
+        SegmentMarker[i].Percent = (float)(((float)SegmentMarker[i].Position / RecFileSize) * 100.0);
+    }
+
+    // Markierungen und ActiveSegment prüfen, ggf. korrigieren
+    SegmentMarker[NrSegmentMarker - 1].Selected = FALSE;         // the very last marker (no segment)
+  }
 
   // Wenn zu wenig Segmente -> auf Standard zurücksetzen
   if (NrSegmentMarker < 2)
@@ -516,7 +628,7 @@ bool CutFileSave(const char* AbsCutName)
         ret = (fprintf(fCut, "NrSegmentMarker=%d\r\n", NrSegmentMarker) > 0) && ret;
         ret = (fprintf(fCut, "ActiveSegment=%d\r\n\r\n", ActiveSegment) > 0) && ret;  // sicher!?
         ret = (fprintf(fCut, "[Segments]\r\n") > 0) && ret;
-        ret = (fprintf(fCut, "#Nr ; Sel ; StartBlock ;     StartTime ; Percent ; Caption\r\n") > 0) && ret;
+        ret = (fprintf(fCut, "#Nr ; Sel ; %s ;     StartTime ; Percent ; Caption\r\n", ((OutCutVersion >= 4) ? "StartPosition" : "StartBlock")) > 0) && ret;
         for (i = 0; i < NrSegmentMarker; i++)
         {
           MSecToTimeString(SegmentMarker[i].Timems, TimeStamp);

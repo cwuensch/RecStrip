@@ -122,6 +122,7 @@ bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize);
 bool isPacketStart(const byte PacketArray[], int ArrayLen);        // braucht 9*192+5 = 1733 / 3*192+5 = 581
 int  FindNextPacketStart(const byte PacketArray[], int ArrayLen);  // braucht 20*192+1733 = 5573 / 1185+1733 = 2981
 //int  GetPacketSize(FILE *RecFile, int *OutOffset);
+void DeleteSegmentMarker(int MarkerIndex, bool FreeCaption);
 int  main(int argc, const char* argv[]);
 
 #endif

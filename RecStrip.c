@@ -310,7 +310,7 @@ int FindNextPacketStart(const byte PacketArray[], int ArrayLen)  // braucht 20*1
 // *****  Hilfsfunktionen  *****
 // ----------------------------------------------
 
-static void DeleteSegmentMarker(int MarkerIndex, bool FreeCaption)
+void DeleteSegmentMarker(int MarkerIndex, bool FreeCaption)
 {
   int i;
   TRACEENTER;
@@ -823,6 +823,7 @@ int main(int argc, const char* argv[])
 
         // Alle SegmentMarker und Bookmarks bis CurSeg ausgeben
         NrSegmentMarker = 2;
+        SegmentMarker[0].Position = 0;
         SegmentMarker[1].Percent = 100;
         ActiveSegment = 0;
         BookmarkInfo->NrBookmarks = j;
@@ -841,7 +842,7 @@ int main(int argc, const char* argv[])
         if (OutCutVersion >= 4)
           printf("[Segment %d]  -%12llu %12lld-%-12lld %s\n", n++, CurrentPosition, SegmentMarker[CurSeg].Position+PositionOffset, SegmentMarker[CurSeg+1].Position, SegmentMarker[CurSeg].pCaption);
         else
-          printf("[Segment %d]  -%12llu %10u-%-10u %s\n",     n++, CurrentPosition, CalcBlockSize(SegmentMarker[CurSeg].Position+PositionOffset), SegmentMarker[CurSeg+1].Position, SegmentMarker[CurSeg].pCaption);
+          printf("[Segment %d]  -%12llu %10u-%-10u %s\n",     n++, CurrentPosition, CalcBlockSize(SegmentMarker[CurSeg].Position+PositionOffset), CalcBlockSize(SegmentMarker[CurSeg+1].Position), SegmentMarker[CurSeg].pCaption);
         CutTimeOffset += SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems;
         DeleteSegmentMarker(CurSeg, TRUE);
 
@@ -890,7 +891,7 @@ int main(int argc, const char* argv[])
         if (OutCutVersion >= 4)
           printf("[Segment %d]  *%12llu %12lld-%-12lld %s\n", n++, CurrentPosition, SegmentMarker[CurSeg].Position, SegmentMarker[CurSeg+1].Position, SegmentMarker[CurSeg].pCaption);
         else
-          printf("[Segment %d]  *%12llu %10u-%-10u %s\n",     n++, CurrentPosition, CalcBlockSize(SegmentMarker[CurSeg].Position), SegmentMarker[CurSeg+1].Position, SegmentMarker[CurSeg].pCaption);
+          printf("[Segment %d]  *%12llu %10u-%-10u %s\n",     n++, CurrentPosition, CalcBlockSize(SegmentMarker[CurSeg].Position), CalcBlockSize(SegmentMarker[CurSeg+1].Position), SegmentMarker[CurSeg].pCaption);
         SegmentMarker[CurSeg].Selected = FALSE;
         SegmentMarker[CurSeg].Percent = 0;
 

@@ -90,6 +90,12 @@ typedef struct
   int                   FrameCtr;  // Anzahl Frames, die nach diesem I-Frame kamen (bis ein weiterer Counter eingefügt wurde)
 }tFrameCtr;
 
+typedef struct
+{
+  long long             Position;
+  dword                 Timems;
+} tTimeStamp2;
+
 
 extern dword            LastTimems, TimeOffset;
 extern dword           *pOutNextTimeStamp;
@@ -108,5 +114,9 @@ void QuickNavProcess(const long long CurrentPosition, const long long PositionOf
 void SetFirstPacketAfterBreak(void);
 void CloseNavFileIn(void);
 bool CloseNavFileOut(void);
+
+// Für CutProcessor
+tTimeStamp2* NavLoad(const char *AbsInNav, int *const OutNrTimeStamps);
+dword NavGetPosTimeStamp(tTimeStamp2 TimeStamps[], int NrTimeStamps, long long FilePosition);
 
 #endif

@@ -617,24 +617,6 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
               if (!fNavIn && !navHD.Timems)
                 navHD.Timems = (SEIPTS - FirstSEIPTS) / 45;
 
-              // nach Schnittpunkt die fehlende Zeit von Timems abziehen
-              if (FirstRecordAfterCut)
-              {
-                TimeOffset = navHD.Timems - LastTimems;
-                FirstRecordAfterCut = FALSE;
-              }
-              navHD.Timems -= TimeOffset;
-
-              if (pOutNextTimeStamp)
-              {
-                *pOutNextTimeStamp = navHD.Timems;
-                pOutNextTimeStamp = NULL;
-              }
-
-              // sicherstellen, dass Timems monoton ansteigt
-              if( ((int)(navHD.Timems - LastTimems)) >= 0)  LastTimems = navHD.Timems;
-              else  navHD.Timems = LastTimems;
-
 {
   long long RefPictureHeaderOffset = dbg_NavPictureHeaderOffset - dbg_SEIPositionOffset;
   if (fNavIn && (long long)SEI != RefPictureHeaderOffset && dbg_CurrentPosition/PACKETSIZE != dbg_SEIFound)
@@ -648,10 +630,32 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
               if (WaitForIFrame && navHD.FrameType == 1) {
                 WaitForIFrame = FALSE;  WaitForPFrame = TRUE; }
       
-              if (fNavOut && !WaitForIFrame && (!WaitForPFrame || navHD.FrameType<=2) && !fwrite(&navHD, sizeof(tnavHD), 1, fNavOut))
+              if (!WaitForIFrame && (!WaitForPFrame || navHD.FrameType<=2))
               {
-                printf("ProcessNavFile(): Error writing to nav file!\n");
-                fclose(fNavOut); fNavOut = NULL;
+                // nach Schnittpunkt die fehlende Zeit von Timems abziehen
+                if (FirstRecordAfterCut)
+                {
+                  TimeOffset = navHD.Timems - LastTimems;
+                  FirstRecordAfterCut = FALSE;
+                }
+                navHD.Timems -= TimeOffset;
+
+                if (pOutNextTimeStamp)
+                {
+                  *pOutNextTimeStamp = navHD.Timems;
+                  pOutNextTimeStamp = NULL;
+                }
+
+                // sicherstellen, dass Timems monoton ansteigt
+                if( ((int)(navHD.Timems - LastTimems)) >= 0)  LastTimems = navHD.Timems;
+                else  navHD.Timems = LastTimems;
+
+                // Write the nav record
+                if (fNavOut && !fwrite(&navHD, sizeof(tnavHD), 1, fNavOut))
+                {
+                  printf("ProcessNavFile(): Error writing to nav file!\n");
+                  fclose(fNavOut); fNavOut = NULL;
+                }
               }
 
               NavPtr++;
@@ -786,24 +790,6 @@ static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
       // OLD NAV RECORD
       navSD.NextPH = (dword) (((CurrentSeqHeader>LastPictureHeader) ? CurrentSeqHeader : PictHeader) - LastPictureHeader);
 
-      // nach Schnittpunkt die fehlende Zeit von Timems abziehen
-      if (FirstRecordAfterCut)
-      {
-        TimeOffset = navSD.Timems - LastTimems;
-        FirstRecordAfterCut = FALSE;
-      }
-      navSD.Timems -= TimeOffset;
-
-      if (pOutNextTimeStamp)
-      {
-        *pOutNextTimeStamp = navSD.Timems;
-        pOutNextTimeStamp = NULL;
-      }
-
-      // sicherstellen, dass Timems monoton ansteigt
-      if( ((int)(navSD.Timems - LastTimems)) >= 0)  LastTimems = navSD.Timems;
-      else  navSD.Timems = LastTimems;
-
       if (WaitForPFrame && navSD.FrameType <= 2)
         WaitForPFrame = FALSE;
 
@@ -812,6 +798,24 @@ static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
 
       if(NavPtr > 0 && !WaitForIFrame && (!WaitForPFrame || navSD.FrameType<=2))
       {
+        // nach Schnittpunkt die fehlende Zeit von Timems abziehen
+        if (FirstRecordAfterCut)
+        {
+          TimeOffset = navSD.Timems - LastTimems;
+          FirstRecordAfterCut = FALSE;
+        }
+        navSD.Timems -= TimeOffset;
+
+        if (pOutNextTimeStamp)
+        {
+          *pOutNextTimeStamp = navSD.Timems;
+          pOutNextTimeStamp = NULL;
+        }
+
+        // sicherstellen, dass Timems monoton ansteigt
+        if( ((int)(navSD.Timems - LastTimems)) >= 0)  LastTimems = navSD.Timems;
+        else  navSD.Timems = LastTimems;
+        
 {
   unsigned long long RefPictureHeaderOffset = dbg_NavPictureHeaderOffset - dbg_HeaderPosOffset;
   if (fNavIn && LastPictureHeader != RefPictureHeaderOffset)
@@ -953,9 +957,6 @@ void QuickNavProcess(const long long CurrentPosition, const long long PositionOf
       }
     }
 
-    // nach Schnittpunkt die fehlende Zeit von Timems abziehen
-    TimeOffset = curSDNavRec->Timems - LastTimems;
-
     WaitForIFrame = TRUE;
     FirstPacketAfterCut = FALSE;
   }
@@ -968,29 +969,35 @@ void QuickNavProcess(const long long CurrentPosition, const long long PositionOf
       curSDNavRec->PHOffset      = (dword)NextPictureHeaderOffset;
       curSDNavRec->PHOffsetHigh  = (dword)(NextPictureHeaderOffset >> 32);
 
-      // Zeit anpassen
-      curSDNavRec->Timems -= TimeOffset;
-      LastTimems = curSDNavRec->Timems;
-      if (pOutNextTimeStamp)
-      {
-        *pOutNextTimeStamp = curSDNavRec->Timems;
-        pOutNextTimeStamp = NULL;
-      }
-
       // I-Frame prüfen
       if (WaitForPFrame && curSDNavRec->FrameType <= 2)
         WaitForPFrame = FALSE;
 
       if (WaitForIFrame && (curSDNavRec->FrameType == 1)) {
-        WaitForIFrame = FALSE; WaitForPFrame = TRUE; }
+        WaitForIFrame = FALSE; WaitForPFrame = TRUE;
+        // nach Schnittpunkt die fehlende Zeit von Timems abziehen
+        TimeOffset = curSDNavRec->Timems - LastTimems;
+      }
 
-      // Record schreiben
-      if (fNavOut && !WaitForIFrame && (/*isHDVideo ||*/ !WaitForPFrame || curSDNavRec->FrameType<=2) && !fwrite(NavBuffer, isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD), 1, fNavOut))
+      if (!WaitForIFrame && (/*isHDVideo ||*/ !WaitForPFrame || curSDNavRec->FrameType<=2))
       {
-        printf("ProcessNavFile(): Error writing to nav file!\n");
-        fclose(fNavIn); fNavIn = NULL;
-        fclose(fNavOut); fNavOut = NULL;
-        break;
+        // Zeit anpassen
+        curSDNavRec->Timems -= TimeOffset;
+        if (pOutNextTimeStamp)
+        {
+          *pOutNextTimeStamp = curSDNavRec->Timems;
+          pOutNextTimeStamp = NULL;
+        }
+        LastTimems = curSDNavRec->Timems;
+
+        // Record schreiben
+        if (fNavOut && !fwrite(NavBuffer, isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD), 1, fNavOut))
+        {
+          printf("ProcessNavFile(): Error writing to nav file!\n");
+          fclose(fNavIn); fNavIn = NULL;
+          fclose(fNavOut); fNavOut = NULL;
+          break;
+        }
       }
 
       // nächsten Record einlesen
@@ -1074,4 +1081,128 @@ bool CloseNavFileOut(void)
 
   TRACEEXIT;
   return ret;
+}
+
+
+tTimeStamp2* NavLoad(const char *AbsInRec, int *const OutNrTimeStamps)
+{
+  char                  AbsFileName[FBLIB_DIR_SIZE];
+  FILE                 *fNav = NULL;
+  tnavSD                NavBuffer[2], *CurNavRec = &NavBuffer[0];
+  tTimeStamp2          *TimeStampBuffer = NULL;
+  tTimeStamp2          *TimeStamps = NULL;
+  int                   NavRecordsNr, NrTimeStamps = 0;
+  dword                 FirstTime, LastTime;
+  dword                 FirstDword = 0;
+  long long             AbsPos;
+  unsigned long long    NavSize = 0;
+
+  TRACEENTER;
+  if(OutNrTimeStamps) *OutNrTimeStamps = 0;
+
+  // Open the nav file
+  snprintf(AbsFileName, sizeof(AbsFileName), "%s.nav", AbsInRec);
+  fNav = fopen(AbsFileName, "rb");
+  if(!fNav)
+  {
+    printf("  Could not open nav file.\n");
+    TRACEEXIT;
+    return(NULL);
+  }
+
+  // Reserve a (temporary) buffer to hold the entire file
+  HDD_GetFileSize(AbsFileName, &NavSize);
+  NavRecordsNr = (dword)((NavSize / (sizeof(tnavSD) * ((isHDVideo) ? 2 : 1))) / 4);  // höchstens jedes 4. Frame ist ein I-Frame (?)
+
+  TimeStampBuffer = (tTimeStamp2*) malloc(NavRecordsNr * sizeof(tTimeStamp2));
+  if (!TimeStampBuffer)
+  {
+    fclose(fNav);
+    printf("  Not enough memory to load nav.");
+    TRACEEXIT;
+    return(NULL);
+  }
+
+  // Versuche, nav-Dateien aus Timeshift-Aufnahmen zu unterstützen ***experimentell***
+  fread(&FirstDword, 4, 1, fNav);
+  if(FirstDword == 0x72767062)  // 'bpvr'
+    fseek(fNav, 1056, SEEK_SET);
+  else
+    rewind(fNav);
+
+  //Count and save all the _different_ time stamps in the .nav
+  LastTime = 0xFFFFFFFF;
+  FirstTime = 0xFFFFFFFF;
+
+  while (fread(CurNavRec, sizeof(tnavSD) * (isHDVideo ? 2 : 1), 1, fNav) && (NrTimeStamps < NavRecordsNr))
+  {
+    if(FirstTime == 0xFFFFFFFF) FirstTime = CurNavRec->Timems;
+    if(CurNavRec->FrameType == 1)  // erfasse nur noch I-Frames
+    {
+      AbsPos = ((long long)(CurNavRec->PHOffsetHigh) << 32) | CurNavRec->PHOffset;
+/*      if(CurNavRec->Timems == LastTime)
+      {
+TAP_PrintNet("Achtung! I-Frame an %llu hat denselben Timestamp wie sein Vorgänger!\n", AbsPos);
+      } */
+      TimeStampBuffer[NrTimeStamps].Position  = (AbsPos / PACKETSIZE) * PACKETSIZE;
+      TimeStampBuffer[NrTimeStamps].Timems    = CurNavRec->Timems;
+
+/*        if (CurNavRec->Timems >= FirstTime)
+        // Timems ist größer als FirstTime -> kein Überlauf
+        TimeStampBuffer[*NrTimeStamps].Timems = CurNavRec->Timems - FirstTime;
+      else if (FirstTime - CurNavRec->Timems <= 3000)
+        // Timems ist kaum kleiner als FirstTime -> liegt vermutlich am Anfang der Aufnahme
+        TimeStampBuffer[*NrTimeStamps].Timems = 0;
+      else
+        // Timems ist (deutlich) kleiner als FirstTime -> ein Überlauf liegt vor
+        TimeStampBuffer[*NrTimeStamps].Timems = (0xffffffff - FirstTime) + CurNavRec->Timems + 1;
+*/
+      NrTimeStamps++;
+      LastTime = CurNavRec->Timems;
+    }
+  }
+
+  // Free the nav-Buffer and close the file
+  fclose(fNav);
+
+  // Reserve a new buffer of the correct size to hold only the different time stamps
+  TimeStamps = (tTimeStamp2*) malloc(NrTimeStamps * sizeof(tTimeStamp2));
+  if(!TimeStamps)
+  {
+    free(TimeStampBuffer);
+    printf("  Not enough memory to copy timestamps.");
+    TRACEEXIT;
+    return(NULL);
+  }
+
+  // Copy the time stamps to the new array
+  memcpy(TimeStamps, TimeStampBuffer, NrTimeStamps * sizeof(tTimeStamp2));  
+  free(TimeStampBuffer);
+  *OutNrTimeStamps = NrTimeStamps;
+
+  TRACEEXIT;
+  return(TimeStamps);
+}
+
+dword NavGetPosTimeStamp(tTimeStamp2 TimeStamps[], int NrTimeStamps, long long FilePosition)
+{
+  tTimeStamp2 *LastTimeStamp = TimeStamps;
+
+  TRACEENTER;
+  if (TimeStamps)
+  {
+    // Search the TimeStamp-Array in forward direction
+    while((LastTimeStamp->Position < FilePosition) && (LastTimeStamp < TimeStamps + NrTimeStamps-1))
+      LastTimeStamp++;
+    if(LastTimeStamp->Position > FilePosition)
+      LastTimeStamp--;
+
+    TRACEEXIT;
+    return LastTimeStamp->Timems;
+  }
+  else
+  {
+    TRACEEXIT;
+    return ((dword) (((float)FilePosition / RecFileSize) * (60*InfDuration)) * 1000);
+  }
 }
