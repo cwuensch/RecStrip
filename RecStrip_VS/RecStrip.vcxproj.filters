@@ -68,5 +68,8 @@
     <ClCompile Include="..\crcmodel.c">
       <Filter>source</Filter>
     </ClCompile>
+    <ClCompile Include="..\StrToUTF8.c">
+      <Filter>source</Filter>
+    </ClCompile>
   </ItemGroup>
 </Project>

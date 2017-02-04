@@ -3,7 +3,7 @@
 
 #include "RecHeader.h"
 
-#define VERSION                  "v0.9.1"
+#define VERSION                  "v1.0"
 
 #define NRBOOKMARKS                177   // eigentlich werden nur 48 Bookmarks unterstützt!! (SRP2401)
 #define NRSEGMENTMARKER            101
@@ -89,7 +89,7 @@ typedef struct
   byte Scrambling_Ctrl:2;
   
   byte Data[184];
-} tTSPacket;
+}__attribute__((packed)) tTSPacket;
 
 typedef struct
 {
@@ -98,7 +98,7 @@ typedef struct
   float                 Percent;
   int                   Selected;
   char                 *pCaption;
-} tSegmentMarker2;
+}__attribute__((packed)) tSegmentMarker2;
 
 
 // Globale Variablen

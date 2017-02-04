@@ -41,7 +41,7 @@ typedef struct
 {
   word                  PID;
   char                  Name[6];                 // meist kürzer, nullterminiert
-} THumaxTonSpur;
+}__attribute__((packed)) THumaxTonSpur;
 
 typedef struct
 {
@@ -60,13 +60,13 @@ typedef struct
   byte Schreibschutz;        // 1 (geschützt) - 0 (nicht geschützt)
   byte Unbekannt2[15];
   char Dateiname[32];        // evtl. kürzer, nullterminiert
-} THumaxBlock_allg;
+}__attribute__((packed)) THumaxBlock_allg;
 
 typedef struct
 {
   byte Unbekannt3[620];
   byte Ende[30];             // vielleicht zur Markierung des Endes (-> eher nicht!)
-} THumaxBlock_Ende;
+}__attribute__((packed)) THumaxBlock_Ende;
 
 
 typedef struct
@@ -74,14 +74,14 @@ typedef struct
   word Anzahl;               // (vermutlich ist die Anzahl ein Long, aber zur Sicherheit...)
   word Leer;
   dword Items[100];
-} THumaxBlock_Bookmarks;
+}__attribute__((packed)) THumaxBlock_Bookmarks;
 
 typedef struct
 {
   word Anzahl;
   word Leer;
   THumaxTonSpur Items[50];
-} THumaxBlock_Tonspuren;
+}__attribute__((packed)) THumaxBlock_Tonspuren;
 
 
 typedef struct
@@ -90,7 +90,7 @@ typedef struct
   word ZusInfoID;              // ID des ZusatzInfo-Blocks
   byte ZusInfos[404];          // z.B. 3. Header: Bookmarks, 4. Header: Tonspuren
   THumaxBlock_Ende Ende;
-} THumaxHeader;
+}__attribute__((packed)) THumaxHeader;
 
 
 
@@ -117,7 +117,7 @@ typedef struct
     word PMTPID2:8;  // oder NetworkPID, falls ProgramNr==0
 //  }
   dword CRC32;
-} TTSPAT;
+}__attribute__((packed)) TTSPAT;
 
 
 typedef struct
@@ -129,7 +129,7 @@ typedef struct
   word ESInfoLen1:4;
   word ReservedQ:4;
   word ESInfoLen2:8;
-} TElemStream;
+}__attribute__((packed)) TElemStream;
 
 typedef struct
 {
@@ -154,7 +154,7 @@ typedef struct
   word ProgInfoLen1:4;
   word ReservedY:4;
   word ProgInfoLen2:8;
-} TTSPMT;
+}__attribute__((packed)) TTSPMT;
 
 
 extern char PATPMTBuf[];

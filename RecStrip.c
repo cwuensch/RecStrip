@@ -148,7 +148,7 @@ static bool HDD_SetFileDateTime(char const *AbsFileName, time_t NewDateTime)
   if(NewDateTime == 0)
     NewDateTime = time(NULL);
 
-  if(AbsFileName && (NewDateTime > 0xd0790000))
+  if(AbsFileName && ((unsigned long)NewDateTime > 0xD0790000))
   {
     if(stat64(AbsFileName, &statbuf) == 0)
     {
@@ -167,7 +167,7 @@ static void GetNextFreeCutName(const char *AbsSourceFileName, char *const OutCut
 {
   char                  CheckFileName[2048];
   size_t                NameLen, ExtStart;
-  int                   FreeIndices = 0, i = 0;
+  int                   i = 0;
 
   TRACEENTER;
   if(OutCutFileName) OutCutFileName[0] = '\0';
@@ -931,6 +931,9 @@ int main(int argc, const char* argv[])
           LastTimems = 0;
           LastPCR = 0;
           LastTimeStamp = 0;
+
+          // Caption in inf schreiben
+          SetInfEventText(SegmentMarker[CurSeg].pCaption);
 
           // Positionen anpassen
           PositionOffset = CurrentPosition;

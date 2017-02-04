@@ -39,22 +39,6 @@ static bool             WriteCutFile = TRUE, WriteCutInf = FALSE;
 // *****  READ AND WRITE CUT FILE  *****
 // ----------------------------------------------
 
-static void SecToTimeString(dword Time, char *const OutTimeString)  // needs max. 4 + 1 + 2 + 1 + 2 + 1 = 11 chars
-{
-  dword                 Hour, Min, Sec;
-
-  TRACEENTER;
-  if(OutTimeString)
-  {
-    Hour = (Time / 3600);
-    Min  = (Time / 60) % 60;
-    Sec  = Time % 60;
-    if (Hour >= 10000) Hour = 9999;
-    snprintf(OutTimeString, 11, "%u:%02u:%02u", Hour, Min, Sec);
-  }
-  TRACEEXIT;
-}
-
 static void MSecToTimeString(dword Timems, char *const OutTimeString)  // needs max. 4 + 1 + 2 + 1 + 2 + 1 + 3 + 1 = 15 chars
 {
   dword                 Hour, Min, Sec, Millisec;
@@ -440,7 +424,7 @@ bool CutFileLoad(const char *AbsCutName)
         SegmentMarker[0].Position = 0;
         SegmentMarker[0].Timems = 0;  // NavGetBlockTimeStamp(0);
 //        SegmentMarker[0].Selected = FALSE;
-        if (SegmentMarker[NrSegmentMarker-1].Position == RecFileSize)
+        if (SegmentMarker[NrSegmentMarker-1].Position == (long long)RecFileSize)
           SegmentMarker[NrSegmentMarker - 1].Position = 0;
 
         Offsetms = 0;
@@ -528,7 +512,7 @@ bool CutFileLoad(const char *AbsCutName)
     }
     
     // Wenn letzter Segment-Marker ungleich TotalBlock ist -> anpassen
-    if (SegmentMarker[NrSegmentMarker - 1].Position != RecFileSize)
+    if (SegmentMarker[NrSegmentMarker - 1].Position != (long long)RecFileSize)
     {
       SegmentMarker[NrSegmentMarker - 1].Position = RecFileSize;
       SegmentMarker[NrSegmentMarker - 1].Timems = (InfDuration*60000);
@@ -539,7 +523,7 @@ bool CutFileLoad(const char *AbsCutName)
     {
       if ((i < NrSegmentMarker-1) && (SegmentMarker[i].Position >= (long long)RecFileSize))
       {
-        printf("  SegmentMarker %d (%lu): TotalBlocks exceeded. -> Deleting!\n", i, SegmentMarker[i].Position);
+        printf("  SegmentMarker %d (%lld): TotalBlocks exceeded. -> Deleting!\n", i, SegmentMarker[i].Position);
         DeleteSegmentMarker(i, TRUE);
       }
       else

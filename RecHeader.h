@@ -25,7 +25,7 @@ typedef struct
   word                  FlagCopy:1;
 
   byte                  Unknown2[10];
-} TYPE_RecHeader_Info;
+}__attribute__((packed)) TYPE_RecHeader_Info;
 
 typedef struct
 {
@@ -49,7 +49,7 @@ typedef struct
 
   byte                  VideoStreamType;    //see tap.h for possible video and audio stream types
   byte                  AudioStreamType;
-} TYPE_Service_Info;
+}__attribute__((packed)) TYPE_Service_Info;
 
 typedef struct
 {
@@ -65,7 +65,7 @@ typedef struct
   char                  EventNameDescription[257];
   word                  ServiceID;
   byte                  Unknown2[14];
-} TYPE_Event_Info;
+}__attribute__((packed)) TYPE_Event_Info;
 
 typedef struct
 {
@@ -73,7 +73,7 @@ typedef struct
   word                  TextLength;
   dword                 EventID;
   char                  Text[1024];
-} TYPE_ExtEvent_Info;
+}__attribute__((packed)) TYPE_ExtEvent_Info;
 
 typedef struct
 {
@@ -92,7 +92,7 @@ typedef struct
   dword                 unknown8;
   dword                 unknown9;
   dword                 PixelData4[196*156];  //ARGB
-} tPreviewImages;
+}__attribute__((packed)) tPreviewImages;
 
 typedef struct
 {
@@ -145,7 +145,7 @@ typedef struct
   int                   NrBookmarks;
   dword                 Bookmarks[177];
   dword                 Resume;
-} TYPE_Bookmark_Info;
+}__attribute__((packed)) TYPE_Bookmark_Info;
 
 typedef struct
 {
@@ -158,7 +158,7 @@ typedef struct
   TYPE_Bookmark_Info    BookmarkInfo;
 //  byte                  HeaderUnused[8192];
 //  tPreviewImages        PreviewImages;
-} TYPE_RecHeader_TMSS;
+}__attribute__((packed)) TYPE_RecHeader_TMSS;
 
 typedef struct
 {
@@ -171,7 +171,7 @@ typedef struct
   TYPE_Bookmark_Info    BookmarkInfo;
 //  byte                  HeaderUnused[8192];
 //  tPreviewImages        PreviewImages;
-} TYPE_RecHeader_TMSC;
+}__attribute__((packed)) TYPE_RecHeader_TMSC;
 
 typedef struct
 {
@@ -184,6 +184,6 @@ typedef struct
   TYPE_Bookmark_Info    BookmarkInfo;
 //  byte                  HeaderUnused[8192];
 //  tPreviewImages        PreviewImages;
-} TYPE_RecHeader_TMST;
+}__attribute__((packed)) TYPE_RecHeader_TMST;
 
 #endif

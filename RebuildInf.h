@@ -36,7 +36,7 @@ typedef struct
   word OrigNetworkID1:8;
   word OrigNetworkID2:8;
   byte Reserved;
-} TTSSDT;
+}__attribute__((packed)) TTSSDT;
 
 typedef struct
 {
@@ -49,7 +49,7 @@ typedef struct
   word FreeCAMode:1;
   word RunningStatus:3;
   word DescriptorLen2:8;
-} TTSService;
+}__attribute__((packed)) TTSService;
 
 typedef struct
 {
@@ -60,7 +60,7 @@ typedef struct
   char ProviderName;
 //  byte ServiceNameLen;
 //  char ServiceName[4];
-} TTSServiceDesc;
+}__attribute__((packed)) TTSServiceDesc;
 
 
 extern FILE            *fIn;  // dirty Hack

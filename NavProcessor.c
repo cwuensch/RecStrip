@@ -617,6 +617,24 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
               if (!fNavIn && !navHD.Timems)
                 navHD.Timems = (SEIPTS - FirstSEIPTS) / 45;
 
+              // nach Schnittpunkt die fehlende Zeit von Timems abziehen
+              if (FirstRecordAfterCut)
+              {
+                TimeOffset = navHD.Timems - LastTimems;
+                FirstRecordAfterCut = FALSE;
+              }
+              navHD.Timems -= TimeOffset;
+
+              if (pOutNextTimeStamp)
+              {
+                *pOutNextTimeStamp = navHD.Timems;
+                pOutNextTimeStamp = NULL;
+              }
+
+              // sicherstellen, dass Timems monoton ansteigt
+              if( ((int)(navHD.Timems - LastTimems)) >= 0)  LastTimems = navHD.Timems;
+              else  navHD.Timems = LastTimems;
+
 {
   long long RefPictureHeaderOffset = dbg_NavPictureHeaderOffset - dbg_SEIPositionOffset;
   if (fNavIn && (long long)SEI != RefPictureHeaderOffset && dbg_CurrentPosition/PACKETSIZE != dbg_SEIFound)
@@ -632,24 +650,6 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
       
               if (!WaitForIFrame && (!WaitForPFrame || navHD.FrameType<=2))
               {
-                // nach Schnittpunkt die fehlende Zeit von Timems abziehen
-                if (FirstRecordAfterCut)
-                {
-                  TimeOffset = navHD.Timems - LastTimems;
-                  FirstRecordAfterCut = FALSE;
-                }
-                navHD.Timems -= TimeOffset;
-
-                if (pOutNextTimeStamp)
-                {
-                  *pOutNextTimeStamp = navHD.Timems;
-                  pOutNextTimeStamp = NULL;
-                }
-
-                // sicherstellen, dass Timems monoton ansteigt
-                if( ((int)(navHD.Timems - LastTimems)) >= 0)  LastTimems = navHD.Timems;
-                else  navHD.Timems = LastTimems;
-
                 // Write the nav record
                 if (fNavOut && !fwrite(&navHD, sizeof(tnavHD), 1, fNavOut))
                 {
@@ -790,6 +790,24 @@ static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
       // OLD NAV RECORD
       navSD.NextPH = (dword) (((CurrentSeqHeader>LastPictureHeader) ? CurrentSeqHeader : PictHeader) - LastPictureHeader);
 
+      // nach Schnittpunkt die fehlende Zeit von Timems abziehen
+      if (FirstRecordAfterCut)
+      {
+        TimeOffset = navSD.Timems - LastTimems;
+        FirstRecordAfterCut = FALSE;
+      }
+      navSD.Timems -= TimeOffset;
+
+      if (pOutNextTimeStamp)
+      {
+        *pOutNextTimeStamp = navSD.Timems;
+        pOutNextTimeStamp = NULL;
+      }
+
+      // sicherstellen, dass Timems monoton ansteigt
+      if( ((int)(navSD.Timems - LastTimems)) >= 0)  LastTimems = navSD.Timems;
+      else  navSD.Timems = LastTimems;
+
       if (WaitForPFrame && navSD.FrameType <= 2)
         WaitForPFrame = FALSE;
 
@@ -798,24 +816,6 @@ static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
 
       if(NavPtr > 0 && !WaitForIFrame && (!WaitForPFrame || navSD.FrameType<=2))
       {
-        // nach Schnittpunkt die fehlende Zeit von Timems abziehen
-        if (FirstRecordAfterCut)
-        {
-          TimeOffset = navSD.Timems - LastTimems;
-          FirstRecordAfterCut = FALSE;
-        }
-        navSD.Timems -= TimeOffset;
-
-        if (pOutNextTimeStamp)
-        {
-          *pOutNextTimeStamp = navSD.Timems;
-          pOutNextTimeStamp = NULL;
-        }
-
-        // sicherstellen, dass Timems monoton ansteigt
-        if( ((int)(navSD.Timems - LastTimems)) >= 0)  LastTimems = navSD.Timems;
-        else  navSD.Timems = LastTimems;
-        
 {
   unsigned long long RefPictureHeaderOffset = dbg_NavPictureHeaderOffset - dbg_HeaderPosOffset;
   if (fNavIn && LastPictureHeader != RefPictureHeaderOffset)
@@ -957,6 +957,9 @@ void QuickNavProcess(const long long CurrentPosition, const long long PositionOf
       }
     }
 
+    // nach Schnittpunkt die fehlende Zeit von Timems abziehen
+    TimeOffset = curSDNavRec->Timems - LastTimems;
+
     WaitForIFrame = TRUE;
     FirstPacketAfterCut = FALSE;
   }
@@ -969,27 +972,24 @@ void QuickNavProcess(const long long CurrentPosition, const long long PositionOf
       curSDNavRec->PHOffset      = (dword)NextPictureHeaderOffset;
       curSDNavRec->PHOffsetHigh  = (dword)(NextPictureHeaderOffset >> 32);
 
+      // Zeit anpassen
+      curSDNavRec->Timems -= TimeOffset;
+      if (pOutNextTimeStamp)
+      {
+        *pOutNextTimeStamp = curSDNavRec->Timems;
+        pOutNextTimeStamp = NULL;
+      }
+      LastTimems = curSDNavRec->Timems;
+
       // I-Frame prüfen
       if (WaitForPFrame && curSDNavRec->FrameType <= 2)
         WaitForPFrame = FALSE;
 
       if (WaitForIFrame && (curSDNavRec->FrameType == 1)) {
-        WaitForIFrame = FALSE; WaitForPFrame = TRUE;
-        // nach Schnittpunkt die fehlende Zeit von Timems abziehen
-        TimeOffset = curSDNavRec->Timems - LastTimems;
-      }
+        WaitForIFrame = FALSE; WaitForPFrame = TRUE; }
 
       if (!WaitForIFrame && (/*isHDVideo ||*/ !WaitForPFrame || curSDNavRec->FrameType<=2))
       {
-        // Zeit anpassen
-        curSDNavRec->Timems -= TimeOffset;
-        if (pOutNextTimeStamp)
-        {
-          *pOutNextTimeStamp = curSDNavRec->Timems;
-          pOutNextTimeStamp = NULL;
-        }
-        LastTimems = curSDNavRec->Timems;
-
         // Record schreiben
         if (fNavOut && !fwrite(NavBuffer, isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD), 1, fNavOut))
         {

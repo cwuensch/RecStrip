@@ -21,9 +21,12 @@
 #include "RecStrip.h"
 #include "HumaxHeader.h"
 
+extern bool StrToUTF8(const char *SourceString, char *DestString, byte DefaultISO8859CharSet);
+
 
 // Globale Variablen
 static byte            *InfBuffer = NULL;
+static char             OldEventText[1024];
 TYPE_RecHeader_Info    *RecHeaderInfo = NULL;
 static size_t           InfSize = 0;
 
@@ -157,6 +160,7 @@ bool InfProcessor_Init()
   TRACEENTER;
 
   //Allocate and clear the buffer
+  memset(OldEventText, 0, sizeof(OldEventText));
   InfSize = sizeof(TYPE_RecHeader_TMSS);
   InfBuffer = (byte*) malloc(max(InfSize, 32768));
   if(InfBuffer)
@@ -217,8 +221,10 @@ bool LoadInfFromRec(char *AbsRecFileName)
 bool LoadInfFile(char *AbsInfName)
 {
   FILE                 *fInfIn = NULL;
+  TYPE_RecHeader_TMSS  *RecHeader = NULL;
   TYPE_Service_Info    *ServiceInfo = NULL;
   unsigned long long    InfFileSize = 0;
+  size_t                p;
   bool                  HDFound = FALSE, Result = FALSE;
 
   TRACEENTER;
@@ -227,7 +233,8 @@ bool LoadInfFile(char *AbsInfName)
     TRACEEXIT;
     return FALSE;
   }
-  ServiceInfo = &(((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo);
+  RecHeader = (TYPE_RecHeader_TMSS*)InfBuffer;
+  ServiceInfo = &(RecHeader->ServiceInfo);
 
   //Read the source .inf
   if (AbsInfName && !RebuildInf)
@@ -267,6 +274,17 @@ bool LoadInfFile(char *AbsInfName)
         TRACEEXIT;
         return FALSE;
     }
+
+    // Event-Strings von Datenmüll reinigen
+    p = strlen(RecHeader->EventInfo.EventNameDescription);
+    if (p < sizeof(RecHeader->EventInfo.EventNameDescription))
+      memset(&RecHeader->EventInfo.EventNameDescription[p], 0, sizeof(RecHeader->EventInfo.EventNameDescription) - p);
+    p = RecHeader->ExtEventInfo.TextLength;
+    if (p < sizeof(RecHeader->ExtEventInfo.Text))
+      memset(&RecHeader->ExtEventInfo.Text[p], 0, sizeof(RecHeader->ExtEventInfo.Text) - p);
+
+    strncpy(OldEventText, RecHeader->ExtEventInfo.Text, min((dword)RecHeader->ExtEventInfo.TextLength+1, sizeof(OldEventText)));
+    OldEventText[sizeof(OldEventText) - 1] = '\0';
 
     // Prüfe auf verschlüsselte Aufnahme
     if (((RecHeaderInfo->CryptFlag & 1) != 0) && !*RecFileOut)
@@ -321,6 +339,29 @@ if (RecHeaderInfo->Reserved != 0)
 
   TRACEEXIT;
   return TRUE;
+}
+
+void SetInfEventText(const char *pCaption)
+{
+  char *NewEventText = NULL;
+  TYPE_RecHeader_TMSS *RecHeader = (TYPE_RecHeader_TMSS*)InfBuffer;
+
+  TRACEENTER;
+  if (pCaption)
+  {
+    if ((NewEventText = (char*)malloc(2 * strlen(pCaption))))
+    {
+      StrToUTF8(pCaption, NewEventText, 9);
+      snprintf(RecHeader->ExtEventInfo.Text, sizeof(RecHeader->ExtEventInfo.Text), "%s\r\n\r\n%s", NewEventText, OldEventText);
+      if (RecHeader->ExtEventInfo.Text[sizeof(RecHeader->ExtEventInfo.Text) - 2] != 0)
+        snprintf(&RecHeader->ExtEventInfo.Text[sizeof(RecHeader->ExtEventInfo.Text) - 4], 4, "...");
+      RecHeader->ExtEventInfo.TextLength = strlen(RecHeader->ExtEventInfo.Text);
+      free(NewEventText);
+    }
+    else
+      snprintf(RecHeader->ExtEventInfo.Text, sizeof(RecHeader->ExtEventInfo.Text), "%s", OldEventText);
+  }
+  TRACEEXIT;
 }
 
 bool SetInfCryptFlag(const char *AbsInfFile)

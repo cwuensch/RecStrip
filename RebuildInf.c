@@ -21,6 +21,13 @@
 #include "RebuildInf.h"
 #include "NavProcessor.h"
 
+#ifdef _WIN32
+  extern long _timezone;
+  #define timezone _timezone
+#else
+  extern long timezone;
+#endif
+
 
 static inline byte BCD2BIN(byte BCD)
 {
@@ -910,7 +917,8 @@ printf("  TS: Duration = %2.2d min %2.2d sec\n", RecInf->RecHeaderInfo.DurationM
   }
   else
   {
-    RecInf->RecHeaderInfo.StartTime = AddTime(RecInf->EventInfo.StartTime, 60);  // GMT+1
+    tzset();
+    RecInf->RecHeaderInfo.StartTime = AddTime(RecInf->EventInfo.StartTime, -1*timezone/60);  // GMT+1
     if (!RecInf->EventInfo.StartTime || ((FileTimeStamp >> 16) - (RecInf->EventInfo.StartTime >> 16) <= 1))
       RecInf->RecHeaderInfo.StartTime = AddTime(FileTimeStamp, -1 * (int)RecInf->RecHeaderInfo.DurationMin);
   }
