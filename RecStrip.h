@@ -89,7 +89,7 @@ typedef struct
   byte Scrambling_Ctrl:2;
   
   byte Data[184];
-}__attribute__((packed)) tTSPacket;
+} tTSPacket;
 
 typedef struct
 {
@@ -98,7 +98,7 @@ typedef struct
   float                 Percent;
   int                   Selected;
   char                 *pCaption;
-}__attribute__((packed)) tSegmentMarker2;
+} tSegmentMarker2;
 
 
 // Globale Variablen

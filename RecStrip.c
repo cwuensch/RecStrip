@@ -112,6 +112,7 @@ static unsigned int     CurPosBlocks = 0, CurBlockBytes = 0, BlocksOneSecond = 2
 static long long        NrDroppedFillerNALU = 0, NrDroppedZeroStuffing = 0, NrDroppedAdaptation = 0, NrDroppedNullPid = 0, NrDroppedEPGPid = 0, NrDroppedTxtPid=0, NrIgnoredPackets = 0;
 static dword            LastPCR = 0, LastTimeStamp = 0, CurTimeStep = 5000;
 static long long        PosLastPCR = 0;
+static byte             ContinuityCount = 0;
 
 
 static bool HDD_FileExist(const char *AbsFileName)
@@ -332,12 +333,12 @@ void DeleteSegmentMarker(int MarkerIndex, bool FreeCaption)
   TRACEEXIT;
 }
 
-static void DeleteBookmark(int BookmarkIndex)
+static void DeleteBookmark(dword BookmarkIndex)
 {
-  int i;
+  dword i;
   TRACEENTER;
 
-  if (BookmarkInfo && (BookmarkIndex >= 0) && (BookmarkIndex < BookmarkInfo->NrBookmarks))
+  if (BookmarkInfo /*&& (BookmarkIndex >= 0)*/ && (BookmarkIndex < BookmarkInfo->NrBookmarks))
   {
     for(i = BookmarkIndex; i < BookmarkInfo->NrBookmarks - 1; i++)
       BookmarkInfo->Bookmarks[i] = BookmarkInfo->Bookmarks[i + 1];
@@ -347,9 +348,9 @@ static void DeleteBookmark(int BookmarkIndex)
   TRACEEXIT;
 }
 
-static void AddBookmark(int BookmarkIndex, dword BlockNr)
+static void AddBookmark(dword BookmarkIndex, dword BlockNr)
 {
-  int i;
+  dword i;
   TRACEENTER;
 
   if (BookmarkInfo && (BookmarkIndex <= BookmarkInfo->NrBookmarks) && (BookmarkInfo->NrBookmarks < 48))
@@ -488,10 +489,11 @@ bool CloseOutputFiles(void)
 
   if ((DoCut || RebuildInf) && LastTimems)
     NewDurationMS = LastTimems;
-  if (DoCut && NrSegmentMarker >= 2)
+  if ((DoCut || DoStrip) && NrSegmentMarker >= 2)
   {
     SegmentMarker[NrSegmentMarker-1].Position = CurrentPosition - PositionOffset;
-    SegmentMarker[NrSegmentMarker-1].Timems = NewDurationMS;
+    if(NewDurationMS)
+      SegmentMarker[NrSegmentMarker-1].Timems = NewDurationMS;
   }
   if (BookmarkInfo && BookmarkInfo->Resume >= CalcBlockSize(CurrentPosition - PositionOffset))
     BookmarkInfo->Resume = 0;
@@ -507,7 +509,8 @@ bool CloseOutputFiles(void)
     if (/*fflush(fOut) != 0 ||*/ fclose(fOut) != 0)
     {
       printf("  ERROR: Failed closing the output file.\n");
-      CutFileSave(CutFileOut);
+      if (DoCut != 2)
+        CutFileSave(CutFileOut);
       SaveInfFile(InfFileOut, InfFileIn);
       CutProcessor_Free();
       InfProcessor_Free();
@@ -568,7 +571,8 @@ int main(int argc, const char* argv[])
   bool                  DropCurPacket;
   time_t                startTime, endTime;
   bool                  ResumeSet = FALSE;
-  int                   CurSeg = 0, i = 0, j = 0, n = 0;
+  int                   CurSeg = 0, i = 0, n = 0;
+  dword                 j = 0;
   dword                 BlocksOnePercent, Percent = 0, BlocksSincePercent = 0;
   bool                  ret = TRUE;
 
@@ -799,6 +803,7 @@ int main(int argc, const char* argv[])
     TRACEEXIT;
     exit(7);
   }
+  if(!RebuildNav && *RecFileOut && *NavFileIn) SetFirstPacketAfterBreak();
 
 
   // -----------------------------------------------
@@ -928,6 +933,8 @@ int main(int argc, const char* argv[])
             exit(7);
           }
           NavProcessor_Init();
+          if(!RebuildNav && *RecFileOut && *NavFileIn) SetFirstPacketAfterBreak();
+          if(DoStrip) NALUDump_Init();
           LastTimems = 0;
           LastPCR = 0;
           LastTimeStamp = 0;
@@ -1023,6 +1030,17 @@ int main(int argc, const char* argv[])
                 }
                 break;
             }
+          }
+        }
+        else if (CurPID == VideoPID)
+        {
+          // nur Continuity Check
+          if (((tTSPacket*) &Buffer[4])->Payload_Exists) ContinuityCount = (ContinuityCount + 1) % 16;
+          if (((tTSPacket*) &Buffer[4])->ContinuityCount != ContinuityCount)
+          {
+            if (CurrentPosition - PositionOffset > 0)
+              printf("TS check: TS continuity offset %d (pos=%lld)\n", (((tTSPacket*) &Buffer[4])->ContinuityCount - ContinuityCount) % 16, CurrentPosition);
+            // SetFirstPacketAfterBreak();
           }
         }
 

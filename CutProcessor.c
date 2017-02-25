@@ -515,7 +515,8 @@ bool CutFileLoad(const char *AbsCutName)
     if (SegmentMarker[NrSegmentMarker - 1].Position != (long long)RecFileSize)
     {
       SegmentMarker[NrSegmentMarker - 1].Position = RecFileSize;
-      SegmentMarker[NrSegmentMarker - 1].Timems = (InfDuration*60000);
+      if (!SegmentMarker[NrSegmentMarker - 1].Timems)
+        SegmentMarker[NrSegmentMarker - 1].Timems = (InfDuration*60000);
     }
 
     // Prozent-Angaben neu berechnen (müssen künftig nicht mehr in der .cut gespeichert werden)

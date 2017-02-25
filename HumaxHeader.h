@@ -41,7 +41,7 @@ typedef struct
 {
   word                  PID;
   char                  Name[6];                 // meist kürzer, nullterminiert
-}__attribute__((packed)) THumaxTonSpur;
+} THumaxTonSpur;
 
 typedef struct
 {
@@ -60,13 +60,13 @@ typedef struct
   byte Schreibschutz;        // 1 (geschützt) - 0 (nicht geschützt)
   byte Unbekannt2[15];
   char Dateiname[32];        // evtl. kürzer, nullterminiert
-}__attribute__((packed)) THumaxBlock_allg;
+} THumaxBlock_allg;
 
 typedef struct
 {
   byte Unbekannt3[620];
   byte Ende[30];             // vielleicht zur Markierung des Endes (-> eher nicht!)
-}__attribute__((packed)) THumaxBlock_Ende;
+} THumaxBlock_Ende;
 
 
 typedef struct
@@ -74,14 +74,14 @@ typedef struct
   word Anzahl;               // (vermutlich ist die Anzahl ein Long, aber zur Sicherheit...)
   word Leer;
   dword Items[100];
-}__attribute__((packed)) THumaxBlock_Bookmarks;
+} THumaxBlock_Bookmarks;
 
 typedef struct
 {
   word Anzahl;
   word Leer;
   THumaxTonSpur Items[50];
-}__attribute__((packed)) THumaxBlock_Tonspuren;
+} THumaxBlock_Tonspuren;
 
 
 typedef struct
@@ -90,20 +90,20 @@ typedef struct
   word ZusInfoID;              // ID des ZusatzInfo-Blocks
   byte ZusInfos[404];          // z.B. 3. Header: Bookmarks, 4. Header: Tonspuren
   THumaxBlock_Ende Ende;
-}__attribute__((packed)) THumaxHeader;
+} THumaxHeader;
 
 
 
 typedef struct
 {
   byte TableID;
-  word SectionLen1:4;
-  word Reserved1:2;
-  word Reserved0:1;
-  word SectionSyntax:1;
-  word SectionLen2:8;
-  word TS_ID1:8;
-  word TS_ID2:8;
+  byte SectionLen1:4;
+  byte Reserved1:2;
+  byte Reserved0:1;
+  byte SectionSyntax:1;
+  byte SectionLen2;
+  byte TS_ID1;
+  byte TS_ID2;
   byte CurNextInd:1;
   byte VersionNr:5;
   byte Reserved11:2;
@@ -117,30 +117,30 @@ typedef struct
     word PMTPID2:8;  // oder NetworkPID, falls ProgramNr==0
 //  }
   dword CRC32;
-}__attribute__((packed)) TTSPAT;
+} TTSPAT;
 
 
 typedef struct
 {
   byte stream_type;
-  word ESPID1:5;
-  word ReservedZ:3;
-  word ESPID2:8;
-  word ESInfoLen1:4;
-  word ReservedQ:4;
-  word ESInfoLen2:8;
-}__attribute__((packed)) TElemStream;
+  byte ESPID1:5;
+  byte ReservedZ:3;
+  byte ESPID2;
+  byte ESInfoLen1:4;
+  byte ReservedQ:4;
+  byte ESInfoLen2;
+} TElemStream;
 
 typedef struct
 {
   byte TableID;
-  word SectionLen1:4;
-  word Reserved1:2;
-  word Reserved0:1;
-  word SectionSyntax:1;
-  word SectionLen2:8;
-  word ProgramNr1:8;
-  word ProgramNr2:8;
+  byte SectionLen1:4;
+  byte Reserved1:2;
+  byte Reserved0:1;
+  byte SectionSyntax:1;
+  byte SectionLen2;
+  byte ProgramNr1;
+  byte ProgramNr2;
   byte CurNextInd:1;
   byte VersionNr:5;
   byte Reserved11:2;
@@ -154,8 +154,7 @@ typedef struct
   word ProgInfoLen1:4;
   word ReservedY:4;
   word ProgInfoLen2:8;
-}__attribute__((packed)) TTSPMT;
-
+} TTSPMT;
 
 extern char PATPMTBuf[];
 

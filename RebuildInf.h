@@ -21,13 +21,13 @@ typedef struct
 typedef struct
 {
   byte TableID;
-  word SectionLen1:4;
-  word Reserved1:2;
-  word Reserved0:1;
-  word SectionSyntax:1;
-  word SectionLen2:8;
-  word TS_ID1:8;
-  word TS_ID2:8;
+  byte SectionLen1:4;
+  byte Reserved1:2;
+  byte Reserved0:1;
+  byte SectionSyntax:1;
+  byte SectionLen2;
+  byte TS_ID1;
+  byte TS_ID2;
   byte CurNextInd:1;
   byte VersionNr:5;
   byte Reserved11:2;
@@ -36,20 +36,20 @@ typedef struct
   word OrigNetworkID1:8;
   word OrigNetworkID2:8;
   byte Reserved;
-}__attribute__((packed)) TTSSDT;
+} TTSSDT;
 
 typedef struct
 {
-  word ServiceID1:8;
-  word ServiceID2:8;
+  byte ServiceID1;
+  byte ServiceID2;
   byte EITPresentFollow:1;
   byte EITSchedule:1;
   byte Reserved2:6;
-  word DescriptorLen1:4;
-  word FreeCAMode:1;
-  word RunningStatus:3;
-  word DescriptorLen2:8;
-}__attribute__((packed)) TTSService;
+  byte DescriptorLen1:4;
+  byte FreeCAMode:1;
+  byte RunningStatus:3;
+  byte DescriptorLen2:8;
+} TTSService;
 
 typedef struct
 {
@@ -60,7 +60,7 @@ typedef struct
   char ProviderName;
 //  byte ServiceNameLen;
 //  char ServiceName[4];
-}__attribute__((packed)) TTSServiceDesc;
+} TTSServiceDesc;
 
 
 extern FILE            *fIn;  // dirty Hack

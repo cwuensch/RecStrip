@@ -22,7 +22,6 @@
 #include "NavProcessor.h"
 
 #ifdef _WIN32
-  extern long _timezone;
   #define timezone _timezone
 #else
   extern long timezone;
@@ -281,7 +280,6 @@ static void InitInfStruct(TYPE_RecHeader_TMSS *RecInf)
 {
   TRACEENTER;
   memset(RecInf, 0, sizeof(TYPE_RecHeader_TMSS));
-
   RecInf->RecHeaderInfo.Magic[0]     = 'T';
   RecInf->RecHeaderInfo.Magic[1]     = 'F';
   RecInf->RecHeaderInfo.Magic[2]     = 'r';
@@ -405,7 +403,7 @@ static bool AnalyseSDT(byte *PSBuffer, word ServiceID, TYPE_RecHeader_TMSS *RecI
   TTSSDT               *SDT = (TTSSDT*)PSBuffer;
   TTSService           *pService = NULL;
   TTSServiceDesc       *pServiceDesc = NULL;
-
+   
   TRACEENTER;
 
   if (SDT->TableID == 0x42)

@@ -25,7 +25,7 @@ typedef struct
   word                  FlagCopy:1;
 
   byte                  Unknown2[10];
-}__attribute__((packed)) TYPE_RecHeader_Info;
+} TYPE_RecHeader_Info;
 
 typedef struct
 {
@@ -49,7 +49,7 @@ typedef struct
 
   byte                  VideoStreamType;    //see tap.h for possible video and audio stream types
   byte                  AudioStreamType;
-}__attribute__((packed)) TYPE_Service_Info;
+} TYPE_Service_Info;
 
 typedef struct
 {
@@ -65,7 +65,7 @@ typedef struct
   char                  EventNameDescription[257];
   word                  ServiceID;
   byte                  Unknown2[14];
-}__attribute__((packed)) TYPE_Event_Info;
+} TYPE_Event_Info;
 
 typedef struct
 {
@@ -73,9 +73,9 @@ typedef struct
   word                  TextLength;
   dword                 EventID;
   char                  Text[1024];
-}__attribute__((packed)) TYPE_ExtEvent_Info;
+} TYPE_ExtEvent_Info;
 
-typedef struct
+/* typedef struct
 {
   word                  NrOfImages;         // Check if the inf file size is at least 10322 bytes to
                                             // make sure that NrOfImages is valid
@@ -92,7 +92,7 @@ typedef struct
   dword                 unknown8;
   dword                 unknown9;
   dword                 PixelData4[196*156];  //ARGB
-}__attribute__((packed)) tPreviewImages;
+} tPreviewImages; */
 
 typedef struct
 {
@@ -113,7 +113,7 @@ typedef struct
   word                  ClockSync:1;
   word                  UnusedFlags2:15;
   word                  OriginalNetworkID;
-}__attribute__((packed)) TYPE_TpInfo_TMSS;
+} TYPE_TpInfo_TMSS;
 
 typedef struct
 {
@@ -127,7 +127,7 @@ typedef struct
   byte                  unused2;
   word                  OriginalNetworkID;
   word                  NetworkID;
-}__attribute__((packed)) TYPE_TpInfo_TMST;
+} TYPE_TpInfo_TMST;
 
 typedef struct
 {
@@ -138,14 +138,14 @@ typedef struct
   word                  OriginalNetworkID;
   byte                  ModulationType;
   byte                  unused1;
-}__attribute__((packed)) TYPE_TpInfo_TMSC;
+} TYPE_TpInfo_TMSC;
 
 typedef struct
 {
-  int                   NrBookmarks;
+  dword                 NrBookmarks;
   dword                 Bookmarks[177];
   dword                 Resume;
-}__attribute__((packed)) TYPE_Bookmark_Info;
+} TYPE_Bookmark_Info;
 
 typedef struct
 {
@@ -158,7 +158,7 @@ typedef struct
   TYPE_Bookmark_Info    BookmarkInfo;
 //  byte                  HeaderUnused[8192];
 //  tPreviewImages        PreviewImages;
-}__attribute__((packed)) TYPE_RecHeader_TMSS;
+} TYPE_RecHeader_TMSS;
 
 typedef struct
 {
@@ -171,7 +171,7 @@ typedef struct
   TYPE_Bookmark_Info    BookmarkInfo;
 //  byte                  HeaderUnused[8192];
 //  tPreviewImages        PreviewImages;
-}__attribute__((packed)) TYPE_RecHeader_TMSC;
+} TYPE_RecHeader_TMSC;
 
 typedef struct
 {
@@ -184,6 +184,6 @@ typedef struct
   TYPE_Bookmark_Info    BookmarkInfo;
 //  byte                  HeaderUnused[8192];
 //  tPreviewImages        PreviewImages;
-}__attribute__((packed)) TYPE_RecHeader_TMST;
+} TYPE_RecHeader_TMST;
 
 #endif

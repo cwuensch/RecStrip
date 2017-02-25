@@ -29,6 +29,7 @@ static byte            *InfBuffer = NULL;
 static char             OldEventText[1024];
 TYPE_RecHeader_Info    *RecHeaderInfo = NULL;
 static size_t           InfSize = 0;
+dword                   OrigStartTime = 0;
 
 
 dword AddTime(dword pvrDate, int addMinutes)  //add minutes to the day
@@ -161,6 +162,7 @@ bool InfProcessor_Init()
 
   //Allocate and clear the buffer
   memset(OldEventText, 0, sizeof(OldEventText));
+  OrigStartTime = 0;
   InfSize = sizeof(TYPE_RecHeader_TMSS);
   InfBuffer = (byte*) malloc(max(InfSize, 32768));
   if(InfBuffer)
@@ -347,6 +349,7 @@ void SetInfEventText(const char *pCaption)
   TYPE_RecHeader_TMSS *RecHeader = (TYPE_RecHeader_TMSS*)InfBuffer;
 
   TRACEENTER;
+  memset(RecHeader->ExtEventInfo.Text, 0, sizeof(RecHeader->ExtEventInfo.Text));
   if (pCaption)
   {
     if ((NewEventText = (char*)malloc(2 * strlen(pCaption))))
@@ -355,12 +358,13 @@ void SetInfEventText(const char *pCaption)
       snprintf(RecHeader->ExtEventInfo.Text, sizeof(RecHeader->ExtEventInfo.Text), "%s\r\n\r\n%s", NewEventText, OldEventText);
       if (RecHeader->ExtEventInfo.Text[sizeof(RecHeader->ExtEventInfo.Text) - 2] != 0)
         snprintf(&RecHeader->ExtEventInfo.Text[sizeof(RecHeader->ExtEventInfo.Text) - 4], 4, "...");
-      RecHeader->ExtEventInfo.TextLength = strlen(RecHeader->ExtEventInfo.Text);
       free(NewEventText);
     }
-    else
-      snprintf(RecHeader->ExtEventInfo.Text, sizeof(RecHeader->ExtEventInfo.Text), "%s", OldEventText);
   }
+  else
+    strncpy(RecHeader->ExtEventInfo.Text, OldEventText, sizeof(RecHeader->ExtEventInfo.Text));
+  RecHeader->ExtEventInfo.TextLength = strlen(RecHeader->ExtEventInfo.Text);
+
   TRACEEXIT;
 }
 
@@ -441,7 +445,7 @@ bool SaveInfFile(const char *AbsDestInf, const char *AbsSourceInf)
       RecHeaderInfo->DurationSec = ((NewDurationMS + 500) / 1000) % 60;
     }
     if (NewStartTimeOffset)
-      RecHeaderInfo->StartTime = AddTime(RecHeaderInfo->StartTime, NewStartTimeOffset / 60000);
+      RecHeaderInfo->StartTime = AddTime(OrigStartTime, NewStartTimeOffset / 60000);
     Result = (fwrite(InfBuffer, 1, InfSize, fInfOut) == InfSize);
   }
 

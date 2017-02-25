@@ -94,7 +94,6 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   offset = 1 + packet->Data[0] + sizeof(TTSPAT);
   memset(&packet->Data[offset], 0xff, 184 - offset);
 
-
   packet = (tTSPacket*) &PATPMTBuf[196];
   pmt = (TTSPMT*) &packet->Data[1 + packet->Data[0]];
 
@@ -125,7 +124,6 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   pmt->ReservedY        = 15;
 
   offset = 1 + packet->Data[0] + sizeof(TTSPMT);
-  
 
   rewind(fIn);
   for (i = 1; ret && (i <= 4); i++)
@@ -210,7 +208,6 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               elem->ESInfoLen2      = 7;
               strcpy(&packet->Data[offset], "V" "\x05" "deu" "\x09");
             }
-
             offset                += elem->ESInfoLen2;
             pmt->SectionLen2      += sizeof(TElemStream) + elem->ESInfoLen2;
           }
