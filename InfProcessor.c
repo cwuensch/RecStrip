@@ -214,7 +214,8 @@ bool LoadInfFromRec(char *AbsRecFileName)
     Result = LoadHumaxHeader(fIn, (TYPE_RecHeader_TMSS*)InfBuffer);
     if (!Result) HumaxSource = FALSE;
   }
-
+  
+  OrigStartTime = RecHeaderInfo->StartTime;
   fclose(fIn);
   TRACEEXIT;
   return Result;
@@ -337,7 +338,10 @@ if (RecHeaderInfo->Reserved != 0)
   }
 
   if (Result)
+  {
+    OrigStartTime = RecHeaderInfo->StartTime;
     InfDuration = 60*RecHeaderInfo->DurationMin + RecHeaderInfo->DurationSec;
+  }
 
   TRACEEXIT;
   return TRUE;

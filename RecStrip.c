@@ -113,6 +113,7 @@ static long long        NrDroppedFillerNALU = 0, NrDroppedZeroStuffing = 0, NrDr
 static dword            LastPCR = 0, LastTimeStamp = 0, CurTimeStep = 5000;
 static long long        PosLastPCR = 0;
 static byte             ContinuityCount = 0;
+static bool             ResumeSet = FALSE;
 
 
 static bool HDD_FileExist(const char *AbsFileName)
@@ -149,7 +150,7 @@ static bool HDD_SetFileDateTime(char const *AbsFileName, time_t NewDateTime)
   if(NewDateTime == 0)
     NewDateTime = time(NULL);
 
-  if(AbsFileName && ((unsigned long)NewDateTime > 0xD0790000))
+  if(AbsFileName && ((unsigned long)NewDateTime < 0xD0790000))
   {
     if(stat64(AbsFileName, &statbuf) == 0)
     {
@@ -482,6 +483,7 @@ SONST
 
 bool CloseOutputFiles(void)
 {
+  dword OrigResume = 0;
   TRACEENTER;
 
   if (!CloseNavFileOut())
@@ -495,8 +497,11 @@ bool CloseOutputFiles(void)
     if(NewDurationMS)
       SegmentMarker[NrSegmentMarker-1].Timems = NewDurationMS;
   }
-  if (BookmarkInfo && BookmarkInfo->Resume >= CalcBlockSize(CurrentPosition - PositionOffset))
+  if (BookmarkInfo && !ResumeSet)
+  {
+    OrigResume = BookmarkInfo->Resume;
     BookmarkInfo->Resume = 0;
+  }
 
   if(fOut)
   {
@@ -526,6 +531,12 @@ bool CloseOutputFiles(void)
 
   if (*InfFileOut && !SaveInfFile(InfFileOut, InfFileIn))
     printf("  WARNING: Cannot create inf %s.\n", InfFileOut);
+
+  if (BookmarkInfo)
+  {
+    if (ResumeSet)        BookmarkInfo->Resume = 0;
+    else if (OrigResume)  BookmarkInfo->Resume = OrigResume;
+  }
 
 
   if (*RecFileOut)
@@ -570,7 +581,6 @@ int main(int argc, const char* argv[])
   int                   ReadBytes;
   bool                  DropCurPacket;
   time_t                startTime, endTime;
-  bool                  ResumeSet = FALSE;
   int                   CurSeg = 0, i = 0, n = 0;
   dword                 j = 0;
   dword                 BlocksOnePercent, Percent = 0, BlocksSincePercent = 0;
@@ -581,13 +591,13 @@ int main(int argc, const char* argv[])
     setvbuf(stdout, NULL, _IOLBF, 4096);  // zeilenweises Buffering, auch bei Ausgabe in Datei
   #endif
   printf("\nRecStrip for Topfield PVR " VERSION "\n");
-  printf("(C) 2016 Christian Wuensch\n");
+  printf("(C) 2017 Christian Wuensch\n");
   printf("- based on Naludump 0.1.1 by Udo Richter -\n");
   printf("- based on MovieCutter 3.6 -\n");
   printf("- portions of Mpeg2cleaner (S. Poeschel), RebuildNav (Firebird) & TFTool (jkIT)\n");
 
   // Eingabe-Parameter prüfen
-  while ((argc > 1) && (argv && argv[1] && argv[1][0] == '-'))
+  while ((argc > 1) && (argv && argv[1] && argv[1][0] == '-' && argv[1][2] == '\0'))
   {
     switch (argv[1][1])
     {
@@ -1040,7 +1050,8 @@ int main(int argc, const char* argv[])
           {
             if (CurrentPosition - PositionOffset > 0)
               printf("TS check: TS continuity offset %d (pos=%lld)\n", (((tTSPacket*) &Buffer[4])->ContinuityCount - ContinuityCount) % 16, CurrentPosition);
-            // SetFirstPacketAfterBreak();
+            SetFirstPacketAfterBreak();
+            ContinuityCount = ((tTSPacket*) &Buffer[4])->ContinuityCount;
           }
         }
 

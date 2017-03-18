@@ -33,8 +33,8 @@ typedef struct
   byte Reserved11:2;
   byte SectionNr;
   byte LastSection;
-  word OrigNetworkID1:8;
-  word OrigNetworkID2:8;
+  byte OrigNetworkID1;
+  byte OrigNetworkID2;
   byte Reserved;
 } TTSSDT;
 
@@ -48,7 +48,7 @@ typedef struct
   byte DescriptorLen1:4;
   byte FreeCAMode:1;
   byte RunningStatus:3;
-  byte DescriptorLen2:8;
+  byte DescriptorLen2;
 } TTSService;
 
 typedef struct

@@ -282,11 +282,11 @@ int ProcessTSPacket(unsigned char *Packet, long long FilePosition)
   if (LastContinuityInput >= 0)
   {
     int NewContinuityInput = TSPacket->Payload_Exists ? (LastContinuityInput + 1) % 16 : LastContinuityInput;
-    ContinuityOffset = (NewContinuityInput - ContinuityInput) % 16;
-    if (ContinuityOffset > 0)
+    ContinuityOffset = (ContinuityInput - NewContinuityInput) % 16;
+    if (ContinuityOffset != 0)
     {
       printf("cNaluDumper: TS continuity offset %d (pos=%lld)\n", ContinuityOffset, FilePosition);
-//      SetFirstPacketAfterBreak();
+      SetFirstPacketAfterBreak();
     }
 //    if (Offset > ContinuityOffset)
 //      ContinuityOffset = Offset; // max if packets get dropped, otherwise always the current one.

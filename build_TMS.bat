@@ -15,6 +15,8 @@ set BuildState=%errorlevel%
 del *.d
 del *.o
 
+copy /y RecStrip_VS\Release\RecStrip.exe RecStrip_Win32.exe
+
 if not "%1"=="/quiet" (
   if not "%2"=="/quiet" (
     pause

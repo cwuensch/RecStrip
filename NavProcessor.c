@@ -623,7 +623,7 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
               {
                 navHD.Timems += TimeOffset;
                 TimeOffset = navHD.Timems - LastTimems;
-                if(labs(TimeOffset) < 1000) TimeOffset = 0;
+//                if(labs(TimeOffset) < 1000) TimeOffset = 0;
                 navHD.Timems -= TimeOffset;
                 FirstRecordAfterCut = FALSE;
               }
@@ -807,7 +807,7 @@ static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
       {
         navSD.Timems += TimeOffset;
         TimeOffset = navSD.Timems - LastTimems;
-        if(labs(TimeOffset) < 1000) TimeOffset = 0;
+//        if(labs(TimeOffset) < 1000) TimeOffset = 0;
         navSD.Timems -= TimeOffset;
         FirstRecordAfterCut = FALSE;
       }
@@ -1095,7 +1095,7 @@ bool CloseNavFileOut(void)
     if (pOutNextTimeStamp)
       *pOutNextTimeStamp = navSD.Timems;
     if(!WaitForIFrame && (!WaitForPFrame || navSD.FrameType<=2))
-      if (fNavOut && !fwrite(&navSD, sizeof(tnavSD), 1, fNavOut));
+      if(fNavOut) fwrite(&navSD, sizeof(tnavSD), 1, fNavOut);
   }
 
   if (fNavOut)

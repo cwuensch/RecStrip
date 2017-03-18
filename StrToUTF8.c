@@ -219,7 +219,7 @@ void UTF32ToUTF8(dword UTF32Character, byte *UTF8Character, byte *BytesPerChar)
 }
 
 
-bool StrToUTF8(const char *SourceString, char *DestString, byte DefaultISO8859CharSet)
+bool StrToUTF8(const unsigned char *SourceString, unsigned char *DestString, byte DefaultISO8859CharSet)
 {
   bool                  ret;
   byte                  BytesPerCharacter;
@@ -325,7 +325,7 @@ bool StrToUTF8(const char *SourceString, char *DestString, byte DefaultISO8859Ch
       else
       {
         //Seems to be an ANSI character: conversion is needed
-        if((CharSet == 0) && (*SourceString >= 0xc0)  && (*SourceString <= 0xcf))
+        if((CharSet == 0) && (*SourceString >= 0xc0) && (*SourceString <= 0xcf))
         {
           //if ISO6937 is used, replace diactricital characters with their single entity counterparts
 

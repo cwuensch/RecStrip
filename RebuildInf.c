@@ -672,7 +672,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   byte                 *p;
   long long             FilePos = 0;
   int                   i, j;
-  bool                  ret = FALSE;
+  bool                  ret = TRUE;
 
   const byte            ANDMask[6] = {0xFF, 0xC0, 0x00, 0xD0, 0xFF, 0xFF};
   const byte            PMTMask[6] = {0x47, 0x40, 0x00, 0x10, 0x00, 0x02};
