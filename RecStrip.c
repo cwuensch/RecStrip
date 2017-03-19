@@ -591,13 +591,13 @@ int main(int argc, const char* argv[])
     setvbuf(stdout, NULL, _IOLBF, 4096);  // zeilenweises Buffering, auch bei Ausgabe in Datei
   #endif
   printf("\nRecStrip for Topfield PVR " VERSION "\n");
-  printf("(C) 2017 Christian Wuensch\n");
+  printf("(C) 2016/17 Christian Wuensch\n");
   printf("- based on Naludump 0.1.1 by Udo Richter -\n");
   printf("- based on MovieCutter 3.6 -\n");
   printf("- portions of Mpeg2cleaner (S. Poeschel), RebuildNav (Firebird) & TFTool (jkIT)\n");
 
   // Eingabe-Parameter prüfen
-  while ((argc > 1) && (argv && argv[1] && argv[1][0] == '-' && argv[1][2] == '\0'))
+  while ((argc > 1) && (argv && argv[1] && argv[1][0] == '-' && (argv[1][2] == '\0' || argv[1][3] == '\0')))
   {
     switch (argv[1][1])
     {
@@ -1049,8 +1049,10 @@ int main(int argc, const char* argv[])
           if (((tTSPacket*) &Buffer[4])->ContinuityCount != ContinuityCount)
           {
             if (CurrentPosition - PositionOffset > 0)
+            {
               printf("TS check: TS continuity offset %d (pos=%lld)\n", (((tTSPacket*) &Buffer[4])->ContinuityCount - ContinuityCount) % 16, CurrentPosition);
-            SetFirstPacketAfterBreak();
+              SetFirstPacketAfterBreak();
+            }
             ContinuityCount = ((tTSPacket*) &Buffer[4])->ContinuityCount;
           }
         }

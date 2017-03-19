@@ -436,9 +436,8 @@ printf("  TS: SvcName   = %s\n", RecInf->ServiceInfo.ServiceName);
 
 static bool AnalyseEIT(byte *Buffer, word ServiceID, TYPE_RecHeader_TMSS *RecInf)
 {
-  word                  SectionLength, p;
   byte                  RunningStatus;
-  word                  DescriptorLoopLen;
+  int                   SectionLength, DescriptorLoopLen, p;
   byte                  Descriptor;
   byte                  DescriptorLen;
   byte                  StartTimeUTC[5];
@@ -821,7 +820,10 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           }
           if (!EITOK)
           {
+if (((byte*)p)[-4]==0x19 && ((byte*)p)[-3]==0x17 && ((byte*)p)[-2]==0x7c && ((byte*)p)[-1]==0x2a)
+  printf("DEBUG!!! hh");
             PSBuffer_ProcessTSPacket(&EITBuffer, (tTSPacket*)p);
+
             if(EITBuffer.ValidBuffer != LastBuffer)
             {
               byte *pBuffer = (EITBuffer.ValidBuffer==1) ? EITBuffer.Buffer1 : EITBuffer.Buffer2;
