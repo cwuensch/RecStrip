@@ -483,7 +483,6 @@ SONST
 
 bool CloseOutputFiles(void)
 {
-  dword OrigResume = 0;
   TRACEENTER;
 
   if (!CloseNavFileOut())
@@ -497,11 +496,6 @@ bool CloseOutputFiles(void)
     if(NewDurationMS)
       SegmentMarker[NrSegmentMarker-1].Timems = NewDurationMS;
   }
-  if (BookmarkInfo && !ResumeSet)
-  {
-    OrigResume = BookmarkInfo->Resume;
-    BookmarkInfo->Resume = 0;
-  }
 
   if(fOut)
   {
@@ -514,8 +508,7 @@ bool CloseOutputFiles(void)
     if (/*fflush(fOut) != 0 ||*/ fclose(fOut) != 0)
     {
       printf("  ERROR: Failed closing the output file.\n");
-      if (DoCut != 2)
-        CutFileSave(CutFileOut);
+      CutFileSave(CutFileOut);
       SaveInfFile(InfFileOut, InfFileIn);
       CutProcessor_Free();
       InfProcessor_Free();
@@ -531,12 +524,6 @@ bool CloseOutputFiles(void)
 
   if (*InfFileOut && !SaveInfFile(InfFileOut, InfFileIn))
     printf("  WARNING: Cannot create inf %s.\n", InfFileOut);
-
-  if (BookmarkInfo)
-  {
-    if (ResumeSet)        BookmarkInfo->Resume = 0;
-    else if (OrigResume)  BookmarkInfo->Resume = OrigResume;
-  }
 
 
   if (*RecFileOut)
@@ -837,21 +824,31 @@ int main(int argc, const char* argv[])
       {
         int NrSegmentMarker_bak = NrSegmentMarker;
         TYPE_Bookmark_Info BookmarkInfo_bak;
-        memcpy(&BookmarkInfo_bak, BookmarkInfo, sizeof(TYPE_Bookmark_Info));
+
+        if (BookmarkInfo)
+          memcpy(&BookmarkInfo_bak, BookmarkInfo, sizeof(TYPE_Bookmark_Info));
 
         // Alle SegmentMarker und Bookmarks bis CurSeg ausgeben
         NrSegmentMarker = 2;
         SegmentMarker[0].Position = 0;
         SegmentMarker[1].Percent = 100;
         ActiveSegment = 0;
-        BookmarkInfo->NrBookmarks = j;
+        if (BookmarkInfo)
+        {
+          BookmarkInfo->NrBookmarks = j;
+          if(!ResumeSet) BookmarkInfo->Resume = 0;
+        }
 
         // aktuelle Output-Files schließen
         if (!CloseOutputFiles())
           exit(10);
 
         NrSegmentMarker = NrSegmentMarker_bak;
-        memcpy(BookmarkInfo, &BookmarkInfo_bak, sizeof(TYPE_Bookmark_Info) - sizeof(dword));  // Resume nicht zurückkopieren!
+        if (BookmarkInfo)
+        {
+          memcpy(BookmarkInfo, &BookmarkInfo_bak, sizeof(TYPE_Bookmark_Info));  // (Resume wird auch zurückkopiert)
+          if(ResumeSet) BookmarkInfo->Resume = 0;
+        }
       }
 
       // SEGMENT ÜBERSPRINGEN (wenn nicht-markiert)
@@ -1083,8 +1080,7 @@ int main(int argc, const char* argv[])
 
           if (!ResumeSet && CurPosBlocks >= BookmarkInfo->Resume)
           {
-            if (BookmarkInfo->Resume >= CalcBlockSize(PositionOffset))
-              BookmarkInfo->Resume -= CalcBlockSize(PositionOffset);
+            BookmarkInfo->Resume -= min(CalcBlockSize(PositionOffset), BookmarkInfo->Resume);
             ResumeSet = TRUE;
           }
         }
