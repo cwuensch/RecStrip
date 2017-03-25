@@ -340,7 +340,7 @@ if (RecHeaderInfo->Reserved != 0)
   if (Result)
   {
     OrigStartTime = RecHeaderInfo->StartTime;
-    InfDuration = 60*RecHeaderInfo->DurationMin + RecHeaderInfo->DurationSec;
+//    InfDuration = 60*RecHeaderInfo->DurationMin + RecHeaderInfo->DurationSec;
   }
 
   TRACEEXIT;

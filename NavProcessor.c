@@ -266,6 +266,9 @@ void NavProcessor_Init(void)
   NextPictureHeaderOffset = 0;
   FirstRun = TRUE;
 
+  memset(&navHD, 0, sizeof(tnavHD));
+  memset(&navSD, 0, sizeof(tnavSD));
+
   TRACEEXIT;
 }
 
@@ -529,7 +532,7 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
             #endif
 
 
-            if((SEI != 0) && (SPS != 0) && (PPSCount != 0))
+            if((SEI != 0) /*&& (SPS != 0) && (PPSCount != 0)*/)
             {
               if (WaitForIFrame) {FrameOffset = 0; FrameCtr = 0;}
 
@@ -623,7 +626,7 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
               {
                 navHD.Timems += TimeOffset;
                 TimeOffset = navHD.Timems - LastTimems;
-//                if(labs(TimeOffset) < 1000) TimeOffset = 0;
+                if(labs(TimeOffset) < 1000) TimeOffset = 0;
                 navHD.Timems -= TimeOffset;
                 FirstRecordAfterCut = FALSE;
               }
@@ -641,6 +644,8 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
                 pOutNextTimeStamp = NULL;
               }
 
+              if((SEI != 0) && (SPS != 0) && (PPSCount != 0))
+              {
 {
   long long RefPictureHeaderOffset = dbg_NavPictureHeaderOffset - dbg_SEIPositionOffset;
   if (fNavIn && (long long)SEI != RefPictureHeaderOffset && dbg_CurrentPosition/PACKETSIZE != dbg_SEIFound)
@@ -648,34 +653,35 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
 //printf("%lld: fwrite: SEI=%lld, nav=%lld\n", dbg_CurrentPosition/PACKETSIZE, SEI, NavPictureHeaderOffset);
 }
 
-              if (WaitForPFrame && navHD.FrameType <= 2)
-                WaitForPFrame = FALSE;
+                if (WaitForPFrame && navHD.FrameType <= 2)
+                  WaitForPFrame = FALSE;
 
-              if (WaitForIFrame && navHD.FrameType == 1) {
-                WaitForIFrame = FALSE;  WaitForPFrame = TRUE; }
+                if (WaitForIFrame && navHD.FrameType == 1) {
+                  WaitForIFrame = FALSE;  WaitForPFrame = TRUE; }
       
-              if (!WaitForIFrame && (!WaitForPFrame || navHD.FrameType<=2))
-              {
-                // sicherstellen, dass Timems monoton ansteigt
-                if( ((int)(navHD.Timems - LastTimems)) >= 0)  LastTimems = navHD.Timems;
-                else  navHD.Timems = LastTimems;
-
-                // Write the nav record
-                if (fNavOut && !fwrite(&navHD, sizeof(tnavHD), 1, fNavOut))
+                if (!WaitForIFrame && (!WaitForPFrame || navHD.FrameType<=2))
                 {
-                  printf("ProcessNavFile(): Error writing to nav file!\n");
-                  fclose(fNavOut); fNavOut = NULL;
-                }
-              }
+                  // sicherstellen, dass Timems monoton ansteigt
+                  if( ((int)(navHD.Timems - LastTimems)) >= 0)  LastTimems = navHD.Timems;
+                  else  navHD.Timems = LastTimems;
 
-              NavPtr++;
-              SEI = 0;
-              AUD = 0;
+                  // Write the nav record
+                  if (fNavOut && !fwrite(&navHD, sizeof(tnavHD), 1, fNavOut))
+                  {
+                    printf("ProcessNavFile(): Error writing to nav file!\n");
+                    fclose(fNavOut); fNavOut = NULL;
+                  }
+                }
+
+                NavPtr++;
+                SEI = 0;
+                AUD = 0;
 //memset(&navHD, 0, sizeof(tnavHD));
 //navHD.SEIOffsetHigh = 0; navHD.SEIOffsetLow = 0;
-              navHD.Timems = 0;
-              navHD.FrameIndex = 0;
-              GetPrimPicType = TRUE;
+                navHD.Timems = 0;
+                navHD.FrameIndex = 0;
+                GetPrimPicType = TRUE;
+              }
             }
             break;
           }
@@ -723,7 +729,6 @@ static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
     PayloadStart = Packet->Data[0] + 1;
   else
     PayloadStart = 0;
-
 
   // PROCESS THE PAYLOAD
 
@@ -782,7 +787,7 @@ static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
       else if (Packet->Data[Ptr] == 0x00)
       {
         // Picture Header
-        if (CurrentSeqHeader > 0)
+//        if (CurrentSeqHeader > 0)
         {
           PictHeader = HeaderFound;
           Ptr++;  // nächstes Byte für FrameType
@@ -807,7 +812,7 @@ static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
       {
         navSD.Timems += TimeOffset;
         TimeOffset = navSD.Timems - LastTimems;
-//        if(labs(TimeOffset) < 1000) TimeOffset = 0;
+        if(labs(TimeOffset) < 1000) TimeOffset = 0;
         navSD.Timems -= TimeOffset;
         FirstRecordAfterCut = FALSE;
       }
@@ -1037,8 +1042,6 @@ void QuickNavProcess(const long long CurrentPosition, const long long PositionOf
 bool LoadNavFileIn(const char* AbsInNav)
 {
   TRACEENTER;
-  memset(&navHD, 0, sizeof(tnavHD));
-  memset(&navSD, 0, sizeof(tnavSD));
 
   fNavIn = fopen(AbsInNav, "rb");
   if (fNavIn)
@@ -1087,15 +1090,31 @@ bool CloseNavFileOut(void)
   bool                  ret = TRUE;
 
   TRACEENTER;
-  if (fNavOut && !isHDVideo && (NavPtr > 0))
+  if (fNavOut && !isHDVideo)
   {
-    navSD.Timems -= TimeOffset;
-    if( ((int)(navSD.Timems - LastTimems)) >= 0)  LastTimems = navSD.Timems;
-    else  navSD.Timems = LastTimems;
-    if (pOutNextTimeStamp)
-      *pOutNextTimeStamp = navSD.Timems;
-    if(!WaitForIFrame && (!WaitForPFrame || navSD.FrameType<=2))
-      if(fNavOut) fwrite(&navSD, sizeof(tnavSD), 1, fNavOut);
+    if (NavPtr > 0)
+    {
+      navSD.Timems -= TimeOffset;
+      if( ((int)(navSD.Timems - LastTimems)) >= 0)  LastTimems = navSD.Timems;
+      else  navSD.Timems = LastTimems;
+      if (pOutNextTimeStamp)
+        *pOutNextTimeStamp = navSD.Timems;
+      if(!WaitForIFrame && (!WaitForPFrame || navSD.FrameType<=2))
+        if(fNavOut) fwrite(&navSD, sizeof(tnavSD), 1, fNavOut);
+    }
+  }
+  else if (fNavOut && isHDVideo)
+  {
+    if (SEI)
+    {
+      navHD.Timems -= TimeOffset;
+      if( ((int)(navHD.Timems - LastTimems)) >= 0)  LastTimems = navHD.Timems;
+      else  navHD.Timems = LastTimems;
+      if (pOutNextTimeStamp)
+        *pOutNextTimeStamp = navHD.Timems;
+      if(!WaitForIFrame && (!WaitForPFrame || navSD.FrameType<=2))
+        if (fNavOut) fwrite(&navHD, sizeof(tnavHD), 1, fNavOut);
+    }
   }
 
   if (fNavOut)

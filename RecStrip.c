@@ -749,8 +749,8 @@ int main(int argc, const char* argv[])
     exit(5);
   }
 
-  if (InfDuration)
-    BlocksOneSecond = RecFileBlocks / InfDuration;
+  InfDuration = 60*RecHeaderInfo->DurationMin + RecHeaderInfo->DurationSec;
+  BlocksOneSecond = RecFileBlocks / InfDuration;
 
   if (AlreadyStripped)
   {
@@ -797,7 +797,10 @@ int main(int argc, const char* argv[])
   printf("\nCut file: %s\n", CutFileIn);
 
   if (!CutFileLoad(CutFileIn))
+  {
     CutFileIn[0] = '\0';
+    DoCut = 0;
+  }
   printf("\n");
 
 
@@ -855,9 +858,9 @@ int main(int argc, const char* argv[])
       while ((CurSeg < NrSegmentMarker-1) && (CurrentPosition >= SegmentMarker[CurSeg].Position) && !SegmentMarker[CurSeg].Selected)
       {
         if (OutCutVersion >= 4)
-          printf("[Segment %d]  -%12llu %12lld-%-12lld %s\n", n++, CurrentPosition, SegmentMarker[CurSeg].Position+PositionOffset, SegmentMarker[CurSeg+1].Position, SegmentMarker[CurSeg].pCaption);
+          printf("[Segment %d]  -%12llu %12lld-%-12lld %s\n", ++n, CurrentPosition, SegmentMarker[CurSeg].Position+PositionOffset, SegmentMarker[CurSeg+1].Position, SegmentMarker[CurSeg].pCaption);
         else
-          printf("[Segment %d]  -%12llu %10u-%-10u %s\n",     n++, CurrentPosition, CalcBlockSize(SegmentMarker[CurSeg].Position+PositionOffset), CalcBlockSize(SegmentMarker[CurSeg+1].Position), SegmentMarker[CurSeg].pCaption);
+          printf("[Segment %d]  -%12llu %10u-%-10u %s\n",     ++n, CurrentPosition, CalcBlockSize(SegmentMarker[CurSeg].Position+PositionOffset), CalcBlockSize(SegmentMarker[CurSeg+1].Position), SegmentMarker[CurSeg].pCaption);
         CutTimeOffset += SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems;
         DeleteSegmentMarker(CurSeg, TRUE);
 
@@ -904,9 +907,9 @@ int main(int argc, const char* argv[])
       if (CurSeg < NrSegmentMarker-1)
       {
         if (OutCutVersion >= 4)
-          printf("[Segment %d]  *%12llu %12lld-%-12lld %s\n", n++, CurrentPosition, SegmentMarker[CurSeg].Position, SegmentMarker[CurSeg+1].Position, SegmentMarker[CurSeg].pCaption);
+          printf("[Segment %d]  *%12llu %12lld-%-12lld %s\n", ++n, CurrentPosition, SegmentMarker[CurSeg].Position, SegmentMarker[CurSeg+1].Position, SegmentMarker[CurSeg].pCaption);
         else
-          printf("[Segment %d]  *%12llu %10u-%-10u %s\n",     n++, CurrentPosition, CalcBlockSize(SegmentMarker[CurSeg].Position), CalcBlockSize(SegmentMarker[CurSeg+1].Position), SegmentMarker[CurSeg].pCaption);
+          printf("[Segment %d]  *%12llu %10u-%-10u %s\n",     ++n, CurrentPosition, CalcBlockSize(SegmentMarker[CurSeg].Position), CalcBlockSize(SegmentMarker[CurSeg+1].Position), SegmentMarker[CurSeg].pCaption);
         SegmentMarker[CurSeg].Selected = FALSE;
         SegmentMarker[CurSeg].Percent = 0;
 
