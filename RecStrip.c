@@ -851,7 +851,7 @@ int main(int argc, const char* argv[])
           exit(10);
 
         NrSegmentMarker = NrSegmentMarker_bak;
-        memcpy(BookmarkInfo, &BookmarkInfo_bak, sizeof(TYPE_Bookmark_Info));
+        memcpy(BookmarkInfo, &BookmarkInfo_bak, sizeof(TYPE_Bookmark_Info) - sizeof(dword));  // Resume nicht zurückkopieren!
       }
 
       // SEGMENT ÜBERSPRINGEN (wenn nicht-markiert)
@@ -1083,7 +1083,8 @@ int main(int argc, const char* argv[])
 
           if (!ResumeSet && CurPosBlocks >= BookmarkInfo->Resume)
           {
-            BookmarkInfo->Resume -= CalcBlockSize(PositionOffset);
+            if (BookmarkInfo->Resume >= CalcBlockSize(PositionOffset))
+              BookmarkInfo->Resume -= CalcBlockSize(PositionOffset);
             ResumeSet = TRUE;
           }
         }
