@@ -275,6 +275,7 @@ void NavProcessor_Init(void)
 void SetFirstPacketAfterBreak()
 {
   FirstPacketAfterCut = TRUE;
+  CurrentSeqHeader = 0;
 //  WaitForIFrame = TRUE;
 }
 
