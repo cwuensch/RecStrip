@@ -169,6 +169,7 @@ bool InfProcessor_Init()
   {
     memset(InfBuffer, 0, max(InfSize, 32768));
     RecHeaderInfo = (TYPE_RecHeader_Info*) InfBuffer;
+    BookmarkInfo = &(((TYPE_RecHeader_TMSS*)InfBuffer)->BookmarkInfo);
     TRACEEXIT;
     return TRUE;
   }
@@ -249,6 +250,7 @@ bool LoadInfFile(char *AbsInfName)
   }
   else
   {
+    printf("  Cannot open inf file %s.\n", AbsInfName);
     if (AbsInfName) AbsInfName[0] = '\0';
     SystemType = ST_TMSS;
   }

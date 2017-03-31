@@ -536,6 +536,7 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
             if((SEI != 0) /*&& (SPS != 0) && (PPSCount != 0)*/)
             {
               if (WaitForIFrame) {FrameOffset = 0; FrameCtr = 0;}
+//              if (WaitForPFrame && NavPtr < 25) FrameCtr = 1;
 
               // MEINE VARIANTE
               if((navHD.FrameType != 1) && IFramePTS && ((int)(SEIPTS-IFramePTS) >= 0))
@@ -672,9 +673,9 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
                     printf("ProcessNavFile(): Error writing to nav file!\n");
                     fclose(fNavOut); fNavOut = NULL;
                   }
+                  NavPtr++;
                 }
 
-                NavPtr++;
                 SEI = 0;
                 AUD = 0;
 //memset(&navHD, 0, sizeof(tnavHD));
@@ -866,6 +867,7 @@ static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
       // NEW NAV RECORD
       FrameType = (Packet->Data[Ptr] >> 3) & 0x03;
       if (WaitForIFrame) {FrameOffset = 0; FrameCtr = 0;}
+//      if (WaitForPFrame && NavPtr < 25) FrameCtr = 1;
 
       if(FrameType == 2) FrameOffset = 0;  // P-Frame
 

@@ -21,6 +21,7 @@ typedef struct
 
 
 extern int              OutCutVersion;
+extern bool             WriteCutInf;
 
 void GetCutNameFromRec(const char *RecFileName, char *const OutCutFileName);
 bool CutProcessor_Init(void);

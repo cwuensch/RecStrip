@@ -474,7 +474,7 @@ static bool AnalyseEIT(byte *Buffer, word ServiceID, TYPE_RecHeader_TMSS *RecInf
             byte        NameLen, TextLen;
             time_t      StartTimeUnix;
 
-//            RecInf->EventInfo.ServiceID = ServiceID;
+            RecInf->EventInfo.ServiceID = ServiceID;
             RecInf->EventInfo.EventID = EventID;
             RecInf->EventInfo.RunningStatus = RunningStatus;
             RecInf->EventInfo.StartTime = (StartTimeUTC[0] << 24) | (StartTimeUTC[1] << 16) | (BCD2BIN(StartTimeUTC[2]) << 8) | BCD2BIN(StartTimeUTC[3]);

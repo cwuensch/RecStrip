@@ -406,20 +406,17 @@ SONST
   }
   else
   {
-    if (RebuildInf)
+    if (RebuildInf || !*InfFileIn)
     {
+      RebuildInf = TRUE;
+      if(!*InfFileIn) WriteCutInf = TRUE;
       InfFileIn[0] = '\0';
       snprintf(InfFileOld, sizeof(InfFileOld), "%s.inf", RecFileIn);
       snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf_new", RecFileIn);
     }
-    else if (*InfFileIn)
-    {
-      InfFileOut[0] = '\0';
-    }
     else
     {
-      RebuildInf = TRUE;
-      snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf", RecFileIn);
+      InfFileOut[0] = '\0';
     }
   }
   if (*InfFileOut)
@@ -448,20 +445,15 @@ SONST
   }
   else
   {
-    if (*NavFileIn)
+    if (RebuildNav || !*NavFileIn)
     {
-      if (RebuildNav)
-      {
-        snprintf(NavFileOld, sizeof(NavFileOld), "%s.nav", RecFileIn);
-        snprintf(NavFileOut, sizeof(NavFileOut), "%s.nav_new", RecFileIn);
-      }
-      else
-        NavFileOut[0] = '\0';
+      RebuildNav = TRUE;
+      snprintf(NavFileOld, sizeof(NavFileOld), "%s.nav", RecFileIn);
+      snprintf(NavFileOut, sizeof(NavFileOut), "%s.nav_new", RecFileIn);
     }
     else
     {
-      RebuildNav = TRUE;
-      snprintf(NavFileOut, sizeof(NavFileOut), "%s.nav", RecFileIn);
+      NavFileOut[0] = '\0';
     }
   }
 
@@ -474,7 +466,8 @@ SONST
     GetCutNameFromRec(RecFileOut, CutFileOut);
     printf("Cut output: %s\n", CutFileOut);
   }
-  else CutFileOut[0] = '\0';
+  else
+    CutFileOut[0] = '\0';
 
   printf("\n");
   TRACEEXIT;
@@ -519,7 +512,7 @@ bool CloseOutputFiles(void)
     fOut = NULL;
   }
 
-  if (*CutFileOut && !CutFileSave(CutFileOut))
+  if ((*CutFileOut || (*InfFileOut && WriteCutInf)) && !CutFileSave(CutFileOut))
     printf("  WARNING: Cannot create cut %s.\n", CutFileOut);
 
   if (*InfFileOut && !SaveInfFile(InfFileOut, InfFileIn))
@@ -1264,7 +1257,7 @@ int main(int argc, const char* argv[])
   }
   printf("\n");
 
-  if (fOut && !CloseOutputFiles())
+  if ((fOut || (DoCut != 2)) && !CloseOutputFiles())
     exit(10);
 
   if (fIn)

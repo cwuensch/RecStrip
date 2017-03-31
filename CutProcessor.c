@@ -32,7 +32,8 @@ typedef struct
 
 // Globale Variablen
 int                     OutCutVersion = 3;
-static bool             WriteCutFile = TRUE, WriteCutInf = FALSE;
+static const bool       WriteCutFile = TRUE;
+bool                    WriteCutInf = FALSE;
 
 
 // ----------------------------------------------
@@ -499,7 +500,10 @@ bool CutFileLoad(const char *AbsCutName)
     }
   }
   else if (BookmarkInfo)
-    WriteCutInf = ((BookmarkInfo->Bookmarks[NRBOOKMARKS-2] == 0x8E0A4247) || (BookmarkInfo->Bookmarks[NRBOOKMARKS-1] == 0x8E0A4247));
+  {
+    if ((BookmarkInfo->Bookmarks[NRBOOKMARKS-2] == 0x8E0A4247) || (BookmarkInfo->Bookmarks[NRBOOKMARKS-1] == 0x8E0A4247))
+      WriteCutInf = TRUE;
+  }
 
 
   if (ret && NrSegmentMarker > 0)
@@ -599,7 +603,7 @@ bool CutFileSave(const char* AbsCutName)
 
   if (SegmentMarker)
   {
-    if (WriteCutFile && (NrSegmentMarker > 2 || SegmentMarker[0].pCaption))
+    if (WriteCutFile && AbsCutName && *AbsCutName && (NrSegmentMarker > 2 || SegmentMarker[0].pCaption))
     {
       // neues CutFile speichern
       if (!HDD_GetFileSize(RecFileOut, &RecFileSize))
