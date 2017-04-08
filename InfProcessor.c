@@ -250,7 +250,7 @@ bool LoadInfFile(char *AbsInfName)
   }
   else
   {
-    printf("  Cannot open inf file %s.\n", AbsInfName);
+    if(!RebuildInf) printf("  Cannot open inf file %s.\n", AbsInfName);
     if (AbsInfName) AbsInfName[0] = '\0';
     SystemType = ST_TMSS;
   }
