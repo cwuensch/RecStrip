@@ -83,20 +83,22 @@
 
 
 // Globale Variablen
-char                    RecFileIn[FBLIB_DIR_SIZE], RecFileOut[FBLIB_DIR_SIZE];
+char                    RecFileIn[FBLIB_DIR_SIZE], RecFileOut[FBLIB_DIR_SIZE], OutDir[FBLIB_DIR_SIZE];
 unsigned long long      RecFileSize = 0;
 SYSTEM_TYPE             SystemType = ST_UNKNOWN;
 byte                    PACKETSIZE, PACKETOFFSET, OutPacketSize = 0;
 word                    VideoPID = 0, TeletextPID = 0;
 bool                    isHDVideo = FALSE, AlreadyStripped = FALSE, HumaxSource = FALSE;
-bool                    DoStrip = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE;
-int                     DoCut = 0;
+bool                    DoStrip = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE;
+int                     DoCut = 0, DoMerge = 0;
+int                     curInputFile, NrInputFiles = 1;
 
 TYPE_Bookmark_Info     *BookmarkInfo = NULL;
 tSegmentMarker2        *SegmentMarker = NULL;       //[0]=Start of file, [x]=End of file
 int                     NrSegmentMarker = 0;
 int                     ActiveSegment = 0;
-dword                   InfDuration = 0, NewDurationMS = 0, NewStartTimeOffset = 0, CutTimeOffset = 0;
+dword                   InfDuration = 0, NewDurationMS = 0, NewStartTimeOffset = 0;
+int                     CutTimeOffset = 0;
 
 // Lokale Variablen
 static char             NavFileIn[FBLIB_DIR_SIZE], NavFileOut[FBLIB_DIR_SIZE], NavFileOld[FBLIB_DIR_SIZE], InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], InfFileOld[FBLIB_DIR_SIZE], CutFileIn[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE];
@@ -108,7 +110,7 @@ static bool             isPending = FALSE;
 
 static unsigned int     RecFileBlocks = 0;
 static long long        CurrentPosition = 0, PositionOffset = 0, NrPackets;
-static unsigned int     CurPosBlocks = 0, CurBlockBytes = 0, BlocksOneSecond = 250;
+static unsigned int     CurPosBlocks = 0, CurBlockBytes = 0, BlocksOneSecond = 250, BlocksOnePercent;
 static long long        NrDroppedFillerNALU = 0, NrDroppedZeroStuffing = 0, NrDroppedAdaptation = 0, NrDroppedNullPid = 0, NrDroppedEPGPid = 0, NrDroppedTxtPid=0, NrIgnoredPackets = 0;
 static dword            LastPCR = 0, LastTimeStamp = 0, CurTimeStep = 5000;
 static long long        PosLastPCR = 0;
@@ -165,27 +167,39 @@ static bool HDD_SetFileDateTime(char const *AbsFileName, time_t NewDateTime)
   return FALSE;
 }
 
-static void GetNextFreeCutName(const char *AbsSourceFileName, char *const OutCutFileName)
+static void GetNextFreeCutName(const char *SourceFileName, char *const OutCutFileName, const char* AbsDirectory)
 {
   char                  CheckFileName[2048];
-  size_t                NameLen, ExtStart;
+  size_t                NameLen, ExtStart, NameStart=0, DirLen=0;
   int                   i = 0;
 
   TRACEENTER;
   if(OutCutFileName) OutCutFileName[0] = '\0';
 
-  if (AbsSourceFileName && OutCutFileName)
+  if (SourceFileName && OutCutFileName)
   {
-    const char *p = strrchr(AbsSourceFileName, '.');  // ".rec" entfernen
-    NameLen = ExtStart = ((p) ? (size_t)(p - AbsSourceFileName) : strlen(AbsSourceFileName));
+    const char *p = strrchr(SourceFileName, '.');  // ".rec" entfernen
+    NameLen = ExtStart = ((p) ? (size_t)(p - SourceFileName) : strlen(SourceFileName));
 //    if((p = strstr(&SourceFileName[NameLen - 10], " (Cut-")) != NULL)
 //      NameLen = p - SourceFileName;        // wenn schon ein ' (Cut-xxx)' vorhanden ist, entfernen
-    strncpy(CheckFileName, AbsSourceFileName, NameLen);
+
+    if (AbsDirectory && *AbsDirectory)
+    {
+      const char *p = strrchr(SourceFileName, PATH_SEPARATOR);
+      DirLen = strlen(AbsDirectory) + 1;
+      if(p)
+      {
+        NameStart = (size_t)(p - SourceFileName + 1);
+        NameLen -= NameStart;
+      }
+      snprintf(CheckFileName, sizeof(CheckFileName), "%s%c", AbsDirectory, PATH_SEPARATOR);
+    }
+    strncpy(&CheckFileName[DirLen], &SourceFileName[NameStart], min(NameLen, sizeof(CheckFileName)-DirLen));
 
     do
     {
       i++;
-      snprintf(&CheckFileName[NameLen], sizeof(CheckFileName) - NameLen, " (Cut-%d)%s", i, &AbsSourceFileName[ExtStart]);
+      snprintf(&CheckFileName[DirLen+NameLen], sizeof(CheckFileName)-DirLen-NameLen, " (Cut-%d)%s", i, &SourceFileName[ExtStart]);
     } while (HDD_FileExist(CheckFileName));
 
     strcpy(OutCutFileName, CheckFileName);
@@ -198,12 +212,18 @@ static void GetNextFreeCutName(const char *AbsSourceFileName, char *const OutCut
 // *****  Analyse von REC-Files  *****
 // ----------------------------------------------
 
-static inline dword CalcBlockSize(unsigned long long Size)
+static inline dword CalcBlockSize(long long Size)
 {
   // Workaround für die Division durch BLOCKSIZE (9024)
   // Primfaktorenzerlegung: 9024 = 2^6 * 3 * 47
   // max. Dateigröße: 256 GB (dürfte reichen...)
-  return (dword)(Size >> 6) / 141;
+  if (Size >= 0)
+    return (dword)(Size >> 6) / 141;
+  else
+  {
+    Size = -Size;
+    return (dword)(-((Size >> 6) / 141));
+  }
 }
 
 static int GetPacketSize(FILE *RecFile, int *OutOffset)
@@ -325,7 +345,7 @@ void DeleteSegmentMarker(int MarkerIndex, bool FreeCaption)
     for(i = MarkerIndex; i < NrSegmentMarker - 1; i++)
       memcpy(&SegmentMarker[i], &SegmentMarker[i + 1], sizeof(tSegmentMarker2));
 
-    memset(&SegmentMarker[NrSegmentMarker - 1], 0, sizeof(tSegmentMarker2));
+    memset(&SegmentMarker[NrSegmentMarker-1], 0, sizeof(tSegmentMarker2));
     NrSegmentMarker--;
 
     if(ActiveSegment >= MarkerIndex && ActiveSegment > 0) ActiveSegment--;
@@ -369,17 +389,180 @@ static void AddBookmark(dword BookmarkIndex, dword BlockNr)
 // *****  Öffnen / Schließen der Output-Files  *****
 // --------------------------------------------------
 
+static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
+{
+  bool                  ret = TRUE;
+//  byte                 *InfBuf_tmp = NULL;
+  tSegmentMarker2      *Segments_tmp = NULL;
+
+  // dirty hack: aktuelle Pointer für InfBuffer und SegmentMarker speichern
+  byte                 *InfBuffer_bak = InfBuffer;
+  TYPE_RecHeader_Info  *RecHeaderInfo_bak = RecHeaderInfo;
+  TYPE_Bookmark_Info   *BookmarkInfo_bak = BookmarkInfo;
+  dword                 OrigStartTime_bak = OrigStartTime;
+
+  tSegmentMarker2      *SegmentMarker_bak = SegmentMarker;
+  int                   NrSegmentMarker_bak = NrSegmentMarker;
+
+  TRACEENTER;
+
+  if (!FirstTime)
+  {
+//    InfBuf_tmp = (byte*) malloc(32768);
+    Segments_tmp = (tSegmentMarker2*) malloc(NRSEGMENTMARKER * sizeof(tSegmentMarker2));
+
+    if (!Segments_tmp || !InfProcessor_Init())
+    {
+      InfBuffer = InfBuffer_bak;
+//      free(InfBuf_tmp); InfBuf_tmp = NULL;
+      free(Segments_tmp); Segments_tmp = NULL;
+      printf("  ERROR: Not enough memory!\n");
+      TRACEEXIT;
+      return (FALSE);
+    }
+
+    // dirty hack: InfBuffer und SegmentMarker auf temporäre Buffer umbiegen
+/*    InfBuffer = InfBuf_tmp;
+    memset(InfBuffer, 0, 32768);
+    RecHeaderInfo = (TYPE_RecHeader_Info*) InfBuffer;
+    BookmarkInfo = &(((TYPE_RecHeader_TMSS*)InfBuffer)->BookmarkInfo); */
+    SegmentMarker = Segments_tmp;
+    NrSegmentMarker = 0;
+  }
+
+  printf("\nInput file: %s\n", RecFileIn);
+
+  if (HDD_GetFileSize(RecFileIn, &RecFileSize))
+    fIn = fopen(RecFileIn, "rb");
+  if (fIn)
+  {
+    int FileOffset;
+    setvbuf(fIn, NULL, _IOFBF, BUFSIZE);
+    RecFileBlocks = CalcBlockSize(RecFileSize);
+    BlocksOnePercent = (RecFileBlocks * NrInputFiles) / 100;
+
+    if (GetPacketSize(fIn, &FileOffset))
+    {
+      CurrentPosition = FileOffset;
+      PositionOffset += FileOffset;
+      if (!OutPacketSize || (FirstTime && DoMerge==1))
+        OutPacketSize = PACKETSIZE;
+      fseeko64(fIn, CurrentPosition, SEEK_SET);
+      printf("  File size: %llu, packet size: %hhu\n", RecFileSize, PACKETSIZE);
+
+      LoadInfFromRec(RecFileIn);
+    }
+    else
+    {
+      fclose(fIn); fIn = NULL;
+      printf("  ERROR: Invalid TS packet size.\n");
+      ret = FALSE;
+    }
+  }
+  else
+  {
+    printf("  ERROR: Cannot open %s.\n", RecFileIn);
+    ret = FALSE;
+  }
+
+  if (ret)
+  {
+    // ggf. inf-File einlesen
+    snprintf(InfFileIn, sizeof(InfFileIn), "%s.inf", RecFileIn);
+    printf("\nInf file: %s\n", InfFileIn);
+    InfFileOld[0] = '\0';
+
+    if (LoadInfFile(InfFileIn, FirstTime))
+      BlocksOneSecond = RecFileBlocks / InfDuration;
+    else
+    {
+      fclose(fIn); fIn = NULL;
+      ret = FALSE;
+    }
+  }
+
+  if (ret)
+  {
+    if (AlreadyStripped)
+      printf("  INFO: File has already been stripped.\n");
+
+    // ggf. nav-File öffnen
+    snprintf(NavFileIn, sizeof(NavFileIn), "%s.nav", RecFileIn);
+    printf("\nNav file: %s\n", NavFileIn);
+    if (!LoadNavFileIn(NavFileIn))
+    {
+      printf("  WARNING: Cannot open nav file %s.\n", NavFileIn);
+      NavFileIn[0] = '\0';
+    }
+  
+    // ggf. cut-File einlesen
+    GetCutNameFromRec(RecFileIn, CutFileIn);
+    printf("\nCut file: %s\n", CutFileIn);
+    if (!CutFileLoad(CutFileIn))
+    {
+      CutFileIn[0] = '\0';
+      DoCut = 0;
+    }
+  }
+
+  if (!FirstTime)
+  {
+    int i;
+
+    // neu ermittelte Bookmarks kopieren
+    for (i = 0; i < (int)BookmarkInfo->NrBookmarks; i++)
+      BookmarkInfo_bak->Bookmarks[BookmarkInfo_bak->NrBookmarks++] = BookmarkInfo->Bookmarks[i];
+
+    // letzten SegmentMarker der ersten Aufnahme löschen (wird ersetzt durch Segment 0 der zweiten)
+    if ((NrSegmentMarker >= 2) && (NrSegmentMarker_bak > 0))
+      free(SegmentMarker_bak[--NrSegmentMarker_bak].pCaption);
+
+    // neu ermittelte SegmentMarker kopieren
+    for (i = 0; i < NrSegmentMarker; i++)
+      SegmentMarker_bak[NrSegmentMarker_bak++] = SegmentMarker[i];
+
+    // dirty hack: vorherige Pointer für InfBuffer und SegmentMarker wiederherstellen
+    InfProcessor_Free();
+    InfBuffer = InfBuffer_bak;
+    RecHeaderInfo = RecHeaderInfo_bak;
+    BookmarkInfo = BookmarkInfo_bak;
+    SegmentMarker = SegmentMarker_bak;
+    NrSegmentMarker = NrSegmentMarker_bak;
+    OrigStartTime = OrigStartTime_bak;
+
+//    free(InfBuf_tmp); InfBuf_tmp = NULL;
+    free(Segments_tmp); Segments_tmp = NULL;
+  }
+
+  TRACEEXIT;
+  return ret;
+}
+
 static bool OpenOutputFiles(void)
 {
+  unsigned long long OutFileSize = 0;
   TRACEENTER;
 
   // ggf. Output-File öffnen
   if (*RecFileOut)
   {
     printf("\nOutput rec: %s\n", RecFileOut);
-    fOut = fopen(RecFileOut, "wb");
+    if (DoMerge == 1)
+      HDD_GetFileSize(RecFileOut, &OutFileSize);
+
+    fOut = fopen(RecFileOut, ((DoMerge==1) ? "r+b" : "wb"));
     if (fOut)
+    {
       setvbuf(fOut, NULL, _IOFBF, BUFSIZE);
+      if (DoMerge == 1)
+      {
+        if (fseeko64(fOut, (OutFileSize/OutPacketSize)*OutPacketSize, SEEK_SET) != 0)  // angefangene Pakete entfernen
+        {
+          TRACEEXIT;
+          return FALSE;
+        }
+      }
+    }
     else
     {
       TRACEEXIT;
@@ -474,6 +657,29 @@ SONST
   return TRUE;
 }
 
+void CloseInputFiles(bool SetStripFlags)
+{
+  TRACEENTER;
+
+  if (fIn)
+  {
+    fclose(fIn); fIn = NULL;
+  }
+  if (*InfFileIn && SetStripFlags)
+  {
+    struct stat64 statbuf;
+    time_t OldInfTime = 0;
+    if (stat64(RecFileIn, &statbuf) == 0)
+      OldInfTime = statbuf.st_mtime;
+    SetInfStripFlags(InfFileIn, TRUE, DoStrip && !DoMerge);
+    if (OldInfTime)
+      HDD_SetFileDateTime(InfFileIn, statbuf.st_mtime);
+  }
+  CloseNavFileIn();
+  
+  TRACEEXIT;
+}
+
 bool CloseOutputFiles(void)
 {
   TRACEENTER;
@@ -481,11 +687,12 @@ bool CloseOutputFiles(void)
   if (!CloseNavFileOut())
     printf("  WARNING: Failed closing the nav file.\n");
 
-  if ((DoCut || RebuildInf) && LastTimems)
+  if ((DoCut || DoMerge || RebuildInf) && LastTimems)
     NewDurationMS = LastTimems;
-  if ((DoCut || DoStrip) && NrSegmentMarker >= 2)
+  if ((DoCut || DoStrip || DoMerge) && NrSegmentMarker >= 2)
   {
     SegmentMarker[NrSegmentMarker-1].Position = CurrentPosition - PositionOffset;
+    SegmentMarker[NrSegmentMarker-1].Timems -= CutTimeOffset;
     if(NewDurationMS)
       SegmentMarker[NrSegmentMarker-1].Timems = NewDurationMS;
   }
@@ -563,7 +770,7 @@ int main(int argc, const char* argv[])
   time_t                startTime, endTime;
   int                   CurSeg = 0, i = 0, n = 0;
   dword                 j = 0;
-  dword                 BlocksOnePercent, Percent = 0, BlocksSincePercent = 0;
+  dword                 Percent = 0, BlocksSincePercent = 0;
   bool                  ret = TRUE;
 
   TRACEENTER;
@@ -585,35 +792,51 @@ int main(int argc, const char* argv[])
       case 'i':   RebuildInf = TRUE;      break;
       case 'r':   if(!DoCut) DoCut = 1;   break;
       case 'c':   DoCut = 2;              break;
+      case 'a':   DoMerge = 1;            break;
+      case 'm':   DoMerge = 2;            break;
       case 's':   DoStrip = TRUE;         break;
       case 'e':   RemoveEPGStream = TRUE; break;
-      case 't':   RemoveTeletext = TRUE;  break;
-      case 'o':   OutPacketSize = (argv[1][2] == '2') ? 188 : 192; break;
+      case 't':   RemoveTeletext = TRUE;  
+                  ExtractTeletext = (argv[1][2] == 't'); break;
+      case 'o':   OutPacketSize   = (argv[1][2] == '2') ? 188 : 192; break;
       default:    printf("\nUnknown argument: -%c\n", argv[1][1]);
     }
     argv[1] = argv[0];
     argv++;
     argc--;
   }
-  printf("\nParameters:\nDoCut=%d, DoStrip=%s, RmEPG=%s, RmTxt=%s, RbldNav=%s, RbldInf=%s, PkSize=%hhu\n", DoCut, (DoStrip ? "yes" : "no"), (RemoveEPGStream ? "yes" : "no"), (RemoveTeletext ? "yes" : "no"), (RebuildNav ? "yes" : "no"), (RebuildInf ? "yes" : "no"), OutPacketSize);
+  printf("\nParameters:\nDoCut=%d, DoMerge=%d, DoStrip=%s, RmEPG=%s, RmTxt=%s, RbldNav=%s, RbldInf=%s, PkSize=%hhu\n", DoCut, DoMerge, (DoStrip ? "yes" : "no"), (RemoveEPGStream ? "yes" : "no"), (RemoveTeletext ? "yes" : "no"), (RebuildNav ? "yes" : "no"), (RebuildInf ? "yes" : "no"), OutPacketSize);
 
   // Eingabe-Dateinamen lesen
   if (argc > 1)
   {
     strncpy(RecFileIn, argv[1], sizeof(RecFileIn));
     RecFileIn[sizeof(RecFileIn)-1] = '\0';
+    argv[1] = argv[0];
+    argv++;
+    argc--;
   }
   else RecFileIn[0] = '\0';
-  if (DoCut == 2)
-    GetNextFreeCutName(RecFileIn, RecFileOut);
-  else if (argc > 2)
+  if (argc > 1)
   {
-    strncpy(RecFileOut, argv[2], sizeof(RecFileOut));
+    strncpy(RecFileOut, argv[1], sizeof(RecFileOut));
     RecFileOut[sizeof(RecFileOut)-1] = '\0';
+    argv[1] = argv[0];
+    argv++;
+    argc--;
   }
   else RecFileOut[0] = '\0';
+  if (DoCut == 2)
+  {
+//    const char *p = strrchr(RecFileOut, PATH_SEPARATOR);  // ggf. Dateinamen entfernen
+//    memset(OutDir, 0, sizeof(OutDir));
+//    strncpy(OutDir, RecFileOut, min((p) ? (size_t)(p - RecFileOut) : strlen(RecFileOut), sizeof(OutDir)-1));
+    strncpy(OutDir, RecFileOut, sizeof(OutDir));
+    GetNextFreeCutName(RecFileIn, RecFileOut, OutDir);
+  }
+  else OutDir[0] = '\0';
 
-  if (!*RecFileIn || ((DoCut || DoStrip || OutPacketSize) && !*RecFileOut) || ((RemoveEPGStream || RemoveTeletext) && !DoStrip))
+  if (!*RecFileIn || ((DoCut || DoStrip || DoMerge || OutPacketSize) && (!*RecFileOut || strcmp(RecFileIn, RecFileOut)==0)) || ((RemoveEPGStream || RemoveTeletext) && !DoStrip) || (DoMerge && DoCut==2) || (DoMerge==1 && OutPacketSize))
   {
     printf("\nUsage:\n------\n");
     printf(" RecStrip <RecFile>           Scan the rec file and set Crypt- und RbN-Flag in\n"
@@ -628,12 +851,19 @@ int main(int argc, const char* argv[])
            "             If no OutFile is specified, source nav/inf will be overwritten!\n\n");
     printf("  -r:        Cut the recording according to cut-file. (if OutFile specified)\n"
            "             Copies only the selected segments into the new rec.\n\n");
-    printf("  -c:        Copy the selected segments from cut-file. (OutFiles auto-named)\n"
-           "             Copies each selected segment into a single new rec.\n\n");
+    printf("  -c:        Copies each selected segment into a single new rec-file.\n"
+           "             The output files will be auto-named. OutFile is ignored.\n"
+           "             (instead of OutFile an output folder may be specified.)\n\n");
+    printf("  -a:        Append InFile to OutFile. (OutFile gets modified!)\n"
+           "             If combined with -r, only the selected segments are appended.\n"
+           "             If combined with -s, only the InFile will be stripped.\n\n");
+    printf("  -m:        Merge file2, file3, ... into a new file1. (file1 is created!)\n"
+           "             If combined with -s, all input files will be stripped.\n\n");
     printf("  -s:        Strip the recording. (if OutFile specified)\n"
-           "             Removes unneeded filler packets. May be combined with -c, -e, -t.\n\n");
+           "             Removes unneeded filler packets. May be combined with -c, -r, -a.\n\n");
     printf("  -e:        Remove also the EPG data. (only with -s)\n\n");
-    printf("  -t:        Remove also the teletext data. (only with -s)\n\n");
+    printf("  -t:        Remove also the teletext data. (only with -s)\n");
+//    printf("  -tt:       Extraxt subtitles from and remove teletext. (only with -s)\n\n");
     printf("  -o1/-o2:   Change the packet size for output-rec: \n"
            "             1: PacketSize = 192 Bytes, 2: PacketSize = 188 Bytes.\n");
     printf("\nExamples:\n---------\n");
@@ -671,82 +901,47 @@ int main(int argc, const char* argv[])
     }
   }
 
-
-  // Input-File öffnen
-  printf("\nInput file: %s\n", RecFileIn);
-  if (HDD_GetFileSize(RecFileIn, &RecFileSize))
-    fIn = fopen(RecFileIn, "rb");
-  if (fIn)
+  // Wenn Appending, dann erstmal Output als Input einlesen
+  if (DoMerge == 1)
   {
-    int FileOffset;
-    setvbuf(fIn, NULL, _IOFBF, BUFSIZE);
-    RecFileBlocks = CalcBlockSize(RecFileSize);
-    BlocksOnePercent = RecFileBlocks / 100;
-    if (GetPacketSize(fIn, &FileOffset))
+    if (!OpenInputFiles(RecFileOut, TRUE))
     {
-      CurrentPosition = FileOffset;
-      PositionOffset = FileOffset;
-      if (!OutPacketSize)
-        OutPacketSize = PACKETSIZE;
-      fseeko64(fIn, CurrentPosition, SEEK_SET);
-      printf("  File size: %llu, packet size: %hhu\n", RecFileSize, PACKETSIZE);
-
-      LoadInfFromRec(RecFileIn);
-    }
-    else
-    {
-      printf("  ERROR: Ivalid TS packet size.\n");
-      fclose(fIn); fIn = NULL;
       CutProcessor_Free();
       InfProcessor_Free();
-      free(PendingBuf); PendingBuf = NULL;      
+      free(PendingBuf); PendingBuf = NULL;
+      printf("ERROR: Cannot open output %s.\n", RecFileIn);
       TRACEEXIT;
-      exit(4);
+      exit(3);
     }
+    i = NrSegmentMarker - 1;
+    PositionOffset = -(long long)((RecFileSize/OutPacketSize)*OutPacketSize);
+    CutTimeOffset = -(int)SegmentMarker[i].Timems;
+    CloseInputFiles(FALSE);
   }
-  else
+  else if (DoMerge == 2)
   {
-    printf("  ERROR: Cannot open %s.\n", RecFileIn);
+    char Temp[FBLIB_DIR_SIZE];
+    strcpy(Temp, RecFileIn);
+    strcpy(RecFileIn, RecFileOut);
+    strcpy(RecFileOut, Temp);
+    NrInputFiles = argc;
+  }
+
+  // Input-Files öffnen
+  if (!OpenInputFiles(RecFileIn, (DoMerge != 1)))
+  {
     CutProcessor_Free();
     InfProcessor_Free();
-    free(PendingBuf); PendingBuf = NULL;      
+    free(PendingBuf); PendingBuf = NULL;
+    printf("ERROR: Cannot open input %s.\n", RecFileIn);
     TRACEEXIT;
-    exit(3);
+    exit(4);
   }
 
-  // ggf. inf-File einlesen
-  snprintf(InfFileIn, sizeof(InfFileIn), "%s.inf", RecFileIn);
-  printf("\nInf file: %s\n", InfFileIn);
-  InfFileOld[0] = '\0';
-
-  if (!LoadInfFile(InfFileIn))
-  {
-    fclose(fIn); fIn = NULL;
-    CutProcessor_Free();
-    InfProcessor_Free();
-    free(PendingBuf); PendingBuf = NULL;      
-    TRACEEXIT;
-    exit(5);
-  }
-
-  InfDuration = 60*RecHeaderInfo->DurationMin + RecHeaderInfo->DurationSec;
-  BlocksOneSecond = RecFileBlocks / InfDuration;
-
-  if (AlreadyStripped)
-  {
-    printf("  INFO: File has already been stripped.\n");
-/*    fclose(fIn); fIn = NULL;
-    CloseInfFile(NULL, NULL, FALSE);
-    CutProcessor_Free();
-    InfProcessor_Free();
-    free(PendingBuf); PendingBuf = NULL;      
-    TRACEEXIT;
-    exit(0); */
-  }
   if (VideoPID == 0)
   {
     printf("  ERROR: No video PID determined.\n");
-    fclose(fIn); fIn = NULL;
+    CloseInputFiles(FALSE);
     CutProcessor_Free();
     InfProcessor_Free();
     free(PendingBuf); PendingBuf = NULL;      
@@ -754,35 +949,7 @@ int main(int argc, const char* argv[])
     exit(6);
   }
 
-  if (HumaxSource && fOut)
-  {
-    printf("  Generate new PAT/PMT for Humax recording.\n");
-    if (fwrite(&PATPMTBuf[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut))
-      PositionOffset -= OutPacketSize;
-    if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], OutPacketSize, 1, fOut))
-      PositionOffset -= OutPacketSize;
-  }
-
-  // ggf. nav-File öffnen
-  snprintf(NavFileIn, sizeof(NavFileIn), "%s.nav", RecFileIn);
-  printf("\nNav file: %s\n", NavFileIn);
-  if (!LoadNavFileIn(NavFileIn))
-  {
-    printf("  WARNING: Cannot open nav file %s.\n", NavFileIn);
-    NavFileIn[0] = '\0';
-  }
-  
-  // ggf. cut-File einlesen
-  GetCutNameFromRec(RecFileIn, CutFileIn);
-  printf("\nCut file: %s\n", CutFileIn);
-
-  if (!CutFileLoad(CutFileIn))
-  {
-    CutFileIn[0] = '\0';
-    DoCut = 0;
-  }
   printf("\n");
-
 
   // Output-Files öffnen
   if (DoCut < 2 && !OpenOutputFiles())
@@ -796,7 +963,20 @@ int main(int argc, const char* argv[])
     TRACEEXIT;
     exit(7);
   }
-  if(!RebuildNav && *RecFileOut && *NavFileIn) SetFirstPacketAfterBreak();
+
+  // Wenn Appending, ans Ende der nav-Datei springen
+  if(DoMerge == 1) GoToEndOfNav();
+
+  if (HumaxSource && fOut && DoMerge != 1)
+  {
+    printf("  Generate new PAT/PMT for Humax recording.\n");
+    if (fwrite(&PATPMTBuf[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut))
+      PositionOffset -= OutPacketSize;
+    if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], OutPacketSize, 1, fOut))
+      PositionOffset -= OutPacketSize;
+  }
+
+  if(!RebuildNav && *RecFileOut && *NavFileIn)  SetFirstPacketAfterBreak();
 
 
   // -----------------------------------------------
@@ -805,476 +985,522 @@ int main(int argc, const char* argv[])
   printf("\n");
   time(&startTime);
   memset(Buffer, 0, sizeof(Buffer));
-  while (fIn)
+
+  for (curInputFile = 0; curInputFile < NrInputFiles; curInputFile++)
   {
-    // SCHNEIDEN
-    if (DoCut && (NrSegmentMarker > 2) && (CurSeg < NrSegmentMarker-1) && (CurrentPosition >= SegmentMarker[CurSeg].Position))
+    if (BookmarkInfo)
     {
-      // Wir sind am Sprung zu einem neuen Segment CurSeg angekommen
+      // Bookmarks kurz vor der Schnittstelle löschen
+      while ((j > 0) && (BookmarkInfo->Bookmarks[j-1] + 3*BlocksOneSecond >= CalcBlockSize(CurrentPosition-PositionOffset)))
+        j--;
 
-      // TEILE KOPIEREN: Output-Files schließen
-      if (fOut && DoCut == 2)
-      {
-        int NrSegmentMarker_bak = NrSegmentMarker;
-        TYPE_Bookmark_Info BookmarkInfo_bak;
+      // Bookmarks im weggeschnittenen Bereich (bzw. kurz nach Schnittstelle) löschen
+      while ((j < BookmarkInfo->NrBookmarks) && (BookmarkInfo->Bookmarks[j] < CurrentPosition + 3*BlocksOneSecond))
+        DeleteBookmark(j);
 
-        if (BookmarkInfo)
-          memcpy(&BookmarkInfo_bak, BookmarkInfo, sizeof(TYPE_Bookmark_Info));
-
-        // Alle SegmentMarker und Bookmarks bis CurSeg ausgeben
-        NrSegmentMarker = 2;
-        SegmentMarker[0].Position = 0;
-        SegmentMarker[1].Percent = 100;
-        ActiveSegment = 0;
-        if (BookmarkInfo)
-        {
-          BookmarkInfo->NrBookmarks = j;
-          if(!ResumeSet) BookmarkInfo->Resume = 0;
-        }
-
-        // aktuelle Output-Files schließen
-        if (!CloseOutputFiles())
-          exit(10);
-
-        NrSegmentMarker = NrSegmentMarker_bak;
-        if (BookmarkInfo)
-        {
-          memcpy(BookmarkInfo, &BookmarkInfo_bak, sizeof(TYPE_Bookmark_Info));  // (Resume wird auch zurückkopiert)
-          if(ResumeSet) BookmarkInfo->Resume = 0;
-        }
-      }
-
-      // SEGMENT ÜBERSPRINGEN (wenn nicht-markiert)
-      while ((CurSeg < NrSegmentMarker-1) && (CurrentPosition >= SegmentMarker[CurSeg].Position) && !SegmentMarker[CurSeg].Selected)
-      {
-        if (OutCutVersion >= 4)
-          printf("[Segment %d]  -%12llu %12lld-%-12lld %s\n", ++n, CurrentPosition, SegmentMarker[CurSeg].Position+PositionOffset, SegmentMarker[CurSeg+1].Position, SegmentMarker[CurSeg].pCaption);
-        else
-          printf("[Segment %d]  -%12llu %10u-%-10u %s\n",     ++n, CurrentPosition, CalcBlockSize(SegmentMarker[CurSeg].Position+PositionOffset), CalcBlockSize(SegmentMarker[CurSeg+1].Position), SegmentMarker[CurSeg].pCaption);
-        CutTimeOffset += SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems;
-        DeleteSegmentMarker(CurSeg, TRUE);
-
-        if (CurSeg < NrSegmentMarker-1)
-        {
-          long long SkippedBytes = (((SegmentMarker[CurSeg].Position) /* / PACKETSIZE) * PACKETSIZE */) ) - CurrentPosition;
-          fseeko64(fIn, ((SegmentMarker[CurSeg].Position) /* / PACKETSIZE) * PACKETSIZE */), SEEK_SET);
-          SetFirstPacketAfterBreak();
-
-          // Position neu berechnen
-          PositionOffset += SkippedBytes;
-          CurrentPosition += SkippedBytes;
-          CurPosBlocks = CalcBlockSize(CurrentPosition);
-          Percent = (100*CurPosBlocks / RecFileBlocks);
-          CurBlockBytes = 0;
-          BlocksSincePercent = 0;
-
-          if (BookmarkInfo)
-          {
-            // Bookmarks kurz vor der Schnittstelle löschen
-            while ((j > 0) && (BookmarkInfo->Bookmarks[j-1] + 3*BlocksOneSecond >= CalcBlockSize(CurrentPosition-SkippedBytes)))
-              j--;
-
-            // Bookmarks im weggeschnittenen Bereich (bzw. kurz nach Schnittstelle) löschen
-            while ((j < BookmarkInfo->NrBookmarks) && (BookmarkInfo->Bookmarks[j] < CurPosBlocks + 3*BlocksOneSecond))
-              DeleteBookmark(j);
-
-            // neues Bookmark an Schnittstelle setzen
-            if (DoCut == 1)
-              if ((CurrentPosition-PositionOffset > 0) && (CurPosBlocks + 3*BlocksOneSecond < RecFileBlocks))
-                AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset));
-          }
-        }
-        else
-        {
-          // Bookmarks im verworfenen Nachlauf verwerfen
-          while (BookmarkInfo && (j < BookmarkInfo->NrBookmarks))
-            DeleteBookmark(j);
-          break;
-        }
-      }
-
-      // Wir sind am nächsten (zu erhaltenden) SegmentMarker angekommen
-      if (CurSeg < NrSegmentMarker-1)
-      {
-        if (OutCutVersion >= 4)
-          printf("[Segment %d]  *%12llu %12lld-%-12lld %s\n", ++n, CurrentPosition, SegmentMarker[CurSeg].Position, SegmentMarker[CurSeg+1].Position, SegmentMarker[CurSeg].pCaption);
-        else
-          printf("[Segment %d]  *%12llu %10u-%-10u %s\n",     ++n, CurrentPosition, CalcBlockSize(SegmentMarker[CurSeg].Position), CalcBlockSize(SegmentMarker[CurSeg+1].Position), SegmentMarker[CurSeg].pCaption);
-        SegmentMarker[CurSeg].Selected = FALSE;
-        SegmentMarker[CurSeg].Percent = 0;
-
-        if (DoCut == 1)
-        {
-          // SCHNEIDEN: Zeit neu berechnen
-          if (NewStartTimeOffset == 0)
-            NewStartTimeOffset = max(SegmentMarker[CurSeg].Timems, 1);
-          NewDurationMS += (SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems);
-        }
-        else if (DoCut == 2)
-        {
-          // TEILE KOPIEREN
-          // bisher ausgegebene SegmentMarker / Bookmarks löschen
-          while (CurSeg > 0)
-          {
-            DeleteSegmentMarker(--CurSeg, TRUE);
-            i--;
-          }
-          while (BookmarkInfo && (j > 0))
-            DeleteBookmark(--j);
-
-          // neue Output-Files öffnen
-          GetNextFreeCutName(RecFileIn, RecFileOut);
-          if (!OpenOutputFiles())
-          {
-            fclose(fIn); fIn = NULL;
-            CloseNavFileIn();
-            CutProcessor_Free();
-            InfProcessor_Free();
-            free(PendingBuf); PendingBuf = NULL;      
-            printf("ERROR: Cannot create %s.\n", RecFileOut);
-            TRACEEXIT;
-            exit(7);
-          }
-          NavProcessor_Init();
-          if(!RebuildNav && *RecFileOut && *NavFileIn) SetFirstPacketAfterBreak();
-          if(DoStrip) NALUDump_Init();
-          LastTimems = 0;
-          LastPCR = 0;
-          LastTimeStamp = 0;
-
-          // Caption in inf schreiben
-          SetInfEventText(SegmentMarker[CurSeg].pCaption);
-
-          // Positionen anpassen
-          PositionOffset = CurrentPosition;
-          CutTimeOffset = SegmentMarker[CurSeg].Timems;
-          NewStartTimeOffset = SegmentMarker[CurSeg].Timems;
-          NewDurationMS = (SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems);
-        }
-      }
-
-      CurSeg++;
-      if (CurSeg >= NrSegmentMarker)
-        break;
+      // neues Bookmark an Schnittstelle setzen
+      if (DoCut == 1)
+        if ((CurrentPosition-PositionOffset > 0) && (CurPosBlocks + 3*BlocksOneSecond < RecFileBlocks))
+          AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset));
     }
 
-
-    // PACKET EINLESEN
-    ReadBytes = fread(&Buffer[4-PACKETOFFSET], 1, PACKETSIZE, fIn);
-    if (ReadBytes == PACKETSIZE)
+    while (fIn)
     {
-      if (Buffer[4] == 'G' && ((tTSPacket*) &Buffer[4])->Scrambling_Ctrl <= 0x01)
+      // SCHNEIDEN
+      if (DoCut && (NrSegmentMarker > 2) && (CurSeg < NrSegmentMarker-1) && (CurrentPosition >= SegmentMarker[CurSeg].Position))
       {
-        int CurPID = TsGetPID((tTSPacket*) &Buffer[4]);
-        DropCurPacket = FALSE;
+        // Wir sind am Sprung zu einem neuen Segment CurSeg angekommen
 
-        // STRIPPEN
-        if (DoStrip /*|| RemoveEPGStream || RemoveTeletext*/)
+        // TEILE KOPIEREN: Output-Files schließen
+        if (fOut && DoCut == 2)
         {
-          if (CurPID == 0x1FFF)
+          int NrSegmentMarker_bak = NrSegmentMarker;
+          tSegmentMarker2 LastSegmentMarker_bak = SegmentMarker[1];
+          TYPE_Bookmark_Info BookmarkInfo_bak;
+
+          if (BookmarkInfo)
+            memcpy(&BookmarkInfo_bak, BookmarkInfo, sizeof(TYPE_Bookmark_Info));
+
+          // SegmentMarker auf Anfang und Ende setzen und Bookmarks bis CurSeg ausgeben
+          NrSegmentMarker = 2;
+          SegmentMarker[0].Position = 0;
+          SegmentMarker[1].Percent = 100;
+          SegmentMarker[1].Selected = FALSE;
+          ActiveSegment = 0;
+          if (BookmarkInfo)
           {
-            NrDroppedNullPid++;
-            DropCurPacket = TRUE;
+            BookmarkInfo->NrBookmarks = j;
+            if(!ResumeSet) BookmarkInfo->Resume = 0;
           }
-          else if (RemoveEPGStream && CurPID == 0x12)
+
+          // aktuelle Output-Files schließen
+          if (!CloseOutputFiles())
+            exit(10);
+
+          NrSegmentMarker = NrSegmentMarker_bak;
+          SegmentMarker[1] = LastSegmentMarker_bak;
+          if (BookmarkInfo)
           {
-            NrDroppedEPGPid++;
-            DropCurPacket = TRUE;
+            memcpy(BookmarkInfo, &BookmarkInfo_bak, sizeof(TYPE_Bookmark_Info));  // (Resume wird auch zurückkopiert)
+            if(ResumeSet) BookmarkInfo->Resume = 0;
           }
-          else if (RemoveTeletext && CurPID == TeletextPID)
+        }
+
+        // SEGMENT ÜBERSPRINGEN (wenn nicht-markiert)
+        while ((CurSeg < NrSegmentMarker-1) && (CurrentPosition >= SegmentMarker[CurSeg].Position) && !SegmentMarker[CurSeg].Selected)
+        {
+          if (OutCutVersion >= 4)
+            printf("[Segment %d]  -%12llu %12lld-%-12lld %s\n", ++n, CurrentPosition, SegmentMarker[CurSeg].Position, SegmentMarker[CurSeg+1].Position, SegmentMarker[CurSeg].pCaption);
+          else
+            printf("[Segment %d]  -%12llu %10u-%-10u %s\n",     ++n, CurrentPosition, CalcBlockSize(SegmentMarker[CurSeg].Position), CalcBlockSize(SegmentMarker[CurSeg+1].Position), SegmentMarker[CurSeg].pCaption);
+          CutTimeOffset += SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems;
+          DeleteSegmentMarker(CurSeg, TRUE);
+
+          if (CurSeg < NrSegmentMarker-1)
           {
-            NrDroppedTxtPid++;
-            DropCurPacket = TRUE;
+            long long SkippedBytes = (((SegmentMarker[CurSeg].Position) /* / PACKETSIZE) * PACKETSIZE */) ) - CurrentPosition;
+            fseeko64(fIn, ((SegmentMarker[CurSeg].Position) /* / PACKETSIZE) * PACKETSIZE */), SEEK_SET);
+            SetFirstPacketAfterBreak();
+            if(DoStrip)  NoContinuityCheck = TRUE;
+
+            // Position neu berechnen
+            PositionOffset += SkippedBytes;
+            CurrentPosition += SkippedBytes;
+            CurPosBlocks = CalcBlockSize(CurrentPosition);
+            Percent = (100*CurPosBlocks) / (RecFileBlocks*NrInputFiles);
+            CurBlockBytes = 0;
+            BlocksSincePercent = 0;
+
+            if (BookmarkInfo)
+            {
+              // Bookmarks kurz vor der Schnittstelle löschen
+              while ((j > 0) && (BookmarkInfo->Bookmarks[j-1] + 3*BlocksOneSecond >= CalcBlockSize(CurrentPosition-SkippedBytes)))
+                j--;
+
+              // Bookmarks im weggeschnittenen Bereich (bzw. kurz nach Schnittstelle) löschen
+              while ((j < BookmarkInfo->NrBookmarks) && (BookmarkInfo->Bookmarks[j] < CurPosBlocks + 3*BlocksOneSecond))
+                DeleteBookmark(j);
+
+              // neues Bookmark an Schnittstelle setzen
+              if (DoCut == 1)
+                if ((CurrentPosition-PositionOffset > 0) && (CurPosBlocks + 3*BlocksOneSecond < RecFileBlocks))
+                  AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset));
+            }
+          }
+          else
+          {
+            // Bookmarks im verworfenen Nachlauf verwerfen
+            while (BookmarkInfo && (j < BookmarkInfo->NrBookmarks))
+              DeleteBookmark(j);
+            break;
+          }
+        }
+
+        // Wir sind am nächsten (zu erhaltenden) SegmentMarker angekommen
+        if (CurSeg < NrSegmentMarker-1)
+        {
+          if (OutCutVersion >= 4)
+            printf("[Segment %d]  *%12llu %12lld-%-12lld %s\n", ++n, CurrentPosition, SegmentMarker[CurSeg].Position, SegmentMarker[CurSeg+1].Position, SegmentMarker[CurSeg].pCaption);
+          else
+            printf("[Segment %d]  *%12llu %10u-%-10u %s\n",     ++n, CurrentPosition, CalcBlockSize(SegmentMarker[CurSeg].Position), CalcBlockSize(SegmentMarker[CurSeg+1].Position), SegmentMarker[CurSeg].pCaption);
+          SegmentMarker[CurSeg].Selected = FALSE;
+          SegmentMarker[CurSeg].Percent = 0;
+
+          if (DoCut == 1)
+          {
+            // SCHNEIDEN: Zeit neu berechnen
+            if (NewStartTimeOffset == 0)
+              NewStartTimeOffset = max(SegmentMarker[CurSeg].Timems, 1);
+            NewDurationMS += (SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems);
+          }
+          else if (DoCut == 2)
+          {
+            // TEILE KOPIEREN
+            // bisher ausgegebene SegmentMarker / Bookmarks löschen
+            while (CurSeg > 0)
+            {
+              DeleteSegmentMarker(--CurSeg, TRUE);
+              i--;
+            }
+            while (BookmarkInfo && (j > 0))
+              DeleteBookmark(--j);
+
+            // neue Output-Files öffnen
+            GetNextFreeCutName(RecFileIn, RecFileOut, OutDir);
+            if (!OpenOutputFiles())
+            {
+              fclose(fIn); fIn = NULL;
+              CloseNavFileIn();
+              CutProcessor_Free();
+              InfProcessor_Free();
+              free(PendingBuf); PendingBuf = NULL;      
+              printf("ERROR: Cannot create %s.\n", RecFileOut);
+              TRACEEXIT;
+              exit(7);
+            }
+            NavProcessor_Init();
+            if(!RebuildNav && *RecFileOut && *NavFileIn) SetFirstPacketAfterBreak();
+            if(DoStrip) NALUDump_Init();
+            LastTimems = 0;
+            LastPCR = 0;
+            LastTimeStamp = 0;
+
+            // Caption in inf schreiben
+            SetInfEventText(SegmentMarker[CurSeg].pCaption);
+
+            // Positionen anpassen
+            PositionOffset = CurrentPosition;
+            CutTimeOffset = SegmentMarker[CurSeg].Timems;
+            NewStartTimeOffset = SegmentMarker[CurSeg].Timems;
+            NewDurationMS = (SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems);
+          }
+        }
+
+        CurSeg++;
+        if (CurSeg >= NrSegmentMarker)
+          break;
+      }
+
+
+      // PACKET EINLESEN
+      ReadBytes = fread(&Buffer[4-PACKETOFFSET], 1, PACKETSIZE, fIn);
+      if (ReadBytes == PACKETSIZE)
+      {
+        if (Buffer[4] == 'G' && ((tTSPacket*) &Buffer[4])->Scrambling_Ctrl <= 0x01)
+        {
+          int CurPID = TsGetPID((tTSPacket*) &Buffer[4]);
+          DropCurPacket = FALSE;
+
+          // STRIPPEN
+          if (DoStrip /*|| RemoveEPGStream || RemoveTeletext*/)
+          {
+            if (CurPID == 0x1FFF)
+            {
+              NrDroppedNullPid++;
+              DropCurPacket = TRUE;
+            }
+            else if (RemoveEPGStream && CurPID == 0x12)
+            {
+              NrDroppedEPGPid++;
+              DropCurPacket = TRUE;
+            }
+            else if (RemoveTeletext && CurPID == TeletextPID)
+            {
+              NrDroppedTxtPid++;
+              DropCurPacket = TRUE;
+            }
+            else if (CurPID == VideoPID)
+            {
+              switch (ProcessTSPacket(&Buffer[4], CurrentPosition + PACKETOFFSET))
+              {
+                case 1:
+                  NrDroppedFillerNALU++;
+                  DropCurPacket = TRUE;
+                  break;
+
+                case 2:
+                  NrDroppedZeroStuffing++;
+                  DropCurPacket = TRUE;
+                  break;
+
+                case 3:
+                  // PendingPacket -> PendingBuffer aktivieren, Pakete werden ab jetzt dort hineinkopiert
+                  isPending = TRUE;
+                  PendingBufStart = OutPacketSize;
+                  break;
+
+                case 4:
+                  NrDroppedAdaptation++;
+                  DropCurPacket = TRUE;
+                  break;
+
+                case -1:
+                  // PendingPacket soll nicht gelöscht werden
+                  PendingBufStart = 0;
+//                  break;
+
+                default:
+                  // ein Paket wird behalten -> vorher PendingBuffer in Ausgabe schreiben, ggf. PendingPacket löschen
+                  if (isPending)
+                  {
+                    if (PendingBufStart > 0)
+                    {
+                      PositionOffset += OutPacketSize;
+                      NrDroppedZeroStuffing++;
+                    }
+                    if (fOut && (PendingBufLen > PendingBufStart))
+                      if (!fwrite(&PendingBuf[PendingBufStart], PendingBufLen-PendingBufStart, 1, fOut))
+                        ret = FALSE;
+                    isPending = FALSE;
+                    PendingBufLen = 0;
+                  }
+                  break;
+              }
+            }
           }
           else if (CurPID == VideoPID)
           {
-            switch (ProcessTSPacket(&Buffer[4], CurrentPosition + PACKETOFFSET))
+            // nur Continuity Check
+            if (((tTSPacket*) &Buffer[4])->Payload_Exists) ContinuityCount = (ContinuityCount + 1) % 16;
+            if (((tTSPacket*) &Buffer[4])->ContinuityCount != ContinuityCount)
             {
-              case 1:
-                NrDroppedFillerNALU++;
-                DropCurPacket = TRUE;
-                break;
-
-              case 2:
-                NrDroppedZeroStuffing++;
-                DropCurPacket = TRUE;
-                break;
-
-              case 3:
-                // PendingPacket -> PendingBuffer aktivieren, Pakete werden ab jetzt dort hineinkopiert
-                isPending = TRUE;
-                PendingBufStart = OutPacketSize;
-                break;
-
-              case 4:
-                NrDroppedAdaptation++;
-                DropCurPacket = TRUE;
-                break;
-
-              case -1:
-                // PendingPacket soll nicht gelöscht werden
-                PendingBufStart = 0;
-//                break;
-
-              default:
-                // ein Paket wird behalten -> vorher PendingBuffer in Ausgabe schreiben, ggf. PendingPacket löschen
-                if (isPending)
-                {
-                  if (PendingBufStart > 0)
-                  {
-                    PositionOffset += OutPacketSize;
-                    NrDroppedZeroStuffing++;
-                  }
-                  if (fOut && (PendingBufLen > PendingBufStart))
-                    if (!fwrite(&PendingBuf[PendingBufStart], PendingBufLen-PendingBufStart, 1, fOut))
-                      ret = FALSE;
-                  isPending = FALSE;
-                  PendingBufLen = 0;
-                }
-                break;
-            }
-          }
-        }
-        else if (CurPID == VideoPID)
-        {
-          // nur Continuity Check
-          if (((tTSPacket*) &Buffer[4])->Payload_Exists) ContinuityCount = (ContinuityCount + 1) % 16;
-          if (((tTSPacket*) &Buffer[4])->ContinuityCount != ContinuityCount)
-          {
-            if (CurrentPosition - PositionOffset > 0)
-            {
-              printf("TS check: TS continuity offset %d (pos=%lld)\n", (((tTSPacket*) &Buffer[4])->ContinuityCount - ContinuityCount) % 16, CurrentPosition);
-              SetFirstPacketAfterBreak();
-            }
-            ContinuityCount = ((tTSPacket*) &Buffer[4])->ContinuityCount;
-          }
-        }
-
-        // SEGMENTMARKER ANPASSEN
-//        ProcessCutFile(CurPosBlocks, PosOffsetBlocks);
-        while ((i < NrSegmentMarker) && (CurrentPosition >= SegmentMarker[i].Position))
-        {
-          SegmentMarker[i].Position -= PositionOffset;
-          SegmentMarker[i].Timems -= CutTimeOffset;
-          if (!SegmentMarker[i].Timems)
-            pOutNextTimeStamp = &SegmentMarker[i].Timems;
-          i++;
-        }
-
-        // BOOKMARKS ANPASSEN
-//        ProcessInfFile(CurPosBlocks, PosOffsetBlocks);
-        if (BookmarkInfo)
-        {
-          while ((j < min(BookmarkInfo->NrBookmarks, 48)) && (CurPosBlocks >= BookmarkInfo->Bookmarks[j]))
-          {
-            BookmarkInfo->Bookmarks[j] -= CalcBlockSize(PositionOffset);
-            j++;
-          }
-
-          if (!ResumeSet && CurPosBlocks >= BookmarkInfo->Resume)
-          {
-            BookmarkInfo->Resume -= min(CalcBlockSize(PositionOffset), BookmarkInfo->Resume);
-            ResumeSet = TRUE;
-          }
-        }
-
-        // PCR berechnen
-        if (OutPacketSize > PACKETSIZE)
-        {
-          long long CurPCR = 0;
-          if (GetPCR(&Buffer[4], &CurPCR))
-          {
-            if (LastPCR)
-              CurTimeStep = ((dword)CurPCR - LastPCR) / ((dword)(CurrentPosition-PosLastPCR) / PACKETSIZE);
-            LastPCR = (dword)CurPCR;
-            PosLastPCR = CurrentPosition;
-          }
-          LastTimeStamp += CurTimeStep;
-          Buffer[0] = ((byte*)&LastTimeStamp)[3];
-          Buffer[1] = ((byte*)&LastTimeStamp)[2];
-          Buffer[2] = ((byte*)&LastTimeStamp)[1];
-          Buffer[3] = ((byte*)&LastTimeStamp)[0];
-        }
-
-        if (!DropCurPacket)
-        {
-          // NAV NEU BERECHNEN
-          if (PACKETSIZE > OutPacketSize)       PositionOffset += 4;  // Reduktion auf 188 Byte Packets
-          else if (PACKETSIZE < OutPacketSize)  PositionOffset -= 4;
-
-          // nav-Eintrag korrigieren und ausgeben, wenn Position < CurrentPosition ist (um PositionOffset reduzieren)
-          if (RebuildNav)
-          {
-            if (CurPID == VideoPID)
-              ProcessNavFile(CurrentPosition + PACKETOFFSET, PositionOffset, (tTSPacket*) &Buffer[4]);
-          }
-          else if (*RecFileOut && *NavFileIn)
-            QuickNavProcess(CurrentPosition, PositionOffset);
-
-          // PACKET AUSGEBEN
-          if (fOut)
-          {
-            // Wenn PendingPacket -> Daten in Puffer schreiben
-            if (isPending)
-            {
-              // Wenn PendingBuffer voll ist -> alle Pakete außer PendingPacket in Ausgabe schreiben
-              if (PendingBufLen + OutPacketSize > PENDINGBUFSIZE)
+              if (CurrentPosition > 0 && (CurrentPosition - PositionOffset) > 0)
               {
-                if (!fwrite(&PendingBuf[OutPacketSize], PendingBufLen-OutPacketSize, 1, fOut))
-                  ret = FALSE;
-                PendingBufLen = OutPacketSize;
+                if (!DoCut || (i < NrSegmentMarker && CurrentPosition != SegmentMarker[i].Position))
+                  printf("TS check: TS continuity offset %d (pos=%lld)\n", (((tTSPacket*) &Buffer[4])->ContinuityCount - ContinuityCount) % 16, CurrentPosition);
+                SetFirstPacketAfterBreak();
               }
+              ContinuityCount = ((tTSPacket*) &Buffer[4])->ContinuityCount;
+            }
+          }
 
-              // Dann neues Paket in den PendingBuffer schreiben
-              memcpy(&PendingBuf[PendingBufLen], &Buffer[(OutPacketSize==192 ? 0 : 4)], OutPacketSize);
-              PendingBufLen += OutPacketSize;
+          // SEGMENTMARKER ANPASSEN
+//          ProcessCutFile(CurPosBlocks, PosOffsetBlocks);
+          while ((i < NrSegmentMarker) && (CurrentPosition >= SegmentMarker[i].Position))
+          {
+            SegmentMarker[i].Position -= PositionOffset;
+            SegmentMarker[i].Timems -= CutTimeOffset;
+            if (i > 0 && !SegmentMarker[i].Timems)
+              pOutNextTimeStamp = &SegmentMarker[i].Timems;
+            i++;
+          }
+
+          // BOOKMARKS ANPASSEN
+//          ProcessInfFile(CurPosBlocks, PosOffsetBlocks);
+          if (BookmarkInfo)
+          {
+            while ((j < min(BookmarkInfo->NrBookmarks, 48)) && (CurPosBlocks >= BookmarkInfo->Bookmarks[j]))
+            {
+              BookmarkInfo->Bookmarks[j] -= (dword)(PositionOffset / 9024);  // CalcBlockSize(PositionOffset)
+              j++;
+            }
+
+            if (!ResumeSet && (DoMerge != 1) && (CurPosBlocks >= BookmarkInfo->Resume))
+            {
+              if (PositionOffset / 9024 <= BookmarkInfo->Resume)
+                BookmarkInfo->Resume -= (dword)(PositionOffset / 9024);  // CalcBlockSize(PositionOffset)
+              else
+                BookmarkInfo->Resume = 0;
+              ResumeSet = TRUE;
+            }
+          }
+
+          // PCR berechnen
+          if (OutPacketSize > PACKETSIZE)  // OutPacketSize==192 and PACKETSIZE==188
+          {
+            long long CurPCR = 0;
+            if (GetPCR(&Buffer[4], &CurPCR))
+            {
+              if (LastPCR)
+                CurTimeStep = ((dword)CurPCR - LastPCR) / ((dword)(CurrentPosition-PosLastPCR) / PACKETSIZE);
+              LastPCR = (dword)CurPCR;
+              PosLastPCR = CurrentPosition;
+            }
+            LastTimeStamp += CurTimeStep;
+            Buffer[0] = ((byte*)&LastTimeStamp)[3];
+            Buffer[1] = ((byte*)&LastTimeStamp)[2];
+            Buffer[2] = ((byte*)&LastTimeStamp)[1];
+            Buffer[3] = ((byte*)&LastTimeStamp)[0];
+          }
+
+          if (!DropCurPacket)
+          {
+            // NAV NEU BERECHNEN
+            if (PACKETSIZE > OutPacketSize)       PositionOffset += 4;  // Reduktion auf 188 Byte Packets
+            else if (PACKETSIZE < OutPacketSize)  PositionOffset -= 4;
+
+            // nav-Eintrag korrigieren und ausgeben, wenn Position < CurrentPosition ist (um PositionOffset reduzieren)
+            if (RebuildNav)
+            {
+              if (CurPID == VideoPID)
+                ProcessNavFile(CurrentPosition + PACKETOFFSET, PositionOffset, (tTSPacket*) &Buffer[4]);
+            }
+            else if (*RecFileOut && *NavFileIn)
+              QuickNavProcess(CurrentPosition, PositionOffset);
+
+            // PACKET AUSGEBEN
+            if (fOut)
+            {
+              // Wenn PendingPacket -> Daten in Puffer schreiben
+              if (isPending)
+              {
+                // Wenn PendingBuffer voll ist -> alle Pakete außer PendingPacket in Ausgabe schreiben
+                if (PendingBufLen + OutPacketSize > PENDINGBUFSIZE)
+                {
+                  if (!fwrite(&PendingBuf[OutPacketSize], PendingBufLen-OutPacketSize, 1, fOut))
+                    ret = FALSE;
+                  PendingBufLen = OutPacketSize;
+                }
+
+                // Dann neues Paket in den PendingBuffer schreiben
+                memcpy(&PendingBuf[PendingBufLen], &Buffer[(OutPacketSize==192 ? 0 : 4)], OutPacketSize);
+                PendingBufLen += OutPacketSize;
+              }
+              else
+                // Daten direkt in Ausgabe schreiben
+                if (!fwrite(&Buffer[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut))  // Reduktion auf 188 Byte Packets
+                  ret = FALSE;
+
+              if (!ret)
+              {
+                printf("ERROR: Failed writing to output file.\n");
+                fclose(fIn); fIn = NULL;
+                fclose(fOut); fOut = NULL;
+                CloseNavFileIn();
+                CloseNavFileOut();
+                CutProcessor_Free();
+                InfProcessor_Free();
+                free(PendingBuf);
+                TRACEEXIT;
+                exit(8);
+              }
+            }
+          }
+          else
+            // Paket wird entfernt
+            PositionOffset += ReadBytes;
+      
+          CurrentPosition += ReadBytes;
+          CurBlockBytes += ReadBytes;
+        }
+        else
+        {
+          if ((unsigned long long) CurrentPosition + 4096 >= RecFileSize)
+          {
+            printf("INFO: Incomplete TS - Ignoring last %lld bytes.\n", RecFileSize - CurrentPosition);
+            fclose(fIn); fIn = NULL;
+          }
+          else
+          {
+            if (Buffer[4] == 'G')
+            {
+              printf("WARNING: Scrambled TS - Scrambling bit at position %lld -> packet ignored.\n", CurrentPosition);
+              SetInfCryptFlag(InfFileIn);
+              PositionOffset += ReadBytes;
+              CurrentPosition += ReadBytes;
+              CurBlockBytes += ReadBytes;
+              NrIgnoredPackets++;
+            }
+            else if (HumaxSource && (*((dword*)&Buffer[4]) == HumaxHeaderAnfang) && ((unsigned int)CurrentPosition % HumaxHeaderIntervall == HumaxHeaderIntervall-HumaxHeaderLaenge))
+            {
+              fseeko64(fIn, +HumaxHeaderLaenge-ReadBytes, SEEK_CUR);
+              PositionOffset += HumaxHeaderLaenge;
+              CurrentPosition += HumaxHeaderLaenge;
+              CurBlockBytes += HumaxHeaderLaenge;
+/*              if (fOut)
+              {
+                ((tTSPacket*) &PATPMTBuf[4])->ContinuityCount++;
+                ((tTSPacket*) &PATPMTBuf[196])->ContinuityCount++;
+                if (fwrite(&PATPMTBuf[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut))
+                  PositionOffset -= OutPacketSize;
+                if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], OutPacketSize, 1, fOut))
+                  PositionOffset -= OutPacketSize;
+              }  */
             }
             else
-              // Daten direkt in Ausgabe schreiben
-              if (!fwrite(&Buffer[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut))  // Reduktion auf 188 Byte Packets
-                ret = FALSE;
-
-            if (!ret)
             {
-              printf("ERROR: Failed writing to output file.\n");
+              int Offset = 0;
+              byte *Buffer2 = (byte*) malloc(5573);
+              if (Buffer2)
+              {
+                memcpy(Buffer2, &Buffer[4-PACKETOFFSET], PACKETSIZE);
+                if (fread(&Buffer2[PACKETSIZE], 1, 5573-PACKETSIZE, fIn) == (unsigned int)5573-PACKETSIZE)
+                  Offset = FindNextPacketStart(Buffer2, 5573);
+                free(Buffer2);
+              }
+              if (Offset > 0)
+              {
+                if (Offset % PACKETSIZE == 0)
+                  printf("WARNING: Missing sync byte at position %lld -> %d packets ignored.\n", CurrentPosition, Offset/PACKETSIZE);
+                else
+                  printf("WARNING: Missing sync byte at position %lld -> %d Bytes ignored.\n", CurrentPosition, Offset);
+                fseeko64(fIn, CurrentPosition + Offset, SEEK_SET);
+                PositionOffset += Offset;
+                CurrentPosition += Offset;
+                CurBlockBytes += Offset;
+                NrIgnoredPackets++;
+              }
+              else
+              {
+                printf("ERROR: Incorrect TS - No sync bytes after position %lld -> aborted.\n", CurrentPosition);
+                NrIgnoredPackets = 0x0fffffffffffffffLL;
+              }
+            }
+            if (NrIgnoredPackets >= 10)
+            {
+              if (NrIgnoredPackets < 0x0fffffffffffffffLL)
+                printf("ERROR: Too many ignored packets: %lld -> aborted.\n", NrIgnoredPackets);
               fclose(fIn); fIn = NULL;
-              fclose(fOut); fOut = NULL;
+              if (fOut) fclose(fOut); fOut = NULL;
               CloseNavFileIn();
               CloseNavFileOut();
+              CutFileSave(CutFileOut);
+              SaveInfFile(InfFileOut, InfFileIn);
               CutProcessor_Free();
               InfProcessor_Free();
               free(PendingBuf);
               TRACEEXIT;
-              exit(8);
+              exit(9);
             }
           }
         }
-        else
-          // Paket wird entfernt
-          PositionOffset += ReadBytes;
-      
-        CurrentPosition += ReadBytes;
-        CurBlockBytes += ReadBytes;
+
+        if (CurBlockBytes >= 9024)
+        {
+          CurPosBlocks++;
+          BlocksSincePercent++;
+          CurBlockBytes -= 9024;
+        }
+
+        if (BlocksSincePercent >= BlocksOnePercent)
+        {
+          Percent++;
+          BlocksSincePercent = 0;
+          fprintf(stderr, "%3u %%\r", Percent);
+        }
       }
       else
-      {
-        if ((unsigned long long) CurrentPosition + 4096 >= RecFileSize)
-        {
-          printf("INFO: Incomplete TS - Ignoring last %lld bytes.\n", RecFileSize - CurrentPosition);
-          fclose(fIn); fIn = NULL;
-        }
-        else
-        {
-          if (Buffer[4] == 'G')
-          {
-            printf("WARNING: Scrambled TS - Scrambling bit at position %lld -> packet ignored.\n", CurrentPosition);
-            SetInfCryptFlag(InfFileIn);
-            PositionOffset += ReadBytes;
-            CurrentPosition += ReadBytes;
-            CurBlockBytes += ReadBytes;
-            NrIgnoredPackets++;
-          }
-          else if (HumaxSource && (*((dword*)&Buffer[4]) == HumaxHeaderAnfang) && ((unsigned int)CurrentPosition % HumaxHeaderIntervall == HumaxHeaderIntervall-HumaxHeaderLaenge))
-          {
-            fseeko64(fIn, +HumaxHeaderLaenge-ReadBytes, SEEK_CUR);
-            PositionOffset += HumaxHeaderLaenge;
-            CurrentPosition += HumaxHeaderLaenge;
-            CurBlockBytes += HumaxHeaderLaenge;
-/*            if (fOut)
-            {
-              ((tTSPacket*) &PATPMTBuf[4])->ContinuityCount++;
-              ((tTSPacket*) &PATPMTBuf[196])->ContinuityCount++;
-              if (fwrite(&PATPMTBuf[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut))
-                PositionOffset -= OutPacketSize;
-              if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], OutPacketSize, 1, fOut))
-                PositionOffset -= OutPacketSize;
-            }  */
-          }
-          else
-          {
-            int Offset = 0;
-            byte *Buffer2 = (byte*) malloc(5573);
-            if (Buffer2)
-            {
-              memcpy(Buffer2, &Buffer[4-PACKETOFFSET], PACKETSIZE);
-              if (fread(&Buffer2[PACKETSIZE], 1, 5573-PACKETSIZE, fIn) == (unsigned int)5573-PACKETSIZE)
-                Offset = FindNextPacketStart(Buffer2, 5573);
-              free(Buffer2);
-            }
-            if (Offset > 0)
-            {
-              if (Offset % PACKETSIZE == 0)
-                printf("WARNING: Missing sync byte at position %lld -> %d packets ignored.\n", CurrentPosition, Offset/PACKETSIZE);
-              else
-                printf("WARNING: Missing sync byte at position %lld -> %d Bytes ignored.\n", CurrentPosition, Offset);
-              fseeko64(fIn, CurrentPosition + Offset, SEEK_SET);
-              PositionOffset += Offset;
-              CurrentPosition += Offset;
-              CurBlockBytes += Offset;
-              NrIgnoredPackets++;
-            }
-            else
-            {
-              printf("ERROR: Incorrect TS - No sync bytes after position %lld -> aborted.\n", CurrentPosition);
-              NrIgnoredPackets = 0x0fffffffffffffffLL;
-            }
-          }
-          if (NrIgnoredPackets >= 10)
-          {
-            if (NrIgnoredPackets < 0x0fffffffffffffffLL)
-              printf("ERROR: Too many ignored packets: %lld -> aborted.\n", NrIgnoredPackets);
-            fclose(fIn); fIn = NULL;
-            if (fOut) fclose(fOut); fOut = NULL;
-            CloseNavFileIn();
-            CloseNavFileOut();
-            CutFileSave(CutFileOut);
-            SaveInfFile(InfFileOut, InfFileIn);
-            CutProcessor_Free();
-            InfProcessor_Free();
-            free(PendingBuf);
-            TRACEEXIT;
-            exit(9);
-          }
-        }
-      }
-
-      if (CurBlockBytes >= 9024)
-      {
-        CurPosBlocks++;
-        BlocksSincePercent++;
-        CurBlockBytes -= 9024;
-      }
-
-      if (BlocksSincePercent >= BlocksOnePercent)
-      {
-        Percent++;
-        BlocksSincePercent = 0;
-        fprintf(stderr, "%3u %%\r", Percent);
-      }
+        break;
     }
-    else
-      break;
+
+    if ((DoMerge == 2) && (curInputFile < NrInputFiles-1))
+    {
+      CloseInputFiles(TRUE);
+
+      // nächstes Input-File aus Parameter-String ermitteln
+      strncpy(RecFileIn, argv[curInputFile+1], sizeof(RecFileIn));
+      RecFileIn[sizeof(RecFileIn)-1] = '\0';
+
+      PositionOffset -= CurrentPosition;
+      if (NrSegmentMarker >= 2)
+        CutTimeOffset -= SegmentMarker[NrSegmentMarker-1].Timems;
+      SetFirstPacketAfterBreak();
+      if(DoStrip)  NoContinuityCheck = TRUE;
+
+      if (!OpenInputFiles(RecFileIn, FALSE))
+      {
+        CloseOutputFiles();
+        CutProcessor_Free();
+        InfProcessor_Free();
+        free(PendingBuf); PendingBuf = NULL;
+        TRACEEXIT;
+        exit(5);
+      }
+
+      CurPosBlocks = CalcBlockSize(CurrentPosition);
+      CurBlockBytes = 0;
+      BlocksSincePercent = 0;
+      n = 0;
+    }
   }
+
   printf("\n");
 
   if ((fOut || (DoCut != 2)) && !CloseOutputFiles())
     exit(10);
 
-  if (fIn)
-  {
-    fclose(fIn); fIn = NULL;
-  }
-  if (*InfFileIn)
-  {
-    struct stat64 statbuf;
-    time_t OldInfTime = 0;
-    if (stat64(RecFileIn, &statbuf) == 0)
-      OldInfTime = statbuf.st_mtime;
-    SetInfStripFlags(InfFileIn, TRUE, DoStrip);
-    if (OldInfTime)
-      HDD_SetFileDateTime(InfFileIn, statbuf.st_mtime);
-  }
-  CloseNavFileIn();
+  CloseInputFiles(TRUE);
+
   CutProcessor_Free();
   InfProcessor_Free();
   free(PendingBuf); PendingBuf = NULL;

@@ -42,6 +42,15 @@
     <ClInclude Include="..\crcmodel.h">
       <Filter>Header</Filter>
     </ClInclude>
+    <ClInclude Include="..\PESProcessor.h">
+      <Filter>Header</Filter>
+    </ClInclude>
+    <ClInclude Include="..\hamming.h">
+      <Filter>Header</Filter>
+    </ClInclude>
+    <ClInclude Include="..\teletext.h">
+      <Filter>Header</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\RecStrip.c">
@@ -69,6 +78,9 @@
       <Filter>source</Filter>
     </ClCompile>
     <ClCompile Include="..\StrToUTF8.c">
+      <Filter>source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\PESProcessor.c">
       <Filter>source</Filter>
     </ClCompile>
   </ItemGroup>

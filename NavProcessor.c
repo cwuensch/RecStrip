@@ -24,7 +24,8 @@
 
 
 // Globale Variablen
-dword                   LastTimems = 0, TimeOffset = 0;
+dword                   LastTimems = 0;
+int                     TimeOffset = 0;
 dword                  *pOutNextTimeStamp = NULL;
 FILE                   *fNavIn = NULL, *fNavOut = NULL;
 static long long        PosFirstNull = 0, PosSecondNull = 0, HeaderFound = 0;
@@ -554,7 +555,7 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
                 FrameCtr        = 0;        // zählt die Distanz zum letzten I-Frame
                 IFramePTS       = SEIPTS;
               }
-              FrameCtr++;
+//              FrameCtr++;
 
 
               // VARIANTE VON jkIT
@@ -648,13 +649,6 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
 
               if((SEI != 0) && (SPS != 0) && (PPSCount != 0))
               {
-{
-  long long RefPictureHeaderOffset = dbg_NavPictureHeaderOffset - dbg_SEIPositionOffset;
-  if (fNavIn && (long long)SEI != RefPictureHeaderOffset && dbg_CurrentPosition/PACKETSIZE != dbg_SEIFound)
-    printf("DEBUG: Problem! pos=%lld, offset=%lld, Orig-Nav-PHOffset=%lld, Rebuilt-Nav-PHOffset=%lld, Differenz= %lld * %hhu + %lld\n", dbg_CurrentPosition, dbg_SEIPositionOffset, dbg_NavPictureHeaderOffset, SEI, ((long long int)(SEI-RefPictureHeaderOffset))/PACKETSIZE, PACKETSIZE, ((long long int)(SEI-RefPictureHeaderOffset))%PACKETSIZE);
-//printf("%lld: fwrite: SEI=%lld, nav=%lld\n", dbg_CurrentPosition/PACKETSIZE, SEI, NavPictureHeaderOffset);
-}
-
                 if (WaitForPFrame && navHD.FrameType <= 2)
                   WaitForPFrame = FALSE;
 
@@ -666,13 +660,19 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
                   // sicherstellen, dass Timems monoton ansteigt
                   if( ((int)(navHD.Timems - LastTimems)) >= 0)  LastTimems = navHD.Timems;
                   else  navHD.Timems = LastTimems;
-
+{
+  long long RefPictureHeaderOffset = dbg_NavPictureHeaderOffset - dbg_SEIPositionOffset;
+  if (fNavIn && (long long)SEI != RefPictureHeaderOffset && dbg_CurrentPosition/PACKETSIZE != dbg_SEIFound)
+    printf("DEBUG: Problem! pos=%lld, offset=%lld, Orig-Nav-PHOffset=%lld, Rebuilt-Nav-PHOffset=%lld, Differenz= %lld * %hhu + %lld\n", dbg_CurrentPosition, dbg_SEIPositionOffset, dbg_NavPictureHeaderOffset, SEI, ((long long int)(SEI-RefPictureHeaderOffset))/PACKETSIZE, PACKETSIZE, ((long long int)(SEI-RefPictureHeaderOffset))%PACKETSIZE);
+//printf("%lld: fwrite: SEI=%lld, nav=%lld\n", dbg_CurrentPosition/PACKETSIZE, SEI, NavPictureHeaderOffset);
+}
                   // Write the nav record
                   if (fNavOut && !fwrite(&navHD, sizeof(tnavHD), 1, fNavOut))
                   {
                     printf("ProcessNavFile(): Error writing to nav file!\n");
                     fclose(fNavOut); fNavOut = NULL;
                   }
+                  FrameCtr++;
                   NavPtr++;
                 }
 
@@ -897,7 +897,8 @@ static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
       LastPictureHeader = PictHeader;
 dbg_HeaderPosOffset = dbg_PositionOffset;
       PictHeader = 0;
-      FrameCtr++;
+      if(NavPtr > 0 && (!WaitForIFrame || navSD.FrameType==1) && (!WaitForPFrame || navSD.FrameType<=2))
+        FrameCtr++;
     }
 
     HeaderFound = 0;
@@ -966,7 +967,7 @@ void QuickNavProcess(const long long CurrentPosition, const long long PositionOf
     else
     {
       fclose(fNavIn); fNavIn = NULL;
-      if(fNavOut) fclose(fNavOut); fNavOut = NULL;
+//      if(fNavOut) fclose(fNavOut); fNavOut = NULL;
     }
     FirstRun = FALSE;
   }
@@ -981,12 +982,12 @@ void QuickNavProcess(const long long CurrentPosition, const long long PositionOf
       else
       {
         fclose(fNavIn); fNavIn = NULL;
-        if(fNavOut) fclose(fNavOut); fNavOut = NULL;
+//        if(fNavOut) fclose(fNavOut); fNavOut = NULL;
       }
     }
 
     // nach Schnittpunkt die fehlende Zeit von Timems abziehen
-    if (curSDNavRec->Timems > 3000)
+    if (LastTimems > 0 || curSDNavRec->Timems > 3000)
       TimeOffset = curSDNavRec->Timems - LastTimems;
 
     WaitForIFrame = TRUE;
@@ -1035,7 +1036,7 @@ void QuickNavProcess(const long long CurrentPosition, const long long PositionOf
       else
       {
         fclose(fNavIn); fNavIn = NULL;
-        if(fNavOut) fclose(fNavOut); fNavOut = NULL;
+//        if(fNavOut) fclose(fNavOut); fNavOut = NULL;
       }
     }
   }
@@ -1060,6 +1061,9 @@ bool LoadNavFileIn(const char* AbsInNav)
       rewind(fNavIn);
   }
 
+  NextPictureHeaderOffset = 0;
+  FirstRun = TRUE;
+
   TRACEEXIT;
   return (fNavIn != NULL);
 }
@@ -1067,7 +1071,7 @@ bool LoadNavFileOut(const char* AbsOutNav)
 {
   TRACEENTER;
 
-  fNavOut = fopen(AbsOutNav, "wb");
+  fNavOut = fopen(AbsOutNav, ((DoMerge==1) ? "r+b" : "wb"));
   if (fNavOut)
   {
 //  setvbuf(fNavOut, NULL, _IOFBF, BUFSIZE);
@@ -1077,6 +1081,20 @@ bool LoadNavFileOut(const char* AbsOutNav)
 
   TRACEEXIT;
   return (fNavOut != NULL);
+}
+
+void GoToEndOfNav(void)
+{
+  tnavSD navRec[2];
+  TRACEENTER;
+
+  if (fseek(fNavOut, (isHDVideo ? -(int)sizeof(tnavHD) : -(int)sizeof(tnavSD)), SEEK_END) == 0)
+    if (fread(&navRec, (isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD)), 1, fNavOut))
+      LastTimems = navRec[0].Timems;
+//      TimeOffset = 0 - LastTimems;
+  fseek(fNavOut, 0, SEEK_END);
+
+  TRACEEXIT;
 }
 
 void CloseNavFileIn(void)

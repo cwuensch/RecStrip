@@ -25,9 +25,9 @@ extern bool StrToUTF8(const char *SourceString, char *DestString, byte DefaultIS
 
 
 // Globale Variablen
-static byte            *InfBuffer = NULL;
-static char             OldEventText[1024];
+byte                   *InfBuffer = NULL;    // dirty hack: erreichbar machen für OpenInputFiles()
 TYPE_RecHeader_Info    *RecHeaderInfo = NULL;
+static char             OldEventText[1025];
 static size_t           InfSize = 0;
 dword                   OrigStartTime = 0;
 
@@ -144,7 +144,7 @@ static SYSTEM_TYPE DetermineInfType(const byte *const InfBuffer, const unsigned 
       Result = ST_TMSS;
     else if ((AntiT == 0 && AntiS > 0 && AntiC > 0) || (AntiT == 1 && AntiS > 1 && AntiC > 1))
       Result = ST_TMST;
-    else if ((Inf_TMSS->BookmarkInfo.NrBookmarks == 0) && (Inf_TMSC->BookmarkInfo.NrBookmarks == 0))
+    else if (/*(Inf_TMSS->BookmarkInfo.NrBookmarks == 0) &&*/ (Inf_TMSC->BookmarkInfo.NrBookmarks == 0))
       Result = ST_TMSS;
 
   printf("   -> SystemType=ST_TMS%c\n", (Result==ST_TMSS ? 's' : ((Result==ST_TMSC) ? 'c' : ((Result==ST_TMST) ? 't' : '?'))));
@@ -161,8 +161,11 @@ bool InfProcessor_Init()
   TRACEENTER;
 
   //Allocate and clear the buffer
-  memset(OldEventText, 0, sizeof(OldEventText));
+//  memset(OldEventText, 0, sizeof(OldEventText));
   OrigStartTime = 0;
+  RecHeaderInfo = NULL;
+  BookmarkInfo  = NULL;
+  
   InfSize = sizeof(TYPE_RecHeader_TMSS);
   InfBuffer = (byte*) malloc(max(InfSize, 32768));
   if(InfBuffer)
@@ -187,7 +190,7 @@ bool LoadInfFromRec(char *AbsRecFileName)
   bool Result = FALSE;
 
   TRACEENTER;
-  if(!InfBuffer || !RecHeaderInfo)
+  if(!InfBuffer)
   {
     TRACEEXIT;
     return FALSE;
@@ -204,7 +207,7 @@ bool LoadInfFromRec(char *AbsRecFileName)
   else
   {
     printf("  LoadInfFile() E0902: Cannot open source rec file.\n");
-    InfProcessor_Free();
+//    InfProcessor_Free();
     TRACEEXIT;
     return FALSE;
   }
@@ -216,19 +219,21 @@ bool LoadInfFromRec(char *AbsRecFileName)
     if (!Result) HumaxSource = FALSE;
   }
   
-  OrigStartTime = RecHeaderInfo->StartTime;
+  if(!OrigStartTime)
+    OrigStartTime = ((TYPE_RecHeader_Info*)InfBuffer)->StartTime;
   fclose(fIn);
   TRACEEXIT;
   return Result;
 }
 
-bool LoadInfFile(char *AbsInfName)
+bool LoadInfFile(char *AbsInfName, bool FirstTime)
 {
   FILE                 *fInfIn = NULL;
   TYPE_RecHeader_TMSS  *RecHeader = NULL;
   TYPE_Service_Info    *ServiceInfo = NULL;
   unsigned long long    InfFileSize = 0;
-  size_t                p;
+  SYSTEM_TYPE           curSystemType = ST_UNKNOWN;
+  size_t                curInfSize, p;
   bool                  HDFound = FALSE, Result = FALSE;
 
   TRACEENTER;
@@ -245,6 +250,9 @@ bool LoadInfFile(char *AbsInfName)
     fInfIn = fopen(AbsInfName, "rb");
   if(fInfIn)
   {
+    fseek(fInfIn, 0, SEEK_END);
+    InfFileSize = ftell(fInfIn);
+    rewind(fInfIn);
     Result = (fread(InfBuffer, 1, InfSize, fInfIn) + 4 >= InfSize);
     fclose(fInfIn);
   }
@@ -258,26 +266,31 @@ bool LoadInfFile(char *AbsInfName)
   //Decode the source .inf
   if (Result)
   {
-    SystemType = DetermineInfType(InfBuffer, InfFileSize);
-    switch (SystemType)
+    curSystemType = DetermineInfType(InfBuffer, InfFileSize);
+    switch (curSystemType)
     {
       case ST_TMSS:
-        InfSize = sizeof(TYPE_RecHeader_TMSS);
+        curInfSize = sizeof(TYPE_RecHeader_TMSS);
         BookmarkInfo = &(((TYPE_RecHeader_TMSS*)InfBuffer)->BookmarkInfo);
         break;
       case ST_TMSC:
-        InfSize = sizeof(TYPE_RecHeader_TMSC);
+        curInfSize = sizeof(TYPE_RecHeader_TMSC);
         BookmarkInfo = &(((TYPE_RecHeader_TMSC*)InfBuffer)->BookmarkInfo);
         break;
       case ST_TMST:
-        InfSize = sizeof(TYPE_RecHeader_TMST);
+        curInfSize = sizeof(TYPE_RecHeader_TMST);
         BookmarkInfo = &(((TYPE_RecHeader_TMST*)InfBuffer)->BookmarkInfo);
         break;
       default:
         printf("  LoadInfFile() E0903: Incompatible system type.\n");
-        InfProcessor_Free();
+//        InfProcessor_Free();
         TRACEEXIT;
         return FALSE;
+    }
+    if (FirstTime)
+    {
+      SystemType = curSystemType;
+      InfSize = curInfSize;
     }
 
     // Event-Strings von Datenmüll reinigen
@@ -288,14 +301,34 @@ bool LoadInfFile(char *AbsInfName)
     if (p < sizeof(RecHeader->ExtEventInfo.Text))
       memset(&RecHeader->ExtEventInfo.Text[p], 0, sizeof(RecHeader->ExtEventInfo.Text) - p);
 
-    strncpy(OldEventText, RecHeader->ExtEventInfo.Text, min((dword)RecHeader->ExtEventInfo.TextLength+1, sizeof(OldEventText)));
-    OldEventText[sizeof(OldEventText) - 1] = '\0';
+    // ggf. Itemized Items in ExtEventText entfernen
+    memset(OldEventText, 0, sizeof(OldEventText));
+    {
+      int j = 0, k = 0, p = 0;
+      while ((j < 2*RecHeader->ExtEventInfo.NrItemizedPairs) && (p < RecHeader->ExtEventInfo.TextLength))
+        if (RecHeader->ExtEventInfo.Text[p++] == '\0')  j++;
+
+      if (j == 2*RecHeader->ExtEventInfo.NrItemizedPairs)
+      {
+        strncpy(OldEventText, &RecHeader->ExtEventInfo.Text[p], min(RecHeader->ExtEventInfo.TextLength - p, (int)sizeof(OldEventText)-1));
+
+        p = 0;
+        for (k = 0; k < j; k++)
+        {
+          if(RecHeader->ExtEventInfo.Text[p] < 0x20)  p++;
+          snprintf(&OldEventText[strlen(OldEventText)], sizeof(OldEventText)-strlen(OldEventText), ((k % 2 == 0) ? ((OldEventText[0]>=0x15) ? "\xC2\x8A%s: " : "\x8A%s: ") : "%s"), &RecHeader->ExtEventInfo.Text[p]);
+          p += strlen(&RecHeader->ExtEventInfo.Text[p]) + 1;
+        }
+      }
+      else
+        strncpy(OldEventText, RecHeader->ExtEventInfo.Text, min(RecHeader->ExtEventInfo.TextLength, (int)sizeof(OldEventText)-1));
+    }
 
     // Prüfe auf verschlüsselte Aufnahme
     if (((RecHeaderInfo->CryptFlag & 1) != 0) && !*RecFileOut)
     {
       printf("  LoadInfFile() E0904: Recording is encrypted.\n");
-      InfProcessor_Free();
+//      InfProcessor_Free();
       TRACEEXIT;
       return FALSE;
     }
@@ -323,14 +356,14 @@ if (RecHeaderInfo->Reserved != 0)
     if (VideoPID != ServiceInfo->VideoPID)
     {
       printf("  LoadInfFile() E0905: Inconsistant video PID: inf=0x%4.4x, rec=0x%4.4x.\n", ServiceInfo->VideoPID, VideoPID);
-      InfProcessor_Free();
+//      InfProcessor_Free();
       TRACEEXIT;
       return FALSE;
     }
     if (HDFound != isHDVideo)
     {
       printf("  LoadInfFile() E0906: Inconsistant video type: inf=%s, rec=%s.\n", (HDFound ? "HD" : "SD"), (isHDVideo ? "HD" : "SD"));
-      InfProcessor_Free();
+//      InfProcessor_Free();
       TRACEEXIT;
       return FALSE;
     }
@@ -339,10 +372,11 @@ if (RecHeaderInfo->Reserved != 0)
       AlreadyStripped = TRUE;
   }
 
-  if (Result)
+//  if (Result)
   {
-    OrigStartTime = RecHeaderInfo->StartTime;
-//    InfDuration = 60*RecHeaderInfo->DurationMin + RecHeaderInfo->DurationSec;
+    if(FirstTime)
+      OrigStartTime = RecHeaderInfo->StartTime;
+    InfDuration += 60*RecHeaderInfo->DurationMin + RecHeaderInfo->DurationSec;
   }
 
   TRACEEXIT;
@@ -356,12 +390,47 @@ void SetInfEventText(const char *pCaption)
 
   TRACEENTER;
   memset(RecHeader->ExtEventInfo.Text, 0, sizeof(RecHeader->ExtEventInfo.Text));
+
   if (pCaption)
   {
-    if ((NewEventText = (char*)malloc(2 * strlen(pCaption))))
+/*    if ((NewEventText = (char*)malloc(2 * strlen(pCaption))))
     {
-      StrToUTF8(pCaption, NewEventText, 9);
-      snprintf(RecHeader->ExtEventInfo.Text, sizeof(RecHeader->ExtEventInfo.Text), "%s\r\n\r\n%s", NewEventText, OldEventText);
+      if (OldEventText[0]>=0x15)
+      {
+        StrToUTF8(pCaption, NewEventText, 9);
+        p = strlen(NewEventText);
+        if (p < sizeof(RecHeader->ExtEventInfo.Text) - 4)
+        {
+          NewEventText[p++] = '\xC2'; NewEventText[p++] = '\x8A'; NewEventText[p++] = '\xC2'; NewEventText[p++] = '\x8A';
+        }
+      }
+      else
+      {
+        NewEventText[0] = '\5';
+        strncpy(&NewEventText[1], pCaption, sizeof(RecHeader->ExtEventInfo.Text) - 2);
+        p = strlen(NewEventText);
+        if (p < sizeof(RecHeader->ExtEventInfo.Text) - 2)
+        {
+          NewEventText[p++] = '\x8A'; NewEventText[p++] = '\x8A';
+        }
+      }
+      strncpy(&NewEventText[p], &OldEventText[(OldEventText[0]<0x20) ? 1 : 0], sizeof(RecHeader->ExtEventInfo.Text) - p - 1);
+      if (RecHeader->ExtEventInfo.Text[sizeof(RecHeader->ExtEventInfo.Text) - 2] != 0)
+        snprintf(&RecHeader->ExtEventInfo.Text[sizeof(RecHeader->ExtEventInfo.Text) - 4], 4, "...");
+      free(NewEventText);
+    } */
+
+    if ((NewEventText = (char*)malloc(2 * strlen(pCaption) + strlen(OldEventText) + 5)))
+    {
+      if (OldEventText[0]>=0x15)
+      {
+        StrToUTF8(pCaption, NewEventText, 9);
+        if (*OldEventText)
+          sprintf(&NewEventText[strlen(NewEventText)], "\xC2\x8A\xC2\x8A%s", &OldEventText[(OldEventText[0]<0x20) ? 1 : 0]);
+      }
+      else
+        sprintf(NewEventText, "\5%s\x8A\x8A%s", pCaption, &OldEventText[(OldEventText[0]<0x20) ? 1 : 0]);
+      strncpy(RecHeader->ExtEventInfo.Text, NewEventText, sizeof(RecHeader->ExtEventInfo.Text) - 1);
       if (RecHeader->ExtEventInfo.Text[sizeof(RecHeader->ExtEventInfo.Text) - 2] != 0)
         snprintf(&RecHeader->ExtEventInfo.Text[sizeof(RecHeader->ExtEventInfo.Text) - 4], 4, "...");
       free(NewEventText);
@@ -369,7 +438,8 @@ void SetInfEventText(const char *pCaption)
   }
   else
     strncpy(RecHeader->ExtEventInfo.Text, OldEventText, sizeof(RecHeader->ExtEventInfo.Text));
-  RecHeader->ExtEventInfo.TextLength = strlen(RecHeader->ExtEventInfo.Text);
+  RecHeader->ExtEventInfo.TextLength = min(strlen(RecHeader->ExtEventInfo.Text), sizeof(RecHeader->ExtEventInfo.Text));
+  RecHeader->ExtEventInfo.NrItemizedPairs = 0;
 
   TRACEEXIT;
 }
@@ -439,12 +509,13 @@ bool SaveInfFile(const char *AbsDestInf, const char *AbsSourceInf)
     fInfOut = fopen(AbsDestInf, "wb");
   if(fInfOut)
   {
-    if (DoStrip)
+    if (DoStrip && !DoMerge)
     {
       RecHeaderInfo->rs_ToBeStripped = FALSE;
       RecHeaderInfo->rs_HasBeenStripped = TRUE;
     }
-    RecHeaderInfo->rbn_HasBeenScanned = TRUE;
+    if (DoMerge != 1)
+      RecHeaderInfo->rbn_HasBeenScanned = TRUE;
     if (NewDurationMS)
     {
       RecHeaderInfo->DurationMin = (word)((NewDurationMS + 500) / 60000);

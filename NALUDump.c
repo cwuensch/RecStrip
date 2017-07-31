@@ -27,6 +27,7 @@ static bool             SliceState = TRUE;
 
 static unsigned int     History = 0xffffffff;
 
+bool                    NoContinuityCheck = FALSE;
 static int              LastContinuityInput = -1;
 static int              LastContinuityOutput = -1;
 static int              PendingContinuity = -1;
@@ -285,7 +286,8 @@ int ProcessTSPacket(unsigned char *Packet, long long FilePosition)
     ContinuityOffset = (ContinuityInput - NewContinuityInput) % 16;
     if (ContinuityOffset != 0)
     {
-      printf("cNaluDumper: TS continuity offset %d (pos=%lld)\n", ContinuityOffset, FilePosition);
+      if (!NoContinuityCheck)
+        printf("cNaluDumper: TS continuity offset %d (pos=%lld)\n", ContinuityOffset, FilePosition);
       SetFirstPacketAfterBreak();
     }
 //    if (Offset > ContinuityOffset)

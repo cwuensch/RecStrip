@@ -3,7 +3,7 @@
 
 #include "RecHeader.h"
 
-#define VERSION                  "v1.0"
+#define VERSION                  "v2.0"
 
 #define NRBOOKMARKS                177   // eigentlich werden nur 48 Bookmarks unterstützt!! (SRP2401)
 #define NRSEGMENTMARKER            101
@@ -32,7 +32,8 @@
 #define STREAM_UNKNOWN               0xFF
 
 
-#ifdef _WIN32
+#if defined(WIN32) || defined(_WIN32) 
+  #define PATH_SEPARATOR '\\' 
   #define fstat64 _fstat64
   #define stat64 _stat64
   #define fseeko64 _fseeki64
@@ -40,6 +41,8 @@
 //  #define fopen fopen_s
 //  #define strncpy strncpy_s
 //  #define sprintf sprintf_s
+#else 
+  #define PATH_SEPARATOR '/'
 #endif
 
 #if defined(_MSC_VER) && _MSC_VER < 1900
@@ -109,7 +112,7 @@ extern byte             PACKETSIZE, PACKETOFFSET;
 extern word             VideoPID, TeletextPID;
 extern bool             isHDVideo, AlreadyStripped, HumaxSource;
 extern bool             DoStrip, RemoveEPGStream, RemoveTeletext, RebuildNav, RebuildInf;
-extern int              DoCut;
+extern int              DoCut, DoMerge;
 
 extern TYPE_Bookmark_Info *BookmarkInfo, BookmarkInfo_In;
 extern tSegmentMarker2 *SegmentMarker,  *SegmentMarker_In;       //[0]=Start of file, [x]=End of file

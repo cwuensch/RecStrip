@@ -83,13 +83,16 @@
   <ItemGroup>
     <ClInclude Include="..\crcmodel.h" />
     <ClInclude Include="..\CutProcessor.h" />
+    <ClInclude Include="..\hamming.h" />
     <ClInclude Include="..\HumaxHeader.h" />
     <ClInclude Include="..\InfProcessor.h" />
     <ClInclude Include="..\NALUDump.h" />
     <ClInclude Include="..\NavProcessor.h" />
+    <ClInclude Include="..\PESProcessor.h" />
     <ClInclude Include="..\RebuildInf.h" />
     <ClInclude Include="..\RecHeader.h" />
     <ClInclude Include="..\RecStrip.h" />
+    <ClInclude Include="..\teletext.h" />
     <ClInclude Include="..\type.h" />
   </ItemGroup>
   <ItemGroup>
@@ -99,6 +102,7 @@
     <ClCompile Include="..\InfProcessor.c" />
     <ClCompile Include="..\NALUDump.c" />
     <ClCompile Include="..\NavProcessor.c" />
+    <ClCompile Include="..\PESProcessor.c" />
     <ClCompile Include="..\RebuildInf.c" />
     <ClCompile Include="..\RecStrip.c" />
     <ClCompile Include="..\StrToUTF8.c" />

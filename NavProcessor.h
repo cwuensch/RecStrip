@@ -97,7 +97,8 @@ typedef struct
 } tTimeStamp2;
 
 
-extern dword            LastTimems, TimeOffset;
+extern dword            LastTimems;
+extern int              TimeOffset;
 extern dword           *pOutNextTimeStamp;
 extern FILE            *fNavIn;
 
@@ -109,6 +110,7 @@ dword DeltaPCR(dword FirstPCR, dword SecondPCR);
 void NavProcessor_Init(void);
 bool LoadNavFileIn(const char* AbsInNav);
 bool LoadNavFileOut(const char* AbsOutNav);
+void GoToEndOfNav(void);
 void ProcessNavFile(const long long CurrentPosition, const long long PositionOffset, tTSPacket* Packet);
 void QuickNavProcess(const long long CurrentPosition, const long long PositionOffset);
 void SetFirstPacketAfterBreak(void);

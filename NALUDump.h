@@ -26,6 +26,8 @@ typedef struct
 } sPayloadInfo;
 
 
+extern bool NoContinuityCheck;
+
 int TsGetPID(tTSPacket *Packet);
 int TsPayloadOffset(tTSPacket *Packet);
 void NALUDump_Init(void);

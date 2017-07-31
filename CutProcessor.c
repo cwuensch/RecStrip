@@ -620,6 +620,7 @@ bool CutFileSave(const char* AbsCutName)
         ret = (fprintf(fCut, "#Nr ; Sel ; %s ;     StartTime ; Percent ; Caption\r\n", ((OutCutVersion >= 4) ? "StartPosition" : "StartBlock")) > 0) && ret;
         for (i = 0; i < NrSegmentMarker; i++)
         {
+          SegmentMarker[i].Percent = (float)(((float)SegmentMarker[i].Position / RecFileSize) * 100.0);
           MSecToTimeString(SegmentMarker[i].Timems, TimeStamp);
           if (OutCutVersion >= 4)
             ret = (fprintf(fCut, "%3d ;  %c  ; %13lld ;%14s ;  %5.1f%% ; %s\r\n", i, (SegmentMarker[i].Selected ? '*' : '-'), SegmentMarker[i].Position, TimeStamp, SegmentMarker[i].Percent, (SegmentMarker[i].pCaption ? SegmentMarker[i].pCaption : "")) > 0) && ret;

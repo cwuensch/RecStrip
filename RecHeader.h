@@ -71,16 +71,18 @@ typedef struct
 {
   word                  ServiceID;
   word                  TextLength;
-  dword                 EventID;
+  dword                 Reserved;
   char                  Text[1024];
+  byte                  NrItemizedPairs;
+  byte                  Unknown1[3];
 } TYPE_ExtEvent_Info;
 
-/* typedef struct
+typedef struct
 {
   word                  NrOfImages;         // Check if the inf file size is at least 10322 bytes to
                                             // make sure that NrOfImages is valid
   word                  unknown1;             
-  dword                 unknown2;
+/*  dword                 unknown2;
   dword                 unknown3;
   dword                 PixelData1[196*156];  //ARGB
   dword                 unknown4;
@@ -91,8 +93,8 @@ typedef struct
   dword                 PixelData3[196*156];  //ARGB
   dword                 unknown8;
   dword                 unknown9;
-  dword                 PixelData4[196*156];  //ARGB
-} tPreviewImages; */
+  dword                 PixelData4[196*156];  //ARGB  */
+} tPreviewImages;
 
 typedef struct
 {
@@ -153,11 +155,10 @@ typedef struct
   TYPE_Service_Info     ServiceInfo;
   TYPE_Event_Info       EventInfo;
   TYPE_ExtEvent_Info    ExtEventInfo;
-  byte                  TpUnknown1[4];
   TYPE_TpInfo_TMSS      TransponderInfo;
   TYPE_Bookmark_Info    BookmarkInfo;
 //  byte                  HeaderUnused[8192];
-//  tPreviewImages        PreviewImages;
+  tPreviewImages        PreviewImages;
 } TYPE_RecHeader_TMSS;
 
 typedef struct
@@ -166,11 +167,10 @@ typedef struct
   TYPE_Service_Info     ServiceInfo;
   TYPE_Event_Info       EventInfo;
   TYPE_ExtEvent_Info    ExtEventInfo;
-  byte                  TpUnknown1[4];
   TYPE_TpInfo_TMSC      TransponderInfo;
   TYPE_Bookmark_Info    BookmarkInfo;
 //  byte                  HeaderUnused[8192];
-//  tPreviewImages        PreviewImages;
+  tPreviewImages        PreviewImages;
 } TYPE_RecHeader_TMSC;
 
 typedef struct
@@ -179,11 +179,10 @@ typedef struct
   TYPE_Service_Info     ServiceInfo;
   TYPE_Event_Info       EventInfo;
   TYPE_ExtEvent_Info    ExtEventInfo;
-  byte                  TpUnknown1[4];
   TYPE_TpInfo_TMST      TransponderInfo;
   TYPE_Bookmark_Info    BookmarkInfo;
 //  byte                  HeaderUnused[8192];
-//  tPreviewImages        PreviewImages;
+  tPreviewImages        PreviewImages;
 } TYPE_RecHeader_TMST;
 
 #endif
