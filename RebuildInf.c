@@ -2,9 +2,6 @@
 #define _LARGEFILE64_SOURCE 1
 #define _FILE_OFFSET_BITS  64
 #ifdef _MSC_VER
-  #define __const const
-  #define __attribute__(a)
-  #pragma pack(1)
   #define inline
 #endif
 

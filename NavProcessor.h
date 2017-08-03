@@ -111,7 +111,7 @@ void NavProcessor_Init(void);
 bool LoadNavFileIn(const char* AbsInNav);
 bool LoadNavFileOut(const char* AbsOutNav);
 void GoToEndOfNav(void);
-void ProcessNavFile(const long long CurrentPosition, const long long PositionOffset, tTSPacket* Packet);
+void ProcessNavFile(tTSPacket* Packet, const long long CurrentPosition, const long long PositionOffset);
 void QuickNavProcess(const long long CurrentPosition, const long long PositionOffset);
 void SetFirstPacketAfterBreak(void);
 void CloseNavFileIn(void);

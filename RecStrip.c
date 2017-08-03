@@ -5,6 +5,7 @@
   Based on Naludump 0.1.1 by Udo Richter
   Concepts from NaluStripper (Marten Richter)
   Concepts from Mpeg2cleaner (Stefan Pöschel)
+  Concepts from telxcc (Forers)
   Contains portions of RebuildNav (Alexander Ölzant)
   Contains portions of MovieCutter (Christian Wünsch)
   Contains portions of FireBirdLib
@@ -27,9 +28,6 @@
 #define _LARGEFILE64_SOURCE 1
 #define _FILE_OFFSET_BITS  64
 #ifdef _MSC_VER
-  #define __const const
-  #define __attribute__(a)
-  #pragma pack(1)
   #define inline
 #endif
 
@@ -54,6 +52,7 @@
 #include "InfProcessor.h"
 #include "NavProcessor.h"
 #include "CutProcessor.h"
+#include "TtxProcessor.h"
 #include "RebuildInf.h"
 #include "NALUDump.h"
 #include "HumaxHeader.h"
@@ -101,7 +100,7 @@ dword                   InfDuration = 0, NewDurationMS = 0, NewStartTimeOffset =
 int                     CutTimeOffset = 0;
 
 // Lokale Variablen
-static char             NavFileIn[FBLIB_DIR_SIZE], NavFileOut[FBLIB_DIR_SIZE], NavFileOld[FBLIB_DIR_SIZE], InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], InfFileOld[FBLIB_DIR_SIZE], CutFileIn[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE];
+static char             NavFileIn[FBLIB_DIR_SIZE], NavFileOut[FBLIB_DIR_SIZE], NavFileOld[FBLIB_DIR_SIZE], InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], InfFileOld[FBLIB_DIR_SIZE], CutFileIn[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE], TeletextOut[FBLIB_DIR_SIZE];
 static FILE            *fIn = NULL;  // dirty Hack: erreichbar machen für InfProcessor
 static FILE            *fOut = NULL;
 static byte            *PendingBuf = NULL;
@@ -112,8 +111,8 @@ static unsigned int     RecFileBlocks = 0;
 static long long        CurrentPosition = 0, PositionOffset = 0, NrPackets;
 static unsigned int     CurPosBlocks = 0, CurBlockBytes = 0, BlocksOneSecond = 250, BlocksOnePercent;
 static long long        NrDroppedFillerNALU = 0, NrDroppedZeroStuffing = 0, NrDroppedAdaptation = 0, NrDroppedNullPid = 0, NrDroppedEPGPid = 0, NrDroppedTxtPid=0, NrIgnoredPackets = 0;
-static dword            LastPCR = 0, LastTimeStamp = 0, CurTimeStep = 5000;
-static long long        PosLastPCR = 0;
+static dword            LastTimeStamp = 0, CurTimeStep = 5000;
+static long long        LastPCR = 0, PosLastPCR = 0;
 static byte             ContinuityCount = 0;
 static bool             ResumeSet = FALSE;
 
@@ -418,7 +417,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
       free(Segments_tmp); Segments_tmp = NULL;
       printf("  ERROR: Not enough memory!\n");
       TRACEEXIT;
-      return (FALSE);
+      return FALSE;
     }
 
     // dirty hack: InfBuffer und SegmentMarker auf temporäre Buffer umbiegen
@@ -522,18 +521,18 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
       SegmentMarker_bak[NrSegmentMarker_bak++] = SegmentMarker[i];
 
     // dirty hack: vorherige Pointer für InfBuffer und SegmentMarker wiederherstellen
+//    free(InfBuf_tmp); InfBuf_tmp = NULL;
     InfProcessor_Free();
+    if (SegmentMarker) free(SegmentMarker); Segments_tmp = NULL;
     InfBuffer = InfBuffer_bak;
     RecHeaderInfo = RecHeaderInfo_bak;
     BookmarkInfo = BookmarkInfo_bak;
     SegmentMarker = SegmentMarker_bak;
     NrSegmentMarker = NrSegmentMarker_bak;
     OrigStartTime = OrigStartTime_bak;
-
-//    free(InfBuf_tmp); InfBuf_tmp = NULL;
-    free(Segments_tmp); Segments_tmp = NULL;
   }
 
+  printf("\n");
   TRACEEXIT;
   return ret;
 }
@@ -652,6 +651,17 @@ SONST
   else
     CutFileOut[0] = '\0';
 
+  // TeletextOut ermitteln
+  if (ExtractTeletext && *RecFileOut)
+  {
+    char *p;
+    snprintf(TeletextOut, FBLIB_DIR_SIZE, "%s", RecFileOut);
+    if ((p = strrchr(TeletextOut, '.')) == NULL)  p = &TeletextOut[strlen(TeletextOut)];
+    snprintf(p, 5, ".srt");
+    if (LoadTeletextOut(TeletextOut))
+      printf("Teletext output: %s", TeletextOut);
+  }
+
   printf("\n");
   TRACEEXIT;
   return TRUE;
@@ -710,6 +720,7 @@ bool CloseOutputFiles(void)
       printf("  ERROR: Failed closing the output file.\n");
       CutFileSave(CutFileOut);
       SaveInfFile(InfFileOut, InfFileIn);
+      CloseTeletextOut();
       CutProcessor_Free();
       InfProcessor_Free();
       free(PendingBuf); PendingBuf = NULL;
@@ -724,6 +735,9 @@ bool CloseOutputFiles(void)
 
   if (*InfFileOut && !SaveInfFile(InfFileOut, InfFileIn))
     printf("  WARNING: Cannot create inf %s.\n", InfFileOut);
+
+  if (ExtractTeletext && !CloseTeletextOut())
+    printf("  WARNING: Cannot create teletext %s.\n", TeletextOut);
 
 
   if (*RecFileOut)
@@ -836,7 +850,20 @@ int main(int argc, const char* argv[])
   }
   else OutDir[0] = '\0';
 
-  if (!*RecFileIn || ((DoCut || DoStrip || DoMerge || OutPacketSize) && (!*RecFileOut || strcmp(RecFileIn, RecFileOut)==0)) || ((RemoveEPGStream || RemoveTeletext) && !DoStrip) || (DoMerge && DoCut==2) || (DoMerge==1 && OutPacketSize))
+  ret = FALSE;
+  if (!*RecFileIn)
+    printf("\nNo input file specified!\n");
+  else if ((DoCut || DoStrip || DoMerge || OutPacketSize) && (!*RecFileOut || strcmp(RecFileIn, RecFileOut)==0))
+    printf("\nNo output file specified or output same as input!\n");
+  else if ((RemoveEPGStream || RemoveTeletext) && !DoStrip)
+    printf("\nRemove EPG (-e) or teletext (-t/-tt) cannot be used without stripping (-s)!\n");
+  else if (DoMerge && DoCut==2) 
+    printf("\nMerging cannot be used together with cut mode (single segment copy)!\n");
+  else if (DoMerge==1 && OutPacketSize)
+    printf("\nPacketSize cannot be changed when appending to an existing recording!\n");
+  else
+    ret = TRUE;
+  if (!ret)
   {
     printf("\nUsage:\n------\n");
     printf(" RecStrip <RecFile>           Scan the rec file and set Crypt- und RbN-Flag in\n"
@@ -863,7 +890,7 @@ int main(int argc, const char* argv[])
            "             Removes unneeded filler packets. May be combined with -c, -r, -a.\n\n");
     printf("  -e:        Remove also the EPG data. (only with -s)\n\n");
     printf("  -t:        Remove also the teletext data. (only with -s)\n");
-//    printf("  -tt:       Extraxt subtitles from and remove teletext. (only with -s)\n\n");
+    printf("  -tt:       Extraxt subtitles from and remove teletext. (only with -s)\n\n");
     printf("  -o1/-o2:   Change the packet size for output-rec: \n"
            "             1: PacketSize = 192 Bytes, 2: PacketSize = 188 Bytes.\n");
     printf("\nExamples:\n---------\n");
@@ -885,6 +912,7 @@ int main(int argc, const char* argv[])
     exit(2);
   }
   NavProcessor_Init();
+  TtxProcessor_Init();
 
   // Pending Buffer initialisieren
   if (DoStrip)
@@ -948,8 +976,6 @@ int main(int argc, const char* argv[])
     TRACEEXIT;
     exit(6);
   }
-
-  printf("\n");
 
   // Output-Files öffnen
   if (DoCut < 2 && !OpenOutputFiles())
@@ -1061,6 +1087,7 @@ int main(int argc, const char* argv[])
             long long SkippedBytes = (((SegmentMarker[CurSeg].Position) /* / PACKETSIZE) * PACKETSIZE */) ) - CurrentPosition;
             fseeko64(fIn, ((SegmentMarker[CurSeg].Position) /* / PACKETSIZE) * PACKETSIZE */), SEEK_SET);
             SetFirstPacketAfterBreak();
+            SetTeletextBreak(FALSE);
             if(DoStrip)  NoContinuityCheck = TRUE;
 
             // Position neu berechnen
@@ -1131,6 +1158,7 @@ int main(int argc, const char* argv[])
             {
               fclose(fIn); fIn = NULL;
               CloseNavFileIn();
+              CloseTeletextOut();
               CutProcessor_Free();
               InfProcessor_Free();
               free(PendingBuf); PendingBuf = NULL;      
@@ -1186,6 +1214,8 @@ int main(int argc, const char* argv[])
             }
             else if (RemoveTeletext && CurPID == TeletextPID)
             {
+              if (ExtractTeletext && fTtxOut)
+                ProcessTtxPacket((tTSPacket*) &Buffer[4]);
               NrDroppedTxtPid++;
               DropCurPacket = TRUE;
             }
@@ -1286,15 +1316,16 @@ int main(int argc, const char* argv[])
           }
 
           // PCR berechnen
-          if (OutPacketSize > PACKETSIZE)  // OutPacketSize==192 and PACKETSIZE==188
+          if (OutPacketSize > PACKETSIZE || ExtractTeletext)  // OutPacketSize==192 and PACKETSIZE==188
           {
             long long CurPCR = 0;
             if (GetPCR(&Buffer[4], &CurPCR))
             {
               if (LastPCR)
-                CurTimeStep = ((dword)CurPCR - LastPCR) / ((dword)(CurrentPosition-PosLastPCR) / PACKETSIZE);
-              LastPCR = (dword)CurPCR;
+                CurTimeStep = (dword) ((CurPCR - LastPCR) / ((CurrentPosition-PosLastPCR) / PACKETSIZE));
+              LastPCR = CurPCR;
               PosLastPCR = CurrentPosition;
+              global_timestamp = (dword) (CurPCR / 27000);
             }
             LastTimeStamp += CurTimeStep;
             Buffer[0] = ((byte*)&LastTimeStamp)[3];
@@ -1313,7 +1344,7 @@ int main(int argc, const char* argv[])
             if (RebuildNav)
             {
               if (CurPID == VideoPID)
-                ProcessNavFile(CurrentPosition + PACKETOFFSET, PositionOffset, (tTSPacket*) &Buffer[4]);
+                ProcessNavFile((tTSPacket*) &Buffer[4], CurrentPosition + PACKETOFFSET, PositionOffset);
             }
             else if (*RecFileOut && *NavFileIn)
               QuickNavProcess(CurrentPosition, PositionOffset);
@@ -1348,6 +1379,7 @@ int main(int argc, const char* argv[])
                 fclose(fOut); fOut = NULL;
                 CloseNavFileIn();
                 CloseNavFileOut();
+                CloseTeletextOut();
                 CutProcessor_Free();
                 InfProcessor_Free();
                 free(PendingBuf);
@@ -1436,6 +1468,7 @@ int main(int argc, const char* argv[])
               CloseNavFileOut();
               CutFileSave(CutFileOut);
               SaveInfFile(InfFileOut, InfFileIn);
+              CloseTeletextOut();
               CutProcessor_Free();
               InfProcessor_Free();
               free(PendingBuf);
@@ -1475,6 +1508,7 @@ int main(int argc, const char* argv[])
       if (NrSegmentMarker >= 2)
         CutTimeOffset -= SegmentMarker[NrSegmentMarker-1].Timems;
       SetFirstPacketAfterBreak();
+      SetTeletextBreak(TRUE);
       if(DoStrip)  NoContinuityCheck = TRUE;
 
       if (!OpenInputFiles(RecFileIn, FALSE))

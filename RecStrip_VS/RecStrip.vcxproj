@@ -93,6 +93,7 @@
     <ClInclude Include="..\RecHeader.h" />
     <ClInclude Include="..\RecStrip.h" />
     <ClInclude Include="..\teletext.h" />
+    <ClInclude Include="..\TtxProcessor.h" />
     <ClInclude Include="..\type.h" />
   </ItemGroup>
   <ItemGroup>
@@ -106,6 +107,7 @@
     <ClCompile Include="..\RebuildInf.c" />
     <ClCompile Include="..\RecStrip.c" />
     <ClCompile Include="..\StrToUTF8.c" />
+    <ClCompile Include="..\TtxProcessor.c" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

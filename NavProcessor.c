@@ -1,12 +1,6 @@
 #define _LARGEFILE_SOURCE   1
 #define _LARGEFILE64_SOURCE 1
 #define _FILE_OFFSET_BITS  64
-#ifdef _MSC_VER
-  #define __const const
-  #define __attribute__(a)
-  #pragma pack(1)
-  #define inline
-#endif
 
 #define _GNU_SOURCE
 #include <stdlib.h>
@@ -908,7 +902,7 @@ dbg_HeaderPosOffset = dbg_PositionOffset;
   return;
 }
 
-void ProcessNavFile(const long long CurrentPosition, const long long PositionOffset, tTSPacket *Packet)
+void ProcessNavFile(tTSPacket *Packet, const long long CurrentPosition, const long long PositionOffset)
 {
   TRACEENTER;
   if (FirstRun && fNavIn)

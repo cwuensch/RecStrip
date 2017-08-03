@@ -1,12 +1,6 @@
 #define _LARGEFILE_SOURCE   1
 #define _LARGEFILE64_SOURCE 1
 #define _FILE_OFFSET_BITS  64
-#ifdef _MSC_VER
-  #define __const const
-  #define __attribute__(a)
-  #pragma pack(1)
-  #define inline
-#endif
 
 #define _GNU_SOURCE
 #include <stdlib.h>
@@ -116,6 +110,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
               case 1: PSBuffer->ValidBuffer = 2; break;
             }
 
+            PSBuffer->ValidBufLen = PSBuffer->BufferPtr;
             PSBuffer->PSFileCtr++;
           }
 
@@ -151,19 +146,27 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
         if(PSBuffer->LastCCCounter == 255)
         {
           printf("  CC error while parsing PID 0x%4.4x\n", PSBuffer->PID);
-          switch(PSBuffer->ValidBuffer)
-          {
-            case 0:
-            case 2: PSBuffer->pBuffer = PSBuffer->Buffer1; break;
-            case 1: PSBuffer->pBuffer = PSBuffer->Buffer2; break;
-          }
-          memset(PSBuffer->pBuffer, 0, PSBuffer->BufferSize);
-          PSBuffer->BufferPtr = 0;
+          PSBuffer_DropCurBuffer(PSBuffer);
         }
       }
 
       PSBuffer->LastCCCounter = Packet->ContinuityCount;
     }
   }
+  TRACEEXIT;
+}
+
+void PSBuffer_DropCurBuffer(tPSBuffer *PSBuffer)
+{
+  TRACEENTER;
+  switch(PSBuffer->ValidBuffer)
+  {
+    case 0:
+    case 2: PSBuffer->pBuffer = PSBuffer->Buffer1; break;
+    case 1: PSBuffer->pBuffer = PSBuffer->Buffer2; break;
+  }
+  memset(PSBuffer->pBuffer, 0, PSBuffer->BufferSize);
+  PSBuffer->BufferPtr = 0;
+  PSBuffer->LastCCCounter = 255;
   TRACEEXIT;
 }

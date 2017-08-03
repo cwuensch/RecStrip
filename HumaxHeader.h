@@ -1,6 +1,10 @@
 #ifndef __HUMAXHEADERH__
 #define __HUMAXHEADERH__
 
+#ifdef _MSC_VER
+  #define __attribute__(a)
+#endif
+
 /*
  Das Format
  ----------
@@ -37,11 +41,12 @@ typedef enum
   HumaxTonSpurenID = 0x4823
 } THumaxZusInfoIDs;
 
+#pragma pack(push, 1)
 typedef struct
 {
   word                  PID;
   char                  Name[6];                 // meist kürzer, nullterminiert
-} THumaxTonSpur;
+}__attribute__((packed)) THumaxTonSpur;
 
 typedef struct
 {
@@ -60,7 +65,7 @@ typedef struct
   byte Schreibschutz;        // 1 (geschützt) - 0 (nicht geschützt)
   byte Unbekannt2[15];
   char Dateiname[32];        // evtl. kürzer, nullterminiert
-} THumaxBlock_allg;
+}__attribute__((packed)) THumaxBlock_allg;
 
 typedef struct
 {
@@ -81,7 +86,7 @@ typedef struct
   word Anzahl;
   word Leer;
   THumaxTonSpur Items[50];
-} THumaxBlock_Tonspuren;
+}__attribute__((packed)) THumaxBlock_Tonspuren;
 
 
 typedef struct
@@ -90,8 +95,8 @@ typedef struct
   word ZusInfoID;              // ID des ZusatzInfo-Blocks
   byte ZusInfos[404];          // z.B. 3. Header: Bookmarks, 4. Header: Tonspuren
   THumaxBlock_Ende Ende;
-} THumaxHeader;
-
+}__attribute__((packed)) THumaxHeader;
+#pragma pack(pop)
 
 
 typedef struct

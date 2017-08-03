@@ -1,7 +1,11 @@
 #ifndef __CUTPROCESSORH__
 #define __CUTPROCESSORH__
 
+#ifdef _MSC_VER
+  #define __attribute__(a)
+#endif
 
+#pragma pack(push, 1)
 typedef struct
 {
   byte                  Version;
@@ -18,7 +22,7 @@ typedef struct
   word                  ActiveSegment;
   word                  Padding;
 }__attribute__((packed)) tCutHeader2;
-
+#pragma pack(pop)
 
 extern int              OutCutVersion;
 extern bool             WriteCutInf;
