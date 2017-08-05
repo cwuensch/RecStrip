@@ -398,7 +398,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
   byte                 *InfBuffer_bak = InfBuffer;
   TYPE_RecHeader_Info  *RecHeaderInfo_bak = RecHeaderInfo;
   TYPE_Bookmark_Info   *BookmarkInfo_bak = BookmarkInfo;
-  dword                 OrigStartTime_bak = OrigStartTime;
+  dword                 InfDuration_bak = InfDuration;
 
   tSegmentMarker2      *SegmentMarker_bak = SegmentMarker;
   int                   NrSegmentMarker_bak = NrSegmentMarker;
@@ -495,10 +495,11 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     }
   
     // ggf. cut-File einlesen
-    GetCutNameFromRec(RecFileIn, CutFileIn);
+    GetFileNameFromRec(RecFileIn, ".cut", CutFileIn);
     printf("\nCut file: %s\n", CutFileIn);
     if (!CutFileLoad(CutFileIn))
     {
+      AddDefaultSegmentMarker();
       CutFileIn[0] = '\0';
       DoCut = 0;
     }
@@ -512,13 +513,23 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     for (i = 0; i < (int)BookmarkInfo->NrBookmarks; i++)
       BookmarkInfo_bak->Bookmarks[BookmarkInfo_bak->NrBookmarks++] = BookmarkInfo->Bookmarks[i];
 
-    // letzten SegmentMarker der ersten Aufnahme löschen (wird ersetzt durch Segment 0 der zweiten)
-    if ((NrSegmentMarker >= 2) && (NrSegmentMarker_bak > 0))
-      free(SegmentMarker_bak[--NrSegmentMarker_bak].pCaption);
-
     // neu ermittelte SegmentMarker kopieren
-    for (i = 0; i < NrSegmentMarker; i++)
-      SegmentMarker_bak[NrSegmentMarker_bak++] = SegmentMarker[i];
+    if (NrSegmentMarker_bak > 2 || NrSegmentMarker > 2 || (SegmentMarker && SegmentMarker[0].pCaption))
+    {
+      // letzten SegmentMarker der ersten Aufnahme löschen (wird ersetzt durch Segment 0 der zweiten)
+      if (NrSegmentMarker_bak >= 2)
+        free(SegmentMarker_bak[--NrSegmentMarker_bak].pCaption);
+
+      // neue SegmentMarker kopieren
+      for (i = 0; i < NrSegmentMarker; i++)
+        SegmentMarker_bak[NrSegmentMarker_bak++] = SegmentMarker[i];
+    }
+    else if (NrSegmentMarker_bak >= 2)
+    {
+      // beide ohne cut-File -> letzten SegmentMarker anpassen
+      SegmentMarker_bak[1].Position = RecFileBlocks;
+      SegmentMarker_bak[1].Timems = InfDuration * 60000;
+    }
 
     // dirty hack: vorherige Pointer für InfBuffer und SegmentMarker wiederherstellen
 //    free(InfBuf_tmp); InfBuf_tmp = NULL;
@@ -529,7 +540,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     BookmarkInfo = BookmarkInfo_bak;
     SegmentMarker = SegmentMarker_bak;
     NrSegmentMarker = NrSegmentMarker_bak;
-    OrigStartTime = OrigStartTime_bak;
+//    InfDuration = InfDuration + InfDuration_bak;  // eigentlich unnötig
   }
 
   printf("\n");
@@ -643,9 +654,9 @@ SONST
     printf("Nav output: %s\n", NavFileOut);
 
   // CutFileOut ermitteln
-  if (*CutFileIn && *RecFileOut)
+  if (*RecFileOut)
   {
-    GetCutNameFromRec(RecFileOut, CutFileOut);
+    GetFileNameFromRec(RecFileOut, ".cut", CutFileOut);
     printf("Cut output: %s\n", CutFileOut);
   }
   else
@@ -654,10 +665,7 @@ SONST
   // TeletextOut ermitteln
   if (ExtractTeletext && *RecFileOut)
   {
-    char *p;
-    snprintf(TeletextOut, FBLIB_DIR_SIZE, "%s", RecFileOut);
-    if ((p = strrchr(TeletextOut, '.')) == NULL)  p = &TeletextOut[strlen(TeletextOut)];
-    snprintf(p, 5, ".srt");
+    GetFileNameFromRec(RecFileOut, ".srt", TeletextOut);
     if (LoadTeletextOut(TeletextOut))
       printf("Teletext output: %s", TeletextOut);
   }
@@ -943,7 +951,10 @@ int main(int argc, const char* argv[])
     }
     i = NrSegmentMarker - 1;
     PositionOffset = -(long long)((RecFileSize/OutPacketSize)*OutPacketSize);
-    CutTimeOffset = -(int)SegmentMarker[i].Timems;
+    if (NrSegmentMarker >= 2)
+      CutTimeOffset = -(int)SegmentMarker[NrSegmentMarker-1].Timems;
+//    else
+//      CutTimeOffset = -(int)InfDuration;
     CloseInputFiles(FALSE);
   }
   else if (DoMerge == 2)
@@ -1289,9 +1300,9 @@ int main(int argc, const char* argv[])
           while ((i < NrSegmentMarker) && (CurrentPosition >= SegmentMarker[i].Position))
           {
             SegmentMarker[i].Position -= PositionOffset;
-            SegmentMarker[i].Timems -= CutTimeOffset;
             if (i > 0 && !SegmentMarker[i].Timems)
               pOutNextTimeStamp = &SegmentMarker[i].Timems;
+            SegmentMarker[i].Timems -= CutTimeOffset;
             i++;
           }
 
@@ -1506,7 +1517,9 @@ int main(int argc, const char* argv[])
 
       PositionOffset -= CurrentPosition;
       if (NrSegmentMarker >= 2)
-        CutTimeOffset -= SegmentMarker[NrSegmentMarker-1].Timems;
+        CutTimeOffset -= (int)SegmentMarker[NrSegmentMarker-1].Timems;
+//      else
+//        CutTimeOffset -= (int)InfDuration;
       SetFirstPacketAfterBreak();
       SetTeletextBreak(TRUE);
       if(DoStrip)  NoContinuityCheck = TRUE;
@@ -1521,7 +1534,7 @@ int main(int argc, const char* argv[])
         exit(5);
       }
 
-      CurPosBlocks = CalcBlockSize(CurrentPosition);
+//      CurPosBlocks = CalcBlockSize(CurrentPosition);  // eigentlich unnötig (?)
       CurBlockBytes = 0;
       BlocksSincePercent = 0;
       n = 0;

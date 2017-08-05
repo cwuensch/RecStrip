@@ -27,7 +27,8 @@ typedef struct
 extern int              OutCutVersion;
 extern bool             WriteCutInf;
 
-void GetCutNameFromRec(const char *RecFileName, char *const OutCutFileName);
+void AddDefaultSegmentMarker(void);
+void GetFileNameFromRec(const char *RecFileName, const char *NewExt, char *const OutCutFileName);
 bool CutProcessor_Init(void);
 bool CutFileLoad(const char *AbsCutName);
 bool CutFileSave(const char* AbsCutName);

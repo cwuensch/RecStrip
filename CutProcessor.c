@@ -78,7 +78,20 @@ static void ResetSegmentMarkers()
   TRACEEXIT;
 }
 
-void GetCutNameFromRec(const char *RecFileName, char *const OutCutFileName)
+void AddDefaultSegmentMarker(void)
+{
+  TRACEENTER;
+
+  ResetSegmentMarkers();
+  SegmentMarker[1].Position = RecFileSize;
+  SegmentMarker[1].Timems   = InfDuration * 60000;
+  SegmentMarker[1].Percent  = 100.0;
+  NrSegmentMarker = 2;
+
+  TRACEEXIT;
+}
+
+void GetFileNameFromRec(const char *RecFileName, const char *NewExt, char *const OutCutFileName)
 {
   char *p = NULL;
 
@@ -88,7 +101,7 @@ void GetCutNameFromRec(const char *RecFileName, char *const OutCutFileName)
     snprintf(OutCutFileName, FBLIB_DIR_SIZE, "%s", RecFileName);
     if ((p = strrchr(OutCutFileName, '.')) == NULL)
       p = &OutCutFileName[strlen(OutCutFileName)];
-    snprintf(p, 5, ".cut");
+    strcpy(p, NewExt);
   }
   TRACEEXIT;
 }
@@ -538,8 +551,8 @@ bool CutFileLoad(const char *AbsCutName)
   {
     if(ret) printf("  CutFileLoad: Less than two timestamps imported -> resetting!\n"); 
     ResetSegmentMarkers();
-    free(SegmentMarker);
-    SegmentMarker = NULL;
+//    free(SegmentMarker);
+//    SegmentMarker = NULL;
     ret = FALSE;
   }
 
@@ -630,6 +643,8 @@ bool CutFileSave(const char* AbsCutName)
         ret = FALSE;
       }
     }
+    else
+      remove(AbsCutName);
 
     if (WriteCutInf && BookmarkInfo)
       CutEncodeToBM(BookmarkInfo->Bookmarks, BookmarkInfo->NrBookmarks);
