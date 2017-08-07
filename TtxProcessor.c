@@ -117,15 +117,15 @@ typedef struct {
 #pragma pack(pop)
 
 typedef struct {
-  uint64_t show_timestamp; // show at timestamp (in ms)
-  uint64_t hide_timestamp; // hide at timestamp (in ms)
+  uint32_t show_timestamp; // show at timestamp (in ms)
+  uint32_t hide_timestamp; // hide at timestamp (in ms)
   uint16_t text[25][40]; // 25 lines x 40 cols (1 screen/page) of wide chars
   uint8_t tainted; // 1 = text variable contains any data
 } teletext_page_t;
 
 typedef struct {
-  uint64_t show_timestamp; // show at timestamp (in ms)
-  uint64_t hide_timestamp; // hide at timestamp (in ms)
+  uint32_t show_timestamp; // show at timestamp (in ms)
+  uint32_t hide_timestamp; // hide at timestamp (in ms)
   char *text;
 } frame_t;
 
@@ -135,7 +135,7 @@ static struct {
   uint16_t  page;          // teletext page containing cc we want to filter
   int32_t   offset;        // time offset in milliseconds
   uint8_t   colours;       // output <font...></font> tags
-  uint64_t  utc_refvalue;  // UTC referential value
+  uint32_t  utc_refvalue;  // UTC referential value
   // FIXME: move SE_MODE to output module
   uint8_t se_mode;
   //char *template; // output format template
@@ -173,7 +173,7 @@ static uint32_t frames_produced = 0;
 static uint8_t cc_map[256] = { 0 };
 
 // last timestamp computed
-static uint64_t last_timestamp = 0;
+static uint32_t last_timestamp = 0;
 
 // working teletext page buffer
 static teletext_page_t page_buffer;
@@ -266,13 +266,12 @@ static void remap_g0_charset(uint8_t c) {
   }
 }
 
-static void timestamp_to_srttime(uint64_t timestamp, char *buffer) {
-  uint64_t p = timestamp;
-  uint8_t h = (byte) (p / 3600000);
-  uint8_t m = (byte) (p / 60000 - 60 * h);
-  uint8_t s = (byte) (p / 1000 - 3600 * h - 60 * m);
-  uint16_t u = (word) (p - 3600000 * h - 60000 * m - 1000 * s);
-  sprintf(buffer, "%02hhu:%02hhu:%02hhu,%03hhu", h, m, s, u);
+static void timestamp_to_srttime(uint32_t timestamp, char *buffer) {
+  uint16_t h = (word) (timestamp / 3600000);
+  uint8_t  m = (byte) (timestamp / 60000 - 60 * h);
+  uint8_t  s = (byte) (timestamp / 1000 - 3600 * h - 60 * m);
+  uint16_t u = (word) (timestamp - 3600000 * h - 60000 * m - 1000 * s);
+  sprintf(buffer, "%02hu:%02hhu:%02hhu,%03hu", h, m, s, u);
 }
 
 // UCS-2 (16 bits) to UTF-8 (Unicode Normalization Form C (NFC)) conversion
@@ -457,7 +456,7 @@ static void process_page(teletext_page_t *page) {
   fflush(fTtxOut);
 }
 
-static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payload_t *packet, uint64_t timestamp) {
+static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payload_t *packet, uint32_t timestamp) {
   // variable names conform to ETS 300 706, chapter 7.1.2
   uint8_t address = (unham_8_4(packet->address[1]) << 4) | unham_8_4(packet->address[0]);
   uint8_t y = (address >> 3) & 0x1f;
@@ -708,15 +707,15 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
 }
 
 static void process_pes_packet(uint8_t *buffer, uint16_t size) {
-  static uint8_t        using_pts = UNDEF;
-  static int64_t        delta = 0;
-  static uint32_t       t0 = 0;
+  static bool_t         using_pts = UNDEF;
+  static uint32_t       delta = 0;
+//  static uint32_t       t0 = 0;
+  uint32_t              t = 0, new_timestamp;
   uint64_t              pes_prefix;
   uint8_t               pes_stream_id;
   uint16_t              pes_packet_length;
   uint8_t               optional_pes_header_included = NO;
   uint16_t              optional_pes_header_length = 0;
-  uint32_t              t = 0;
   uint16_t              i;
 
   if (size < 6) return;
@@ -778,7 +777,7 @@ static void process_pes_packet(uint8_t *buffer, uint16_t size) {
   }
 
   if (states.pts_initialized == NO) {
-    delta = (int64_t)config.offset + 1000 * config.utc_refvalue - t;
+    delta = t - (config.utc_refvalue * 1000 + config.offset);
     states.pts_initialized = YES;
 
     if ((using_pts == NO) && (global_timestamp == 0)) {
@@ -787,13 +786,14 @@ static void process_pes_packet(uint8_t *buffer, uint16_t size) {
     }
   }
 //CW  if (t < t0) delta = last_timestamp;
-  if (FirstPacketAfterBreak)
+  new_timestamp = t - delta;
+  if (FirstPacketAfterBreak || (new_timestamp < last_timestamp) || (new_timestamp > last_timestamp + 60000))
   {
-    delta += (t0 - t);
+    delta += new_timestamp - last_timestamp;
+    new_timestamp = t - delta;
     FirstPacketAfterBreak = FALSE;
   }
-  last_timestamp = t + delta;
-  t0 = t;
+  last_timestamp = new_timestamp;
 
   // skip optional PES header and process each 46 bytes long teletext packet
   i = 7;

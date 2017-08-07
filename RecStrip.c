@@ -108,8 +108,9 @@ static int              PendingBufLen = 0, PendingBufStart = 0;
 static bool             isPending = FALSE;
 
 static unsigned int     RecFileBlocks = 0;
-static long long        CurrentPosition = 0, PositionOffset = 0, NrPackets;
+static long long        CurrentPosition = 0, PositionOffset = 0, NrPackets = 0;
 static unsigned int     CurPosBlocks = 0, CurBlockBytes = 0, BlocksOneSecond = 250, BlocksOnePercent;
+static unsigned int     NrSegments = 0, NrCopiedSegments = 0;
 static long long        NrDroppedFillerNALU = 0, NrDroppedZeroStuffing = 0, NrDroppedAdaptation = 0, NrDroppedNullPid = 0, NrDroppedEPGPid = 0, NrDroppedTxtPid=0, NrIgnoredPackets = 0;
 static dword            LastTimeStamp = 0, CurTimeStep = 5000;
 static long long        LastPCR = 0, PosLastPCR = 0;
@@ -1036,9 +1037,9 @@ int main(int argc, const char* argv[])
         DeleteBookmark(j);
 
       // neues Bookmark an Schnittstelle setzen
-      if (DoCut == 1)
+      if (DoCut == 1 || DoMerge)
         if ((CurrentPosition-PositionOffset > 0) && (CurPosBlocks + 3*BlocksOneSecond < RecFileBlocks))
-          AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset));
+          AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + 9023));
     }
 
     while (fIn)
@@ -1112,7 +1113,7 @@ int main(int argc, const char* argv[])
             if (BookmarkInfo)
             {
               // Bookmarks kurz vor der Schnittstelle löschen
-              while ((j > 0) && (BookmarkInfo->Bookmarks[j-1] + 3*BlocksOneSecond >= CalcBlockSize(CurrentPosition-SkippedBytes)))
+              while ((j > 0) && (BookmarkInfo->Bookmarks[j-1] + 3*BlocksOneSecond >= CalcBlockSize(CurrentPosition-PositionOffset)))  // CurPos - SkippedBytes ?
                 j--;
 
               // Bookmarks im weggeschnittenen Bereich (bzw. kurz nach Schnittstelle) löschen
@@ -1122,7 +1123,7 @@ int main(int argc, const char* argv[])
               // neues Bookmark an Schnittstelle setzen
               if (DoCut == 1)
                 if ((CurrentPosition-PositionOffset > 0) && (CurPosBlocks + 3*BlocksOneSecond < RecFileBlocks))
-                  AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset));
+                  AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + 9023));
             }
           }
           else
@@ -1193,8 +1194,10 @@ int main(int argc, const char* argv[])
             NewStartTimeOffset = SegmentMarker[CurSeg].Timems;
             NewDurationMS = (SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems);
           }
+          NrCopiedSegments++;
         }
 
+        NrSegments++;
         CurSeg++;
         if (CurSeg >= NrSegmentMarker)
           break;
@@ -1226,7 +1229,11 @@ int main(int argc, const char* argv[])
             else if (RemoveTeletext && CurPID == TeletextPID)
             {
               if (ExtractTeletext && fTtxOut)
+              {
+                dword CurPCR = 0;
+                if (GetPCRms(&Buffer[4], &CurPCR))  global_timestamp = CurPCR;
                 ProcessTtxPacket((tTSPacket*) &Buffer[4]);
+              }
               NrDroppedTxtPid++;
               DropCurPacket = TRUE;
             }
@@ -1290,6 +1297,7 @@ int main(int argc, const char* argv[])
                 if (!DoCut || (i < NrSegmentMarker && CurrentPosition != SegmentMarker[i].Position))
                   printf("TS check: TS continuity offset %d (pos=%lld)\n", (((tTSPacket*) &Buffer[4])->ContinuityCount - ContinuityCount) % 16, CurrentPosition);
                 SetFirstPacketAfterBreak();
+//                SetTeletextBreak(FALSE);
               }
               ContinuityCount = ((tTSPacket*) &Buffer[4])->ContinuityCount;
             }
@@ -1327,7 +1335,7 @@ int main(int argc, const char* argv[])
           }
 
           // PCR berechnen
-          if (OutPacketSize > PACKETSIZE || ExtractTeletext)  // OutPacketSize==192 and PACKETSIZE==188
+          if (OutPacketSize > PACKETSIZE)  // OutPacketSize==192 and PACKETSIZE==188
           {
             long long CurPCR = 0;
             if (GetPCR(&Buffer[4], &CurPCR))
@@ -1343,6 +1351,12 @@ int main(int argc, const char* argv[])
             Buffer[1] = ((byte*)&LastTimeStamp)[2];
             Buffer[2] = ((byte*)&LastTimeStamp)[1];
             Buffer[3] = ((byte*)&LastTimeStamp)[0];
+          }
+          else if (ExtractTeletext)
+          {
+            dword CurPCR = 0;
+            if (GetPCRms(&Buffer[4], &CurPCR))
+              global_timestamp = CurPCR;
           }
 
           if (!DropCurPacket)
@@ -1510,6 +1524,7 @@ int main(int argc, const char* argv[])
     if ((DoMerge == 2) && (curInputFile < NrInputFiles-1))
     {
       CloseInputFiles(TRUE);
+      NrPackets += ((CurrentPosition + PACKETSIZE-1) / PACKETSIZE);
 
       // nächstes Input-File aus Parameter-String ermitteln
       strncpy(RecFileIn, argv[curInputFile+1], sizeof(RecFileIn));
@@ -1552,7 +1567,9 @@ int main(int argc, const char* argv[])
   InfProcessor_Free();
   free(PendingBuf); PendingBuf = NULL;
 
-  NrPackets = ((CurrentPosition + PACKETSIZE-1) / PACKETSIZE);
+  NrPackets += ((CurrentPosition + PACKETSIZE-1) / PACKETSIZE);
+  if (NrCopiedSegments > 0)
+    printf("\nSegments: %d of %d segments copied.\n", NrCopiedSegments, NrSegments);
   if (NrPackets > 0)
     printf("\nPackets: %lld, FillerNALUs: %lld (%lld%%), ZeroByteStuffing: %lld (%lld%%), AdaptationFields: %lld (%lld%%), NullPackets: %lld (%lld%%), EPG: %lld (%lld%%), Teletext: %lld (%lld%%), Dropped (all): %lld (%lld%%)\n", NrPackets, NrDroppedFillerNALU, NrDroppedFillerNALU*100/NrPackets, NrDroppedZeroStuffing, NrDroppedZeroStuffing*100/NrPackets, NrDroppedAdaptation, NrDroppedAdaptation*100/NrPackets, NrDroppedNullPid, NrDroppedNullPid*100/NrPackets, NrDroppedEPGPid, NrDroppedEPGPid*100/NrPackets, NrDroppedTxtPid, NrDroppedTxtPid*100/NrPackets, NrDroppedFillerNALU+NrDroppedZeroStuffing+NrDroppedAdaptation+NrDroppedNullPid+NrDroppedEPGPid+NrDroppedTxtPid, (NrDroppedFillerNALU+NrDroppedZeroStuffing+NrDroppedAdaptation+NrDroppedNullPid+NrDroppedEPGPid+NrDroppedTxtPid)*100/NrPackets);
   else

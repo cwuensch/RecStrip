@@ -15,6 +15,7 @@
 #include "type.h"
 #include "NALUDump.h"
 #include "NavProcessor.h"
+#include "TtxProcessor.h"
 #include "RecStrip.h"
 
 
@@ -286,6 +287,7 @@ int ProcessTSPacket(unsigned char *Packet, long long FilePosition)
       if (!NoContinuityCheck)
         printf("cNaluDumper: TS continuity offset %d (pos=%lld)\n", ContinuityOffset, FilePosition);
       SetFirstPacketAfterBreak();
+//      SetTeletextBreak(FALSE);
     }
 //    if (Offset > ContinuityOffset)
 //      ContinuityOffset = Offset; // max if packets get dropped, otherwise always the current one.
