@@ -1299,7 +1299,7 @@ int main(int argc, const char* argv[])
                 if (!DoCut || (i < NrSegmentMarker && CurrentPosition != SegmentMarker[i].Position))
                   printf("TS check: TS continuity offset %d (pos=%lld)\n", (((tTSPacket*) &Buffer[4])->ContinuityCount - ContinuityCount) % 16, CurrentPosition);
                 SetFirstPacketAfterBreak();
-  //              SetTeletextBreak(FALSE);
+//                SetTeletextBreak(FALSE);
                 ContinuityCount = ((tTSPacket*) &Buffer[4])->ContinuityCount;
               }
             }
