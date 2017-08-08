@@ -90,7 +90,7 @@ word                    VideoPID = 0, TeletextPID = 0;
 bool                    isHDVideo = FALSE, AlreadyStripped = FALSE, HumaxSource = FALSE;
 bool                    DoStrip = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE;
 int                     DoCut = 0, DoMerge = 0;
-int                     curInputFile, NrInputFiles = 1;
+int                     curInputFile = 0, NrInputFiles = 1;
 
 TYPE_Bookmark_Info     *BookmarkInfo = NULL;
 tSegmentMarker2        *SegmentMarker = NULL;       //[0]=Start of file, [x]=End of file
@@ -114,7 +114,7 @@ static unsigned int     NrSegments = 0, NrCopiedSegments = 0;
 static long long        NrDroppedFillerNALU = 0, NrDroppedZeroStuffing = 0, NrDroppedAdaptation = 0, NrDroppedNullPid = 0, NrDroppedEPGPid = 0, NrDroppedTxtPid=0, NrIgnoredPackets = 0;
 static dword            LastTimeStamp = 0, CurTimeStep = 5000;
 static long long        LastPCR = 0, PosLastPCR = 0;
-static byte             ContinuityCount = 0;
+static signed char      ContinuityCount = -1;
 static bool             ResumeSet = FALSE;
 
 
@@ -1038,7 +1038,7 @@ int main(int argc, const char* argv[])
 
       // neues Bookmark an Schnittstelle setzen
       if (DoCut == 1 || DoMerge)
-        if ((CurrentPosition-PositionOffset > 0) && (CurPosBlocks + 3*BlocksOneSecond < RecFileBlocks))
+        if (CurrentPosition-PositionOffset > 0)
           AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + 9023));
     }
 
@@ -1093,6 +1093,7 @@ int main(int argc, const char* argv[])
             printf("[Segment %d]  -%12llu %10u-%-10u %s\n",     ++n, CurrentPosition, CalcBlockSize(SegmentMarker[CurSeg].Position), CalcBlockSize(SegmentMarker[CurSeg+1].Position), SegmentMarker[CurSeg].pCaption);
           CutTimeOffset += SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems;
           DeleteSegmentMarker(CurSeg, TRUE);
+          NrSegments++;
 
           if (CurSeg < NrSegmentMarker-1)
           {
@@ -1100,13 +1101,14 @@ int main(int argc, const char* argv[])
             fseeko64(fIn, ((SegmentMarker[CurSeg].Position) /* / PACKETSIZE) * PACKETSIZE */), SEEK_SET);
             SetFirstPacketAfterBreak();
             SetTeletextBreak(FALSE);
+            ContinuityCount = -1;
             if(DoStrip)  NoContinuityCheck = TRUE;
 
             // Position neu berechnen
             PositionOffset += SkippedBytes;
             CurrentPosition += SkippedBytes;
             CurPosBlocks = CalcBlockSize(CurrentPosition);
-            Percent = (100*CurPosBlocks) / (RecFileBlocks*NrInputFiles);
+            Percent = (100 * curInputFile / NrInputFiles) + ((100 * CurPosBlocks) / (RecFileBlocks * NrInputFiles));
             CurBlockBytes = 0;
             BlocksSincePercent = 0;
 
@@ -1195,9 +1197,9 @@ int main(int argc, const char* argv[])
             NewDurationMS = (SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems);
           }
           NrCopiedSegments++;
+          NrSegments++;
         }
 
-        NrSegments++;
         CurSeg++;
         if (CurSeg >= NrSegmentMarker)
           break;
@@ -1289,18 +1291,20 @@ int main(int argc, const char* argv[])
           else if (CurPID == VideoPID)
           {
             // nur Continuity Check
-            if (((tTSPacket*) &Buffer[4])->Payload_Exists) ContinuityCount = (ContinuityCount + 1) % 16;
-            if (((tTSPacket*) &Buffer[4])->ContinuityCount != ContinuityCount)
+            if (ContinuityCount >= 0)
             {
-              if (CurrentPosition > 0 && (CurrentPosition - PositionOffset) > 0)
+              if (((tTSPacket*) &Buffer[4])->Payload_Exists) ContinuityCount = (ContinuityCount + 1) % 16;
+              if (((tTSPacket*) &Buffer[4])->ContinuityCount != ContinuityCount)
               {
                 if (!DoCut || (i < NrSegmentMarker && CurrentPosition != SegmentMarker[i].Position))
                   printf("TS check: TS continuity offset %d (pos=%lld)\n", (((tTSPacket*) &Buffer[4])->ContinuityCount - ContinuityCount) % 16, CurrentPosition);
                 SetFirstPacketAfterBreak();
-//                SetTeletextBreak(FALSE);
+  //              SetTeletextBreak(FALSE);
+                ContinuityCount = ((tTSPacket*) &Buffer[4])->ContinuityCount;
               }
-              ContinuityCount = ((tTSPacket*) &Buffer[4])->ContinuityCount;
             }
+            else
+              ContinuityCount = ((tTSPacket*) &Buffer[4])->ContinuityCount;
           }
 
           // SEGMENTMARKER ANPASSEN
@@ -1524,7 +1528,7 @@ int main(int argc, const char* argv[])
     if ((DoMerge == 2) && (curInputFile < NrInputFiles-1))
     {
       CloseInputFiles(TRUE);
-      NrPackets += ((CurrentPosition + PACKETSIZE-1) / PACKETSIZE);
+      NrPackets += ((RecFileSize + PACKETSIZE-1) / PACKETSIZE);
 
       // nächstes Input-File aus Parameter-String ermitteln
       strncpy(RecFileIn, argv[curInputFile+1], sizeof(RecFileIn));
@@ -1537,6 +1541,7 @@ int main(int argc, const char* argv[])
 //        CutTimeOffset -= (int)InfDuration;
       SetFirstPacketAfterBreak();
       SetTeletextBreak(TRUE);
+      ContinuityCount = -1;
       if(DoStrip)  NoContinuityCheck = TRUE;
 
       if (!OpenInputFiles(RecFileIn, FALSE))
@@ -1549,7 +1554,7 @@ int main(int argc, const char* argv[])
         exit(5);
       }
 
-//      CurPosBlocks = CalcBlockSize(CurrentPosition);  // eigentlich unnötig (?)
+      CurPosBlocks = 0;
       CurBlockBytes = 0;
       BlocksSincePercent = 0;
       n = 0;
@@ -1567,7 +1572,7 @@ int main(int argc, const char* argv[])
   InfProcessor_Free();
   free(PendingBuf); PendingBuf = NULL;
 
-  NrPackets += ((CurrentPosition + PACKETSIZE-1) / PACKETSIZE);
+  NrPackets += ((RecFileSize + PACKETSIZE-1) / PACKETSIZE);
   if (NrCopiedSegments > 0)
     printf("\nSegments: %d of %d segments copied.\n", NrCopiedSegments, NrSegments);
   if (NrPackets > 0)

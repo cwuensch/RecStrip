@@ -22,7 +22,7 @@
 FILE                   *fTtxOut = NULL;
 static tPSBuffer        TtxBuffer;
 static int              LastBuffer = 0;
-static bool             FirstPacketAfterBreak = FALSE;
+static bool             FirstPacketAfterBreak = TRUE;
 
 // global TS PCR value
 dword global_timestamp = 0;
