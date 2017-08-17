@@ -100,7 +100,7 @@ dword                   InfDuration = 0, NewDurationMS = 0, NewStartTimeOffset =
 int                     CutTimeOffset = 0;
 
 // Lokale Variablen
-static char             NavFileIn[FBLIB_DIR_SIZE], NavFileOut[FBLIB_DIR_SIZE], NavFileOld[FBLIB_DIR_SIZE], InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], InfFileOld[FBLIB_DIR_SIZE], CutFileIn[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE], TeletextOut[FBLIB_DIR_SIZE];
+static char             NavFileIn[FBLIB_DIR_SIZE], NavFileOut[FBLIB_DIR_SIZE], NavFileOld[FBLIB_DIR_SIZE], InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], InfFileOld[FBLIB_DIR_SIZE], InfFileFirstIn[FBLIB_DIR_SIZE], CutFileIn[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE], TeletextOut[FBLIB_DIR_SIZE];
 static FILE            *fIn = NULL;  // dirty Hack: erreichbar machen für InfProcessor
 static FILE            *fOut = NULL;
 static byte            *PendingBuf = NULL;
@@ -399,6 +399,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
   byte                 *InfBuffer_bak = InfBuffer;
   TYPE_RecHeader_Info  *RecHeaderInfo_bak = RecHeaderInfo;
   TYPE_Bookmark_Info   *BookmarkInfo_bak = BookmarkInfo;
+  dword                 OrigStartTime_bak = OrigStartTime;
   dword                 InfDuration_bak = InfDuration;
 
   tSegmentMarker2      *SegmentMarker_bak = SegmentMarker;
@@ -469,6 +470,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
   {
     // ggf. inf-File einlesen
     snprintf(InfFileIn, sizeof(InfFileIn), "%s.inf", RecFileIn);
+    if(FirstTime) strcpy(InfFileFirstIn, InfFileIn);
     printf("\nInf file: %s\n", InfFileIn);
     InfFileOld[0] = '\0';
 
@@ -541,6 +543,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     BookmarkInfo = BookmarkInfo_bak;
     SegmentMarker = SegmentMarker_bak;
     NrSegmentMarker = NrSegmentMarker_bak;
+    OrigStartTime = OrigStartTime_bak;
 //    InfDuration = InfDuration + InfDuration_bak;  // eigentlich unnötig
   }
 
@@ -728,7 +731,7 @@ bool CloseOutputFiles(void)
     {
       printf("  ERROR: Failed closing the output file.\n");
       CutFileSave(CutFileOut);
-      SaveInfFile(InfFileOut, InfFileIn);
+      SaveInfFile(InfFileOut, (DoMerge!=1) ? InfFileFirstIn : NULL);
       CloseTeletextOut();
       CutProcessor_Free();
       InfProcessor_Free();
@@ -742,7 +745,7 @@ bool CloseOutputFiles(void)
   if ((*CutFileOut || (*InfFileOut && WriteCutInf)) && !CutFileSave(CutFileOut))
     printf("  WARNING: Cannot create cut %s.\n", CutFileOut);
 
-  if (*InfFileOut && !SaveInfFile(InfFileOut, InfFileIn))
+  if (*InfFileOut && !SaveInfFile(InfFileOut, (DoMerge!=1) ? InfFileFirstIn : NULL))
     printf("  WARNING: Cannot create inf %s.\n", InfFileOut);
 
   if (ExtractTeletext && !CloseTeletextOut())
@@ -1030,10 +1033,10 @@ int main(int argc, const char* argv[])
     {
       // Bookmarks kurz vor der Schnittstelle löschen
       while ((j > 0) && (BookmarkInfo->Bookmarks[j-1] + 3*BlocksOneSecond >= CalcBlockSize(CurrentPosition-PositionOffset)))
-        j--;
+        DeleteBookmark(--j);
 
       // Bookmarks im weggeschnittenen Bereich (bzw. kurz nach Schnittstelle) löschen
-      while ((j < BookmarkInfo->NrBookmarks) && (BookmarkInfo->Bookmarks[j] < CurrentPosition + 3*BlocksOneSecond))
+      while ((j < BookmarkInfo->NrBookmarks) && (BookmarkInfo->Bookmarks[j] < CalcBlockSize(CurrentPosition) + 3*BlocksOneSecond))
         DeleteBookmark(j);
 
       // neues Bookmark an Schnittstelle setzen
@@ -1116,15 +1119,15 @@ int main(int argc, const char* argv[])
             {
               // Bookmarks kurz vor der Schnittstelle löschen
               while ((j > 0) && (BookmarkInfo->Bookmarks[j-1] + 3*BlocksOneSecond >= CalcBlockSize(CurrentPosition-PositionOffset)))  // CurPos - SkippedBytes ?
-                j--;
+                DeleteBookmark(--j);
 
               // Bookmarks im weggeschnittenen Bereich (bzw. kurz nach Schnittstelle) löschen
-              while ((j < BookmarkInfo->NrBookmarks) && (BookmarkInfo->Bookmarks[j] < CurPosBlocks + 3*BlocksOneSecond))
+              while ((j < BookmarkInfo->NrBookmarks) && (BookmarkInfo->Bookmarks[j] < CalcBlockSize(CurrentPosition) + 3*BlocksOneSecond))
                 DeleteBookmark(j);
 
               // neues Bookmark an Schnittstelle setzen
               if (DoCut == 1)
-                if ((CurrentPosition-PositionOffset > 0) && (CurPosBlocks + 3*BlocksOneSecond < RecFileBlocks))
+                if ((CurrentPosition-PositionOffset > 0) && (CurrentPosition + 3*9024*BlocksOneSecond < (long long)RecFileSize))
                   AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + 9023));
             }
           }
@@ -1496,7 +1499,7 @@ int main(int argc, const char* argv[])
               CloseNavFileIn();
               CloseNavFileOut();
               CutFileSave(CutFileOut);
-              SaveInfFile(InfFileOut, InfFileIn);
+              SaveInfFile(InfFileOut, (DoMerge!=1) ? InfFileFirstIn : NULL);
               CloseTeletextOut();
               CutProcessor_Free();
               InfProcessor_Free();
@@ -1539,6 +1542,8 @@ int main(int argc, const char* argv[])
         CutTimeOffset -= (int)SegmentMarker[NrSegmentMarker-1].Timems;
 //      else
 //        CutTimeOffset -= (int)InfDuration;
+      if (-(int)LastTimems < CutTimeOffset)
+        CutTimeOffset = -(int)LastTimems;
       SetFirstPacketAfterBreak();
       SetTeletextBreak(TRUE);
       ContinuityCount = -1;

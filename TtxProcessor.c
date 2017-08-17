@@ -787,7 +787,7 @@ static void process_pes_packet(uint8_t *buffer, uint16_t size) {
   }
 //CW  if (t < t0) delta = last_timestamp;
   new_timestamp = t - delta;
-  if (FirstPacketAfterBreak || (new_timestamp < last_timestamp) || (new_timestamp > last_timestamp + 60000))
+  if (FirstPacketAfterBreak || /*(new_timestamp < last_timestamp) ||*/ (new_timestamp > last_timestamp + 60000))
   {
     delta += new_timestamp - last_timestamp;
     new_timestamp = t - delta;
