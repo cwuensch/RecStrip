@@ -693,7 +693,7 @@ void CloseInputFiles(bool SetStripFlags)
     time_t OldInfTime = 0;
     if (stat64(RecFileIn, &statbuf) == 0)
       OldInfTime = statbuf.st_mtime;
-    SetInfStripFlags(InfFileIn, TRUE, DoStrip && !DoMerge);
+    SetInfStripFlags(InfFileIn, !DoCut, DoStrip && !DoMerge && DoCut!=2);
     if (OldInfTime)
       HDD_SetFileDateTime(InfFileIn, statbuf.st_mtime);
   }
@@ -826,6 +826,7 @@ int main(int argc, const char* argv[])
                   ExtractTeletext = (argv[1][2] == 't'); break;
       case 'o':   OutPacketSize   = (argv[1][2] == '2') ? 188 : 192; break;
       default:    printf("\nUnknown argument: -%c\n", argv[1][1]);
+                  ret = FALSE;
     }
     argv[1] = argv[0];
     argv++;
@@ -862,19 +863,17 @@ int main(int argc, const char* argv[])
   }
   else OutDir[0] = '\0';
 
-  ret = FALSE;
   if (!*RecFileIn)
-    printf("\nNo input file specified!\n");
+    { printf("\nNo input file specified!\n");  ret = FALSE; }
   else if ((DoCut || DoStrip || DoMerge || OutPacketSize) && (!*RecFileOut || strcmp(RecFileIn, RecFileOut)==0))
-    printf("\nNo output file specified or output same as input!\n");
+    { printf("\nNo output file specified or output same as input!\n");  ret = FALSE; }
   else if ((RemoveEPGStream || RemoveTeletext) && !DoStrip)
-    printf("\nRemove EPG (-e) or teletext (-t/-tt) cannot be used without stripping (-s)!\n");
+    { printf("\nRemove EPG (-e) or teletext (-t/-tt) cannot be used without stripping (-s)!\n");  ret = FALSE; }
   else if (DoMerge && DoCut==2) 
-    printf("\nMerging cannot be used together with cut mode (single segment copy)!\n");
+    { printf("\nMerging cannot be used together with cut mode (single segment copy)!\n");  ret = FALSE; }
   else if (DoMerge==1 && OutPacketSize)
-    printf("\nPacketSize cannot be changed when appending to an existing recording!\n");
-  else
-    ret = TRUE;
+    { printf("\nPacketSize cannot be changed when appending to an existing recording!\n");  ret = FALSE; }
+
   if (!ret)
   {
     printf("\nUsage:\n------\n");
@@ -893,9 +892,9 @@ int main(int argc, const char* argv[])
     printf("  -c:        Copies each selected segment into a single new rec-file.\n"
            "             The output files will be auto-named. OutFile is ignored.\n"
            "             (instead of OutFile an output folder may be specified.)\n\n");
-    printf("  -a:        Append InFile to OutFile. (OutFile gets modified!)\n"
+    printf("  -a:        Append second, ... file to the first file. (file1 gets modified!)\n"
            "             If combined with -r, only the selected segments are appended.\n"
-           "             If combined with -s, only the InFile will be stripped.\n\n");
+           "             If combined with -s, only the copied part will be stripped.\n\n");
     printf("  -m:        Merge file2, file3, ... into a new file1. (file1 is created!)\n"
            "             If combined with -s, all input files will be stripped.\n\n");
     printf("  -s:        Strip the recording. (if OutFile specified)\n"
@@ -941,6 +940,15 @@ int main(int argc, const char* argv[])
     }
   }
 
+  if (DoMerge)
+  {
+    char Temp[FBLIB_DIR_SIZE];
+    strcpy(Temp, RecFileIn);
+    strcpy(RecFileIn, RecFileOut);
+    strcpy(RecFileOut, Temp);
+    NrInputFiles = argc;
+  }
+
   // Wenn Appending, dann erstmal Output als Input einlesen
   if (DoMerge == 1)
   {
@@ -949,25 +957,21 @@ int main(int argc, const char* argv[])
       CutProcessor_Free();
       InfProcessor_Free();
       free(PendingBuf); PendingBuf = NULL;
-      printf("ERROR: Cannot open output %s.\n", RecFileIn);
+      printf("ERROR: Cannot open output %s.\n", RecFileOut);
       TRACEEXIT;
       exit(3);
     }
-    i = NrSegmentMarker - 1;
+    GoToEndOfNav(fNavIn);
+    i = CurSeg = NrSegmentMarker - 1;
+    j = BookmarkInfo->NrBookmarks;
     PositionOffset = -(long long)((RecFileSize/OutPacketSize)*OutPacketSize);
     if (NrSegmentMarker >= 2)
       CutTimeOffset = -(int)SegmentMarker[NrSegmentMarker-1].Timems;
 //    else
 //      CutTimeOffset = -(int)InfDuration;
+    if (-(int)LastTimems < CutTimeOffset)
+      CutTimeOffset = -(int)LastTimems;
     CloseInputFiles(FALSE);
-  }
-  else if (DoMerge == 2)
-  {
-    char Temp[FBLIB_DIR_SIZE];
-    strcpy(Temp, RecFileIn);
-    strcpy(RecFileIn, RecFileOut);
-    strcpy(RecFileOut, Temp);
-    NrInputFiles = argc;
   }
 
   // Input-Files öffnen
@@ -1006,7 +1010,7 @@ int main(int argc, const char* argv[])
   }
 
   // Wenn Appending, ans Ende der nav-Datei springen
-  if(DoMerge == 1) GoToEndOfNav();
+  if(DoMerge == 1) GoToEndOfNav(NULL);
 
   if (HumaxSource && fOut && DoMerge != 1)
   {
@@ -1029,7 +1033,7 @@ int main(int argc, const char* argv[])
 
   for (curInputFile = 0; curInputFile < NrInputFiles; curInputFile++)
   {
-    if (BookmarkInfo)
+/*    if (BookmarkInfo)
     {
       // Bookmarks kurz vor der Schnittstelle löschen
       while ((j > 0) && (BookmarkInfo->Bookmarks[j-1] + 3*BlocksOneSecond >= CalcBlockSize(CurrentPosition-PositionOffset)))
@@ -1043,12 +1047,12 @@ int main(int argc, const char* argv[])
       if (DoCut == 1 || DoMerge)
         if (CurrentPosition-PositionOffset > 0)
           AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + 9023));
-    }
+    } */
 
     while (fIn)
     {
       // SCHNEIDEN
-      if (DoCut && (NrSegmentMarker > 2) && (CurSeg < NrSegmentMarker-1) && (CurrentPosition >= SegmentMarker[CurSeg].Position))
+      if (((DoCut && NrSegmentMarker > 2) || DoMerge) && (CurSeg < NrSegmentMarker-1) && (CurrentPosition >= SegmentMarker[CurSeg].Position))
       {
         // Wir sind am Sprung zu einem neuen Segment CurSeg angekommen
 
@@ -1088,7 +1092,7 @@ int main(int argc, const char* argv[])
         }
 
         // SEGMENT ÜBERSPRINGEN (wenn nicht-markiert)
-        while ((CurSeg < NrSegmentMarker-1) && (CurrentPosition >= SegmentMarker[CurSeg].Position) && !SegmentMarker[CurSeg].Selected)
+        while ((DoCut && NrSegmentMarker > 2) && (CurSeg < NrSegmentMarker-1) && (CurrentPosition >= SegmentMarker[CurSeg].Position) && !SegmentMarker[CurSeg].Selected)
         {
           if (OutCutVersion >= 4)
             printf("[Segment %d]  -%12llu %12lld-%-12lld %s\n", ++n, CurrentPosition, SegmentMarker[CurSeg].Position, SegmentMarker[CurSeg+1].Position, SegmentMarker[CurSeg].pCaption);
@@ -1114,22 +1118,6 @@ int main(int argc, const char* argv[])
             Percent = (100 * curInputFile / NrInputFiles) + ((100 * CurPosBlocks) / (RecFileBlocks * NrInputFiles));
             CurBlockBytes = 0;
             BlocksSincePercent = 0;
-
-            if (BookmarkInfo)
-            {
-              // Bookmarks kurz vor der Schnittstelle löschen
-              while ((j > 0) && (BookmarkInfo->Bookmarks[j-1] + 3*BlocksOneSecond >= CalcBlockSize(CurrentPosition-PositionOffset)))  // CurPos - SkippedBytes ?
-                DeleteBookmark(--j);
-
-              // Bookmarks im weggeschnittenen Bereich (bzw. kurz nach Schnittstelle) löschen
-              while ((j < BookmarkInfo->NrBookmarks) && (BookmarkInfo->Bookmarks[j] < CalcBlockSize(CurrentPosition) + 3*BlocksOneSecond))
-                DeleteBookmark(j);
-
-              // neues Bookmark an Schnittstelle setzen
-              if (DoCut == 1)
-                if ((CurrentPosition-PositionOffset > 0) && (CurrentPosition + 3*9024*BlocksOneSecond < (long long)RecFileSize))
-                  AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + 9023));
-            }
           }
           else
           {
@@ -1149,6 +1137,24 @@ int main(int argc, const char* argv[])
             printf("[Segment %d]  *%12llu %10u-%-10u %s\n",     ++n, CurrentPosition, CalcBlockSize(SegmentMarker[CurSeg].Position), CalcBlockSize(SegmentMarker[CurSeg+1].Position), SegmentMarker[CurSeg].pCaption);
           SegmentMarker[CurSeg].Selected = FALSE;
           SegmentMarker[CurSeg].Percent = 0;
+
+          if (BookmarkInfo && (DoCut == 1 || (DoMerge && CurrentPosition == 0)))
+          {
+            // Bookmarks kurz vor der Schnittstelle löschen
+            while ((j > 0) && (BookmarkInfo->Bookmarks[j-1] + 3*BlocksOneSecond >= CalcBlockSize(CurrentPosition-PositionOffset)))  // CurPos - SkippedBytes ?
+              DeleteBookmark(--j);
+
+            // Bookmarks im weggeschnittenen Bereich (bzw. kurz nach Schnittstelle) löschen
+//            while ((j < BookmarkInfo->NrBookmarks) && (BookmarkInfo->Bookmarks[j] < CalcBlockSize(CurrentPosition) + 3*BlocksOneSecond))
+            while ((j < BookmarkInfo->NrBookmarks) && (BookmarkInfo->Bookmarks[j] < CurPosBlocks + 3*BlocksOneSecond))
+              DeleteBookmark(j);
+
+            // neues Bookmark an Schnittstelle setzen
+            if (DoCut == 1 || (DoMerge && CurrentPosition == 0))
+//              if ((CurrentPosition-PositionOffset > 0) && (CurrentPosition + 3*9024*BlocksOneSecond < (long long)RecFileSize))
+              if ((CurrentPosition-PositionOffset > 0) && (CurPosBlocks + 3*BlocksOneSecond < RecFileBlocks))
+                AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + 9023));
+          }
 
           if (DoCut == 1)
           {
@@ -1184,7 +1190,7 @@ int main(int argc, const char* argv[])
               exit(7);
             }
             NavProcessor_Init();
-            if(!RebuildNav && *RecFileOut && *NavFileIn) SetFirstPacketAfterBreak();
+            if(!RebuildNav && *RecFileOut && *NavFileIn)  SetFirstPacketAfterBreak();
             if(DoStrip) NALUDump_Init();
             LastTimems = 0;
             LastPCR = 0;
@@ -1327,8 +1333,13 @@ int main(int argc, const char* argv[])
           {
             while ((j < min(BookmarkInfo->NrBookmarks, 48)) && (CurPosBlocks >= BookmarkInfo->Bookmarks[j]))
             {
-              BookmarkInfo->Bookmarks[j] -= (dword)(PositionOffset / 9024);  // CalcBlockSize(PositionOffset)
-              j++;
+              if ((DoCut == 2) && (BookmarkInfo->Bookmarks[j] + 3*BlocksOneSecond >= CalcBlockSize(SegmentMarker[i].Position)))
+                DeleteBookmark(j);
+              else
+              {
+                BookmarkInfo->Bookmarks[j] -= (dword)(PositionOffset / 9024);  // CalcBlockSize(PositionOffset)
+                j++;
+              }
             }
 
             if (!ResumeSet && (DoMerge != 1) && (CurPosBlocks >= BookmarkInfo->Resume))
@@ -1527,11 +1538,11 @@ int main(int argc, const char* argv[])
       else
         break;
     }
+    NrPackets += ((RecFileSize + PACKETSIZE-1) / PACKETSIZE);
 
-    if ((DoMerge == 2) && (curInputFile < NrInputFiles-1))
+    if (DoMerge && (curInputFile < NrInputFiles-1))
     {
       CloseInputFiles(TRUE);
-      NrPackets += ((RecFileSize + PACKETSIZE-1) / PACKETSIZE);
 
       // nächstes Input-File aus Parameter-String ermitteln
       strncpy(RecFileIn, argv[curInputFile+1], sizeof(RecFileIn));
@@ -1577,7 +1588,6 @@ int main(int argc, const char* argv[])
   InfProcessor_Free();
   free(PendingBuf); PendingBuf = NULL;
 
-  NrPackets += ((RecFileSize + PACKETSIZE-1) / PACKETSIZE);
   if (NrCopiedSegments > 0)
     printf("\nSegments: %d of %d segments copied.\n", NrCopiedSegments, NrSegments);
   if (NrPackets > 0)

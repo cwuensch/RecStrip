@@ -332,6 +332,8 @@ static bool CutDecodeFromBM(dword Bookmarks[])
       SegmentMarker[i].Timems = (TimeStamps) ? NavGetPosTimeStamp(TimeStamps, NrTimeStamps, SegmentMarker[i].Position) : 0;
       SegmentMarker[i].Percent = 0;
       SegmentMarker[i].pCaption = NULL;
+      if ((i == 0) && (SegmentMarker[0].Position == 0) && (SegmentMarker[0].Timems < 1000))
+        SegmentMarker[0].Timems = 0;
     }
   }
 

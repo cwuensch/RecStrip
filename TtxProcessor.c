@@ -139,7 +139,7 @@ static struct {
   // FIXME: move SE_MODE to output module
   uint8_t se_mode;
   //char *template; // output format template
-} config = { NO, 0, 0.0, YES, NO, 0 };
+} config = { NO, 0, 0, YES, NO, 0 };
 
 /*
 formatting template:
