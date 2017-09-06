@@ -5,6 +5,7 @@
 
 extern FILE            *fTtxOut;
 extern dword            global_timestamp;
+extern dword            last_timestamp;
 
 void SetTeletextBreak(bool NewInputFile);
 void TtxProcessor_Init();

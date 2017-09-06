@@ -89,7 +89,7 @@ byte                    PACKETSIZE, PACKETOFFSET, OutPacketSize = 0;
 word                    VideoPID = 0, TeletextPID = 0;
 bool                    isHDVideo = FALSE, AlreadyStripped = FALSE, HumaxSource = FALSE;
 bool                    DoStrip = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE;
-int                     DoCut = 0, DoMerge = 0;
+int                     DoCut = 0, DoMerge = 0;  // DoCut: 1=remove_parts, 2=copy_separate, DoMerge: 1=append, 2=merge
 int                     curInputFile = 0, NrInputFiles = 1;
 
 TYPE_Bookmark_Info     *BookmarkInfo = NULL;
@@ -462,7 +462,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
   }
   else
   {
-    printf("  ERROR: Cannot open %s.\n", RecFileIn);
+//    printf("  ERROR: Cannot open %s.\n", RecFileIn);
     ret = FALSE;
   }
 
@@ -969,8 +969,9 @@ int main(int argc, const char* argv[])
       CutTimeOffset = -(int)SegmentMarker[NrSegmentMarker-1].Timems;
 //    else
 //      CutTimeOffset = -(int)InfDuration;
-    if (-(int)LastTimems < CutTimeOffset)
+    if ((int)LastTimems > -CutTimeOffset)
       CutTimeOffset = -(int)LastTimems;
+    if(ExtractTeletext) last_timestamp = -CutTimeOffset;
     CloseInputFiles(FALSE);
   }
 
@@ -1138,7 +1139,7 @@ int main(int argc, const char* argv[])
           SegmentMarker[CurSeg].Selected = FALSE;
           SegmentMarker[CurSeg].Percent = 0;
 
-          if (BookmarkInfo && (DoCut == 1 || (DoMerge && CurrentPosition == 0)))
+          if (BookmarkInfo && (DoCut || (DoMerge && CurrentPosition == 0)))
           {
             // Bookmarks kurz vor der Schnittstelle löschen
             while ((j > 0) && (BookmarkInfo->Bookmarks[j-1] + 3*BlocksOneSecond >= CalcBlockSize(CurrentPosition-PositionOffset)))  // CurPos - SkippedBytes ?
@@ -1566,6 +1567,7 @@ int main(int argc, const char* argv[])
         CutProcessor_Free();
         InfProcessor_Free();
         free(PendingBuf); PendingBuf = NULL;
+        printf("ERROR: Cannot open input %s.\n", RecFileIn);
         TRACEEXIT;
         exit(5);
       }

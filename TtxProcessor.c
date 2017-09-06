@@ -27,6 +27,9 @@ static bool             FirstPacketAfterBreak = TRUE;
 // global TS PCR value
 dword global_timestamp = 0;
 
+// last timestamp computed
+dword last_timestamp = 0;
+
 
 /*!
 (c) 2011-2014 Forers, s. r. o.: telxcc
@@ -171,9 +174,6 @@ static uint32_t frames_produced = 0;
 
 // subtitle type pages bitmap, 2048 bits = 2048 possible pages in teletext (excl. subpages)
 static uint8_t cc_map[256] = { 0 };
-
-// last timestamp computed
-static uint32_t last_timestamp = 0;
 
 // working teletext page buffer
 static teletext_page_t page_buffer;
@@ -845,7 +845,8 @@ bool LoadTeletextOut(const char* AbsOutFile)
 {
   TRACEENTER;
 
-  if ((fTtxOut = fopen(AbsOutFile, "wb")))
+  fTtxOut = fopen(AbsOutFile, ((DoMerge==1) ? "ab" : "wb"));
+  if (fTtxOut)
   {
     PSBuffer_Init(&TtxBuffer, TeletextPID, 4096, FALSE);
     TRACEEXIT;

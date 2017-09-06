@@ -453,7 +453,7 @@ bool SetInfCryptFlag(const char *AbsInfFile)
       rewind(fInfIn);
       RecHeaderInfo.CryptFlag = RecHeaderInfo.CryptFlag | 1;
       ret = (fwrite(&RecHeaderInfo, 1, 18, fInfIn) == 18);
-      ret = ret && fclose(fInfIn);
+      ret = fclose(fInfIn) && ret;
     }
   }
   TRACEEXIT;
@@ -477,7 +477,8 @@ bool SetInfStripFlags(const char *AbsInfFile, bool SetHasBeenScanned, bool Reset
         RecHeaderInfo.rbn_HasBeenScanned = TRUE;
       if (ResetToBeStripped)
         RecHeaderInfo.rs_ToBeStripped = FALSE;
-      fwrite(&RecHeaderInfo, 1, 8, fInfIn);
+      ret = fwrite(&RecHeaderInfo, 1, 8, fInfIn);
+      ret = fclose(fInfIn) && ret;
     }
   }
   TRACEEXIT;
@@ -518,27 +519,27 @@ bool SaveInfFile(const char *AbsDestInf, const char *AbsSourceInf)
     if (NewStartTimeOffset)
       RecHeaderInfo->StartTime = AddTime(OrigStartTime, NewStartTimeOffset / 60000);
     Result = (fwrite(InfBuffer, 1, InfSize, fInfOut) == InfSize);
+
+    // ÷ffne die Source-inf (falls vorhanden)
+    if(AbsSourceInf)
+      fInfIn = fopen(AbsSourceInf, "r+b");
+
+    // Kopiere den Rest der Source-inf (falls vorhanden) in die neue inf hinein
+    if (fInfIn && !RebuildInf)
+    {
+      byte *InfBuffer2 = (byte*) malloc(32768);
+      fseek(fInfIn, InfSize, SEEK_SET);
+      do {
+        BytesRead = fread(InfBuffer2, 1, 32768, fInfIn);
+        if (BytesRead > 0)
+          Result = (fwrite(InfBuffer2, 1, BytesRead, fInfOut) == BytesRead) && Result;
+      } while (BytesRead > 0);
+      free(InfBuffer2);
+    }
+    if (fInfIn) fclose(fInfIn);
   }
 
-  // ÷ffne die Source-inf (falls vorhanden)
-  if(AbsSourceInf)
-    fInfIn = fopen(AbsSourceInf, "r+b");
-
-  // Kopiere den Rest der Source-inf (falls vorhanden) in die neue inf hinein
-  if (fInfOut && fInfIn && !RebuildInf)
-  {
-    byte *InfBuffer2 = (byte*) malloc(32768);
-    fseek(fInfIn, InfSize, SEEK_SET);
-    do {
-      BytesRead = fread(InfBuffer2, 1, 32768, fInfIn);
-      if (BytesRead > 0)
-        Result = (fwrite(InfBuffer2, 1, BytesRead, fInfOut) == BytesRead) && Result;
-    } while (BytesRead > 0);
-    free(InfBuffer2);
-  }
-
-  // Schlieﬂe die bearbeiteten Dateien
-  if (fInfIn) fclose(fInfIn);
+  // Schlieﬂe die bearbeitete Datei
   if (fInfOut)
   {
 //      Result = (fflush(fInfOut) == 0) && Result;
