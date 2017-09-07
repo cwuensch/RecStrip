@@ -957,7 +957,7 @@ int main(int argc, const char* argv[])
       CutProcessor_Free();
       InfProcessor_Free();
       free(PendingBuf); PendingBuf = NULL;
-      printf("ERROR: Cannot open output %s.\n", RecFileOut);
+      printf("ERROR: Cannot read output %s.\n", RecFileOut);
       TRACEEXIT;
       exit(3);
     }
@@ -1005,7 +1005,7 @@ int main(int argc, const char* argv[])
     CutProcessor_Free();
     InfProcessor_Free();
     free(PendingBuf); PendingBuf = NULL;      
-    printf("ERROR: Cannot create %s.\n", RecFileOut);
+    printf("ERROR: Cannot write output %s.\n", RecFileOut);
     TRACEEXIT;
     exit(7);
   }
