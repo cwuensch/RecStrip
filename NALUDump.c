@@ -26,7 +26,7 @@ static bool             SliceState = TRUE;
 static unsigned int     History = 0xffffffff;
 
 bool                    NoContinuityCheck = FALSE;
-static int              LastContinuityInput = -1;
+int                     LastContinuityInput = -1;
 static int              LastContinuityOutput = -1;
 static int              PendingContinuity = -1;
 //static int              ContinuityOffset = 0;

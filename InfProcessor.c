@@ -451,6 +451,7 @@ bool SetInfCryptFlag(const char *AbsInfFile)
     {
       fread(&RecHeaderInfo, 1, 18, fInfIn);
       rewind(fInfIn);
+      RecHeaderInfo.rs_ScrambledPackets = TRUE;
       RecHeaderInfo.CryptFlag = RecHeaderInfo.CryptFlag | 1;
       ret = (fwrite(&RecHeaderInfo, 1, 18, fInfIn) == 18);
       ret = fclose(fInfIn) && ret;

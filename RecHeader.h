@@ -12,7 +12,8 @@ typedef struct
   byte                  iqt_UnencryptedRec:1;
   byte                  rs_HasBeenStripped:1;
   byte                  rs_ToBeStripped:1;
-  byte                  Reserved:4;
+  byte                  rs_ScrambledPackets:1;
+  byte                  Reserved:3;
   dword                 StartTime;
   word                  DurationMin;
   word                  DurationSec;

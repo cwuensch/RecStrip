@@ -88,7 +88,7 @@ SYSTEM_TYPE             SystemType = ST_UNKNOWN;
 byte                    PACKETSIZE, PACKETOFFSET, OutPacketSize = 0;
 word                    VideoPID = 0, TeletextPID = 0;
 bool                    isHDVideo = FALSE, AlreadyStripped = FALSE, HumaxSource = FALSE;
-bool                    DoStrip = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE;
+bool                    DoStrip = FALSE, RemoveScrambled = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE;
 int                     DoCut = 0, DoMerge = 0;  // DoCut: 1=remove_parts, 2=copy_separate, DoMerge: 1=append, 2=merge
 int                     curInputFile = 0, NrInputFiles = 1;
 
@@ -111,7 +111,7 @@ static unsigned int     RecFileBlocks = 0;
 static long long        CurrentPosition = 0, PositionOffset = 0, NrPackets = 0;
 static unsigned int     CurPosBlocks = 0, CurBlockBytes = 0, BlocksOneSecond = 250, BlocksOnePercent;
 static unsigned int     NrSegments = 0, NrCopiedSegments = 0;
-static long long        NrDroppedFillerNALU = 0, NrDroppedZeroStuffing = 0, NrDroppedAdaptation = 0, NrDroppedNullPid = 0, NrDroppedEPGPid = 0, NrDroppedTxtPid=0, NrIgnoredPackets = 0;
+static long long        NrDroppedFillerNALU=0, NrDroppedZeroStuffing=0, NrDroppedAdaptation=0, NrDroppedNullPid=0, NrDroppedEPGPid=0, NrDroppedTxtPid=0, NrScrambledPackets=0, CurScrambledPackets=0, NrIgnoredPackets=0;
 static dword            LastTimeStamp = 0, CurTimeStep = 5000;
 static long long        LastPCR = 0, PosLastPCR = 0;
 static signed char      ContinuityCount = -1;
@@ -121,6 +121,12 @@ static bool             ResumeSet = FALSE;
 static bool HDD_FileExist(const char *AbsFileName)
 {
   return (AbsFileName && (access(AbsFileName, 0) == 0));
+}
+
+static bool HDD_DirExist(const char *AbsDirName)
+{
+  struct stat           statbuf;
+  return ((stat(AbsDirName, &statbuf) == 0) && (statbuf.st_mode & S_IFDIR));
 }
 
 bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize)
@@ -634,7 +640,7 @@ SONST
   {
     if (RebuildNav || *NavFileIn)
     {
-      if (DoStrip || RemoveEPGStream || RemoveTeletext || OutPacketSize != PACKETSIZE) RebuildNav = TRUE;
+      if (DoStrip || RemoveEPGStream || RemoveTeletext || RemoveScrambled || OutPacketSize != PACKETSIZE) RebuildNav = TRUE;
       snprintf(NavFileOut, sizeof(NavFileOut), "%s.nav", RecFileOut);
     }
     else
@@ -797,6 +803,7 @@ int main(int argc, const char* argv[])
   int                   CurSeg = 0, i = 0, n = 0;
   dword                 j = 0;
   dword                 Percent = 0, BlocksSincePercent = 0;
+  bool                  AbortProcess = FALSE;
   bool                  ret = TRUE;
 
   TRACEENTER;
@@ -824,6 +831,7 @@ int main(int argc, const char* argv[])
       case 'e':   RemoveEPGStream = TRUE; break;
       case 't':   RemoveTeletext = TRUE;  
                   ExtractTeletext = (argv[1][2] == 't'); break;
+      case 'x':   RemoveScrambled = TRUE; break;
       case 'o':   OutPacketSize   = (argv[1][2] == '2') ? 188 : 192; break;
       default:    printf("\nUnknown argument: -%c\n", argv[1][1]);
                   ret = FALSE;
@@ -832,7 +840,7 @@ int main(int argc, const char* argv[])
     argv++;
     argc--;
   }
-  printf("\nParameters:\nDoCut=%d, DoMerge=%d, DoStrip=%s, RmEPG=%s, RmTxt=%s, RbldNav=%s, RbldInf=%s, PkSize=%hhu\n", DoCut, DoMerge, (DoStrip ? "yes" : "no"), (RemoveEPGStream ? "yes" : "no"), (RemoveTeletext ? "yes" : "no"), (RebuildNav ? "yes" : "no"), (RebuildInf ? "yes" : "no"), OutPacketSize);
+  printf("\nParameters:\nDoCut=%d, DoMerge=%d, DoStrip=%s, RmEPG=%s, RmTxt=%s, RmScr=%s, RbldNav=%s, RbldInf=%s, PkSize=%hhu\n", DoCut, DoMerge, (DoStrip ? "yes" : "no"), (RemoveEPGStream ? "yes" : "no"), (RemoveTeletext ? "yes" : "no"), (RemoveScrambled ? "yes" : "no"), (RebuildNav ? "yes" : "no"), (RebuildInf ? "yes" : "no"), OutPacketSize);
 
   // Eingabe-Dateinamen lesen
   if (argc > 1)
@@ -858,7 +866,10 @@ int main(int argc, const char* argv[])
 //    const char *p = strrchr(RecFileOut, PATH_SEPARATOR);  // ggf. Dateinamen entfernen
 //    memset(OutDir, 0, sizeof(OutDir));
 //    strncpy(OutDir, RecFileOut, min((p) ? (size_t)(p - RecFileOut) : strlen(RecFileOut), sizeof(OutDir)-1));
-    strncpy(OutDir, RecFileOut, sizeof(OutDir));
+    if (HDD_DirExist(RecFileOut))
+      strncpy(OutDir, RecFileOut, sizeof(OutDir));
+    else
+      OutDir[0] = '\0';
     GetNextFreeCutName(RecFileIn, RecFileOut, OutDir);
   }
   else OutDir[0] = '\0';
@@ -902,6 +913,7 @@ int main(int argc, const char* argv[])
     printf("  -e:        Remove also the EPG data. (only with -s)\n\n");
     printf("  -t:        Remove also the teletext data. (only with -s)\n");
     printf("  -tt:       Extraxt subtitles from and remove teletext. (only with -s)\n\n");
+    printf("  -x:        Remove packets marked as scrambled. (flag could be wrong!)\n\n");
     printf("  -o1/-o2:   Change the packet size for output-rec: \n"
            "             1: PacketSize = 192 Bytes, 2: PacketSize = 188 Bytes.\n");
     printf("\nExamples:\n---------\n");
@@ -1083,6 +1095,7 @@ int main(int argc, const char* argv[])
           if (!CloseOutputFiles())
             exit(10);
 
+          NrPackets += (SegmentMarker[1].Position / 192);
           NrSegmentMarker = NrSegmentMarker_bak;
           SegmentMarker[1] = LastSegmentMarker_bak;
           if (BookmarkInfo)
@@ -1220,13 +1233,59 @@ int main(int argc, const char* argv[])
       ReadBytes = fread(&Buffer[4-PACKETOFFSET], 1, PACKETSIZE, fIn);
       if (ReadBytes == PACKETSIZE)
       {
-        if (Buffer[4] == 'G' && ((tTSPacket*) &Buffer[4])->Scrambling_Ctrl <= 0x01)
+        if (Buffer[4] == 'G')
         {
           int CurPID = TsGetPID((tTSPacket*) &Buffer[4]);
+
+          // nur Continuity Check
+          if (!DoStrip && (CurPID == VideoPID))
+          {
+            if (ContinuityCount >= 0)
+            {
+              if (((tTSPacket*) &Buffer[4])->Payload_Exists) ContinuityCount = (ContinuityCount + 1) % 16;
+              if (((tTSPacket*) &Buffer[4])->ContinuityCount != ContinuityCount)
+              {
+                if (!DoCut || (i < NrSegmentMarker && CurrentPosition != SegmentMarker[i].Position))
+                  printf("TS check: TS continuity offset %d (pos=%lld)\n", (((tTSPacket*) &Buffer[4])->ContinuityCount - ContinuityCount) % 16, CurrentPosition);
+                SetFirstPacketAfterBreak();
+//                SetTeletextBreak(FALSE);
+                ContinuityCount = ((tTSPacket*) &Buffer[4])->ContinuityCount;
+              }
+            }
+            else
+              ContinuityCount = ((tTSPacket*) &Buffer[4])->ContinuityCount;
+          }
+
           DropCurPacket = FALSE;
 
+          // auf verschlüsselte Pakete prüfen
+          if (((tTSPacket*) &Buffer[4])->Scrambling_Ctrl >= 0x10)  
+          {
+            CurScrambledPackets++;
+            if (CurScrambledPackets <= 10)
+            {
+              printf("WARNING: Scrambled TS - Scrambling bit at position %lld -> packet ignored.\n", CurrentPosition);
+              if (CurScrambledPackets == 10)
+                printf("no more scrambled TS warnings will be shown...\n");
+            }
+            if ((CurScrambledPackets > CurPosBlocks) && (CurPosBlocks >= 100))  // ~ 2% der Pakete
+            {
+              SetInfCryptFlag(InfFileIn);
+              printf("ERROR: Too many scrambled packets: %lld -> aborted.\n", CurScrambledPackets);
+              AbortProcess = TRUE;
+            }
+
+            // entfernen, wenn nav neu berechnet wird
+            if (RemoveScrambled  /*&& (RebuildNav || !*NavFileOut)*/)
+            {
+              DropCurPacket = TRUE;
+              if(DoStrip && (CurPID == VideoPID) && ((tTSPacket*) &Buffer[4])->Payload_Exists)
+                if (LastContinuityInput >= 0) LastContinuityInput = (LastContinuityInput + 1) % 16;
+            }
+          }
+
           // STRIPPEN
-          if (DoStrip /*|| RemoveEPGStream || RemoveTeletext*/)
+          if (DoStrip /*|| RemoveEPGStream || RemoveTeletext*/ && !DropCurPacket)
           {
             if (CurPID == 0x1FFF)
             {
@@ -1297,24 +1356,6 @@ int main(int argc, const char* argv[])
                   break;
               }
             }
-          }
-          else if (CurPID == VideoPID)
-          {
-            // nur Continuity Check
-            if (ContinuityCount >= 0)
-            {
-              if (((tTSPacket*) &Buffer[4])->Payload_Exists) ContinuityCount = (ContinuityCount + 1) % 16;
-              if (((tTSPacket*) &Buffer[4])->ContinuityCount != ContinuityCount)
-              {
-                if (!DoCut || (i < NrSegmentMarker && CurrentPosition != SegmentMarker[i].Position))
-                  printf("TS check: TS continuity offset %d (pos=%lld)\n", (((tTSPacket*) &Buffer[4])->ContinuityCount - ContinuityCount) % 16, CurrentPosition);
-                SetFirstPacketAfterBreak();
-//                SetTeletextBreak(FALSE);
-                ContinuityCount = ((tTSPacket*) &Buffer[4])->ContinuityCount;
-              }
-            }
-            else
-              ContinuityCount = ((tTSPacket*) &Buffer[4])->ContinuityCount;
           }
 
           // SEGMENTMARKER ANPASSEN
@@ -1419,23 +1460,14 @@ int main(int argc, const char* argv[])
               if (!ret)
               {
                 printf("ERROR: Failed writing to output file.\n");
-                fclose(fIn); fIn = NULL;
-                fclose(fOut); fOut = NULL;
-                CloseNavFileIn();
-                CloseNavFileOut();
-                CloseTeletextOut();
-                CutProcessor_Free();
-                InfProcessor_Free();
-                free(PendingBuf);
-                TRACEEXIT;
-                exit(8);
+                AbortProcess = TRUE;
               }
             }
           }
           else
             // Paket wird entfernt
             PositionOffset += ReadBytes;
-      
+
           CurrentPosition += ReadBytes;
           CurBlockBytes += ReadBytes;
         }
@@ -1446,80 +1478,77 @@ int main(int argc, const char* argv[])
             printf("INFO: Incomplete TS - Ignoring last %lld bytes.\n", RecFileSize - CurrentPosition);
             fclose(fIn); fIn = NULL;
           }
+          else if (HumaxSource && (*((dword*)&Buffer[4]) == HumaxHeaderAnfang) && ((unsigned int)CurrentPosition % HumaxHeaderIntervall == HumaxHeaderIntervall-HumaxHeaderLaenge))
+          {
+            fseeko64(fIn, +HumaxHeaderLaenge-ReadBytes, SEEK_CUR);
+            PositionOffset += HumaxHeaderLaenge;
+            CurrentPosition += HumaxHeaderLaenge;
+            CurBlockBytes += HumaxHeaderLaenge;
+/*            if (fOut)
+            {
+              ((tTSPacket*) &PATPMTBuf[4])->ContinuityCount++;
+              ((tTSPacket*) &PATPMTBuf[196])->ContinuityCount++;
+              if (fwrite(&PATPMTBuf[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut))
+                PositionOffset -= OutPacketSize;
+              if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], OutPacketSize, 1, fOut))
+                PositionOffset -= OutPacketSize;
+            }  */
+          }
           else
           {
-            if (Buffer[4] == 'G')
+            int Offset = 0;
+            byte *Buffer2 = (byte*) malloc(5573);
+            if (Buffer2)
             {
-              printf("WARNING: Scrambled TS - Scrambling bit at position %lld -> packet ignored.\n", CurrentPosition);
-              SetInfCryptFlag(InfFileIn);
-              PositionOffset += ReadBytes;
-              CurrentPosition += ReadBytes;
-              CurBlockBytes += ReadBytes;
-              NrIgnoredPackets++;
+              memcpy(Buffer2, &Buffer[4-PACKETOFFSET], PACKETSIZE);
+              if (fread(&Buffer2[PACKETSIZE], 1, 5573-PACKETSIZE, fIn) == (unsigned int)5573-PACKETSIZE)
+                Offset = FindNextPacketStart(Buffer2, 5573);
+              free(Buffer2);
             }
-            else if (HumaxSource && (*((dword*)&Buffer[4]) == HumaxHeaderAnfang) && ((unsigned int)CurrentPosition % HumaxHeaderIntervall == HumaxHeaderIntervall-HumaxHeaderLaenge))
+            if (Offset > 0)
             {
-              fseeko64(fIn, +HumaxHeaderLaenge-ReadBytes, SEEK_CUR);
-              PositionOffset += HumaxHeaderLaenge;
-              CurrentPosition += HumaxHeaderLaenge;
-              CurBlockBytes += HumaxHeaderLaenge;
-/*              if (fOut)
-              {
-                ((tTSPacket*) &PATPMTBuf[4])->ContinuityCount++;
-                ((tTSPacket*) &PATPMTBuf[196])->ContinuityCount++;
-                if (fwrite(&PATPMTBuf[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut))
-                  PositionOffset -= OutPacketSize;
-                if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], OutPacketSize, 1, fOut))
-                  PositionOffset -= OutPacketSize;
-              }  */
+              if (Offset % PACKETSIZE == 0)
+                printf("WARNING: Missing sync byte at position %lld -> %d packets ignored.\n", CurrentPosition, Offset/PACKETSIZE);
+              else
+                printf("WARNING: Missing sync byte at position %lld -> %d Bytes ignored.\n", CurrentPosition, Offset);
+              fseeko64(fIn, CurrentPosition + Offset, SEEK_SET);
+              PositionOffset += Offset;
+              CurrentPosition += Offset;
+              CurBlockBytes += Offset;
+              NrIgnoredPackets++;
             }
             else
             {
-              int Offset = 0;
-              byte *Buffer2 = (byte*) malloc(5573);
-              if (Buffer2)
-              {
-                memcpy(Buffer2, &Buffer[4-PACKETOFFSET], PACKETSIZE);
-                if (fread(&Buffer2[PACKETSIZE], 1, 5573-PACKETSIZE, fIn) == (unsigned int)5573-PACKETSIZE)
-                  Offset = FindNextPacketStart(Buffer2, 5573);
-                free(Buffer2);
-              }
-              if (Offset > 0)
-              {
-                if (Offset % PACKETSIZE == 0)
-                  printf("WARNING: Missing sync byte at position %lld -> %d packets ignored.\n", CurrentPosition, Offset/PACKETSIZE);
-                else
-                  printf("WARNING: Missing sync byte at position %lld -> %d Bytes ignored.\n", CurrentPosition, Offset);
-                fseeko64(fIn, CurrentPosition + Offset, SEEK_SET);
-                PositionOffset += Offset;
-                CurrentPosition += Offset;
-                CurBlockBytes += Offset;
-                NrIgnoredPackets++;
-              }
-              else
-              {
-                printf("ERROR: Incorrect TS - No sync bytes after position %lld -> aborted.\n", CurrentPosition);
-                NrIgnoredPackets = 0x0fffffffffffffffLL;
-              }
+              printf("ERROR: Incorrect TS - No sync bytes after position %lld -> aborted.\n", CurrentPosition);
+              NrIgnoredPackets = 0x0fffffffffffffffLL;
             }
+
             if (NrIgnoredPackets >= 10)
             {
               if (NrIgnoredPackets < 0x0fffffffffffffffLL)
                 printf("ERROR: Too many ignored packets: %lld -> aborted.\n", NrIgnoredPackets);
-              fclose(fIn); fIn = NULL;
-              if (fOut) fclose(fOut); fOut = NULL;
-              CloseNavFileIn();
-              CloseNavFileOut();
-              CutFileSave(CutFileOut);
-              SaveInfFile(InfFileOut, (DoMerge!=1) ? InfFileFirstIn : NULL);
-              CloseTeletextOut();
-              CutProcessor_Free();
-              InfProcessor_Free();
-              free(PendingBuf);
-              TRACEEXIT;
-              exit(9);
+              AbortProcess = TRUE;
             }
           }
+        }
+
+        if (AbortProcess)
+        {
+          fclose(fIn); fIn = NULL;
+          if (fOut) fclose(fOut); fOut = NULL;
+          CloseNavFileIn();
+          CloseNavFileOut();
+          if (ret)
+          {
+            CutFileSave(CutFileOut);
+            SaveInfFile(InfFileOut, (DoMerge!=1) ? InfFileFirstIn : NULL);
+          }
+          CloseTeletextOut();
+          CutProcessor_Free();
+          InfProcessor_Free();
+          free(PendingBuf);
+          TRACEEXIT;
+          exit(8);
         }
 
         if (CurBlockBytes >= 9024)
@@ -1539,7 +1568,8 @@ int main(int argc, const char* argv[])
       else
         break;
     }
-    NrPackets += ((RecFileSize + PACKETSIZE-1) / PACKETSIZE);
+//    NrPackets += ((RecFileSize + PACKETSIZE-1) / PACKETSIZE);
+    NrScrambledPackets += CurScrambledPackets;
 
     if (DoMerge && (curInputFile < NrInputFiles-1))
     {
@@ -1575,6 +1605,7 @@ int main(int argc, const char* argv[])
       CurPosBlocks = 0;
       CurBlockBytes = 0;
       BlocksSincePercent = 0;
+      CurScrambledPackets = 0;
       n = 0;
     }
   }
@@ -1592,10 +1623,15 @@ int main(int argc, const char* argv[])
 
   if (NrCopiedSegments > 0)
     printf("\nSegments: %d of %d segments copied.\n", NrCopiedSegments, NrSegments);
-  if (NrPackets > 0)
-    printf("\nPackets: %lld, FillerNALUs: %lld (%lld%%), ZeroByteStuffing: %lld (%lld%%), AdaptationFields: %lld (%lld%%), NullPackets: %lld (%lld%%), EPG: %lld (%lld%%), Teletext: %lld (%lld%%), Dropped (all): %lld (%lld%%)\n", NrPackets, NrDroppedFillerNALU, NrDroppedFillerNALU*100/NrPackets, NrDroppedZeroStuffing, NrDroppedZeroStuffing*100/NrPackets, NrDroppedAdaptation, NrDroppedAdaptation*100/NrPackets, NrDroppedNullPid, NrDroppedNullPid*100/NrPackets, NrDroppedEPGPid, NrDroppedEPGPid*100/NrPackets, NrDroppedTxtPid, NrDroppedTxtPid*100/NrPackets, NrDroppedFillerNALU+NrDroppedZeroStuffing+NrDroppedAdaptation+NrDroppedNullPid+NrDroppedEPGPid+NrDroppedTxtPid, (NrDroppedFillerNALU+NrDroppedZeroStuffing+NrDroppedAdaptation+NrDroppedNullPid+NrDroppedEPGPid+NrDroppedTxtPid)*100/NrPackets);
-  else
-    printf("\n\n0 Packets!\n");
+  {
+    long long NrDroppedAll = NrDroppedFillerNALU + NrDroppedZeroStuffing + NrDroppedAdaptation + NrDroppedNullPid + NrDroppedEPGPid + NrDroppedTxtPid + (RemoveScrambled ? NrScrambledPackets : 0);
+    if(DoCut!=2) NrPackets = (CurrentPosition-PositionOffset)/192;
+    NrPackets += NrDroppedAll;
+    if (NrPackets > 0)
+      printf("\nPackets: %lld, FillerNALUs: %lld (%lld%%), ZeroByteStuffing: %lld (%lld%%), AdaptationFields: %lld (%lld%%), NullPackets: %lld (%lld%%), EPG: %lld (%lld%%), Teletext: %lld (%lld%%), Scrambled: %lld (%lld%%), Dropped (all): %lld (%lld%%)\n", NrPackets, NrDroppedFillerNALU, NrDroppedFillerNALU*100/NrPackets, NrDroppedZeroStuffing, NrDroppedZeroStuffing*100/NrPackets, NrDroppedAdaptation, NrDroppedAdaptation*100/NrPackets, NrDroppedNullPid, NrDroppedNullPid*100/NrPackets, NrDroppedEPGPid, NrDroppedEPGPid*100/NrPackets, NrDroppedTxtPid, NrDroppedTxtPid*100/NrPackets, NrScrambledPackets, NrScrambledPackets*100/NrPackets, NrDroppedAll, NrDroppedAll*100/NrPackets);
+    else
+      printf("\n\n0 Packets!\n");
+  }
 
   time(&endTime);
   printf("\nElapsed time: %f sec.\n", difftime(endTime, startTime));

@@ -26,6 +26,7 @@ typedef struct
 } sPayloadInfo;
 
 
+extern int LastContinuityInput;
 extern bool NoContinuityCheck;
 
 int TsGetPID(tTSPacket *Packet);
