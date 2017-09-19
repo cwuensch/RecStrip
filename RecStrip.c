@@ -1259,7 +1259,8 @@ int main(int argc, const char* argv[])
           DropCurPacket = FALSE;
 
           // auf verschlüsselte Pakete prüfen
-          if (((tTSPacket*) &Buffer[4])->Scrambling_Ctrl >= 0x10)  
+          if (((tTSPacket*) &Buffer[4])->Scrambling_Ctrl >= 0x10)
+//if ((CurPID == VideoPID) && (curpacket++ % 10000 == 0))
           {
             CurScrambledPackets++;
             if (CurScrambledPackets <= 10)
@@ -1466,7 +1467,7 @@ int main(int argc, const char* argv[])
           }
           else
             // Paket wird entfernt
-            PositionOffset += ReadBytes;
+            if(fOut) PositionOffset += ReadBytes;
 
           CurrentPosition += ReadBytes;
           CurBlockBytes += ReadBytes;
