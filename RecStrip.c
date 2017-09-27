@@ -91,6 +91,7 @@ bool                    isHDVideo = FALSE, AlreadyStripped = FALSE, HumaxSource 
 bool                    DoStrip = FALSE, RemoveScrambled = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE;
 int                     DoCut = 0, DoMerge = 0;  // DoCut: 1=remove_parts, 2=copy_separate, DoMerge: 1=append, 2=merge
 int                     curInputFile = 0, NrInputFiles = 1;
+int                     dbg_DelBytesSinceLastVid = 0;
 
 TYPE_Bookmark_Info     *BookmarkInfo = NULL;
 tSegmentMarker2        *SegmentMarker = NULL;       //[0]=Start of file, [x]=End of file
@@ -103,6 +104,7 @@ int                     CutTimeOffset = 0;
 static char             NavFileIn[FBLIB_DIR_SIZE], NavFileOut[FBLIB_DIR_SIZE], NavFileOld[FBLIB_DIR_SIZE], InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], InfFileOld[FBLIB_DIR_SIZE], InfFileFirstIn[FBLIB_DIR_SIZE], CutFileIn[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE], TeletextOut[FBLIB_DIR_SIZE];
 static FILE            *fIn = NULL;  // dirty Hack: erreichbar machen für InfProcessor
 static FILE            *fOut = NULL;
+static FILE            *dbg_Scrambled = NULL;
 static byte            *PendingBuf = NULL;
 static int              PendingBufLen = 0, PendingBufStart = 0;
 static bool             isPending = FALSE;
@@ -512,6 +514,12 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
       CutFileIn[0] = '\0';
       DoCut = 0;
     }
+
+{
+  char dbg_ScramName[FBLIB_DIR_SIZE];
+  snprintf(dbg_ScramName, sizeof(dbg_ScramName), "%s.scr", RecFileOut);
+  dbg_Scrambled = fopen(dbg_ScramName, "wb");
+}
   }
 
   if (!FirstTime)
@@ -705,6 +713,8 @@ void CloseInputFiles(bool SetStripFlags)
   }
   CloseNavFileIn();
   
+if (dbg_Scrambled) fclose(dbg_Scrambled);
+
   TRACEEXIT;
 }
 
@@ -1209,6 +1219,7 @@ int main(int argc, const char* argv[])
             LastTimems = 0;
             LastPCR = 0;
             LastTimeStamp = 0;
+            dbg_DelBytesSinceLastVid = 0;
 
             // Caption in inf schreiben
             SetInfEventText(SegmentMarker[CurSeg].pCaption);
@@ -1259,15 +1270,15 @@ int main(int argc, const char* argv[])
           DropCurPacket = FALSE;
 
           // auf verschlüsselte Pakete prüfen
-          if (((tTSPacket*) &Buffer[4])->Scrambling_Ctrl >= 0x10)
-//if ((CurPID == VideoPID) && (curpacket++ % 10000 == 0))
+          if (((tTSPacket*) &Buffer[4])->Scrambling_Ctrl >= 2)
           {
             CurScrambledPackets++;
-            if (CurScrambledPackets <= 10)
-            {
-              printf("WARNING: Scrambled TS - Scrambling bit at position %lld -> packet ignored.\n", CurrentPosition);
-              if (CurScrambledPackets == 10)
-                printf("no more scrambled TS warnings will be shown...\n");
+            if (CurScrambledPackets <= 100)
+            {              
+              if (((tTSPacket*) &Buffer[4])->Payload_Exists)
+                printf("WARNING [%s]: Scrambled packet bit at pos %lld, PID %u -> %s\n", ((((tTSPacket*) &Buffer[4])->Adapt_Field_Exists && Buffer[8] >= 182) ? "ok" : "!!"), CurrentPosition, CurPID, (RemoveScrambled ? "packet removed" : "ignored"));
+              if (CurScrambledPackets == 100)             
+              printf("There where scrambled packets. No more scrambled warnings will be shown...\n");
             }
             if ((CurScrambledPackets > CurPosBlocks) && (CurPosBlocks >= 100))  // ~ 2% der Pakete
             {
@@ -1283,6 +1294,8 @@ int main(int argc, const char* argv[])
               if(DoStrip && (CurPID == VideoPID) && ((tTSPacket*) &Buffer[4])->Payload_Exists)
                 if (LastContinuityInput >= 0) LastContinuityInput = (LastContinuityInput + 1) % 16;
             }
+if (((tTSPacket*) &Buffer[4])->Payload_Exists)
+  fwrite(&Buffer[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, dbg_Scrambled);
           }
 
           // STRIPPEN
@@ -1430,7 +1443,10 @@ int main(int argc, const char* argv[])
             if (RebuildNav)
             {
               if (CurPID == VideoPID)
+              {
                 ProcessNavFile((tTSPacket*) &Buffer[4], CurrentPosition + PACKETOFFSET, PositionOffset);
+                dbg_DelBytesSinceLastVid = 0;
+              }
             }
             else if (*RecFileOut && *NavFileIn)
               QuickNavProcess(CurrentPosition, PositionOffset);
@@ -1466,8 +1482,13 @@ int main(int argc, const char* argv[])
             }
           }
           else
+          {
             // Paket wird entfernt
             if(fOut) PositionOffset += ReadBytes;
+
+            if (RebuildNav && (CurPID != VideoPID))
+              dbg_DelBytesSinceLastVid += ReadBytes;
+          }
 
           CurrentPosition += ReadBytes;
           CurBlockBytes += ReadBytes;
@@ -1516,6 +1537,7 @@ int main(int argc, const char* argv[])
               PositionOffset += Offset;
               CurrentPosition += Offset;
               CurBlockBytes += Offset;
+              if(RebuildNav) dbg_DelBytesSinceLastVid += Offset;
               NrIgnoredPackets++;
             }
             else
