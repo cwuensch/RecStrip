@@ -104,7 +104,6 @@ int                     CutTimeOffset = 0;
 static char             NavFileIn[FBLIB_DIR_SIZE], NavFileOut[FBLIB_DIR_SIZE], NavFileOld[FBLIB_DIR_SIZE], InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], InfFileOld[FBLIB_DIR_SIZE], InfFileFirstIn[FBLIB_DIR_SIZE], CutFileIn[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE], TeletextOut[FBLIB_DIR_SIZE];
 static FILE            *fIn = NULL;  // dirty Hack: erreichbar machen für InfProcessor
 static FILE            *fOut = NULL;
-static FILE            *dbg_Scrambled = NULL;
 static byte            *PendingBuf = NULL;
 static int              PendingBufLen = 0, PendingBufStart = 0;
 static bool             isPending = FALSE;
@@ -514,12 +513,6 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
       CutFileIn[0] = '\0';
       DoCut = 0;
     }
-
-{
-  char dbg_ScramName[FBLIB_DIR_SIZE];
-  snprintf(dbg_ScramName, sizeof(dbg_ScramName), "%s.scr", RecFileOut);
-  dbg_Scrambled = fopen(dbg_ScramName, "wb");
-}
   }
 
   if (!FirstTime)
@@ -712,9 +705,6 @@ void CloseInputFiles(bool SetStripFlags)
       HDD_SetFileDateTime(InfFileIn, statbuf.st_mtime);
   }
   CloseNavFileIn();
-  
-if (dbg_Scrambled) fclose(dbg_Scrambled);
-
   TRACEEXIT;
 }
 
@@ -1294,8 +1284,6 @@ int main(int argc, const char* argv[])
               if(DoStrip && (CurPID == VideoPID) && ((tTSPacket*) &Buffer[4])->Payload_Exists)
                 if (LastContinuityInput >= 0) LastContinuityInput = (LastContinuityInput + 1) % 16;
             }
-if (((tTSPacket*) &Buffer[4])->Payload_Exists)
-  fwrite(&Buffer[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, dbg_Scrambled);
           }
 
           // STRIPPEN
