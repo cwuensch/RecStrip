@@ -335,7 +335,7 @@ static void HDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
       if (PosFirstNull && PosSecondNull && (Packet->Data[Ptr] == 1))
       {
         HeaderFound = PosFirstNull;
-dbg_HeaderPosOffset = dbg_PositionOffset - (Ptr-PayloadStart<=1 ? dbg_DelBytesSinceLastVid : 0);
+dbg_HeaderPosOffset = dbg_PositionOffset - (Ptr-PayloadStart <= 1 ? dbg_DelBytesSinceLastVid : 0);
       }
       
       if (Packet->Data[Ptr] == 0)
@@ -432,7 +432,7 @@ dbg_HeaderPosOffset = dbg_PositionOffset - (Ptr-PayloadStart<=1 ? dbg_DelBytesSi
               if(FirstSEIPTS == 0 || (PTS < FirstSEIPTS && FirstSEIPTS-PTS < 10000)) FirstSEIPTS = PTS;
               SEIFoundInPacket = TRUE;
 
-dbg_SEIPositionOffset = dbg_HeaderPosOffset - ((Ptr-PayloadStart==0 && HeaderFound<FilePositionOfPacket) ? dbg_DelBytesSinceLastVid : 0);
+dbg_SEIPositionOffset = dbg_HeaderPosOffset;
 dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
 //printf("%lld: SEI found: %lld\n", dbg_CurrentPosition/PACKETSIZE, SEI);
 
@@ -844,7 +844,7 @@ static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
         if( ((int)(navSD.Timems - LastTimems)) >= 0)  LastTimems = navSD.Timems;
         else  navSD.Timems = LastTimems;
 {
-  unsigned long long RefPictureHeaderOffset = dbg_NavPictureHeaderOffset - (dbg_HeaderPosOffset - ((Ptr-PayloadStart<=2 && HeaderFound<FilePositionOfPacket) ? dbg_DelBytesSinceLastVid : 0));
+  unsigned long long RefPictureHeaderOffset = dbg_NavPictureHeaderOffset - dbg_HeaderPosOffset;
   if (fNavIn && LastPictureHeader != RefPictureHeaderOffset)
     printf("DEBUG: Problem! pos=%lld, offset=%lld, Orig-Nav-PHOffset=%lld, Rebuilt-Nav-PHOffset=%lld, Differenz= %lld * %hhu + %lld\n", dbg_CurrentPosition, dbg_HeaderPosOffset, dbg_NavPictureHeaderOffset, LastPictureHeader, ((long long int)(LastPictureHeader-RefPictureHeaderOffset))/PACKETSIZE, PACKETSIZE, ((long long int)(LastPictureHeader-RefPictureHeaderOffset))%PACKETSIZE);
 }
@@ -895,7 +895,7 @@ static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
       navSD.NextPH = 0;
 
       LastPictureHeader = PictHeader;
-dbg_HeaderPosOffset = dbg_PositionOffset - (Ptr-PayloadStart<=1 ? dbg_DelBytesSinceLastVid : 0);
+dbg_HeaderPosOffset = dbg_PositionOffset - (Ptr-PayloadStart-3 <= 1 ? dbg_DelBytesSinceLastVid : 0);  // Ptr-PayloadStart in {3,4} -> nur dann ist HeaderFound falsch
       PictHeader = 0;
       if(NavPtr > 0 && (!WaitForIFrame || navSD.FrameType==1) && (!WaitForPFrame || navSD.FrameType<=2))
         FrameCtr++;

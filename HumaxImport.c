@@ -8,7 +8,6 @@
 #include <stdarg.h>
 #include <string.h>
 #include "type.h"
-#include "crcmodel.h"
 #include "RecStrip.h"
 #include "RecHeader.h"
 #include "HumaxHeader.h"

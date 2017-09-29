@@ -690,12 +690,12 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
         // 4th step: conversion to time_t
         t0 = (time_t)t;
         // ctime output itself is \n-ended
-        printf("  TTX: Programme Timestamp (UTC) = %s", ctime(&t0));
+        printf("  TTX: Programme Timestamp (UTC) = %s\n", ctime(&t0));
 
 //        VERBOSE_ONLY printf("  Transmission mode = %s\n", (transmission_mode == TRANSMISSION_MODE_SERIAL ? "serial" : "parallel"));
 
         if (config.se_mode == YES) {
-          printf("  Broadcast Service Data Packet received, resetting UTC referential value to %s", ctime(&t0));
+          printf("  Broadcast Service Data Packet received, resetting UTC referential value to %s\n", ctime(&t0));
           config.utc_refvalue = t;
           states.pts_initialized = NO;
         }
