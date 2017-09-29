@@ -1483,12 +1483,7 @@ int main(int argc, const char* argv[])
         }
         else
         {
-          if ((unsigned long long) CurrentPosition + 4096 >= RecFileSize)
-          {
-            printf("INFO: Incomplete TS - Ignoring last %lld bytes.\n", RecFileSize - CurrentPosition);
-            fclose(fIn); fIn = NULL;
-          }
-          else if (HumaxSource && (*((dword*)&Buffer[4]) == HumaxHeaderAnfang) && ((unsigned int)CurrentPosition % HumaxHeaderIntervall == HumaxHeaderIntervall-HumaxHeaderLaenge))
+          if (HumaxSource && (*((dword*)&Buffer[4]) == HumaxHeaderAnfang) && ((unsigned int)CurrentPosition % HumaxHeaderIntervall == HumaxHeaderIntervall-HumaxHeaderLaenge))
           {
             fseeko64(fIn, +HumaxHeaderLaenge-ReadBytes, SEEK_CUR);
             PositionOffset += HumaxHeaderLaenge;
@@ -1503,6 +1498,11 @@ int main(int argc, const char* argv[])
               if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], OutPacketSize, 1, fOut))
                 PositionOffset -= OutPacketSize;
             }  */
+          }
+          else if ((unsigned long long) CurrentPosition + 4096 >= RecFileSize)
+          {
+            printf("INFO: Incomplete TS - Ignoring last %lld bytes.\n", RecFileSize - CurrentPosition);
+            fclose(fIn); fIn = NULL;
           }
           else
           {

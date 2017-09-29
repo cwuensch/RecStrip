@@ -39,9 +39,6 @@
     <ClInclude Include="..\HumaxHeader.h">
       <Filter>Header</Filter>
     </ClInclude>
-    <ClInclude Include="..\crcmodel.h">
-      <Filter>Header</Filter>
-    </ClInclude>
     <ClInclude Include="..\PESProcessor.h">
       <Filter>Header</Filter>
     </ClInclude>
@@ -75,9 +72,6 @@
       <Filter>source</Filter>
     </ClCompile>
     <ClCompile Include="..\HumaxImport.c">
-      <Filter>source</Filter>
-    </ClCompile>
-    <ClCompile Include="..\crcmodel.c">
       <Filter>source</Filter>
     </ClCompile>
     <ClCompile Include="..\StrToUTF8.c">

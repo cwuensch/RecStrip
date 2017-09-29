@@ -16,8 +16,42 @@
 
 char PATPMTBuf[2*192];  // Generiert eine PAT/PMT aus der Humax Header-Information
 
+static const dword crc_table[] = {
+  0x00000000, 0x04C11DB7, 0x09823B6E, 0x0D4326D9,
+  0x130476DC, 0x17C56B6B, 0x1A864DB2, 0x1E475005,
+  0x2608EDB8, 0x22C9F00F, 0x2F8AD6D6, 0x2B4BCB61,
+  0x350C9B64, 0x31CD86D3, 0x3C8EA00A, 0x384FBDBD
+};
 
-dword rocksoft_crc(byte data[], int len)
+static dword crc32m_tab(const unsigned char *buf, size_t len)
+{
+  dword crc = 0xffffffff;
+  while (len--) {
+    crc ^= (dword)(*buf++) << 24;
+    crc = (crc << 4) ^ crc_table[crc >> 28];
+    crc = (crc << 4) ^ crc_table[crc >> 28];
+  }
+
+  crc = ((crc & 0x000000ff) << 24 | (crc & 0x0000ff00) << 8 | (crc & 0x00ff0000) >> 8 | (crc & 0xff000000) >> 24);
+  return crc;
+}
+
+static dword crc32m(const unsigned char *buf, size_t len)
+{
+  dword crc = 0xffffffff;
+  int i;
+
+  while (len--) {
+    crc ^= (dword)(*buf++) << 24;
+    for (i = 0; i < 8; i++)
+      crc = crc & 0x80000000 ? (crc << 1) ^ 0x04c11db7 : crc << 1;
+  }
+
+  crc = ((crc & 0x000000ff) << 24 | (crc & 0x0000ff00) << 8 | (crc & 0x00ff0000) >> 8 | (crc & 0xff000000) >> 24);
+  return crc;
+}
+
+/* static dword rocksoft_crc(const byte data[], int len)
 {
   cm_t cm;
   ulong crc;
@@ -37,7 +71,7 @@ dword rocksoft_crc(byte data[], int len)
   crc = cm_crc(&cm);
   crc = ((crc & 0x000000ff) << 24 | (crc & 0x0000ff00) << 8 | (crc & 0x00ff0000) >> 8 | (crc & 0xff000000) >> 24);
   return crc;
-}
+} */
 
 
 bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
@@ -83,7 +117,9 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   pat->PMTPID1          = 0;
   pat->PMTPID2          = 0xb1;  // ??
   pat->Reserved111      = 7;
-  pat->CRC32            = rocksoft_crc((byte*)pat, sizeof(TTSPAT)-4);    // CRC: 0x786989a2
+//  pat->CRC32            = rocksoft_crc((byte*)pat, sizeof(TTSPAT)-4);    // CRC: 0x786989a2
+//  pat->CRC32            = crc32m((byte*)pat, sizeof(TTSPAT)-4);          // CRC: 0x786989a2
+  pat->CRC32            = crc32m_tab((byte*)pat, sizeof(TTSPAT)-4);      // CRC: 0x786989a2
   
   offset = 1 + packet->Data[0] + sizeof(TTSPAT);
   memset(&packet->Data[offset], 0xff, 184 - offset);
@@ -213,7 +249,9 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   pmt->PCRPID1          = VideoPID / 256;
   pmt->PCRPID2          = VideoPID % 256;
   CRC                   = (dword*) &packet->Data[offset];
-  *CRC                  = rocksoft_crc((byte*)pmt, (int)CRC - (int)pmt);   // CRC: 0xb3ad75b7
+//  *CRC                  = rocksoft_crc((byte*)pmt, (int)CRC - (int)pmt);   // CRC: 0x0043710d  (0xb3ad75b7?)
+//  *CRC                  = crc32m((byte*)pmt, (int)CRC - (int)pmt);         // CRC: 0x0043710d  (0xb3ad75b7?)
+  *CRC                  = crc32m_tab((byte*)pmt, (int)CRC - (int)pmt);     // CRC: 0x0043710d  (0xb3ad75b7?)
   offset               += 4;
   memset(&packet->Data[offset], 0xff, 184 - offset);
 
