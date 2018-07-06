@@ -1260,8 +1260,12 @@ int main(int argc, const char* argv[])
           word CurPID = TsGetPID((tTSPacket*) &Buffer[4]);
           signed char *CurCtr = NULL;
 
-          for (k = DoStrip; k < NrContinuityPIDs; k++)
-            if(CurPID == ContinuityPIDs[k])  CurCtr = &ContinuityCtrs[k];
+          if (!DoStrip || CurPID != VideoPID)
+            for (k = DoStrip; k < NrContinuityPIDs; k++)
+              if(CurPID == ContinuityPIDs[k])
+              {
+                CurCtr = &ContinuityCtrs[k];  break;
+              }
 
           // nur Continuity Check
           if (CurCtr)
