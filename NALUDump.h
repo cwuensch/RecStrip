@@ -11,10 +11,11 @@
 
 typedef enum
 {
-  NALU_NONE=0,    // currently not NALU fill stream
+  NALU_INIT=0,
   NALU_FILL,      // Within NALU fill stream, 0xff bytes and NALU start code in byte 0
   NALU_TERM,      // Within NALU fill stream, read 0x80 terminating byte
-  NALU_END        // Beyond end of NALU fill stream, expecting 0x00 0x00 0x01 now
+  NALU_END,       // Beyond end of NALU fill stream, expecting 0x00 0x00 0x01 now
+  NALU_NONE       // currently not NALU fill stream
 } eNaluFillState;
 
 typedef struct
@@ -27,11 +28,11 @@ typedef struct
 
 
 extern int LastContinuityInput;
-extern bool NoContinuityCheck;
+//extern bool NoContinuityCheck;
 
-int TsGetPID(tTSPacket *Packet);
-int TsPayloadOffset(tTSPacket *Packet);
+word TsGetPID(tTSPacket *Packet);
+int  TsPayloadOffset(tTSPacket *Packet);
 void NALUDump_Init(void);
-int ProcessTSPacket(unsigned char *Packet, long long FilePosition);
+int  ProcessTSPacket(unsigned char *Packet, long long FilePosition);
 
 #endif

@@ -20,22 +20,21 @@
 
 
 // Globale Variablen
-static eNaluFillState   NaluFillState = NALU_NONE;
+static eNaluFillState   NaluFillState = NALU_INIT;
 static bool             SliceState = TRUE;
 
 static unsigned int     History = 0xffffffff;
 
-bool                    NoContinuityCheck = FALSE;
+//bool                    NoContinuityCheck = FALSE;
 int                     LastContinuityInput = -1;
 static int              LastContinuityOutput = -1;
 static int              PendingContinuity = -1;
 //static int              ContinuityOffset = 0;
 
-static bool             DropAllPayload = FALSE;
+static bool             DropAllPayload = TRUE;
 
 static int              PesId = -1;
 static int              PesOffset = 0;
-static int              NaluOffset = 0;
 
 static int              LastEndNulls = 1;
 static bool             PendingPacket = FALSE;
@@ -44,7 +43,7 @@ static bool             PendingPacket = FALSE;
 // *****  NALU Dump  *****
 // ----------------------------------------------
 
-inline int TsGetPID(tTSPacket *Packet)
+inline word TsGetPID(tTSPacket *Packet)
 {
   return ((Packet->PID1 *256) | Packet->PID2);
 }
@@ -58,7 +57,7 @@ void NALUDump_Init(void)
 {
   TRACEENTER;
 
-  NaluFillState = NALU_NONE;
+  NaluFillState = NALU_INIT;
   SliceState = TRUE;
 
   History = 0xffffffff;
@@ -68,11 +67,10 @@ void NALUDump_Init(void)
   PendingContinuity = -1;
 //  ContinuityOffset = 0;
 
-  DropAllPayload = FALSE;
+  DropAllPayload = TRUE;
 
   PesId = -1;
   PesOffset = 0;
-  NaluOffset = 0;
 
   LastEndNulls = 1;
   PendingPacket = FALSE;
@@ -148,7 +146,6 @@ static void ProcessPayload_HD(unsigned char *Payload, int size, bool PayloadStar
 
     History = (History << 8) | Payload[i];
     PesOffset++;
-    NaluOffset++;
 
     if (History >= 0x000001B9 && History <= 0x000001FF)  // im Original: >= 0x00000180
     {
@@ -156,28 +153,33 @@ static void ProcessPayload_HD(unsigned char *Payload, int size, bool PayloadStar
       PesId = History & 0xff;
       PesOffset = 0;
       NaluFillState = NALU_NONE;
+
+      LastKeepByte = i;
+      continue;
     }
     else if (PesId >= 0xe0 && PesId <= 0xef // video stream
      && History >= 0x00000100 && History <= 0x0000017F) // NALU start code
     {
       int NaluId = History & 0xff;
-      NaluOffset = 0;
       NaluFillState = ((NaluId & 0x1f) == 0x0c) ? NALU_FILL : NALU_NONE;
       if ((NaluFillState == NALU_FILL) && (i == 3))
       {
-        DropByte = TRUE;        // CW
+//        DropByte = TRUE;        // CW
         LastKeepByte = -1;      // CW
         DropAllPayload = TRUE;  // CW
       }
+      else
+        LastKeepByte = i;
+      continue;
     }
 
     if (PesId >= 0xe0 && PesId <= 0xef // video stream
-     && PesOffset >= 1 && PesOffset <= 2)
+     && (PesOffset == 1 || PesOffset == 2))
     {
       Payload[i] = 0; // Zero out PES length field
     }
 
-    if (NaluFillState == NALU_FILL && NaluOffset > 0) // Within NALU fill data
+    if (NaluFillState <= NALU_FILL)  // Within NALU fill data (NALU_FILL und NALU_INIT)
     {
       // We expect a series of 0xff bytes terminated by a single 0x80 byte.
 
@@ -190,16 +192,18 @@ static void ProcessPayload_HD(unsigned char *Payload, int size, bool PayloadStar
         NaluFillState = NALU_TERM; // Last byte of NALU fill, next byte sets NaluFillEnd=true
         DropByte = TRUE;
       }
-      else // Invalid NALU fill
+      else  // Invalid NALU fill
       {
-        printf("cNaluDumper: Unexpected NALU fill data: %02x\n", Payload[i]);
-        NaluFillState = NALU_END;
+        if (NaluFillState == NALU_FILL)
+          printf("cNaluDumper: Unexpected NALU fill data: %02x\n", Payload[i]);
+
         if (LastKeepByte == -1)
         {
           // Nalu fill from beginning of packet until last byte
           // packet start needs to be dropped
           Info->DropPayloadStartBytes = i;
         }
+        NaluFillState = NALU_END;
       }
     }
     else if (NaluFillState == NALU_TERM) // Within NALU fill data
@@ -284,13 +288,16 @@ int ProcessTSPacket(unsigned char *Packet, long long FilePosition)
     ContinuityOffset = (ContinuityInput - NewContinuityInput) % 16;
     if (ContinuityOffset != 0)
     {
-      if (!NoContinuityCheck)
+//      if (!NoContinuityCheck)
       {
-        printf("cNaluDumper: TS continuity offset %d (pos=%lld)\n", ContinuityOffset, FilePosition);
+        printf("cNaluDumper: TS continuity mismatch (PID=%hu, pos=%lld, expect=%hhu, found=%hhu, Offset=%d)\n", VideoPID, FilePosition, NewContinuityInput, ContinuityInput, ContinuityOffset);
+        NaluFillState = NALU_INIT;  // experimentell! -> sollte dann auch nach Cut gesetzt werden?
+        DropAllPayload = TRUE;
         SetFirstPacketAfterBreak();
 //        SetTeletextBreak(FALSE);
       }
     }
+//    NoContinuityCheck = FALSE;
 //    if (Offset > ContinuityOffset)
 //      ContinuityOffset = Offset; // max if packets get dropped, otherwise always the current one.
   }

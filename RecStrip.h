@@ -3,10 +3,11 @@
 
 #include "RecHeader.h"
 
-#define VERSION                  "v2.2a"
+#define VERSION                  "v2.3"
 
 #define NRBOOKMARKS                177   // eigentlich werden nur 48 Bookmarks unterstützt!! (SRP2401)
 #define NRSEGMENTMARKER            101
+#define MAXCONTINUITYPIDS            8
 #define BUFSIZE                  65536
 #define FBLIB_DIR_SIZE             512
 #define RECBUFFERENTRIES          5000
@@ -110,6 +111,7 @@ extern unsigned long long RecFileSize;
 extern SYSTEM_TYPE      SystemType;
 extern byte             PACKETSIZE, PACKETOFFSET;
 extern word             VideoPID, TeletextPID;
+extern word             ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs;
 extern bool             isHDVideo, AlreadyStripped, HumaxSource;
 extern bool             DoStrip, RemoveEPGStream, RemoveTeletext, RebuildNav, RebuildInf;
 extern int              DoCut, DoMerge;

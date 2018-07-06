@@ -64,7 +64,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
     {
       if((PSBuffer->ErrorFlag & 0x01) == 0)
       {
-        printf("  PS buffer overflow while parsing PID 0x%4.4x\n", PSBuffer->PID);
+        printf("  PS buffer overflow while parsing PID %hu\n", PSBuffer->PID);
         PSBuffer->ErrorFlag |= 1;
       }
     }
@@ -145,7 +145,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
         //Unerwarteter Continuity Counter, Daten verwerfen
         if(PSBuffer->LastCCCounter == 255)
         {
-          printf("  CC error while parsing PID 0x%4.4x\n", PSBuffer->PID);
+          printf("  CC error while parsing PID %hu\n", PSBuffer->PID);
           PSBuffer_DropCurBuffer(PSBuffer);
         }
       }

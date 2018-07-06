@@ -229,6 +229,7 @@ bool LoadInfFile(char *AbsInfName, bool FirstTime)
   SYSTEM_TYPE           curSystemType = ST_UNKNOWN;
   size_t                curInfSize, p;
   bool                  HDFound = FALSE, Result = FALSE;
+  int                   k;
 
   TRACEENTER;
   if(!InfBuffer || !RecHeaderInfo)
@@ -331,16 +332,16 @@ bool LoadInfFile(char *AbsInfName, bool FirstTime)
     if ((ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_PART2) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_H264) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_H263))
     {
       HDFound = TRUE;
-      printf("  INF: VideoStream=0x%x, VideoPID=0x%4.4x, HD=%d\n", ServiceInfo->VideoStreamType, ServiceInfo->VideoPID, HDFound);
+      printf("  INF: VideoStream=0x%x, VideoPID=%hu, HD=%d\n", ServiceInfo->VideoStreamType, ServiceInfo->VideoPID, HDFound);
     }
     else if ((ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG1) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG2))
     {
       HDFound = FALSE;
-      printf("  INF: VideoStream=0x%x, VideoPID=0x%4.4x, HD=%d\n", ServiceInfo->VideoStreamType, ServiceInfo->VideoPID, HDFound);
+      printf("  INF: VideoStream=0x%x, VideoPID=%hu, HD=%d\n", ServiceInfo->VideoStreamType, ServiceInfo->VideoPID, HDFound);
     }
     else
     {
-      VideoPID = 0;
+      VideoPID = (word) -1;
       printf("  LoadInfFile() W0901: Unknown video stream type.\n");
     }
 
@@ -349,7 +350,7 @@ if (RecHeaderInfo->Reserved != 0)
 
     if (VideoPID != ServiceInfo->VideoPID)
     {
-      printf("  LoadInfFile() E0905: Inconsistant video PID: inf=0x%4.4x, rec=0x%4.4x.\n", ServiceInfo->VideoPID, VideoPID);
+      printf("  LoadInfFile() E0905: Inconsistant video PID: inf=%hd, rec=%hd.\n", ServiceInfo->VideoPID, VideoPID);
 //      InfProcessor_Free();
       TRACEEXIT;
       return FALSE;
@@ -360,6 +361,24 @@ if (RecHeaderInfo->Reserved != 0)
 //      InfProcessor_Free();
       TRACEEXIT;
       return FALSE;
+    }
+
+    // Prüfe, ob Audio-PID in Continuity-Scan-Liste enthalten ist
+    for (k = 1; k < NrContinuityPIDs; k++)
+    {
+      if (ContinuityPIDs[k] == ServiceInfo->AudioPID)
+        break;
+    }
+    if (k >= NrContinuityPIDs)
+    {
+      for (k = NrContinuityPIDs; k > 1; k--)
+      {
+        if (k < MAXCONTINUITYPIDS)
+          ContinuityPIDs[k] = ContinuityPIDs[k-1];
+      }
+      ContinuityPIDs[1] = ServiceInfo->AudioPID;
+      if (NrContinuityPIDs < MAXCONTINUITYPIDS)
+        NrContinuityPIDs++;
     }
 
     if (RecHeaderInfo->rs_HasBeenStripped)

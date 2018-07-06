@@ -44,7 +44,10 @@ typedef struct
   word                  PMTPID;
   word                  PCRPID;
   word                  VideoPID;
-  word                  AudioPID;
+//  word                  AudioPID;
+  word                  AudioPID:13;
+  word                  AudioTypeFlag:2;  // ??
+  word                  AudAutoSelect:1;
 
   char                  ServiceName[24];
 

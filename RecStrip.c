@@ -86,7 +86,8 @@ char                    RecFileIn[FBLIB_DIR_SIZE], RecFileOut[FBLIB_DIR_SIZE], O
 unsigned long long      RecFileSize = 0;
 SYSTEM_TYPE             SystemType = ST_UNKNOWN;
 byte                    PACKETSIZE, PACKETOFFSET, OutPacketSize = 0;
-word                    VideoPID = 0, TeletextPID = 0;
+word                    VideoPID = (word) -1, TeletextPID = (word) -1;
+word                    ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs = 1;
 bool                    isHDVideo = FALSE, AlreadyStripped = FALSE, HumaxSource = FALSE;
 bool                    DoStrip = FALSE, RemoveScrambled = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE;
 int                     DoCut = 0, DoMerge = 0;  // DoCut: 1=remove_parts, 2=copy_separate, DoMerge: 1=append, 2=merge
@@ -115,7 +116,7 @@ static unsigned int     NrSegments = 0, NrCopiedSegments = 0;
 static long long        NrDroppedFillerNALU=0, NrDroppedZeroStuffing=0, NrDroppedAdaptation=0, NrDroppedNullPid=0, NrDroppedEPGPid=0, NrDroppedTxtPid=0, NrScrambledPackets=0, CurScrambledPackets=0, NrIgnoredPackets=0;
 static dword            LastTimeStamp = 0, CurTimeStep = 5000;
 static long long        LastPCR = 0, PosLastPCR = 0;
-static signed char      ContinuityCount = -1;
+static signed char      ContinuityCtrs[MAXCONTINUITYPIDS];
 static bool             ResumeSet = FALSE;
 
 
@@ -411,6 +412,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
 
   tSegmentMarker2      *SegmentMarker_bak = SegmentMarker;
   int                   NrSegmentMarker_bak = NrSegmentMarker;
+  int                   k;
 
   TRACEENTER;
 
@@ -459,6 +461,12 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
       printf("  File size: %llu, packet size: %hhu\n", RecFileSize, PACKETSIZE);
 
       LoadInfFromRec(RecFileIn);
+
+//      if(DoStrip) ContinuityPIDs[0] = (word) -1;
+      printf("  PIDs to be checked for continuity: [0] %s%hd%s", (DoStrip ? "[" : ""), ContinuityPIDs[0], (DoStrip ? "]" : ""));
+      for (k = 1; k < NrContinuityPIDs; k++)
+        printf(", [%d] %hu", k, ContinuityPIDs[k]);
+      printf("\n");
     }
     else
     {
@@ -800,7 +808,7 @@ int main(int argc, const char* argv[])
   int                   ReadBytes;
   bool                  DropCurPacket;
   time_t                startTime, endTime;
-  int                   CurSeg = 0, i = 0, n = 0;
+  int                   CurSeg = 0, i = 0, n = 0, k;
   dword                 j = 0;
   dword                 Percent = 0, BlocksSincePercent = 0;
   bool                  AbortProcess = FALSE;
@@ -811,7 +819,7 @@ int main(int argc, const char* argv[])
     setvbuf(stdout, NULL, _IOLBF, 4096);  // zeilenweises Buffering, auch bei Ausgabe in Datei
   #endif
   printf("\nRecStrip for Topfield PVR " VERSION "\n");
-  printf("(C) 2016/17 Christian Wuensch\n");
+  printf("(C) 2016-18 Christian Wuensch\n");
   printf("- based on Naludump 0.1.1 by Udo Richter -\n");
   printf("- based on MovieCutter 3.6 -\n");
   printf("- portions of Mpeg2cleaner (S. Poeschel), RebuildNav (Firebird) & TFTool (jkIT)\n");
@@ -952,6 +960,13 @@ int main(int argc, const char* argv[])
     }
   }
 
+  // Variablen initialisieren
+  for (k = 0; k < MAXCONTINUITYPIDS; k++)
+  {
+    ContinuityPIDs[k] = (word) -1;
+    ContinuityCtrs[k] = -1;
+  }
+
   if (DoMerge)
   {
     char Temp[FBLIB_DIR_SIZE];
@@ -998,15 +1013,20 @@ int main(int argc, const char* argv[])
     exit(4);
   }
 
-  if (VideoPID == 0)
+  if (!VideoPID || VideoPID == (word)-1)
   {
-    printf("  ERROR: No video PID determined.\n");
-    CloseInputFiles(FALSE);
+    printf("Warning: No video PID determined.\n");
+/*    CloseInputFiles(FALSE);
     CutProcessor_Free();
     InfProcessor_Free();
     free(PendingBuf); PendingBuf = NULL;      
     TRACEEXIT;
-    exit(6);
+    exit(6);  */
+  }
+  if (ExtractTeletext && TeletextPID == (word)-1)
+  {
+    printf("Warning: No teletext PID determined.\n");
+    ExtractTeletext = FALSE;
   }
 
   // Output-Files öffnen
@@ -1122,8 +1142,9 @@ int main(int argc, const char* argv[])
             fseeko64(fIn, ((SegmentMarker[CurSeg].Position) /* / PACKETSIZE) * PACKETSIZE */), SEEK_SET);
             SetFirstPacketAfterBreak();
             SetTeletextBreak(FALSE);
-            ContinuityCount = -1;
-            if(DoStrip)  NoContinuityCheck = TRUE;
+            for (k = 0; k < NrContinuityPIDs; k++)
+              ContinuityCtrs[k] = -1;
+            if(DoStrip)  NALUDump_Init();  // NoContinuityCheck = TRUE;
 
             // Position neu berechnen
             PositionOffset += SkippedBytes;
@@ -1236,25 +1257,32 @@ int main(int argc, const char* argv[])
       {
         if (Buffer[4] == 'G')
         {
-          int CurPID = TsGetPID((tTSPacket*) &Buffer[4]);
+          word CurPID = TsGetPID((tTSPacket*) &Buffer[4]);
+          signed char *CurCtr = NULL;
+
+          for (k = DoStrip; k < NrContinuityPIDs; k++)
+            if(CurPID == ContinuityPIDs[k])  CurCtr = &ContinuityCtrs[k];
 
           // nur Continuity Check
-          if (!DoStrip && (CurPID == VideoPID))
+          if (CurCtr)
           {
-            if (ContinuityCount >= 0)
+            if (*CurCtr >= 0)
             {
-              if (((tTSPacket*) &Buffer[4])->Payload_Exists) ContinuityCount = (ContinuityCount + 1) % 16;
-              if (((tTSPacket*) &Buffer[4])->ContinuityCount != ContinuityCount)
+              if (((tTSPacket*) &Buffer[4])->Payload_Exists) *CurCtr = (*CurCtr + 1) % 16;
+              if (((tTSPacket*) &Buffer[4])->ContinuityCount != *CurCtr)
               {
-                if (!DoCut || (i < NrSegmentMarker && CurrentPosition != SegmentMarker[i].Position))
-                  printf("TS check: TS continuity offset %d (pos=%lld)\n", (((tTSPacket*) &Buffer[4])->ContinuityCount - ContinuityCount) % 16, CurrentPosition);
-                SetFirstPacketAfterBreak();
-//                SetTeletextBreak(FALSE);
-                ContinuityCount = ((tTSPacket*) &Buffer[4])->ContinuityCount;
+//              if (!DoCut || (i < NrSegmentMarker && CurrentPosition != SegmentMarker[i].Position))
+                  printf("TS check: TS continuity mismatch (PID=%hu, pos=%lld, expect=%hhu, found=%hhu, missing=%hhd)\n", CurPID, CurrentPosition, *CurCtr, ((tTSPacket*) &Buffer[4])->ContinuityCount, (((tTSPacket*) &Buffer[4])->ContinuityCount + 16 - *CurCtr) % 16);
+                if (CurPID == VideoPID)
+                {
+                  SetFirstPacketAfterBreak();
+//                  SetTeletextBreak(FALSE);
+                }
+                *CurCtr = ((tTSPacket*) &Buffer[4])->ContinuityCount;
               }
             }
             else
-              ContinuityCount = ((tTSPacket*) &Buffer[4])->ContinuityCount;
+              *CurCtr = ((tTSPacket*) &Buffer[4])->ContinuityCount;
           }
 
           DropCurPacket = FALSE;
@@ -1301,7 +1329,7 @@ int main(int argc, const char* argv[])
             }
             else if (RemoveTeletext && CurPID == TeletextPID)
             {
-              if (ExtractTeletext && fTtxOut)
+              if (/*ExtractTeletext &&*/ fTtxOut)
               {
                 dword CurPCR = 0;
                 if (GetPCRms(&Buffer[4], &CurPCR))  global_timestamp = CurPCR;
@@ -1599,8 +1627,9 @@ int main(int argc, const char* argv[])
         CutTimeOffset = -(int)LastTimems;
       SetFirstPacketAfterBreak();
       SetTeletextBreak(TRUE);
-      ContinuityCount = -1;
-      if(DoStrip)  NoContinuityCheck = TRUE;
+      for (k = 0; k < NrContinuityPIDs; k++)
+        ContinuityCtrs[k] = -1;
+      if(DoStrip)  NALUDump_Init();  // NoContinuityCheck = TRUE;
 
       if (!OpenInputFiles(RecFileIn, FALSE))
       {

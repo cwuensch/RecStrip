@@ -83,7 +83,7 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   dword                *CRC = NULL;
   int                   offset = 0;
 //  long long             FilePos = ftello64(fIn);
-  int                   i, j;
+  int                   i, j, k;
   bool                  ret = TRUE;
 
   TRACEENTER;
@@ -182,6 +182,7 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           RecInf->RecHeaderInfo.StartTime     = (HumaxHeader.Allgemein.Datum << 16) | ((HumaxHeader.Allgemein.Zeit/60) << 8) | (HumaxHeader.Allgemein.Zeit%60);
           RecInf->RecHeaderInfo.DurationMin   = (word)(HumaxHeader.Allgemein.Dauer / 60);
           RecInf->RecHeaderInfo.DurationSec   = (word)(HumaxHeader.Allgemein.Dauer % 60);
+          ContinuityPIDs[0] = VideoPID;
         }
         if (HumaxHeader.ZusInfoID == HumaxBookmarksID)
         {
@@ -227,6 +228,17 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                 elem->ESInfoLen2    = 6;
                 strcpy(&packet->Data[offset], "\x0A\x04" "deu");
               }
+
+              if (NrContinuityPIDs < MAXCONTINUITYPIDS)
+              {
+                for (k = 1; k < NrContinuityPIDs; k++)
+                {
+                  if (ContinuityPIDs[k] == HumaxTonspuren->Items[j].PID)
+                    break;
+                }
+                if (k >= NrContinuityPIDs)
+                  ContinuityPIDs[NrContinuityPIDs++] = HumaxTonspuren->Items[j].PID;
+              }
             }
             else
             {
@@ -253,6 +265,8 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   *CRC                  = crc32m_tab((byte*)pmt, (int)CRC - (int)pmt);     // CRC: 0x0043710d  (0xb3ad75b7?)
   offset               += 4;
   memset(&packet->Data[offset], 0xff, 184 - offset);
+
+  if(NrContinuityPIDs < MAXCONTINUITYPIDS && TeletextPID != 0xffff)  ContinuityPIDs[NrContinuityPIDs++] = TeletextPID;
 
 //  fseeko64(fIn, FilePos, SEEK_SET);
   if (!ret)

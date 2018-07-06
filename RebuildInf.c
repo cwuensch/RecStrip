@@ -126,16 +126,20 @@ static void InitInfStruct(TYPE_RecHeader_TMSS *RecInf)
 {
   TRACEENTER;
   memset(RecInf, 0, sizeof(TYPE_RecHeader_TMSS));
-  RecInf->RecHeaderInfo.Magic[0]     = 'T';
-  RecInf->RecHeaderInfo.Magic[1]     = 'F';
-  RecInf->RecHeaderInfo.Magic[2]     = 'r';
-  RecInf->RecHeaderInfo.Magic[3]     = 'c';
-  RecInf->RecHeaderInfo.Version      = 0x8000;
-  RecInf->RecHeaderInfo.CryptFlag    = 0;
-  RecInf->RecHeaderInfo.FlagUnknown  = 1;
-  RecInf->ServiceInfo.ServiceType    = 1;  // SVC_TYPE_Radio
-  RecInf->ServiceInfo.SatIndex       = 1;
-  RecInf->ServiceInfo.FlagTuner      = 3;
+  RecInf->RecHeaderInfo.Magic[0]      = 'T';
+  RecInf->RecHeaderInfo.Magic[1]      = 'F';
+  RecInf->RecHeaderInfo.Magic[2]      = 'r';
+  RecInf->RecHeaderInfo.Magic[3]      = 'c';
+  RecInf->RecHeaderInfo.Version       = 0x8000;
+  RecInf->RecHeaderInfo.CryptFlag     = 0;
+  RecInf->RecHeaderInfo.FlagUnknown   = 1;
+  RecInf->ServiceInfo.ServiceType     = 1;  // SVC_TYPE_Radio
+  RecInf->ServiceInfo.SatIndex        = 1;
+  RecInf->ServiceInfo.FlagTuner       = 3;
+  RecInf->ServiceInfo.VideoStreamType = 0xff;
+  RecInf->ServiceInfo.VideoPID        = 0xffff;
+  RecInf->ServiceInfo.AudioStreamType = 0xff;
+  RecInf->ServiceInfo.AudioPID        = 0xffff;
   strcpy(RecInf->ServiceInfo.ServiceName, "RecStrip");
   TRACEEXIT;
 }
@@ -151,11 +155,11 @@ static bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
   TRACEENTER;
 
   //The following variables have a constant distance from the packet header
-  SectionLength = (((PSBuffer[0x01] << 8) | PSBuffer[0x02]) & 0xfff) - 9;
+  SectionLength = (((PSBuffer[0x01] << 8) | PSBuffer[0x02]) & 0xfff);
 
   RecInf->ServiceInfo.ServiceID = ((PSBuffer[0x03] << 8) | PSBuffer[0x04]);
   RecInf->ServiceInfo.PCRPID = ((PSBuffer[0x08] << 8) | PSBuffer [0x09]) & 0x1fff;
-  snprintf(Log, sizeof(Log), ", SID=0x%4.4x, PCRPID=0x%4.4x", RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID);
+  snprintf(Log, sizeof(Log), ", SID=%hu, PCRPID=%hu", RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID);
 
   ProgramInfoLength = ((PSBuffer[0x0a] << 8) | PSBuffer[0x0b]) & 0xfff;
 
@@ -172,7 +176,8 @@ static bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
   }
 
   //Loop through all elementary stream descriptors and search for the Audio and Video descriptor
-  while (SectionLength > 0)
+  SectionLength -= (DescrPt - 3);   // SectionLength zählt ab Byte 3, bisherige Bytes abziehen
+  while (SectionLength > 4)         // 4 Bytes CRC am Ende
   {
     PID = ((PSBuffer [DescrPt + 1] << 8) | PSBuffer [DescrPt + 2]) & 0x1fff;
     DescriptorLength = ((PSBuffer[DescrPt + 3] << 8) | PSBuffer [DescrPt + 4]) & 0xfff;
@@ -184,7 +189,7 @@ static bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
       case STREAM_VIDEO_MPEG4_H264:
       case STREAM_VIDEO_VC1:
       case STREAM_VIDEO_VC1SM:
-        if(RecInf->ServiceInfo.VideoStreamType == 0)
+        if(RecInf->ServiceInfo.VideoStreamType == 0xff)
           isHDVideo = TRUE;  // fortsetzen...
  
       case STREAM_VIDEO_MPEG1:
@@ -192,12 +197,13 @@ static bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
       {
         VideoFound = TRUE;
         RecInf->ServiceInfo.ServiceType = 0;  // SVC_TYPE_Tv
-        if(RecInf->ServiceInfo.VideoStreamType == 0)
+        if(RecInf->ServiceInfo.VideoStreamType == 0xff)
         {
           VideoPID = PID;
           RecInf->ServiceInfo.VideoPID = PID;
           RecInf->ServiceInfo.VideoStreamType = PSBuffer[DescrPt];
-          snprintf(&Log[strlen(Log)], sizeof(Log)-strlen(Log), ", Stream=0x%x, VPID=0x%4.4x, HD=%d", RecInf->ServiceInfo.VideoStreamType, VideoPID, isHDVideo);
+          ContinuityPIDs[0] = PID;
+          snprintf(&Log[strlen(Log)], sizeof(Log)-strlen(Log), ", Stream=0x%x, VPID=%hu, HD=%d", RecInf->ServiceInfo.VideoStreamType, VideoPID, isHDVideo);
         }
         break;
       }
@@ -210,7 +216,14 @@ static bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
           {
             TeletextPID = PID;
             PID = 0;
-            snprintf(&Log[strlen(Log)], sizeof(Log)-strlen(Log), "\n  TS: TeletxtPID=0x%4.4x", TeletextPID);
+            snprintf(&Log[strlen(Log)], sizeof(Log)-strlen(Log), "\n  TS: TeletxtPID=%hu", TeletextPID);
+            break;
+          }
+          else if (PSBuffer[DescrPt+5+i] == 'Y')
+          {
+            // DVB-Subtitles
+            snprintf(&Log[strlen(Log)], sizeof(Log)-strlen(Log), "\n  TS: SubtitlesPID=%hu", PID);
+            PID = 0;
             break;
           }
         if (PID == 0) break;
@@ -225,10 +238,22 @@ static bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
       case STREAM_AUDIO_MPEG4_AC3:
       case STREAM_AUDIO_MPEG4_DTS:
       {
-        if(RecInf->ServiceInfo.AudioStreamType == 0)
+        int k;
+        if(RecInf->ServiceInfo.AudioStreamType == 0xff)
         {
           RecInf->ServiceInfo.AudioStreamType = PSBuffer[DescrPt];
           RecInf->ServiceInfo.AudioPID = PID;
+        }
+
+        if (NrContinuityPIDs < MAXCONTINUITYPIDS)
+        {
+          for (k = 1; k < NrContinuityPIDs; k++)
+          {
+            if (ContinuityPIDs[k] == PID)
+              break;
+          }
+          if (k >= NrContinuityPIDs)
+            ContinuityPIDs[NrContinuityPIDs++] = PID;
         }
         break;
       }
@@ -237,7 +262,10 @@ static bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
     DescrPt += (DescriptorLength + 5);
   }
 
+  if(NrContinuityPIDs < MAXCONTINUITYPIDS && TeletextPID != 0xffff)  ContinuityPIDs[NrContinuityPIDs++] = TeletextPID;
+  if(NrContinuityPIDs < MAXCONTINUITYPIDS)                           ContinuityPIDs[NrContinuityPIDs++] = 0x12;
   printf("%s\n", Log);
+
 //  isHDVideo = HDFound;
 
   TRACEEXIT;
@@ -616,7 +644,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     if(PMTPID)
     {
       RecInf->ServiceInfo.PMTPID = PMTPID;
-      printf("  TS: PMTPID=0x%4.4x", PMTPID);
+      printf("  TS: PMTPID=%hu", PMTPID);
 
       //Analyse the PMT
       PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE);
@@ -630,7 +658,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         p += PACKETSIZE;
       }
 
-      AnalysePMT(PMTBuffer.Buffer1, RecInf);
+      AnalysePMT(PMTBuffer.Buffer1, /*PMTBuffer.ValidBufLen,*/ RecInf);
       PSBuffer_Reset(&PMTBuffer);
     }
     else
@@ -644,7 +672,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     {
       PSBuffer_Init(&PMTBuffer, 0x0011, 16384, TRUE);
       PSBuffer_Init(&EITBuffer, 0x0012, 16384, TRUE);
-      if (TeletextPID)
+      if (TeletextPID != 0xffff)
         PSBuffer_Init(&TtxBuffer, TeletextPID, 16384, FALSE);
       LastBuffer = 0; LastTtxBuffer = 0;
 
@@ -675,7 +703,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               LastBuffer = EITBuffer.ValidBuffer;
             }
           }
-          if (TeletextPID && !TtxOK)
+          if (TeletextPID != 0xffff && !TtxOK)
           {
             if (!TtxFound)
             {
@@ -691,20 +719,20 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           if(TtxFound && !TtxOK)
             TtxOK = (GetPCRms(p, &TtxPCR) && TtxPCR != 0);
 
-          if(EITOK && PMTOK && (TtxOK || !TeletextPID)) break;
+          if(EITOK && PMTOK && (TtxOK || TeletextPID == 0xffff)) break;
           p += PACKETSIZE;
         }
-        if(EITOK && PMTOK && (TtxOK || !TeletextPID)) break;
+        if(EITOK && PMTOK && (TtxOK || TeletextPID == 0xffff)) break;
       }
       if(!PMTOK)
         printf ("  Failed to get service name from SDT.\n");
       if(!EITOK)
         printf ("  Failed to get the EIT information.\n");
-      if(TeletextPID && !TtxOK)
+      if(TeletextPID != 0xffff && !TtxOK)
         printf ("  Failed to get start time from Teletext.\n");
       PSBuffer_Reset(&PMTBuffer);
       PSBuffer_Reset(&EITBuffer);
-      if(TeletextPID)
+      if(TeletextPID != 0xffff)
         PSBuffer_Reset(&TtxBuffer);
     }
   }
