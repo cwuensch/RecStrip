@@ -3,7 +3,7 @@
 
 #include "RecHeader.h"
 
-#define VERSION                  "v2.3"
+#define VERSION                  "v2.4"
 
 #define NRBOOKMARKS                177   // eigentlich werden nur 48 Bookmarks unterstützt!! (SRP2401)
 #define NRSEGMENTMARKER            101
@@ -14,23 +14,28 @@
 #define PENDINGBUFSIZE           65536
 
 //audio & video format
-#define STREAM_AUDIO_MP3             0x01
-#define STREAM_AUDIO_MPEG1           0x03
-#define STREAM_AUDIO_MPEG2           0x04
-#define STREAM_AUDIO_MPEG4_AC3_PLUS  0x06
-#define STREAM_AUDIO_MPEG4_AAC       0x0F
-#define STREAM_AUDIO_MPEG4_AAC_PLUS  0x11
-#define STREAM_AUDIO_MPEG4_AC3       0x81
-#define STREAM_AUDIO_MPEG4_DTS       0x82
-
-#define STREAM_VIDEO_MPEG1           0x01
-#define STREAM_VIDEO_MPEG2           0x02
-#define STREAM_VIDEO_MPEG4_PART2     0x10
-#define STREAM_VIDEO_MPEG4_H263      0x1A
-#define STREAM_VIDEO_MPEG4_H264      0x1B
-#define STREAM_VIDEO_VC1             0xEA
-#define STREAM_VIDEO_VC1SM           0xEB
-#define STREAM_UNKNOWN               0xFF
+typedef enum
+{
+  STREAM_AUDIO_MP3              = 0x01,
+  STREAM_AUDIO_MPEG1            = 0x03,
+  STREAM_AUDIO_MPEG2            = 0x04,
+  STREAM_AUDIO_MPEG4_AC3_PLUS   = 0x06,
+  STREAM_AUDIO_MPEG4_AAC        = 0x0F,
+  STREAM_AUDIO_MPEG4_AAC_PLUS   = 0x11,
+  STREAM_AUDIO_MPEG4_AC3        = 0x81,
+  STREAM_AUDIO_MPEG4_DTS        = 0x82
+} tAudioStreamFmt;
+typedef enum
+{
+  STREAM_VIDEO_MPEG1            = 0x01,
+  STREAM_VIDEO_MPEG2            = 0x02,
+  STREAM_VIDEO_MPEG4_PART2      = 0x10,
+  STREAM_VIDEO_MPEG4_H263       = 0x1A,
+  STREAM_VIDEO_MPEG4_H264       = 0x1B,
+  STREAM_VIDEO_VC1              = 0xEA,
+  STREAM_VIDEO_VC1SM            = 0xEB,
+  STREAM_UNKNOWN                = 0xFF
+} tVideoStreamFmt;
 
 
 #if defined(WIN32) || defined(_WIN32) 

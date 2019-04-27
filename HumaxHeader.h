@@ -39,14 +39,14 @@ typedef enum
 {
   HumaxBookmarksID = 0x5514,
   HumaxTonSpurenID = 0x4823
-} THumaxZusInfoIDs;
+} tHumaxZusInfoIDs;
 
 #pragma pack(push, 1)
 typedef struct
 {
   word                  PID;
   char                  Name[6];                 // meist kürzer, nullterminiert
-}__attribute__((packed)) THumaxTonSpur;
+}__attribute__((packed)) tHumaxTonSpur;
 
 typedef struct
 {
@@ -65,13 +65,13 @@ typedef struct
   byte Schreibschutz;        // 1 (geschützt) - 0 (nicht geschützt)
   byte Unbekannt2[15];
   char Dateiname[32];        // evtl. kürzer, nullterminiert
-}__attribute__((packed)) THumaxBlock_allg;
+}__attribute__((packed)) tHumaxBlock_allg;
 
 typedef struct
 {
   byte Unbekannt3[620];
   byte Ende[30];             // vielleicht zur Markierung des Endes (-> eher nicht!)
-} THumaxBlock_Ende;
+} tHumaxBlock_Ende;
 
 
 typedef struct
@@ -79,41 +79,42 @@ typedef struct
   word Anzahl;               // (vermutlich ist die Anzahl ein Long, aber zur Sicherheit...)
   word Leer;
   dword Items[100];
-} THumaxBlock_Bookmarks;
+} tHumaxBlock_Bookmarks;
 
 typedef struct
 {
   word Anzahl;
   word Leer;
-  THumaxTonSpur Items[50];
-}__attribute__((packed)) THumaxBlock_Tonspuren;
+  tHumaxTonSpur Items[50];
+}__attribute__((packed)) tHumaxBlock_Tonspuren;
 
 
 typedef struct
 {
-  THumaxBlock_allg Allgemein;  // allgemeiner Block (Dateiname und Schreibschutz nur im 1. Header aktuell!)
+  tHumaxBlock_allg Allgemein;  // allgemeiner Block (Dateiname und Schreibschutz nur im 1. Header aktuell!)
   word ZusInfoID;              // ID des ZusatzInfo-Blocks
   byte ZusInfos[404];          // z.B. 3. Header: Bookmarks, 4. Header: Tonspuren
-  THumaxBlock_Ende Ende;
-}__attribute__((packed)) THumaxHeader;
+  tHumaxBlock_Ende Ende;
+}__attribute__((packed)) tHumaxHeader;
 #pragma pack(pop)
 
 
 typedef struct
 {
   byte TableID;
-  byte SectionLen1:4;
-  byte Reserved1:2;
-  byte Reserved0:1;
-  byte SectionSyntax:1;
+  byte SectionLen1:4;    // first 2 bits are 0
+  byte Reserved1:2;      // = 0x03 (all 1)
+  byte Private:1;        // = 0
+  byte SectionSyntax:1;  // = 1
   byte SectionLen2;
   byte TS_ID1;
   byte TS_ID2;
   byte CurNextInd:1;
   byte VersionNr:5;
-  byte Reserved11:2;
+  byte Reserved2:2;      // = 0x03 (all 1)
   byte SectionNr;
   byte LastSection;
+
 //  for i = 0 to N  {
     word ProgramNr1:8;
     word ProgramNr2:8;
@@ -122,44 +123,78 @@ typedef struct
     word PMTPID2:8;  // oder NetworkPID, falls ProgramNr==0
 //  }
   dword CRC32;
-} TTSPAT;
+} tTSPAT;
 
 
 typedef struct
 {
+  byte DescrTag;
+  byte DescrLength;
+//  char Name[4];          // without terminating 0
+  byte Reserved:4;
+  byte asvc_flag:1;
+  byte mainid_flag:1;
+  byte bsid_flag:1;
+  byte component_type_flag:1;
+} tTSAC3Desc;            // Ist das richtig??
+
+typedef struct
+{
+  byte DescrTag;
+  byte DescrLength;
+  char LanguageCode[3]; // without terminating 0
+  byte AudioType;
+} tTSAudioDesc;
+
+typedef struct
+{
+  byte DescrTag;
+  byte DescrLength;
+  char LanguageCode[3];  // without terminating 0
+  byte TtxMagazine:1;    // = 1
+  byte Unknown2:2;       // = 0
+  byte TtxType:2;        // 1 = initial Teletext page
+  byte Unknown:3;        // unknown
+  byte FirstPage;
+} tTSTtxDesc;
+
+/*typedef struct
+{
   byte stream_type;
   byte ESPID1:5;
-  byte ReservedZ:3;
+  byte Reserved1:3;      // = 0x03 (all 1)
   byte ESPID2;
   byte ESInfoLen1:4;
-  byte ReservedQ:4;
+  byte Reserved2:4;      // = 0x07 (all 1)
   byte ESInfoLen2;
-} TElemStream;
+} tElemStream;
 
 typedef struct
 {
   byte TableID;
-  byte SectionLen1:4;
-  byte Reserved1:2;
-  byte Reserved0:1;
-  byte SectionSyntax:1;
+  byte SectionLen1:4;    // first 2 bits are 0
+  byte Reserved1:2;      // = 0x03 (all 1)
+  byte Private:1;        // = 0
+  byte SectionSyntax:1;  // = 1
   byte SectionLen2;
   byte ProgramNr1;
   byte ProgramNr2;
   byte CurNextInd:1;
   byte VersionNr:5;
-  byte Reserved11:2;
+  byte Reserved2:2;      // = 0x03 (all 1)
   byte SectionNr;
   byte LastSection;
 
   word PCRPID1:5;
-  word ReservedX:3;
+  word Reserved3:3;      // = 0x07 (all 1)
   word PCRPID2:8;
 
-  word ProgInfoLen1:4;
-  word ReservedY:4;
+  word ProgInfoLen1:4;   // first 2 bits are 0
+  word Reserved4:4;      // = 0x0F (all 1)
   word ProgInfoLen2:8;
-} TTSPMT;
+  // ProgInfo (of length ProgInfoLen1*256 + ProgInfoLen2)
+  // Elementary Streams (of remaining SectionLen)
+} tTSPMT; */
 
 extern char PATPMTBuf[];
 

@@ -146,120 +146,155 @@ static void InitInfStruct(TYPE_RecHeader_TMSS *RecInf)
 
 static bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
 {
-  dword                 DescrPt;
-  short                 SectionLength, DescriptorLength, ProgramInfoLength;  // DescriptorType
+  tTSPMT               *PMT = (tTSPMT*)PSBuffer;
+  dword                 ElemPt;
+  int                   SectionLength, ProgramInfoLength, ElemLength;
   word                  PID;
   char                  Log[512];
   bool                  VideoFound = FALSE;
 
+  if(PMT->TableID != TABLE_PMT) return FALSE;
+
   TRACEENTER;
 
   //The following variables have a constant distance from the packet header
-  SectionLength = (((PSBuffer[0x01] << 8) | PSBuffer[0x02]) & 0xfff);
+  SectionLength = PMT->SectionLen1 * 256 | PMT->SectionLen2;
 
-  RecInf->ServiceInfo.ServiceID = ((PSBuffer[0x03] << 8) | PSBuffer[0x04]);
-  RecInf->ServiceInfo.PCRPID = ((PSBuffer[0x08] << 8) | PSBuffer [0x09]) & 0x1fff;
+  RecInf->ServiceInfo.ServiceID = PMT->ProgramNr1 * 256 | PMT->ProgramNr2;
+  RecInf->ServiceInfo.PCRPID = PMT->PCRPID1 * 256 | PMT->PCRPID2;
   snprintf(Log, sizeof(Log), ", SID=%hu, PCRPID=%hu", RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID);
 
-  ProgramInfoLength = ((PSBuffer[0x0a] << 8) | PSBuffer[0x0b]) & 0xfff;
+  ProgramInfoLength = PMT->ProgInfoLen1 * 256 | PMT->ProgInfoLen2;
 
-  //Program info needed to decode all ECMs
-  DescrPt = 0x0c;
+  //Program info (-> überspringen)
+  ElemPt = sizeof(tTSPMT);
+  SectionLength -= (sizeof(tTSPMT) - 3);  // SectionLength zählt ab Byte 3, bisherige Bytes abziehen
 
-  while(ProgramInfoLength > 0)
+/*  while(ProgramInfoLength > 0)
   {
-//    DescriptorType   = PSBuffer[DescrPt];
-    DescriptorLength = PSBuffer[DescrPt + 1];
-    DescrPt           += (DescriptorLength + 2);
-    SectionLength     -= (DescriptorLength + 2);
-    ProgramInfoLength -= (DescriptorLength + 2);
-  }
+    tTSDesc* Desc = (tTSDesc*) &PSBuffer[ElemPt];
+    ElemPt            += (Desc->DescrLength + 2);
+    ProgramInfoLength -= (Desc->DescrLength + 2);
+    SectionLength     -= (Desc->DescrLength + 2);
+  } */
+
+  // Einfacher:
+  ElemPt += ProgramInfoLength;
+  SectionLength -= ProgramInfoLength;
 
   //Loop through all elementary stream descriptors and search for the Audio and Video descriptor
-  SectionLength -= (DescrPt - 3);   // SectionLength zählt ab Byte 3, bisherige Bytes abziehen
   while (SectionLength > 4)         // 4 Bytes CRC am Ende
   {
-    PID = ((PSBuffer [DescrPt + 1] << 8) | PSBuffer [DescrPt + 2]) & 0x1fff;
-    DescriptorLength = ((PSBuffer[DescrPt + 3] << 8) | PSBuffer [DescrPt + 4]) & 0xfff;
+    tElemStream* Elem = (tElemStream*) &PSBuffer[ElemPt];
+    PID = Elem->ESPID1 * 256 | Elem->ESPID2;
+    ElemLength = Elem->ESInfoLen1 * 256 | Elem->ESInfoLen2;
 
-    switch (PSBuffer[DescrPt])
+//    if (ElemLength > 0)  // Ist das nötig??
     {
-      case STREAM_VIDEO_MPEG4_PART2:
-      case STREAM_VIDEO_MPEG4_H263:
-      case STREAM_VIDEO_MPEG4_H264:
-      case STREAM_VIDEO_VC1:
-      case STREAM_VIDEO_VC1SM:
-        if(RecInf->ServiceInfo.VideoStreamType == 0xff)
-          isHDVideo = TRUE;  // fortsetzen...
+      switch (Elem->stream_type)
+      {
+        case STREAM_VIDEO_MPEG4_PART2:
+        case STREAM_VIDEO_MPEG4_H263:
+        case STREAM_VIDEO_MPEG4_H264:
+        case STREAM_VIDEO_VC1:
+        case STREAM_VIDEO_VC1SM:
+          if(RecInf->ServiceInfo.VideoStreamType == 0xff)
+            isHDVideo = TRUE;  // fortsetzen...
  
-      case STREAM_VIDEO_MPEG1:
-      case STREAM_VIDEO_MPEG2:
-      {
-        VideoFound = TRUE;
-        RecInf->ServiceInfo.ServiceType = 0;  // SVC_TYPE_Tv
-        if(RecInf->ServiceInfo.VideoStreamType == 0xff)
+        case STREAM_VIDEO_MPEG1:
+        case STREAM_VIDEO_MPEG2:
         {
-          VideoPID = PID;
-          RecInf->ServiceInfo.VideoPID = PID;
-          RecInf->ServiceInfo.VideoStreamType = PSBuffer[DescrPt];
-          ContinuityPIDs[0] = PID;
-          snprintf(&Log[strlen(Log)], sizeof(Log)-strlen(Log), ", Stream=0x%x, VPID=%hu, HD=%d", RecInf->ServiceInfo.VideoStreamType, VideoPID, isHDVideo);
-        }
-        break;
-      }
-
-      case 0x06:  // Teletext!
-      {
-        int i;
-        for (i = 0; i < DescriptorLength-1; i++)
-          if ((PSBuffer[DescrPt+5+i] == 'V') /*&& (PSBuffer[DescrPt+5+i+1] == '\x05')*/)
+          VideoFound = TRUE;
+          RecInf->ServiceInfo.ServiceType = 0;  // SVC_TYPE_Tv
+          if(RecInf->ServiceInfo.VideoStreamType == 0xff)
           {
-            TeletextPID = PID;
-            PID = 0;
-            snprintf(&Log[strlen(Log)], sizeof(Log)-strlen(Log), "\n  TS: TeletxtPID=%hu", TeletextPID);
-            break;
+            VideoPID = PID;
+            RecInf->ServiceInfo.VideoPID = PID;
+            RecInf->ServiceInfo.VideoStreamType = Elem->stream_type;
+            ContinuityPIDs[0] = PID;
+            snprintf(&Log[strlen(Log)], sizeof(Log)-strlen(Log), ", Stream=0x%x, VPID=%hu, HD=%d", RecInf->ServiceInfo.VideoStreamType, VideoPID, isHDVideo);
           }
-          else if (PSBuffer[DescrPt+5+i] == 'Y')
-          {
-            // DVB-Subtitles
-            snprintf(&Log[strlen(Log)], sizeof(Log)-strlen(Log), "\n  TS: SubtitlesPID=%hu", PID);
-            PID = 0;
-            break;
-          }
-        if (PID == 0) break;
-        // sonst fortsetzen mit Audio
-      }
-
-      //case STREAM_AUDIO_MP3:  //Ignored because it crashes with STREAM_VIDEO_MPEG1
-      case STREAM_AUDIO_MPEG1:
-      case STREAM_AUDIO_MPEG2:
-      case STREAM_AUDIO_MPEG4_AAC:
-      case STREAM_AUDIO_MPEG4_AAC_PLUS:
-      case STREAM_AUDIO_MPEG4_AC3:
-      case STREAM_AUDIO_MPEG4_DTS:
-      {
-        int k;
-        if(RecInf->ServiceInfo.AudioStreamType == 0xff)
-        {
-          RecInf->ServiceInfo.AudioStreamType = PSBuffer[DescrPt];
-          RecInf->ServiceInfo.AudioPID = PID;
+          break;
         }
 
-        if (NrContinuityPIDs < MAXCONTINUITYPIDS)
+        case 0x06:  // Teletext!
         {
-          for (k = 1; k < NrContinuityPIDs; k++)
+          dword DescrPt = ElemPt + sizeof(tElemStream);
+          int DescrLength = ElemLength;
+
+          while (DescrLength > 0)
           {
-            if (ContinuityPIDs[k] == PID)
+            tTSDesc* Desc = (tTSDesc*) &PSBuffer[DescrPt];
+
+            if (Desc->DescrTag == DESC_Teletext)
+            {
+              TeletextPID = PID;
+              PID = 0;
+              snprintf(&Log[strlen(Log)], sizeof(Log)-strlen(Log), "\n  TS: TeletxtPID=%hu", TeletextPID);
               break;
+            }
+            else if (Desc->DescrTag == DESC_Subtitle)
+            {
+              // DVB-Subtitles
+              snprintf(&Log[strlen(Log)], sizeof(Log)-strlen(Log), "\n  TS: SubtitlesPID=%hu", PID);
+              PID = 0;
+              break;
+            }
+
+            DescrPt     += (Desc->DescrLength + sizeof(tTSDesc));
+            DescrLength -= (Desc->DescrLength + sizeof(tTSDesc));
           }
-          if (k >= NrContinuityPIDs)
-            ContinuityPIDs[NrContinuityPIDs++] = PID;
+          if (PID == 0) break;
+          // sonst fortsetzen mit Audio
         }
-        break;
+
+        //case STREAM_AUDIO_MP3:  //Ignored because it crashes with STREAM_VIDEO_MPEG1
+        case STREAM_AUDIO_MPEG1:
+        case STREAM_AUDIO_MPEG2:
+        case STREAM_AUDIO_MPEG4_AAC:
+        case STREAM_AUDIO_MPEG4_AAC_PLUS:
+        case STREAM_AUDIO_MPEG4_AC3:
+        case STREAM_AUDIO_MPEG4_DTS:
+        {
+          int k;
+          if(RecInf->ServiceInfo.AudioStreamType == 0xff)
+          {
+            RecInf->ServiceInfo.AudioStreamType = Elem->stream_type;
+            RecInf->ServiceInfo.AudioPID = PID;
+            switch (RecInf->ServiceInfo.AudioStreamType)
+            {
+              case STREAM_AUDIO_MPEG1:
+              case STREAM_AUDIO_MPEG2:
+                RecInf->ServiceInfo.AudioTypeFlag = 0;
+                break;
+              case STREAM_AUDIO_MPEG4_AC3:
+                RecInf->ServiceInfo.AudioTypeFlag = 1;
+                break;
+              case STREAM_AUDIO_MPEG4_AAC:
+              case STREAM_AUDIO_MPEG4_AAC_PLUS:
+                RecInf->ServiceInfo.AudioTypeFlag = 2;
+                break;
+              default:
+                RecInf->ServiceInfo.AudioTypeFlag = 3;
+            }
+          }
+
+          if (NrContinuityPIDs < MAXCONTINUITYPIDS)
+          {
+            for (k = 1; k < NrContinuityPIDs; k++)
+            {
+              if (ContinuityPIDs[k] == PID)
+                break;
+            }
+            if (k >= NrContinuityPIDs)
+              ContinuityPIDs[NrContinuityPIDs++] = PID;
+          }
+          break;
+        }
       }
     }
-    SectionLength -= (DescriptorLength + 5);
-    DescrPt += (DescriptorLength + 5);
+    SectionLength -= (ElemLength + sizeof(tElemStream));
+    ElemPt += (ElemLength + sizeof(tElemStream));
   }
 
   if(NrContinuityPIDs < MAXCONTINUITYPIDS && TeletextPID != 0xffff)  ContinuityPIDs[NrContinuityPIDs++] = TeletextPID;
@@ -274,24 +309,24 @@ static bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
 
 static bool AnalyseSDT(byte *PSBuffer, word ServiceID, TYPE_RecHeader_TMSS *RecInf)
 {
+  tTSSDT               *SDT = (tTSSDT*)PSBuffer;
+  tTSService           *pService = NULL;
+  tTSServiceDesc       *pServiceDesc = NULL;
   int                   SectionLength, p;
-  TTSSDT               *SDT = (TTSSDT*)PSBuffer;
-  TTSService           *pService = NULL;
-  TTSServiceDesc       *pServiceDesc = NULL;
-   
+
   TRACEENTER;
 
-  if (SDT->TableID == 0x42)
+  if (SDT->TableID == TABLE_SDT)
   {
     SectionLength = SDT->SectionLen1 * 256 | SDT->SectionLen2;
 
-    p = sizeof(TTSSDT);
-    while (p + (int)sizeof(TTSService) <= SectionLength)
+    p = sizeof(tTSSDT);
+    while (p + (int)sizeof(tTSService) <= SectionLength)
     {
-      pService = (TTSService*) &PSBuffer[p];
-      pServiceDesc = (TTSServiceDesc*) &PSBuffer[p + sizeof(TTSService)];
+      pService = (tTSService*) &PSBuffer[p];
+      pServiceDesc = (tTSServiceDesc*) &PSBuffer[p + sizeof(tTSService)];
       
-      if (pServiceDesc->DescriptorTag=='H')
+      if (pServiceDesc->DescrTag==DESC_Service)
       {
         if ((pService->ServiceID1 * 256 | pService->ServiceID2) == ServiceID)
         {
@@ -302,7 +337,7 @@ printf("  TS: SvcName   = %s\n", RecInf->ServiceInfo.ServiceName);
           return TRUE;
         }
       }
-      p += sizeof(TTSService) + (pService->DescriptorLen1 * 256 | pService->DescriptorLen2);
+      p += sizeof(tTSService) + (pService->DescriptorsLen1 * 256 | pService->DescriptorsLen2);
     }
   }
   TRACEEXIT;
@@ -311,87 +346,88 @@ printf("  TS: SvcName   = %s\n", RecInf->ServiceInfo.ServiceName);
 
 static bool AnalyseEIT(byte *Buffer, word ServiceID, TYPE_RecHeader_TMSS *RecInf)
 {
-  byte                  RunningStatus;
+  tTSEIT               *EIT = (tTSEIT*)Buffer;
+  tEITEvent            *Event = NULL;
+  tTSDesc              *Desc = NULL;
+  tShortEvtDesc        *ShortDesc = NULL;
+  tExtEvtDesc          *ExtDesc = NULL;
   int                   SectionLength, DescriptorLoopLen, p;
-  byte                  Descriptor;
-  byte                  DescriptorLen;
-  byte                  StartTimeUTC[5];
-  byte                  Duration[3];
   word                  EventID;
 
   TRACEENTER;
 
-  if((Buffer[0] == 0x4e) && (((Buffer[3] << 8) | Buffer[4]) == ServiceID))
+  if ((EIT->TableID == TABLE_EIT) && ((EIT->ServiceID1 * 256 | EIT->ServiceID2) == ServiceID))
   {
-    SectionLength = ((Buffer[1] << 8) | Buffer[2]) & 0x0fff;
-    SectionLength -= 11;
-    p = 14;
+    SectionLength = EIT->SectionLen1 * 256 | EIT->SectionLen2;
+    SectionLength -= (sizeof(tTSEIT) - 3);
+    p = sizeof(tTSEIT);
     while(SectionLength > 4)
     {
-      EventID = (Buffer[p] << 8) | Buffer[p + 1];
-      memcpy(&StartTimeUTC, &Buffer[p + 2], 5);
-      memcpy(&Duration, &Buffer[p + 7], 3);
-      RunningStatus = Buffer[p + 10] >> 5;
-      DescriptorLoopLen = ((Buffer[p + 10] << 8) | Buffer[p + 11]) & 0x0fff;
+      Event = (tEITEvent*) &Buffer[p];
+      EventID = Event->EventID1 * 256 | Event->EventID2;
+      DescriptorLoopLen = Event->DescriptorLoopLen1 * 256 | Event->DescriptorLoopLen2;
 
-      SectionLength -= 12;
-      p += 12;
-      if(RunningStatus == 4) // *CW-debug* richtig: 4
+      SectionLength -= sizeof(tEITEvent);
+      p += sizeof(tEITEvent);
+      if(Event->RunningStatus == 4) // *CW-debug* richtig: 4
       {
         //Found the event we were looking for
         while(DescriptorLoopLen > 0)
         {
-          Descriptor = Buffer[p];
-          DescriptorLen = Buffer[p + 1];
-
-          if(Descriptor == 0x4d)
+          Desc = (tTSDesc*) &Buffer[p];
+          
+          if(Desc->DescrTag == DESC_EITShortEvent)
           {
+            // Short Event Descriptor
             byte        NameLen, TextLen;
             time_t      StartTimeUnix;
+            ShortDesc = (tShortEvtDesc*) Desc;
 
             RecInf->EventInfo.ServiceID = ServiceID;
             RecInf->EventInfo.EventID = EventID;
-            RecInf->EventInfo.RunningStatus = RunningStatus;
-            RecInf->EventInfo.StartTime = (StartTimeUTC[0] << 24) | (StartTimeUTC[1] << 16) | (BCD2BIN(StartTimeUTC[2]) << 8) | BCD2BIN(StartTimeUTC[3]);
-            RecInf->EventInfo.DurationHour = BCD2BIN(Duration[0]);
-            RecInf->EventInfo.DurationMin = BCD2BIN(Duration[1]);
+            RecInf->EventInfo.RunningStatus = Event->RunningStatus;
+            RecInf->EventInfo.StartTime = (Event->StartTime[0] << 24) | (Event->StartTime[1] << 16) | (BCD2BIN(Event->StartTime[2]) << 8) | BCD2BIN(Event->StartTime[3]);
+            RecInf->EventInfo.DurationHour = BCD2BIN(Event->DurationSec[0]);
+            RecInf->EventInfo.DurationMin = BCD2BIN(Event->DurationSec[1]);
             RecInf->EventInfo.EndTime = AddTime(RecInf->EventInfo.StartTime, RecInf->EventInfo.DurationHour * 60 + RecInf->EventInfo.DurationMin);
-//            StartTimeUnix = 86400*((RecInf->EventInfo.StartTime>>16) - 40587) + 3600*BCD2BIN(StartTimeUTC[2]) + 60*BCD2BIN(StartTimeUTC[3]);
+//            StartTimeUnix = 86400*((RecInf->EventInfo.StartTime>>16) - 40587) + 3600*BCD2BIN(Event->StartTime[2]) + 60*BCD2BIN(Event->StartTime[3]);
             StartTimeUnix = TF2UnixTime(RecInf->EventInfo.StartTime);
 printf("  TS: EvtStart  = %s", ctime(&StartTimeUnix));
 
-            NameLen = Buffer[p + 5];
-            TextLen = Buffer[p + 5 + NameLen+1];
+            NameLen = ShortDesc->EvtNameLen;
+            TextLen = Buffer[p + sizeof(tShortEvtDesc) + NameLen];
             RecInf->EventInfo.EventNameLength = NameLen;
-            strncpy(RecInf->EventInfo.EventNameDescription, &Buffer[p + 6], NameLen);
+            strncpy(RecInf->EventInfo.EventNameDescription, &Buffer[p + sizeof(tShortEvtDesc)], NameLen);
 printf("  TS: EventName = %s\n", RecInf->EventInfo.EventNameDescription);
 
-            strncpy(&RecInf->EventInfo.EventNameDescription[NameLen], &Buffer[p + 6 + NameLen+1], TextLen);
+            strncpy(&RecInf->EventInfo.EventNameDescription[NameLen], &Buffer[p + sizeof(tShortEvtDesc) + NameLen+1], TextLen);
 printf("  TS: EventDesc = %s\n", &RecInf->EventInfo.EventNameDescription[NameLen]);
 
 //            StrMkUTF8(RecInf.RecInfEventInfo.EventNameAndDescription, 9);
           }
 
-          else if(Descriptor == 0x4e)
+          else if(Desc->DescrTag == DESC_EITExtEvent)
           {
+            // Extended Event Descriptor
+            ExtDesc = (tExtEvtDesc*) Desc;
             RecInf->ExtEventInfo.ServiceID = ServiceID;
 //            RecInf->ExtEventInfo.EventID = EventID;
-            if ((RecInf->ExtEventInfo.TextLength > 0) && (Buffer[p+8] < 0x20))
+            if ((RecInf->ExtEventInfo.TextLength > 0) && (ExtDesc->ItemDesc < 0x20))
             {
-              strncpy(&RecInf->ExtEventInfo.Text[RecInf->ExtEventInfo.TextLength], &Buffer[p+8+1], Buffer[p+7] - 1);
-              RecInf->ExtEventInfo.TextLength += Buffer[p+7] - 1;
+              strncpy(&RecInf->ExtEventInfo.Text[RecInf->ExtEventInfo.TextLength], (&ExtDesc->ItemDesc) + 1, ExtDesc->ItemDescLen - 1);
+              RecInf->ExtEventInfo.TextLength += ExtDesc->ItemDescLen - 1;
             }
             else
             {
-              strncpy(&RecInf->ExtEventInfo.Text[RecInf->ExtEventInfo.TextLength], &Buffer[p+8], Buffer[p+7]);
-              RecInf->ExtEventInfo.TextLength += Buffer[p+7];
+              strncpy(&RecInf->ExtEventInfo.Text[RecInf->ExtEventInfo.TextLength], &ExtDesc->ItemDesc, ExtDesc->ItemDescLen);
+              RecInf->ExtEventInfo.TextLength += ExtDesc->ItemDescLen;
             }
 printf("  TS: ExtEvent  = %s\n", RecInf->ExtEventInfo.Text);
           }
 
-          SectionLength -= (DescriptorLen + 2);
-          DescriptorLoopLen -= (DescriptorLen + 2);
-          p += (DescriptorLen + 2);
+          SectionLength -= (Desc->DescrLength + sizeof(tTSDesc));
+          DescriptorLoopLen -= (Desc->DescrLength + sizeof(tTSDesc));
+          p += (Desc->DescrLength + sizeof(tTSDesc));
         }
 
         TRACEEXIT;
@@ -541,7 +577,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   dword                 FileTimeStamp, TtxTime = 0;
   dword                 FirstPCR = 0, LastPCR = 0, TtxPCR = 0, dPCR = 0;
   int                   ReadPackets, Offset, FirstOffset;
-  bool                  EITOK = FALSE, PMTOK = FALSE, TtxFound = FALSE, TtxOK = FALSE;
+  bool                  EITOK = FALSE, SDTOK = FALSE, TtxFound = FALSE, TtxOK = FALSE;
   time_t                StartTimeUnix;
   byte                 *p;
   long long             FilePos = 0;
@@ -684,13 +720,13 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 
         for(i = 0; i < ReadPackets; i++)
         {
-          if (!PMTOK)
+          if (!SDTOK)
           {
             PSBuffer_ProcessTSPacket(&PMTBuffer, (tTSPacket*)p);
             if(PMTBuffer.ValidBuffer)
             {
               byte* pBuffer = (PMTBuffer.ValidBuffer==1) ? PMTBuffer.Buffer1 : PMTBuffer.Buffer2;
-              PMTOK = AnalyseSDT(pBuffer, RecInf->ServiceInfo.ServiceID, RecInf);
+              SDTOK = AnalyseSDT(pBuffer, RecInf->ServiceInfo.ServiceID, RecInf);
             }
           }
           if (!EITOK)
@@ -719,12 +755,12 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           if(TtxFound && !TtxOK)
             TtxOK = (GetPCRms(p, &TtxPCR) && TtxPCR != 0);
 
-          if(EITOK && PMTOK && (TtxOK || TeletextPID == 0xffff)) break;
+          if(EITOK && SDTOK && (TtxOK || TeletextPID == 0xffff)) break;
           p += PACKETSIZE;
         }
-        if(EITOK && PMTOK && (TtxOK || TeletextPID == 0xffff)) break;
+        if(EITOK && SDTOK && (TtxOK || TeletextPID == 0xffff)) break;
       }
-      if(!PMTOK)
+      if(!SDTOK)
         printf ("  Failed to get service name from SDT.\n");
       if(!EITOK)
         printf ("  Failed to get the EIT information.\n");
@@ -781,7 +817,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     RecInf->RecHeaderInfo.DurationMin = (int)(dPCR / 60000);
     RecInf->RecHeaderInfo.DurationSec = (dPCR / 1000) % 60;
   }
-printf("  TS: Duration = %2.2d min %2.2d sec\n", RecInf->RecHeaderInfo.DurationMin, RecInf->RecHeaderInfo.DurationSec);
+printf("  TS: Duration  = %2.2d min %2.2d sec\n", RecInf->RecHeaderInfo.DurationMin, RecInf->RecHeaderInfo.DurationSec);
 
   if(TtxTime && TtxPCR)
   {
