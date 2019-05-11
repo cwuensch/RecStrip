@@ -25,7 +25,9 @@ typedef struct
   word                  FlagTimeShift:1;
   word                  FlagCopy:1;
 
-  byte                  Unknown2[10];
+  byte                  Unknown2[4];
+  byte                  CIPlusInfo;             // ungleich 0, wenn CI-Plus-Aufnahme? (prüfen!)
+  byte                  Unknown3[5];
 } TYPE_RecHeader_Info;
 
 typedef struct
@@ -35,7 +37,7 @@ typedef struct
 
   word                  TPIndex:10;   // Reihenfolge?? - stimmt mit DecodeRecHeader() überein!
   word                  FlagTuner:2;
-  word                  FlagSkip:1;  // Reihenfolge der Flags geändert
+  word                  FlagSkip:1;   // Reihenfolge der Flags geändert
   word                  FlagLock:1;
   word                  FlagCAS:1;
   word                  FlagDel:1;
