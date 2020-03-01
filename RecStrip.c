@@ -162,7 +162,7 @@ static bool HDD_SetFileDateTime(char const *AbsFileName, time_t NewDateTime)
   if(NewDateTime == 0)
     NewDateTime = time(NULL);
 
-  if(AbsFileName && ((unsigned int)NewDateTime < 0xD0790000))
+  if(AbsFileName && ((unsigned long)NewDateTime < 0xD0790000))
   {
     if(stat64(AbsFileName, &statbuf) == 0)
     {
