@@ -2,7 +2,9 @@
 #define _LARGEFILE64_SOURCE 1
 #define _FILE_OFFSET_BITS  64
 
-#define _GNU_SOURCE
+#ifndef _GNU_SOURCE
+  #define _GNU_SOURCE
+#endif
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -722,7 +724,9 @@ static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
   }
 
   if (Packet->Payload_Unit_Start)
+  {
     PosFirstNull = 0; PosSecondNull = 0; HeaderFound = 0; PTSBufFill = 0;
+  }
 
   // Adaptation field available?
   if(Packet->Adapt_Field_Exists)

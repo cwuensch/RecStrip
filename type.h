@@ -10,8 +10,8 @@ extern "C" {
 #define min(a,b)    (((a) < (b)) ? (a) : (b))
 
 #ifdef WIN32
-#define ulong64         unsigned long
-#define sulong64        static unsigned long
+#define ulong64         unsigned long long         // CW: zweites long hinzugefügt (?)
+#define sulong64        static unsigned long long  // CW: zweites long hinzugefügt (?)
 #else
 #define ulong64         unsigned long long
 #define sulong64        static unsigned long long

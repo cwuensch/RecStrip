@@ -184,7 +184,7 @@ typedef struct
 } tTSDesc;
 
 
-extern FILE            *fIn;  // dirty Hack
+//extern FILE            *fIn;  // dirty Hack
 
 bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf);
 

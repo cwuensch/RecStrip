@@ -2,7 +2,9 @@
 #define _LARGEFILE64_SOURCE 1
 #define _FILE_OFFSET_BITS  64
 
-#define _GNU_SOURCE
+#ifndef _GNU_SOURCE
+  #define _GNU_SOURCE
+#endif
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -285,7 +287,7 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   CRC                   = (dword*) &Packet->Data[Offset];
 //  *CRC                  = rocksoft_crc((byte*)PMT, (int)CRC - (int)PMT);   // CRC: 0x0043710d  (0xb3ad75b7?)
 //  *CRC                  = crc32m((byte*)PMT, (int)CRC - (int)PMT);         // CRC: 0x0043710d  (0xb3ad75b7?)
-  *CRC                  = crc32m_tab((byte*)PMT, (int)CRC - (int)PMT);     // CRC: 0x0043710d  (0xb3ad75b7?)
+  *CRC                  = crc32m_tab((byte*)PMT, (byte*)CRC - (byte*)PMT);     // CRC: 0x0043710d  (0xb3ad75b7?)
   Offset               += 4;
   memset(&Packet->Data[Offset], 0xff, 184 - Offset);
 

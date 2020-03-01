@@ -5,7 +5,9 @@
   #define inline
 #endif
 
-#define _GNU_SOURCE
+#ifndef _GNU_SOURCE
+  #define _GNU_SOURCE
+#endif
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -139,7 +141,8 @@ static void InitInfStruct(TYPE_RecHeader_TMSS *RecInf)
   RecInf->ServiceInfo.VideoStreamType = 0xff;
   RecInf->ServiceInfo.VideoPID        = 0xffff;
   RecInf->ServiceInfo.AudioStreamType = 0xff;
-  RecInf->ServiceInfo.AudioPID        = 0xffff;
+  RecInf->ServiceInfo.AudioPID        = 0xfff;
+  RecInf->ServiceInfo.AudioTypeFlag   = 3;  // unknown
   strcpy(RecInf->ServiceInfo.ServiceName, "RecStrip");
   TRACEEXIT;
 }
@@ -200,6 +203,7 @@ static bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
         case STREAM_VIDEO_VC1SM:
           if(RecInf->ServiceInfo.VideoStreamType == 0xff)
             isHDVideo = TRUE;  // fortsetzen...
+          // (fall-through!)
  
         case STREAM_VIDEO_MPEG1:
         case STREAM_VIDEO_MPEG2:
@@ -245,7 +249,7 @@ static bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
             DescrLength -= (Desc->DescrLength + sizeof(tTSDesc));
           }
           if (PID == 0) break;
-          // sonst fortsetzen mit Audio
+          // sonst fortsetzen mit Audio (fall-through)
         }
 
         //case STREAM_AUDIO_MP3:  //Ignored because it crashes with STREAM_VIDEO_MPEG1
@@ -397,10 +401,10 @@ printf("  TS: EvtStart  = %s", ctime(&StartTimeUnix));
             NameLen = ShortDesc->EvtNameLen;
             TextLen = Buffer[p + sizeof(tShortEvtDesc) + NameLen];
             RecInf->EventInfo.EventNameLength = NameLen;
-            strncpy(RecInf->EventInfo.EventNameDescription, &Buffer[p + sizeof(tShortEvtDesc)], NameLen);
+            strncpy(RecInf->EventInfo.EventNameDescription, (char*)&Buffer[p + sizeof(tShortEvtDesc)], NameLen);
 printf("  TS: EventName = %s\n", RecInf->EventInfo.EventNameDescription);
 
-            strncpy(&RecInf->EventInfo.EventNameDescription[NameLen], &Buffer[p + sizeof(tShortEvtDesc) + NameLen+1], TextLen);
+            strncpy(&RecInf->EventInfo.EventNameDescription[NameLen], (char*)&Buffer[p + sizeof(tShortEvtDesc) + NameLen+1], TextLen);
 printf("  TS: EventDesc = %s\n", &RecInf->EventInfo.EventNameDescription[NameLen]);
 
 //            StrMkUTF8(RecInf.RecInfEventInfo.EventNameAndDescription, 9);

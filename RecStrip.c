@@ -31,7 +31,9 @@
   #define inline
 #endif
 
-#define _GNU_SOURCE
+#ifndef _GNU_SOURCE
+  #define _GNU_SOURCE
+#endif
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -103,7 +105,7 @@ int                     CutTimeOffset = 0;
 
 // Lokale Variablen
 static char             NavFileIn[FBLIB_DIR_SIZE], NavFileOut[FBLIB_DIR_SIZE], NavFileOld[FBLIB_DIR_SIZE], InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], InfFileOld[FBLIB_DIR_SIZE], InfFileFirstIn[FBLIB_DIR_SIZE], CutFileIn[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE], TeletextOut[FBLIB_DIR_SIZE];
-static FILE            *fIn = NULL;  // dirty Hack: erreichbar machen für InfProcessor
+static FILE            *fIn = NULL;
 static FILE            *fOut = NULL;
 static byte            *PendingBuf = NULL;
 static int              PendingBufLen = 0, PendingBufStart = 0;
@@ -160,7 +162,7 @@ static bool HDD_SetFileDateTime(char const *AbsFileName, time_t NewDateTime)
   if(NewDateTime == 0)
     NewDateTime = time(NULL);
 
-  if(AbsFileName && ((unsigned long)NewDateTime < 0xD0790000))
+  if(AbsFileName && ((unsigned int)NewDateTime < 0xD0790000))
   {
     if(stat64(AbsFileName, &statbuf) == 0)
     {
@@ -408,7 +410,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
   TYPE_RecHeader_Info  *RecHeaderInfo_bak = RecHeaderInfo;
   TYPE_Bookmark_Info   *BookmarkInfo_bak = BookmarkInfo;
   dword                 OrigStartTime_bak = OrigStartTime;
-  dword                 InfDuration_bak = InfDuration;
+//  dword                 InfDuration_bak = InfDuration;
 
   tSegmentMarker2      *SegmentMarker_bak = SegmentMarker;
   int                   NrSegmentMarker_bak = NrSegmentMarker;
@@ -552,7 +554,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     // dirty hack: vorherige Pointer für InfBuffer und SegmentMarker wiederherstellen
 //    free(InfBuf_tmp); InfBuf_tmp = NULL;
     InfProcessor_Free();
-    if (SegmentMarker) free(SegmentMarker); Segments_tmp = NULL;
+    if (Segments_tmp) free(Segments_tmp); Segments_tmp = NULL;
     InfBuffer = InfBuffer_bak;
     RecHeaderInfo = RecHeaderInfo_bak;
     BookmarkInfo = BookmarkInfo_bak;
@@ -1370,7 +1372,7 @@ int main(int argc, const char* argv[])
                 case -1:
                   // PendingPacket soll nicht gelöscht werden
                   PendingBufStart = 0;
-//                  break;
+//                  break;  (fall-through)
 
                 default:
                   // ein Paket wird behalten -> vorher PendingBuffer in Ausgabe schreiben, ggf. PendingPacket löschen
