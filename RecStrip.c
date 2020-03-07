@@ -1,6 +1,6 @@
 /*
   RecStrip for Topfield PVR
-  (C) 2016 Christian Wünsch
+  (C) 2016-2020 Christian Wünsch
 
   Based on Naludump 0.1.1 by Udo Richter
   Concepts from NaluStripper (Marten Richter)
@@ -87,11 +87,11 @@
 char                    RecFileIn[FBLIB_DIR_SIZE], RecFileOut[FBLIB_DIR_SIZE], OutDir[FBLIB_DIR_SIZE];
 unsigned long long      RecFileSize = 0;
 SYSTEM_TYPE             SystemType = ST_UNKNOWN;
-byte                    PACKETSIZE, PACKETOFFSET, OutPacketSize = 0;
+byte                    PACKETSIZE = 192, PACKETOFFSET = 0, OutPacketSize = 0;
 word                    VideoPID = (word) -1, TeletextPID = (word) -1;
 word                    ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs = 1;
 bool                    isHDVideo = FALSE, AlreadyStripped = FALSE, HumaxSource = FALSE;
-bool                    DoStrip = FALSE, RemoveScrambled = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE;
+bool                    DoStrip = FALSE, DoSkip = FALSE, RemoveScrambled = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE, DoInfoOnly = FALSE;
 int                     DoCut = 0, DoMerge = 0;  // DoCut: 1=remove_parts, 2=copy_separate, DoMerge: 1=append, 2=merge
 int                     curInputFile = 0, NrInputFiles = 1;
 int                     dbg_DelBytesSinceLastVid = 0;
@@ -448,7 +448,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     fIn = fopen(RecFileIn, "rb");
   if (fIn)
   {
-    int FileOffset;
+    int FileOffset = 0;
     setvbuf(fIn, NULL, _IOFBF, BUFSIZE);
     RecFileBlocks = CalcBlockSize(RecFileSize);
     BlocksOnePercent = (RecFileBlocks * NrInputFiles) / 100;
@@ -492,7 +492,10 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     InfFileOld[0] = '\0';
 
     if (LoadInfFile(InfFileIn, FirstTime))
-      BlocksOneSecond = RecFileBlocks / InfDuration;
+    {
+      if (InfDuration)
+        BlocksOneSecond = RecFileBlocks / InfDuration;
+    }
     else
     {
       fclose(fIn); fIn = NULL;
@@ -503,7 +506,14 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
   if (ret)
   {
     if (AlreadyStripped)
+    {
       printf("  INFO: File has already been stripped.\n");
+      if (DoSkip && !DoMerge)
+      {
+        TRACEEXIT;
+        return ret;
+      }
+    }
 
     // ggf. nav-File öffnen
     snprintf(NavFileIn, sizeof(NavFileIn), "%s.nav", RecFileIn);
@@ -821,7 +831,7 @@ int main(int argc, const char* argv[])
     setvbuf(stdout, NULL, _IOLBF, 4096);  // zeilenweises Buffering, auch bei Ausgabe in Datei
   #endif
   printf("\nRecStrip for Topfield PVR " VERSION "\n");
-  printf("(C) 2016-18 Christian Wuensch\n");
+  printf("(C) 2016-2020 Christian Wuensch\n");
   printf("- based on Naludump 0.1.1 by Udo Richter -\n");
   printf("- based on MovieCutter 3.6 -\n");
   printf("- portions of Mpeg2cleaner (S. Poeschel), RebuildNav (Firebird) & TFTool (jkIT)\n");
@@ -837,12 +847,14 @@ int main(int argc, const char* argv[])
       case 'c':   DoCut = 2;              break;
       case 'a':   DoMerge = 1;            break;
       case 'm':   DoMerge = 2;            break;
-      case 's':   DoStrip = TRUE;         break;
+      case 's':   DoStrip = TRUE;
+                  DoSkip = (argv[1][2] == 's'); break;
       case 'e':   RemoveEPGStream = TRUE; break;
       case 't':   RemoveTeletext = TRUE;  
                   ExtractTeletext = (argv[1][2] == 't'); break;
       case 'x':   RemoveScrambled = TRUE; break;
       case 'o':   OutPacketSize   = (argv[1][2] == '2') ? 188 : 192; break;
+      case 'v':   DoInfoOnly = TRUE;      break;
       default:    printf("\nUnknown argument: -%c\n", argv[1][1]);
                   ret = FALSE;
     }
@@ -894,6 +906,10 @@ int main(int argc, const char* argv[])
     { printf("\nMerging cannot be used together with cut mode (single segment copy)!\n");  ret = FALSE; }
   else if (DoMerge==1 && OutPacketSize)
     { printf("\nPacketSize cannot be changed when appending to an existing recording!\n");  ret = FALSE; }
+  else if (DoSkip && (DoCut || DoMerge))
+    { printf("\nSkipping of stripped recordings cannot be combined with -r, -c, -a, -m!\n");  DoSkip = FALSE; }
+  else if (DoInfoOnly && (DoStrip || DoCut || DoMerge || RebuildNav || RebuildInf))
+    { printf("\nView info only (-v) disables any other option!\n"); }
 
   if (!ret)
   {
@@ -920,12 +936,14 @@ int main(int argc, const char* argv[])
            "             If combined with -s, all input files will be stripped.\n\n");
     printf("  -s:        Strip the recording. (if OutFile specified)\n"
            "             Removes unneeded filler packets. May be combined with -c, -r, -a.\n\n");
+    printf("  -ss:       Strip and skip. Same as -s, but skips already stripped files.\n\n");
     printf("  -e:        Remove also the EPG data. (only with -s)\n\n");
     printf("  -t:        Remove also the teletext data. (only with -s)\n");
-    printf("  -tt:       Extraxt subtitles from and remove teletext. (only with -s)\n\n");
+    printf("  -tt:       Extraxt subtitles from teletext and remove it. (only with -s)\n\n");
     printf("  -x:        Remove packets marked as scrambled. (flag could be wrong!)\n\n");
     printf("  -o1/-o2:   Change the packet size for output-rec: \n"
-           "             1: PacketSize = 192 Bytes, 2: PacketSize = 188 Bytes.\n");
+           "             1: PacketSize = 192 Bytes, 2: PacketSize = 188 Bytes.\n\n");
+    printf("  -v:        View rec information only. Disables any other option.\n");
     printf("\nExamples:\n---------\n");
     printf("  RecStrip 'RecFile.rec'                     RebuildNav.\n\n");
     printf("  RecStrip -s -e InFile.rec OutFile.rec      Strip recording.\n\n");
@@ -1029,6 +1047,19 @@ int main(int argc, const char* argv[])
   {
     printf("Warning: No teletext PID determined.\n");
     ExtractTeletext = FALSE;
+  }
+
+  // Hier beenden, wenn Aufnahme bereits gestrippt oder InfoOnly
+  if (DoInfoOnly || (DoSkip && AlreadyStripped))
+  {
+    fclose(fIn); fIn = NULL;
+    CloseNavFileIn();
+    CutProcessor_Free();
+    InfProcessor_Free();
+    free(PendingBuf); PendingBuf = NULL;
+    printf("\nRecStrip finished. No files to process.\n");
+    TRACEEXIT;
+    exit(0);
   }
 
   // Output-Files öffnen
