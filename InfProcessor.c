@@ -501,7 +501,7 @@ bool SetInfCryptFlag(const char *AbsInfFile)
   return ret;
 }
 
-bool GetInfStripFlags(const char *AbsInfFile, bool *const OutHasBeenScanned, bool *const OutToBeStripped)
+bool GetInfStripFlags(const char *AbsInfFile, bool *const OutHasBeenStripped, bool *const OutToBeStripped)
 {
   FILE                 *fInfIn;
   TYPE_RecHeader_Info   RecHeaderInfo;
@@ -515,8 +515,8 @@ bool GetInfStripFlags(const char *AbsInfFile, bool *const OutHasBeenScanned, boo
       rewind(fInfIn);
       if ((strncmp(RecHeaderInfo.Magic, "TFrc", 4) == 0) && (RecHeaderInfo.Version == 0x8000))
       {
-        if (OutHasBeenScanned)
-          *OutHasBeenScanned = RecHeaderInfo.rbn_HasBeenScanned;
+        if (OutHasBeenStripped)
+          *OutHasBeenStripped = RecHeaderInfo.rs_HasBeenStripped;
         if (OutToBeStripped)
           *OutToBeStripped = RecHeaderInfo.rs_ToBeStripped;
         TRACEEXIT;
