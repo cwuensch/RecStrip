@@ -13,6 +13,7 @@ bool LoadInfFromRec(char *AbsRecFileName);
 bool LoadInfFile(char *AbsInfName, bool FirstTime);
 void SetInfEventText(const char *pCaption);
 bool SetInfCryptFlag(const char *AbsInfFile);
+bool GetInfStripFlags(const char *AbsInfFile, bool *const OutHasBeenScanned, bool *const OutToBeStripped);
 bool SetInfStripFlags(const char *AbsInfFile, bool SetHasBeenScanned, bool ResetToBeStripped);
 bool SaveInfFile(const char *AbsDestInf, const char *AbsSourceInf);
 void InfProcessor_Free(void);

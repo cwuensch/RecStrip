@@ -506,14 +506,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
   if (ret)
   {
     if (AlreadyStripped)
-    {
       printf("  INFO: File has already been stripped.\n");
-      if (DoSkip && !DoMerge)
-      {
-        TRACEEXIT;
-        return ret;
-      }
-    }
 
     // ggf. nav-File öffnen
     snprintf(NavFileIn, sizeof(NavFileIn), "%s.nav", RecFileIn);
@@ -1022,6 +1015,22 @@ int main(int argc, const char* argv[])
     CloseInputFiles(FALSE);
   }
 
+  // Prüfen, ob Aufnahme bereits gestrippt
+  if (DoSkip && !DoMerge)
+  {
+    AlreadyStripped = FALSE;
+    snprintf(InfFileIn, sizeof(InfFileIn), "%s.inf", RecFileIn);
+    if (GetInfStripFlags(InfFileIn, &AlreadyStripped, NULL) && AlreadyStripped)
+    {
+      CutProcessor_Free();
+      InfProcessor_Free();
+      free(PendingBuf); PendingBuf = NULL;
+      printf("\nRecStrip finished. No files to process.\n");
+      TRACEEXIT;
+      exit(0);
+    }
+  }
+
   // Input-Files öffnen
   if (!OpenInputFiles(RecFileIn, (DoMerge != 1)))
   {
@@ -1049,15 +1058,15 @@ int main(int argc, const char* argv[])
     ExtractTeletext = FALSE;
   }
 
-  // Hier beenden, wenn Aufnahme bereits gestrippt oder InfoOnly
-  if (DoInfoOnly || (DoSkip && AlreadyStripped))
+  // Hier beenden, wenn View Info Only
+  if (DoInfoOnly)
   {
     fclose(fIn); fIn = NULL;
     CloseNavFileIn();
     CutProcessor_Free();
     InfProcessor_Free();
     free(PendingBuf); PendingBuf = NULL;
-    printf("\nRecStrip finished. No files to process.\n");
+    printf("\nRecStrip finished. View information only.\n");
     TRACEEXIT;
     exit(0);
   }

@@ -260,6 +260,22 @@ bool LoadInfFile(char *AbsInfName, bool FirstTime)
     SystemType = ST_TMSS;
   }
 
+  //Check for correct inf file header
+  if ((strncmp(((TYPE_RecHeader_Info*)InfBuffer)->Magic, "TFrc", 4) != 0) || (((TYPE_RecHeader_Info*)InfBuffer)->Version != 0x8000))
+  {
+    printf("  Invalid inf file header %s.\n", AbsInfName);
+    if(RebuildInf)
+    {
+      if (AbsInfName) AbsInfName[0] = '\0';
+      SystemType = ST_TMSS;
+    }
+    else
+    {
+      TRACEEXIT;
+      return FALSE;
+    }
+  }
+  
   //Decode the source .inf
   if (Result)
   {
@@ -472,14 +488,44 @@ bool SetInfCryptFlag(const char *AbsInfFile)
     {
       fread(&RecHeaderInfo, 1, 18, fInfIn);
       rewind(fInfIn);
-      RecHeaderInfo.rs_ScrambledPackets = TRUE;
-      RecHeaderInfo.CryptFlag = RecHeaderInfo.CryptFlag | 1;
-      ret = (fwrite(&RecHeaderInfo, 1, 18, fInfIn) == 18);
-      ret = fclose(fInfIn) && ret;
+      if ((strncmp(RecHeaderInfo.Magic, "TFrc", 4) == 0) && (RecHeaderInfo.Version == 0x8000))
+      {
+        RecHeaderInfo.rs_ScrambledPackets = TRUE;
+        RecHeaderInfo.CryptFlag = RecHeaderInfo.CryptFlag | 1;
+        ret = (fwrite(&RecHeaderInfo, 1, 18, fInfIn) == 18);
+        ret = fclose(fInfIn) && ret;
+      }
     }
   }
   TRACEEXIT;
   return ret;
+}
+
+bool GetInfStripFlags(const char *AbsInfFile, bool *const OutHasBeenScanned, bool *const OutToBeStripped)
+{
+  FILE                 *fInfIn;
+  TYPE_RecHeader_Info   RecHeaderInfo;
+
+  TRACEENTER;
+  if(AbsInfFile)
+  {
+    if ((fInfIn = fopen(AbsInfFile, "r+b")))
+    {
+      fread(&RecHeaderInfo, 1, 8, fInfIn);
+      rewind(fInfIn);
+      if ((strncmp(RecHeaderInfo.Magic, "TFrc", 4) == 0) && (RecHeaderInfo.Version == 0x8000))
+      {
+        if (OutHasBeenScanned)
+          *OutHasBeenScanned = RecHeaderInfo.rbn_HasBeenScanned;
+        if (OutToBeStripped)
+          *OutToBeStripped = RecHeaderInfo.rs_ToBeStripped;
+        TRACEEXIT;
+        return TRUE;
+      }
+    }
+  }
+  TRACEEXIT;
+  return FALSE;
 }
 
 bool SetInfStripFlags(const char *AbsInfFile, bool SetHasBeenScanned, bool ResetToBeStripped)
@@ -495,12 +541,15 @@ bool SetInfStripFlags(const char *AbsInfFile, bool SetHasBeenScanned, bool Reset
     {
       fread(&RecHeaderInfo, 1, 8, fInfIn);
       rewind(fInfIn);
-      if (SetHasBeenScanned)
-        RecHeaderInfo.rbn_HasBeenScanned = TRUE;
-      if (ResetToBeStripped)
-        RecHeaderInfo.rs_ToBeStripped = FALSE;
-      ret = fwrite(&RecHeaderInfo, 1, 8, fInfIn);
-      ret = fclose(fInfIn) && ret;
+      if ((strncmp(RecHeaderInfo.Magic, "TFrc", 4) == 0) && (RecHeaderInfo.Version == 0x8000))
+      {
+        if (SetHasBeenScanned)
+          RecHeaderInfo.rbn_HasBeenScanned = TRUE;
+        if (ResetToBeStripped)
+          RecHeaderInfo.rs_ToBeStripped = FALSE;
+        ret = fwrite(&RecHeaderInfo, 1, 8, fInfIn);
+        ret = fclose(fInfIn) && ret;
+      }
     }
   }
   TRACEEXIT;
