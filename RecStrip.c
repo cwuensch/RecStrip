@@ -1022,6 +1022,8 @@ int main(int argc, const char* argv[])
     snprintf(InfFileIn, sizeof(InfFileIn), "%s.inf", RecFileIn);
     if (GetInfStripFlags(InfFileIn, &AlreadyStripped, NULL) && AlreadyStripped)
     {
+      printf("\nInput File: %s\n", RecFileIn);
+      printf("--> already stripped.\n", RecFileIn);
       CutProcessor_Free();
       InfProcessor_Free();
       free(PendingBuf); PendingBuf = NULL;
