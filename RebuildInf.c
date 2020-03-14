@@ -714,7 +714,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           
         while (p < 32000)
         {
-          while ((p < 32000) && (Buffer[p] != 0) || (Buffer[p+1] != 0) || (Buffer[p+2] != 1) || (Buffer[p+3] != 0xBD))
+          while ((p < 32000) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1 || Buffer[p+3] != 0xBD))
             p++;
           TtxFound = AnalyseTtx(&Buffer[p], &TtxTime, RecInf->ServiceInfo.ServiceName);
           if(TtxFound && !TtxOK)

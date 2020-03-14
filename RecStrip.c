@@ -1147,13 +1147,13 @@ int main(int argc, const char* argv[])
 
         if (fread(MDBuffer, 1, 32768, fMDIn) > 0)
         {
-          while ((p < 32760) && ((MDBuffer[p] != 0) || (MDBuffer[p+1] != 0) || (MDBuffer[p+2] != 1)))
+          while ((p < 32760) && (MDBuffer[p] != 0 || MDBuffer[p+1] != 0 || MDBuffer[p+2] != 1))
             p++;
           fseek(fMDIn, p+6, SEEK_SET);
           memcpy(MDBuffer, &MDBuffer[p], 6);
           pes_packet_length = 6 + ((MDBuffer[4] << 8) | MDBuffer[5]);
 
-          while (fread(&MDBuffer[6], 1, pes_packet_length, fMDIn) == pes_packet_length)
+          while ((MDBuffer[p] == 0 && MDBuffer[p+1] == 0 && MDBuffer[p+2] == 1) && (fread(&MDBuffer[6], 1, pes_packet_length, fMDIn) == pes_packet_length))
           {
             process_pes_packet(MDBuffer, pes_packet_length);
             memcpy(MDBuffer, &MDBuffer[pes_packet_length], 6);
