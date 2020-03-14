@@ -100,7 +100,7 @@ static bool GetPTS2(byte *Buffer, dword *pPTS, dword *pDTS)
 {
   bool ret = FALSE;
   TRACEENTER;
-  if((Buffer[0] & 0xf0) == 0xe0)
+  if ((Buffer[0] & 0xf0) == 0xe0)
   {
     //MPEG Video Stream
     //00 00 01 E0 00 00 88 C0 0B 35 BD E9 8A 85 15 BD E9 36 25 FF
@@ -142,6 +142,7 @@ static bool GetPTS(byte *Buffer, dword *pPTS, dword *pDTS)
 {
   if((Buffer[0] == 0x00) && (Buffer[1] == 0x00) && (Buffer[2] == 0x01))
     return GetPTS2(&Buffer[3], pPTS, pDTS);
+  else return FALSE;
 }
 
 bool GetPCR(byte *pBuffer, long long *pPCR)
@@ -152,8 +153,7 @@ bool GetPCR(byte *pBuffer, long long *pPCR)
     if (pPCR)
     {
       //Extract the time out of the PCR bit pattern
-      //The PCR is clocked by a 90kHz generator. To convert to milliseconds
-      //the 33 bit number can be shifted right and divided by 45
+      //The PCR is clocked by a 27 MHz generator.
       *pPCR = (((long long)pBuffer[6] << 25) | (pBuffer[7] << 17) | (pBuffer[8] << 9) | pBuffer[9] << 1 | pBuffer[10] >> 7);
       *pPCR = *pPCR * 300 + ((pBuffer[10] & 0x1) << 8 | pBuffer[11]);
     }
@@ -187,7 +187,14 @@ dword DeltaPCR(dword FirstPCR, dword SecondPCR)
   if(FirstPCR <= SecondPCR)
     return (SecondPCR - FirstPCR);
   else
-    return (95443718 - FirstPCR + SecondPCR);
+  {
+    if (FirstPCR - SecondPCR <= 1000)
+      // Erlaube "Rücksprünge", wenn weniger als 1 sek
+      return (FirstPCR - SecondPCR);
+    else
+      // Überlauf des 90 kHz Counters
+      return (95443718 - FirstPCR + SecondPCR);
+  }
 }
 
 /*static dword FindSequenceHeaderCode(byte *Buffer)

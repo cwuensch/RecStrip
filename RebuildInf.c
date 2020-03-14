@@ -20,6 +20,7 @@
 #include "PESProcessor.h"
 #include "RebuildInf.h"
 #include "NavProcessor.h"
+#include "TtxProcessor.h"
 
 #ifdef _WIN32
   #define timezone _timezone
@@ -80,6 +81,18 @@ static dword AddTime(dword pvrDate, int addMinutes)  //add minutes to the day
     }
   }
   return ((day<<16)|(hour<<8)|min);
+}
+
+static char* rtrim(char *s)
+{
+  char *ptr;
+  if (!s)  return NULL;   // handle NULL string
+  if (!*s) return s;      // handle empty string
+
+  ptr = s + strlen(s);
+  while((*--ptr) == ' ');
+  ptr[1] = '\0';
+  return s;
 }
 
 
@@ -449,8 +462,9 @@ printf("  TS: ExtEvent  = %s\n", RecInf->ExtEventInfo.Text);
   return FALSE;
 }
 
-static bool AnalyseTtx(byte *PSBuffer, dword *TtxTime)
+static bool AnalyseTtx(byte *PSBuffer, dword *TtxTime, char *ServiceName)
 {
+  char                  programme[50];
   int                   PESLength = 0, p = 0;
   int                   magazin, row;
   byte                  b1, b2;
@@ -486,8 +500,9 @@ static bool AnalyseTtx(byte *PSBuffer, dword *TtxTime)
         if (magazin == 8 && row == 30 && data_block[1] == 0xA8)
         {
           byte dc, packet_format;
-
+          int i;
           dc = hamming_decode(data_block[0]);
+
           switch (dc & 0x0e)
           {
             case 0: packet_format = 1; break;
@@ -557,6 +572,21 @@ static bool AnalyseTtx(byte *PSBuffer, dword *TtxTime)
                 mdj--;
               }
             }
+
+            // Programme Identification
+            programme[0] = '\0';
+            for (i = 20; i < 40; i++)
+            {
+              char u[4] = { 0, 0, 0, 0 };
+              word c = telx_to_ucs2(byte_reverse(data_block[i]));
+              // strip any control codes from PID, eg. TVP station
+              if (c < 0x20) continue;
+              ucs2_to_utf8(u, c);
+              strcat(programme, u);
+            }
+            rtrim(programme);
+            if(ServiceName) strcpy(ServiceName, programme);
+printf("  TS: Teletext Programme Identification Data: '%s'\n", programme);
 printf("  TS: Teletext date: mdj=%u, %02hhu:%02hhu:%02hhu\n", mdj, localH, localM, localS);
             
             TRACEEXIT;
@@ -631,7 +661,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       {
         Offset = FindNextPacketStart(p, ReadPackets*PACKETSIZE - i);
         if(Offset >= 0)
-         { p += Offset;  i += Offset; }
+          { p += Offset;  i += Offset; }
         else break;
       }
       //Find the first PCR (for duration calculation)
@@ -751,7 +781,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               if(TtxBuffer.ValidBuffer != LastTtxBuffer)
               {
                 byte *pBuffer = (TtxBuffer.ValidBuffer==1) ? TtxBuffer.Buffer1 : TtxBuffer.Buffer2;
-                TtxFound = AnalyseTtx(pBuffer, &TtxTime);
+                TtxFound = AnalyseTtx(pBuffer, &TtxTime, (RecInf->ServiceInfo.ServiceName[0] ? NULL : RecInf->ServiceInfo.ServiceName));
                 LastTtxBuffer = TtxBuffer.ValidBuffer;
               }
             }
@@ -800,7 +830,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       {
         Offset = FindNextPacketStart(p, ReadPackets*PACKETSIZE - i);
         if(Offset >= 0)
-         { p += Offset;  i += Offset; }
+          { p += Offset;  i += Offset; }
         else break;
       }
       //Find the last PCR

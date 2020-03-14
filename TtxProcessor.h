@@ -7,10 +7,13 @@ extern FILE            *fTtxOut;
 extern dword            global_timestamp;
 extern dword            last_timestamp;
 
-void SetTeletextBreak(bool NewInputFile);
-void TtxProcessor_Init();
+void SetTeletextBreak(bool NewInputFile, word SubtitlePage);
+void TtxProcessor_Init(word SubtitlePage);
 bool LoadTeletextOut(const char* AbsOutFile);
 void ProcessTtxPacket(tTSPacket *Packet);
+word telx_to_ucs2(byte c);
+void ucs2_to_utf8(char *r, word ch);
+void process_pes_packet(byte *buffer, word size);
 bool CloseTeletextOut(void);
 
 #endif

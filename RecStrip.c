@@ -88,7 +88,7 @@ char                    RecFileIn[FBLIB_DIR_SIZE], RecFileOut[FBLIB_DIR_SIZE], O
 unsigned long long      RecFileSize = 0;
 SYSTEM_TYPE             SystemType = ST_UNKNOWN;
 byte                    PACKETSIZE = 192, PACKETOFFSET = 0, OutPacketSize = 0;
-word                    VideoPID = (word) -1, TeletextPID = (word) -1;
+word                    VideoPID = (word) -1, TeletextPID = (word) -1, TeletextPage = 0;
 word                    ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs = 1;
 bool                    isHDVideo = FALSE, AlreadyStripped = FALSE, HumaxSource = FALSE;
 bool                    DoStrip = FALSE, DoSkip = FALSE, RemoveScrambled = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE, DoInfoOnly = FALSE;
@@ -623,7 +623,7 @@ SONST
   }
   else
   {
-    if (RebuildInf || !*InfFileIn)
+    if (RebuildInf /*|| !*InfFileIn*/)
     {
       RebuildInf = TRUE;
       if(!*InfFileIn) WriteCutInf = TRUE;
@@ -637,7 +637,7 @@ SONST
     }
   }
   if (*InfFileOut)
-    printf("Inf output: %s\n", InfFileOut);
+    printf("\nInf output: %s\n", InfFileOut);
 
   // ggf. Output-nav öffnen
 /*
@@ -662,7 +662,7 @@ SONST
   }
   else
   {
-    if (RebuildNav || !*NavFileIn)
+    if (RebuildNav /*|| !*NavFileIn*/)
     {
       RebuildNav = TRUE;
       snprintf(NavFileOld, sizeof(NavFileOld), "%s.nav", RecFileIn);
@@ -675,23 +675,26 @@ SONST
   }
 
   if (*NavFileOut && LoadNavFileOut(NavFileOut))
-    printf("Nav output: %s\n", NavFileOut);
+    printf("\nNav output: %s\n", NavFileOut);
 
   // CutFileOut ermitteln
   if (*RecFileOut)
   {
     GetFileNameFromRec(RecFileOut, ".cut", CutFileOut);
-    printf("Cut output: %s\n", CutFileOut);
+    printf("\nCut output: %s\n", CutFileOut);
   }
   else
     CutFileOut[0] = '\0';
 
   // TeletextOut ermitteln
-  if (ExtractTeletext && *RecFileOut)
+  if (ExtractTeletext)
   {
-    GetFileNameFromRec(RecFileOut, ".srt", TeletextOut);
+    if (*RecFileOut)
+      GetFileNameFromRec(RecFileOut, ".srt", TeletextOut);
+    else
+      GetFileNameFromRec(RecFileIn, ".srt", TeletextOut);
     if (LoadTeletextOut(TeletextOut))
-      printf("Teletext output: %s", TeletextOut);
+      printf("\nTeletext output: %s", TeletextOut);
   }
 
   printf("\n");
@@ -894,14 +897,18 @@ int main(int argc, const char* argv[])
   else if ((DoCut || DoStrip || DoMerge || OutPacketSize) && (!*RecFileOut || strcmp(RecFileIn, RecFileOut)==0))
     { printf("\nNo output file specified or output same as input!\n");  ret = FALSE; }
   else if ((RemoveEPGStream || RemoveTeletext) && !DoStrip)
-    { printf("\nRemove EPG (-e) or teletext (-t/-tt) cannot be used without stripping (-s)!\n");  ret = FALSE; }
+  {
+    printf("\nRemove EPG (-e) or teletext (-t) cannot be used without stripping (-s)!\n");
+    if (ExtractTeletext && !RemoveEPGStream)  RemoveTeletext = FALSE;
+    else  ret = FALSE;
+  }
   else if (DoMerge && DoCut==2) 
     { printf("\nMerging cannot be used together with cut mode (single segment copy)!\n");  ret = FALSE; }
   else if (DoMerge==1 && OutPacketSize)
     { printf("\nPacketSize cannot be changed when appending to an existing recording!\n");  ret = FALSE; }
   else if (DoSkip && (DoCut || DoMerge))
     { printf("\nSkipping of stripped recordings cannot be combined with -r, -c, -a, -m!\n");  DoSkip = FALSE; }
-  else if (DoInfoOnly && (DoStrip || DoCut || DoMerge || RebuildNav || RebuildInf))
+  else if (DoInfoOnly && (DoStrip || DoCut || DoMerge || RebuildNav || RebuildInf || ExtractTeletext))
     { printf("\nView info only (-v) disables any other option!\n"); }
 
   if (!ret)
@@ -932,7 +939,7 @@ int main(int argc, const char* argv[])
     printf("  -ss:       Strip and skip. Same as -s, but skips already stripped files.\n\n");
     printf("  -e:        Remove also the EPG data. (only with -s)\n\n");
     printf("  -t:        Remove also the teletext data. (only with -s)\n");
-    printf("  -tt:       Extraxt subtitles from teletext and remove it. (only with -s)\n\n");
+    printf("  -tt:       Extract subtitles from teletext. (and remove it - only with -s)\n\n");
     printf("  -x:        Remove packets marked as scrambled. (flag could be wrong!)\n\n");
     printf("  -o1/-o2:   Change the packet size for output-rec: \n"
            "             1: PacketSize = 192 Bytes, 2: PacketSize = 188 Bytes.\n\n");
@@ -956,7 +963,7 @@ int main(int argc, const char* argv[])
     exit(2);
   }
   NavProcessor_Init();
-  TtxProcessor_Init();
+  TtxProcessor_Init(TeletextPage);
 
   // Pending Buffer initialisieren
   if (DoStrip)
@@ -989,6 +996,24 @@ int main(int argc, const char* argv[])
     NrInputFiles = argc;
   }
 
+  // Prüfen, ob Aufnahme bereits gestrippt
+  if (DoSkip && !DoMerge)
+  {
+    AlreadyStripped = FALSE;
+    snprintf(InfFileIn, sizeof(InfFileIn), "%s.inf", RecFileIn);
+    if (GetInfStripFlags(InfFileIn, &AlreadyStripped, NULL) && AlreadyStripped)
+    {
+      printf("\nInput File: %s\n", RecFileIn);
+      printf("--> already stripped.\n", RecFileIn);
+      CutProcessor_Free();
+      InfProcessor_Free();
+      free(PendingBuf); PendingBuf = NULL;
+      printf("\nRecStrip finished. No files to process.\n");
+      TRACEEXIT;
+      exit(0);
+    }
+  }
+
   // Wenn Appending, dann erstmal Output als Input einlesen
   if (DoMerge == 1)
   {
@@ -1013,24 +1038,6 @@ int main(int argc, const char* argv[])
       CutTimeOffset = -(int)LastTimems;
     if(ExtractTeletext) last_timestamp = -CutTimeOffset;
     CloseInputFiles(FALSE);
-  }
-
-  // Prüfen, ob Aufnahme bereits gestrippt
-  if (DoSkip && !DoMerge)
-  {
-    AlreadyStripped = FALSE;
-    snprintf(InfFileIn, sizeof(InfFileIn), "%s.inf", RecFileIn);
-    if (GetInfStripFlags(InfFileIn, &AlreadyStripped, NULL) && AlreadyStripped)
-    {
-      printf("\nInput File: %s\n", RecFileIn);
-      printf("--> already stripped.\n", RecFileIn);
-      CutProcessor_Free();
-      InfProcessor_Free();
-      free(PendingBuf); PendingBuf = NULL;
-      printf("\nRecStrip finished. No files to process.\n");
-      TRACEEXIT;
-      exit(0);
-    }
   }
 
   // Input-Files öffnen
@@ -1089,6 +1096,7 @@ int main(int argc, const char* argv[])
   // Wenn Appending, ans Ende der nav-Datei springen
   if(DoMerge == 1) GoToEndOfNav(NULL);
 
+  // Spezialanpassung Humax
   if (HumaxSource && fOut && DoMerge != 1)
   {
     printf("  Generate new PAT/PMT for Humax recording.\n");
@@ -1185,7 +1193,7 @@ int main(int argc, const char* argv[])
             long long SkippedBytes = (((SegmentMarker[CurSeg].Position) /* / PACKETSIZE) * PACKETSIZE */) ) - CurrentPosition;
             fseeko64(fIn, ((SegmentMarker[CurSeg].Position) /* / PACKETSIZE) * PACKETSIZE */), SEEK_SET);
             SetFirstPacketAfterBreak();
-            SetTeletextBreak(FALSE);
+            SetTeletextBreak(FALSE, TeletextPage);
             for (k = 0; k < NrContinuityPIDs; k++)
               ContinuityCtrs[k] = -1;
             if(DoStrip)  NALUDump_Init();  // NoContinuityCheck = TRUE;
@@ -1362,6 +1370,14 @@ int main(int argc, const char* argv[])
             }
           }
 
+          // Extract Teletext Subtitles
+          if (/*ExtractTeletext &&*/ fTtxOut && CurPID == TeletextPID)
+          {
+            dword CurPCR = 0;
+            if (GetPCRms(&Buffer[4], &CurPCR))  global_timestamp = CurPCR;
+            ProcessTtxPacket((tTSPacket*) &Buffer[4]);
+          }
+
           // STRIPPEN
           if (DoStrip /*|| RemoveEPGStream || RemoveTeletext*/ && !DropCurPacket)
           {
@@ -1377,12 +1393,6 @@ int main(int argc, const char* argv[])
             }
             else if (RemoveTeletext && CurPID == TeletextPID)
             {
-              if (/*ExtractTeletext &&*/ fTtxOut)
-              {
-                dword CurPCR = 0;
-                if (GetPCRms(&Buffer[4], &CurPCR))  global_timestamp = CurPCR;
-                ProcessTtxPacket((tTSPacket*) &Buffer[4]);
-              }
               NrDroppedTxtPid++;
               DropCurPacket = TRUE;
             }
@@ -1674,7 +1684,7 @@ int main(int argc, const char* argv[])
       if (-(int)LastTimems < CutTimeOffset)
         CutTimeOffset = -(int)LastTimems;
       SetFirstPacketAfterBreak();
-      SetTeletextBreak(TRUE);
+      SetTeletextBreak(TRUE, TeletextPage);
       for (k = 0; k < NrContinuityPIDs; k++)
         ContinuityCtrs[k] = -1;
       if(DoStrip)  NALUDump_Init();  // NoContinuityCheck = TRUE;
@@ -1697,7 +1707,6 @@ int main(int argc, const char* argv[])
       n = 0;
     }
   }
-
   printf("\n");
 
   if ((fOut || (DoCut != 2)) && !CloseOutputFiles())
@@ -1718,7 +1727,7 @@ int main(int argc, const char* argv[])
     if (NrPackets > 0)
       printf("\nPackets: %lld, FillerNALUs: %lld (%lld%%), ZeroByteStuffing: %lld (%lld%%), AdaptationFields: %lld (%lld%%), NullPackets: %lld (%lld%%), EPG: %lld (%lld%%), Teletext: %lld (%lld%%), Scrambled: %lld (%lld%%), Dropped (all): %lld (%lld%%)\n", NrPackets, NrDroppedFillerNALU, NrDroppedFillerNALU*100/NrPackets, NrDroppedZeroStuffing, NrDroppedZeroStuffing*100/NrPackets, NrDroppedAdaptation, NrDroppedAdaptation*100/NrPackets, NrDroppedNullPid, NrDroppedNullPid*100/NrPackets, NrDroppedEPGPid, NrDroppedEPGPid*100/NrPackets, NrDroppedTxtPid, NrDroppedTxtPid*100/NrPackets, NrScrambledPackets, NrScrambledPackets*100/NrPackets, NrDroppedAll, NrDroppedAll*100/NrPackets);
     else
-      printf("\n\n0 Packets!\n");
+      printf("\n0 Packets!\n");
   }
 
   time(&endTime);

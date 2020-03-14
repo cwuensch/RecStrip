@@ -277,7 +277,7 @@ static void timestamp_to_srttime(uint32_t timestamp, char *buffer) {
 }
 
 // UCS-2 (16 bits) to UTF-8 (Unicode Normalization Form C (NFC)) conversion
-static void ucs2_to_utf8(char *r, uint16_t ch) {
+void ucs2_to_utf8(char *r, uint16_t ch) {
   if (ch < 0x80) {
     r[0] = ch & 0x7f;
     r[1] = 0;
@@ -299,7 +299,7 @@ static void ucs2_to_utf8(char *r, uint16_t ch) {
 }
 
 // check parity and translate any reasonable teletext character into ucs2
-static uint16_t telx_to_ucs2(uint8_t c) {
+uint16_t telx_to_ucs2(uint8_t c) {
   uint16_t r = c & 0x7f;
 
   if (PARITY_8[c] == 0) {
@@ -824,7 +824,7 @@ static void process_pes_packet(uint8_t *buffer, uint16_t size) {
 // ------------------------------------------------------------------------------------------------
 
 
-void SetTeletextBreak(bool NewInputFile)
+void SetTeletextBreak(bool NewInputFile, word SubtitlePage)
 {
   FirstPacketAfterBreak = TRUE;
   PSBuffer_DropCurBuffer(&TtxBuffer);
@@ -834,13 +834,14 @@ void SetTeletextBreak(bool NewInputFile)
   {
     states.programme_info_processed = NO;
     states.pts_initialized = NO;
-    config.page = 0;
+    config.page = SubtitlePage;
   }
 }
 
-void TtxProcessor_Init()
+void TtxProcessor_Init(word SubtitlePage)
 {
   memset(&page_buffer, 0, sizeof(teletext_page_t));
+  config.page = SubtitlePage;
 }
 
 bool LoadTeletextOut(const char* AbsOutFile)
