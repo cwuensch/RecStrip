@@ -105,6 +105,7 @@ extern FILE            *fNavIn;
 
 bool GetPCR(byte *pBuffer, long long *pPCR);
 bool GetPCRms(byte *pBuffer, dword *pPCR);
+bool GetPTS(byte *Buffer, dword *pPTS, dword *pDTS);
 dword DeltaPCR(dword FirstPCR, dword SecondPCR);
 
 void NavProcessor_Init(void);

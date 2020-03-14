@@ -708,7 +708,7 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
   }
 }
 
-static void process_pes_packet(uint8_t *buffer, uint16_t size) {
+void process_pes_packet(uint8_t *buffer, uint16_t size) {
   static bool_t         using_pts = UNDEF;
   static uint32_t       delta = 0;
 //  static uint32_t       t0 = 0;

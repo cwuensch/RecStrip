@@ -111,14 +111,14 @@ typedef struct
 
 
 // Globale Variablen
-extern char             RecFileIn[], RecFileOut[];
+extern char             RecFileIn[], RecFileOut[], MDEpgName[], MDTtxName[];
 extern unsigned long long RecFileSize;
 extern SYSTEM_TYPE      SystemType;
 extern byte             PACKETSIZE, PACKETOFFSET;
 extern word             VideoPID, TeletextPID, TeletextPage;
 extern word             ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs;
 extern bool             isHDVideo, AlreadyStripped, HumaxSource;
-extern bool             DoStrip, DoSkip, RemoveEPGStream, RemoveTeletext, RebuildNav, RebuildInf, DoInfoOnly;
+extern bool             DoStrip, DoSkip, RemoveEPGStream, RemoveTeletext, RebuildNav, RebuildInf, DoInfoOnly, MedionMode;
 extern int              DoCut, DoMerge;
 extern int              dbg_DelBytesSinceLastVid;
 

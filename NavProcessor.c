@@ -100,7 +100,7 @@ static bool GetPTS2(byte *Buffer, dword *pPTS, dword *pDTS)
 {
   bool ret = FALSE;
   TRACEENTER;
-  if ((Buffer[0] & 0xf0) == 0xe0)
+  if (((Buffer[0] & 0xf0) == 0xe0) || Buffer[0] == 0xBD)
   {
     //MPEG Video Stream
     //00 00 01 E0 00 00 88 C0 0B 35 BD E9 8A 85 15 BD E9 36 25 FF
@@ -138,7 +138,7 @@ static bool GetPTS2(byte *Buffer, dword *pPTS, dword *pDTS)
   TRACEEXIT;
   return ret;
 }
-static bool GetPTS(byte *Buffer, dword *pPTS, dword *pDTS)
+bool GetPTS(byte *Buffer, dword *pPTS, dword *pDTS)
 {
   if((Buffer[0] == 0x00) && (Buffer[1] == 0x00) && (Buffer[2] == 0x01))
     return GetPTS2(&Buffer[3], pPTS, pDTS);

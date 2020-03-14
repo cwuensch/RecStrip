@@ -639,203 +639,303 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     FileTimeStamp = Unix2TFTime((dword) statbuf.st_mtime);
   }
 
-  // Read the first RECBUFFERENTRIES TS packets
-//  FilePos = ftello64(fIn);
-  ReadPackets = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn);
-  if(ReadPackets != RECBUFFERENTRIES)
+  //Spezial-Anpassung, um Medion-PES (EPG und Teletext) auszulesen
+  if (MedionMode)
   {
-    printf("  Failed to read the first %d TS packets.\n", RECBUFFERENTRIES);
-    free(Buffer);
-    TRACEEXIT;
-    return FALSE;
-  }
-
-  FirstOffset = FindNextPacketStart(Buffer, ReadPackets*PACKETSIZE);
-  Offset = FirstOffset;
-  if (Offset >= 0)
-  {
-    p = &Buffer[Offset];
-    for(i = Offset; i < ReadPackets*PACKETSIZE - 14; i+=PACKETSIZE)
+    FILE               *fMDIn = NULL;
+    
+    // Read first 500 kB of Video PES (TODO: Allow also multiplexed TS input)
+    if (fread(Buffer, 1, RECBUFFERENTRIES*100 + 20, fIn) > 0)
     {
-      if ((p[PACKETOFFSET] != 'G') && (i < ReadPackets*PACKETSIZE-5573))
+      int p = 0;
+      while (p < RECBUFFERENTRIES*100)
       {
-        Offset = FindNextPacketStart(p, ReadPackets*PACKETSIZE - i);
-        if(Offset >= 0)
-          { p += Offset;  i += Offset; }
-        else break;
-      }
-      //Find the first PCR (for duration calculation)
-      if (GetPCRms(&p[PACKETOFFSET], &FirstPCR) && FirstPCR != 0)
-        break;
-      p += PACKETSIZE;
-    }
-  }
-
-
-  // Springe in die Mitte der Aufnahme
-  fseeko64(fIn, FilePos + ((RecFileSize/2)/PACKETSIZE * PACKETSIZE), SEEK_SET);
-
-  //Read RECBUFFERENTRIES TS pakets for analysis
-  ReadPackets = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn);
-  if(ReadPackets < RECBUFFERENTRIES)
-  {
-    printf("  Failed to read %d TS packets from the middle.\n", RECBUFFERENTRIES);
-    free(Buffer);
-    TRACEEXIT;
-    return FALSE;
-  }
-
-  Offset = FindNextPacketStart(Buffer, ReadPackets*PACKETSIZE);
-  if (Offset >= 0)
-  {
-    //Find a PMT packet to get its PID
-    p = &Buffer[Offset + PACKETOFFSET];
-
-    for(i = Offset; i < ReadPackets*PACKETSIZE; i+=PACKETSIZE)
-    {
-      bool ok = TRUE;
-
-      for(j = 0; j < 6; j++)
-        if((p[j] & ANDMask[j]) != PMTMask[j])
+        while ((p < RECBUFFERENTRIES*100) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1))
+          p++;
+        if (GetPTS(&Buffer[p], &FirstPCR, NULL) && (FirstPCR != 0))
         {
-          ok = FALSE;
+          FirstPCR = FirstPCR / 45;
           break;
         }
-
-      if(ok)
-      {
-        PMTPID = ((p[1] << 8) | p[2]) & 0x1fff;
-        break;
+        p++;
       }
-
-      p += PACKETSIZE;
-    }
-
-    if(PMTPID)
-    {
-      RecInf->ServiceInfo.PMTPID = PMTPID;
-      printf("  TS: PMTPID=%hu", PMTPID);
-
-      //Analyse the PMT
-      PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE);
-
-//    p = &Buffer[Offset + PACKETOFFSET];
-      for(i = p-Buffer; i < ReadPackets*PACKETSIZE; i+=PACKETSIZE)
-      {
-        PSBuffer_ProcessTSPacket(&PMTBuffer, (tTSPacket*)p);
-        if(PMTBuffer.ValidBuffer != 0)
-          break;
-        p += PACKETSIZE;
-      }
-
-      AnalysePMT(PMTBuffer.Buffer1, /*PMTBuffer.ValidBufLen,*/ RecInf);
-      PSBuffer_Reset(&PMTBuffer);
     }
     else
     {
-      printf("  Failed to locate a PMT packet.\n");
-      ret = FALSE;
+      printf("  Failed to read the first %d PES bytes.\n", RECBUFFERENTRIES*100);
+      free(Buffer);
+      TRACEEXIT;
+      return FALSE;
     }
 
-    //If we're here, it should be possible to find the associated EPG event
-    if (RecInf->ServiceInfo.ServiceID)
+    // Read last 500 kB of Video PES (TODO: Allow also multiplexed TS input)
+    fseeko64(fIn, RecFileSize - RECBUFFERENTRIES*100 - 20, SEEK_SET);
+    if (fread(Buffer, 1, RECBUFFERENTRIES*100 + 20, fIn) == RECBUFFERENTRIES*100 + 20)
     {
-      PSBuffer_Init(&PMTBuffer, 0x0011, 16384, TRUE);
-      PSBuffer_Init(&EITBuffer, 0x0012, 16384, TRUE);
-      if (TeletextPID != 0xffff)
-        PSBuffer_Init(&TtxBuffer, TeletextPID, 16384, FALSE);
-      LastBuffer = 0; LastTtxBuffer = 0;
-
-      fseeko64(fIn, FilePos + ((RecFileSize/2)/PACKETSIZE * PACKETSIZE) + Offset, SEEK_SET);
-      for(j = 0; j < 10; j++)
+      int p = 0;
+      while (p < RECBUFFERENTRIES*100)
       {
-        ReadPackets = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn);
-        p = &Buffer[PACKETOFFSET];
+        while ((p < RECBUFFERENTRIES*100) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1))
+          p++;
+        if (GetPTS(&Buffer[p], &LastPCR, NULL) && (LastPCR != 0))
+          LastPCR = LastPCR / 45;
+        p++;
+      }
+    }
+    else
+    {
+      printf("  Failed to read the last %d PES bytes.\n", RECBUFFERENTRIES*100);
+      free(Buffer);
+      TRACEEXIT;
+      return FALSE;
+    }
 
-        for(i = 0; i < ReadPackets; i++)
+    // Read EPG Event file
+    if (fMDIn = fopen(MDEpgName, "rb"))
+    {
+      if (fread(Buffer, 1, 16384, fMDIn) > 0)
+      {
+        if (*(int*)Buffer == 0x12345678)
         {
-          if (!SDTOK)
-          {
-            PSBuffer_ProcessTSPacket(&PMTBuffer, (tTSPacket*)p);
-            if(PMTBuffer.ValidBuffer)
-            {
-              byte* pBuffer = (PMTBuffer.ValidBuffer==1) ? PMTBuffer.Buffer1 : PMTBuffer.Buffer2;
-              SDTOK = AnalyseSDT(pBuffer, RecInf->ServiceInfo.ServiceID, RecInf);
-            }
-          }
-          if (!EITOK)
-          {
-            PSBuffer_ProcessTSPacket(&EITBuffer, (tTSPacket*)p);
-            if(EITBuffer.ValidBuffer != LastBuffer)
-            {
-              byte *pBuffer = (EITBuffer.ValidBuffer==1) ? EITBuffer.Buffer1 : EITBuffer.Buffer2;
-              EITOK = AnalyseEIT(pBuffer, RecInf->ServiceInfo.ServiceID, RecInf);
-              LastBuffer = EITBuffer.ValidBuffer;
-            }
-          }
-          if (TeletextPID != 0xffff && !TtxOK)
-          {
-            if (!TtxFound)
-            {
-              PSBuffer_ProcessTSPacket(&TtxBuffer, (tTSPacket*)p);
-              if(TtxBuffer.ValidBuffer != LastTtxBuffer)
-              {
-                byte *pBuffer = (TtxBuffer.ValidBuffer==1) ? TtxBuffer.Buffer1 : TtxBuffer.Buffer2;
-                TtxFound = AnalyseTtx(pBuffer, &TtxTime, (RecInf->ServiceInfo.ServiceName[0] ? NULL : RecInf->ServiceInfo.ServiceName));
-                LastTtxBuffer = TtxBuffer.ValidBuffer;
-              }
-            }
-          }
-          if(TtxFound && !TtxOK)
-            TtxOK = (GetPCRms(p, &TtxPCR) && TtxPCR != 0);
+          tTSEIT *EIT = (tTSEIT*)(&Buffer[8]);
+          RecInf->ServiceInfo.ServiceID = (EIT->ServiceID1 * 256 | EIT->ServiceID2);
+          EITOK = AnalyseEIT(&Buffer[8], RecInf->ServiceInfo.ServiceID, RecInf);
+        }
+      }
+      fclose(fMDIn);
+    }
 
-          if(EITOK && SDTOK && (TtxOK || TeletextPID == 0xffff)) break;
+    // Read first 32 kB of Teletext PES
+    if (fMDIn = fopen(MDTtxName, "rb"))
+    {
+      if (fread(Buffer, 1, 32768, fMDIn) > 0)
+      {
+        int p = 0;
+          
+        while (p < 32000)
+        {
+          while ((p < 32000) && (Buffer[p] != 0) || (Buffer[p+1] != 0) || (Buffer[p+2] != 1) || (Buffer[p+3] != 0xBD))
+            p++;
+          TtxFound = AnalyseTtx(&Buffer[p], &TtxTime, RecInf->ServiceInfo.ServiceName);
+          if(TtxFound && !TtxOK)
+            TtxOK = GetPTS(&Buffer[p], &TtxPCR, NULL) && (TtxPCR != 0);
+          if(TtxOK)
+          {
+            TtxPCR = TtxPCR / 45;
+            break;
+          }
+          p++;
+        }
+      }
+      fclose(fMDIn);
+    }
+
+    if(!EITOK)
+      printf ("  Failed to get the EIT information.\n");
+    if(!TtxFound)
+      printf ("  Failed to get start time from Teletext.\n");
+  }
+  
+  if (MedionMode != 1)
+  {
+    // Read the first RECBUFFERENTRIES TS packets
+//    FilePos = ftello64(fIn);
+    ReadPackets = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn);
+    if(ReadPackets != RECBUFFERENTRIES)
+    {
+      printf("  Failed to read the first %d TS packets.\n", RECBUFFERENTRIES);
+      free(Buffer);
+      TRACEEXIT;
+      return FALSE;
+    }
+
+    FirstOffset = FindNextPacketStart(Buffer, ReadPackets*PACKETSIZE);
+    Offset = FirstOffset;
+    if (Offset >= 0)
+    {
+      p = &Buffer[Offset];
+      for(i = Offset; i < ReadPackets*PACKETSIZE - 14; i+=PACKETSIZE)
+      {
+        if ((p[PACKETOFFSET] != 'G') && (i < ReadPackets*PACKETSIZE-5573))
+        {
+          Offset = FindNextPacketStart(p, ReadPackets*PACKETSIZE - i);
+          if(Offset >= 0)
+           { p += Offset;  i += Offset; }
+          else break;
+        }
+        //Find the first PCR (for duration calculation)
+        if (GetPCRms(&p[PACKETOFFSET], &FirstPCR) && FirstPCR != 0)
+          break;
+        p += PACKETSIZE;
+      }
+    }
+
+
+    // Springe in die Mitte der Aufnahme
+    fseeko64(fIn, FilePos + ((RecFileSize/2)/PACKETSIZE * PACKETSIZE), SEEK_SET);
+
+    //Read RECBUFFERENTRIES TS pakets for analysis
+    ReadPackets = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn);
+    if(ReadPackets < RECBUFFERENTRIES)
+    {
+      printf("  Failed to read %d TS packets from the middle.\n", RECBUFFERENTRIES);
+      free(Buffer);
+      TRACEEXIT;
+      return FALSE;
+    }
+
+    Offset = FindNextPacketStart(Buffer, ReadPackets*PACKETSIZE);
+    if (Offset >= 0)
+    {
+      //Find a PMT packet to get its PID
+      p = &Buffer[Offset + PACKETOFFSET];
+
+      for(i = Offset; i < ReadPackets*PACKETSIZE; i+=PACKETSIZE)
+      {
+        bool ok = TRUE;
+
+        for(j = 0; j < 6; j++)
+          if((p[j] & ANDMask[j]) != PMTMask[j])
+          {
+            ok = FALSE;
+            break;
+          }
+
+        if(ok)
+        {
+          PMTPID = ((p[1] << 8) | p[2]) & 0x1fff;
+          break;
+        }
+
+        p += PACKETSIZE;
+      }
+
+      if(PMTPID)
+      {
+        RecInf->ServiceInfo.PMTPID = PMTPID;
+        printf("  TS: PMTPID=%hu", PMTPID);
+
+        //Analyse the PMT
+        PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE);
+
+  //    p = &Buffer[Offset + PACKETOFFSET];
+        for(i = p-Buffer; i < ReadPackets*PACKETSIZE; i+=PACKETSIZE)
+        {
+          PSBuffer_ProcessTSPacket(&PMTBuffer, (tTSPacket*)p);
+          if(PMTBuffer.ValidBuffer != 0)
+            break;
           p += PACKETSIZE;
         }
-        if(EITOK && SDTOK && (TtxOK || TeletextPID == 0xffff)) break;
+
+        AnalysePMT(PMTBuffer.Buffer1, /*PMTBuffer.ValidBufLen,*/ RecInf);
+        PSBuffer_Reset(&PMTBuffer);
       }
-      if(!SDTOK)
-        printf ("  Failed to get service name from SDT.\n");
-      if(!EITOK)
-        printf ("  Failed to get the EIT information.\n");
-      if(TeletextPID != 0xffff && !TtxOK)
-        printf ("  Failed to get start time from Teletext.\n");
-      PSBuffer_Reset(&PMTBuffer);
-      PSBuffer_Reset(&EITBuffer);
-      if(TeletextPID != 0xffff)
-        PSBuffer_Reset(&TtxBuffer);
-    }
-  }
-
-
-  //Read the last RECBUFFERENTRIES TS pakets
-  fseeko64(fIn, FilePos + ((((RecFileSize-FilePos)/PACKETSIZE) - RECBUFFERENTRIES) * PACKETSIZE), SEEK_SET);
-  ReadPackets = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn);
-//  fseeko64(fIn, FilePos, SEEK_SET);
-  if(ReadPackets != RECBUFFERENTRIES)
-  {
-    printf ("  Failed to read the last %d TS packets.\n", RECBUFFERENTRIES);
-    free(Buffer);
-    TRACEEXIT;
-    return FALSE;
-  }
-
-  Offset = FindNextPacketStart(Buffer, ReadPackets*PACKETSIZE);
-  if (Offset >= 0)
-  {
-    p = &Buffer[Offset];
-    for(i = Offset; i < ReadPackets*PACKETSIZE - 14; i+=PACKETSIZE)
-    {
-      if ((p[PACKETOFFSET] != 'G') && (i < ReadPackets*PACKETSIZE-5573))
+      else
       {
-        Offset = FindNextPacketStart(p, ReadPackets*PACKETSIZE - i);
-        if(Offset >= 0)
-          { p += Offset;  i += Offset; }
-        else break;
+        printf("  Failed to locate a PMT packet.\n");
+        ret = FALSE;
       }
-      //Find the last PCR
-      GetPCRms(&p[PACKETOFFSET], &LastPCR);
-      p += PACKETSIZE;
+
+      //If we're here, it should be possible to find the associated EPG event
+      if (RecInf->ServiceInfo.ServiceID)
+      {
+        PSBuffer_Init(&PMTBuffer, 0x0011, 16384, TRUE);
+        PSBuffer_Init(&EITBuffer, 0x0012, 16384, TRUE);
+        if (TeletextPID != 0xffff)
+          PSBuffer_Init(&TtxBuffer, TeletextPID, 16384, FALSE);
+        LastBuffer = 0; LastTtxBuffer = 0;
+
+        fseeko64(fIn, FilePos + ((RecFileSize/2)/PACKETSIZE * PACKETSIZE) + Offset, SEEK_SET);
+        for(j = 0; j < 10; j++)
+        {
+          ReadPackets = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn);
+          p = &Buffer[PACKETOFFSET];
+
+          for(i = 0; i < ReadPackets; i++)
+          {
+            if (!SDTOK)
+            {
+              PSBuffer_ProcessTSPacket(&PMTBuffer, (tTSPacket*)p);
+              if(PMTBuffer.ValidBuffer)
+              {
+                byte* pBuffer = (PMTBuffer.ValidBuffer==1) ? PMTBuffer.Buffer1 : PMTBuffer.Buffer2;
+                SDTOK = AnalyseSDT(pBuffer, RecInf->ServiceInfo.ServiceID, RecInf);
+              }
+            }
+            if (!EITOK)
+            {
+              PSBuffer_ProcessTSPacket(&EITBuffer, (tTSPacket*)p);
+              if(EITBuffer.ValidBuffer != LastBuffer)
+              {
+                byte *pBuffer = (EITBuffer.ValidBuffer==1) ? EITBuffer.Buffer1 : EITBuffer.Buffer2;
+                EITOK = AnalyseEIT(pBuffer, RecInf->ServiceInfo.ServiceID, RecInf);
+                LastBuffer = EITBuffer.ValidBuffer;
+              }
+            }
+            if (TeletextPID != 0xffff && !TtxOK)
+            {
+              if (!TtxFound)
+              {
+                PSBuffer_ProcessTSPacket(&TtxBuffer, (tTSPacket*)p);
+                if(TtxBuffer.ValidBuffer != LastTtxBuffer)
+                {
+                  byte *pBuffer = (TtxBuffer.ValidBuffer==1) ? TtxBuffer.Buffer1 : TtxBuffer.Buffer2;
+                  TtxFound = AnalyseTtx(pBuffer, &TtxTime, (RecInf->ServiceInfo.ServiceName[0] ? NULL : RecInf->ServiceInfo.ServiceName));
+                  LastTtxBuffer = TtxBuffer.ValidBuffer;
+                }
+              }
+            }
+            if(TtxFound && !TtxOK)
+              TtxOK = (GetPCRms(p, &TtxPCR) && TtxPCR != 0);
+
+            if(EITOK && SDTOK && (TtxOK || TeletextPID == 0xffff)) break;
+            p += PACKETSIZE;
+          }
+          if(EITOK && SDTOK && (TtxOK || TeletextPID == 0xffff)) break;
+        }
+        if(!SDTOK)
+          printf ("  Failed to get service name from SDT.\n");
+        if(!EITOK)
+          printf ("  Failed to get the EIT information.\n");
+        if(TeletextPID != 0xffff && !TtxOK)
+          printf ("  Failed to get start time from Teletext.\n");
+        PSBuffer_Reset(&PMTBuffer);
+        PSBuffer_Reset(&EITBuffer);
+        if(TeletextPID != 0xffff)
+          PSBuffer_Reset(&TtxBuffer);
+      }
+    }
+
+
+    //Read the last RECBUFFERENTRIES TS pakets
+    fseeko64(fIn, FilePos + ((((RecFileSize-FilePos)/PACKETSIZE) - RECBUFFERENTRIES) * PACKETSIZE), SEEK_SET);
+    ReadPackets = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn);
+  //  fseeko64(fIn, FilePos, SEEK_SET);
+    if(ReadPackets != RECBUFFERENTRIES)
+    {
+      printf ("  Failed to read the last %d TS packets.\n", RECBUFFERENTRIES);
+      free(Buffer);
+      TRACEEXIT;
+      return FALSE;
+    }
+
+    Offset = FindNextPacketStart(Buffer, ReadPackets*PACKETSIZE);
+    if (Offset >= 0)
+    {
+      p = &Buffer[Offset];
+      for(i = Offset; i < ReadPackets*PACKETSIZE - 14; i+=PACKETSIZE)
+      {
+        if ((p[PACKETOFFSET] != 'G') && (i < ReadPackets*PACKETSIZE-5573))
+        {
+          Offset = FindNextPacketStart(p, ReadPackets*PACKETSIZE - i);
+          if(Offset >= 0)
+           { p += Offset;  i += Offset; }
+          else break;
+        }
+        //Find the last PCR
+        GetPCRms(&p[PACKETOFFSET], &LastPCR);
+        p += PACKETSIZE;
+      }
     }
   }
 
