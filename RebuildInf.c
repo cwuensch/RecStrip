@@ -529,7 +529,7 @@ static bool AnalyseTtx(byte *PSBuffer, dword *TtxTime, char *ServiceName)
             byte mjd1             = byte_reverse(data_block[10]);
             byte mjd2             = byte_reverse(data_block[11]);
             byte mjd3             = byte_reverse(data_block[12]);
-            dword mdj = ((mjd1 & 0x0F)-1)*10000 + ((mjd2 >> 4)-1)*1000 + ((mjd2 & 0x0F)-1)*100 + ((mjd3 >> 4)-1)*10 + ((mjd3 & 0x0F)-1);
+            dword mjd = ((mjd1 & 0x0F)-1)*10000 + ((mjd2 >> 4)-1)*1000 + ((mjd2 & 0x0F)-1)*100 + ((mjd3 >> 4)-1)*10 + ((mjd3 & 0x0F)-1);
 
             byte utc1             = byte_reverse(data_block[13]);
             byte utc2             = byte_reverse(data_block[14]);
@@ -539,7 +539,7 @@ static bool AnalyseTtx(byte *PSBuffer, dword *TtxTime, char *ServiceName)
             int localM = 10 * ((utc2 >> 4) - 1) + ((utc2 & 0x0f) - 1);
             int localS = 10 * ((utc3 >> 4) - 1) + ((utc3 & 0x0f) - 1);
 
-            pvrTime = (mdj & 0xffff) << 16 | localH << 8 | localM;
+            pvrTime = (mjd & 0xffff) << 16 | localH << 8 | localM;
 
             if ((timeOffsetCode & 0x40) == 0)
               pvrTime = AddTime(pvrTime, timeOffsetH2 * 30);
@@ -553,7 +553,7 @@ static bool AnalyseTtx(byte *PSBuffer, dword *TtxTime, char *ServiceName)
               // positive offset polarity
               localM += (timeOffsetH2 * 30);
               localH += (localM / 60);
-              mdj    += (localH / 24);
+              mjd    += (localH / 24);
               localM  = localM % 60;
               localH  = localH % 24;
             }
@@ -569,7 +569,7 @@ static bool AnalyseTtx(byte *PSBuffer, dword *TtxTime, char *ServiceName)
               while (localH < 0)
               {
                 localH += 24;
-                mdj--;
+                mjd--;
               }
             }
 
@@ -587,7 +587,7 @@ static bool AnalyseTtx(byte *PSBuffer, dword *TtxTime, char *ServiceName)
             rtrim(programme);
             if(ServiceName) strcpy(ServiceName, programme);
 printf("  TS: Teletext Programme Identification Data: '%s'\n", programme);
-printf("  TS: Teletext date: mdj=%u, %02hhu:%02hhu:%02hhu\n", mdj, localH, localM, localS);
+printf("  TS: Teletext date: mjd=%u, %02hhu:%02hhu:%02hhu\n", mjd, localH, localM, localS);
             
             TRACEEXIT;
             return TRUE;
@@ -968,7 +968,7 @@ printf("  TS: Duration  = %2.2d min %2.2d sec\n", RecInf->RecHeaderInfo.Duration
       RecInf->RecHeaderInfo.StartTime = AddTime(FileTimeStamp, -1 * (int)RecInf->RecHeaderInfo.DurationMin);
   }
   StartTimeUnix = TF2UnixTime(RecInf->RecHeaderInfo.StartTime) - 3600;
-  printf("  TS: StartTime = %s", (ctime(&StartTimeUnix)));
+printf("  TS: StartTime = %s", (ctime(&StartTimeUnix)));
 
   free(Buffer);
   TRACEEXIT;
