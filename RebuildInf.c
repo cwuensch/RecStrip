@@ -668,7 +668,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       return FALSE;
     }
 
-    // Read last 500 kB of Video PES (TODO: Allow also multiplexed TS input)
+    // Read last 500 kB of Video PES
     fseeko64(fIn, RecFileSize - RECBUFFERENTRIES*100 - 20, SEEK_SET);
     if (fread(Buffer, 1, RECBUFFERENTRIES*100 + 20, fIn) == RECBUFFERENTRIES*100 + 20)
     {
@@ -738,6 +738,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   
   if (MedionMode != 1)
   {
+    FirstPCR = 0; LastPCR = 0;
+
     // Read the first RECBUFFERENTRIES TS packets
 //    FilePos = ftello64(fIn);
     ReadPackets = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn);
