@@ -1307,7 +1307,7 @@ int main(int argc, const char* argv[])
           if (!CloseOutputFiles())
             exit(10);
 
-          NrPackets += (SegmentMarker[1].Position / 192);
+          NrPackets += (SegmentMarker[1].Position / PACKETSIZE);
           NrSegmentMarker = NrSegmentMarker_bak;
           SegmentMarker[1] = LastSegmentMarker_bak;
           if (BookmarkInfo)
@@ -1881,7 +1881,7 @@ int main(int argc, const char* argv[])
     printf("\nSegments: %d of %d segments copied.\n", NrCopiedSegments, NrSegments);
   {
     long long NrDroppedAll = NrDroppedFillerNALU + NrDroppedZeroStuffing + NrDroppedAdaptation + NrDroppedNullPid + NrDroppedEPGPid + NrDroppedTxtPid + (RemoveScrambled ? NrScrambledPackets : 0);
-    if(DoCut!=2) NrPackets = (CurrentPosition-PositionOffset)/192;
+    if(DoCut!=2) NrPackets = (CurrentPosition-PositionOffset) / PACKETSIZE;
     NrPackets += NrDroppedAll;
     if (NrPackets > 0)
       printf("\nPackets: %lld, FillerNALUs: %lld (%lld%%), ZeroByteStuffing: %lld (%lld%%), AdaptationFields: %lld (%lld%%), NullPackets: %lld (%lld%%), EPG: %lld (%lld%%), Teletext: %lld (%lld%%), Scrambled: %lld (%lld%%), Dropped (all): %lld (%lld%%)\n", NrPackets, NrDroppedFillerNALU, NrDroppedFillerNALU*100/NrPackets, NrDroppedZeroStuffing, NrDroppedZeroStuffing*100/NrPackets, NrDroppedAdaptation, NrDroppedAdaptation*100/NrPackets, NrDroppedNullPid, NrDroppedNullPid*100/NrPackets, NrDroppedEPGPid, NrDroppedEPGPid*100/NrPackets, NrDroppedTxtPid, NrDroppedTxtPid*100/NrPackets, NrScrambledPackets, NrScrambledPackets*100/NrPackets, NrDroppedAll, NrDroppedAll*100/NrPackets);
