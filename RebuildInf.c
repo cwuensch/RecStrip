@@ -160,7 +160,7 @@ static void InitInfStruct(TYPE_RecHeader_TMSS *RecInf)
   TRACEEXIT;
 }
 
-static bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
+bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
 {
   tTSPMT               *PMT = (tTSPMT*)PSBuffer;
   dword                 ElemPt;
@@ -618,8 +618,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   int                   i, j;
   bool                  ret = TRUE;
 
-  const byte            ANDMask[6] = {0xFF, 0xC0, 0x00, 0xD0, 0xFF, 0xFF};
-  const byte            PMTMask[6] = {0x47, 0x40, 0x00, 0x10, 0x00, 0x02};
+  const byte            ANDMask[7] = {0xFF, 0xC0, 0x00, 0xD0, 0xFF, 0xFF, 0xFC};
+  const byte            PMTMask[7] = {0x47, 0x40, 0x00, 0x10, 0x00, 0x02, 0xB0};
 
   TRACEENTER;
   Buffer = (byte*) malloc(RECBUFFERENTRIES * PACKETSIZE);
@@ -796,7 +796,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       {
         bool ok = TRUE;
 
-        for(j = 0; j < 6; j++)
+        for(j = 0; j < sizeof(PMTMask); j++)
           if((p[j] & ANDMask[j]) != PMTMask[j])
           {
             ok = FALSE;
@@ -820,7 +820,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         //Analyse the PMT
         PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE);
 
-  //    p = &Buffer[Offset + PACKETOFFSET];
+//        p = &Buffer[Offset + PACKETOFFSET];
         for(i = p-Buffer; i < ReadPackets*PACKETSIZE; i+=PACKETSIZE)
         {
           PSBuffer_ProcessTSPacket(&PMTBuffer, (tTSPacket*)p);

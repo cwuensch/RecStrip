@@ -196,9 +196,8 @@ typedef struct
   // Elementary Streams (of remaining SectionLen)
 } tTSPMT; */
 
-extern char PATPMTBuf[];
 
-
-bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf);
+dword crc32m_tab(const unsigned char *buf, size_t len);
+bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecInf);
 
 #endif

@@ -51,6 +51,9 @@
     <ClInclude Include="..\TtxProcessor.h">
       <Filter>Header</Filter>
     </ClInclude>
+    <ClInclude Include="..\PESFileLoader.h">
+      <Filter>Header</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\RecStrip.c">
@@ -81,6 +84,9 @@
       <Filter>source</Filter>
     </ClCompile>
     <ClCompile Include="..\TtxProcessor.c">
+      <Filter>source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\PESFileLoader.c">
       <Filter>source</Filter>
     </ClCompile>
   </ItemGroup>

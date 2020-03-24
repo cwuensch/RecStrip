@@ -187,5 +187,6 @@ typedef struct
 //extern FILE            *fIn;  // dirty Hack
 
 bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf);
+bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf);
 
 #endif

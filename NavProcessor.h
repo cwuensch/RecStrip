@@ -103,9 +103,11 @@ extern dword           *pOutNextTimeStamp;
 extern FILE            *fNavIn;
 
 
+bool GetPTS(byte *Buffer, dword *pPTS, dword *pDTS);
+bool GetPTS2(byte *Buffer, dword *pPTS, dword *pDTS);
 bool GetPCR(byte *pBuffer, long long *pPCR);
 bool GetPCRms(byte *pBuffer, dword *pPCR);
-bool GetPTS(byte *Buffer, dword *pPTS, dword *pDTS);
+bool SetPCR(byte *pBuffer, long long pPCR);
 dword DeltaPCR(dword FirstPCR, dword SecondPCR);
 
 void NavProcessor_Init(void);

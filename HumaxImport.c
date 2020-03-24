@@ -16,8 +16,6 @@
 #include "HumaxHeader.h"
 
 
-char PATPMTBuf[2*192];  // Generiert eine PAT/PMT aus der Humax Header-Information
-
 static const dword crc_table[] = {
   0x00000000, 0x04C11DB7, 0x09823B6E, 0x0D4326D9,
   0x130476DC, 0x17C56B6B, 0x1A864DB2, 0x1E475005,
@@ -25,7 +23,7 @@ static const dword crc_table[] = {
   0x350C9B64, 0x31CD86D3, 0x3C8EA00A, 0x384FBDBD
 };
 
-static dword crc32m_tab(const unsigned char *buf, size_t len)
+dword crc32m_tab(const unsigned char *buf, size_t len)
 {
   dword crc = 0xffffffff;
   while (len--) {
@@ -76,7 +74,7 @@ static dword crc32m(const unsigned char *buf, size_t len)
 } */
 
 
-bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
+bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecInf)
 {
   tHumaxHeader          HumaxHeader;
   tTSPacket            *Packet = NULL;
@@ -93,7 +91,7 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   memset(PATPMTBuf, 0, 2*192);
 
   Packet = (tTSPacket*) &PATPMTBuf[4];
-  PAT = (tTSPAT*) &Packet->Data[1 + Packet->Data[0]];
+  PAT = (tTSPAT*) &Packet->Data[1 /*+ Packet->Data[0]*/];
 
   Packet->SyncByte      = 'G';
   Packet->PID1          = 0;
@@ -123,11 +121,11 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 //  PAT->CRC32            = crc32m((byte*)PAT, sizeof(tTSPAT)-4);          // CRC: 0x786989a2
   PAT->CRC32            = crc32m_tab((byte*)PAT, sizeof(tTSPAT)-4);      // CRC: 0x786989a2
   
-  Offset = 1 + Packet->Data[0] + sizeof(tTSPAT);
+  Offset = 1 + /*Packet->Data[0] +*/ sizeof(tTSPAT);
   memset(&Packet->Data[Offset], 0xff, 184 - Offset);
 
   Packet = (tTSPacket*) &PATPMTBuf[196];
-  PMT = (tTSPMT*) &Packet->Data[1 + Packet->Data[0]];
+  PMT = (tTSPMT*) &Packet->Data[1 /*+ Packet->Data[0]*/];
 
   Packet->SyncByte      = 'G';
   Packet->PID1          = 0;
@@ -155,7 +153,7 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   PMT->ProgInfoLen2     = 0;
   PMT->Reserved4        = 15;
 
-  Offset = 1 + Packet->Data[0] + sizeof(tTSPMT);
+  Offset = 1 + /*Packet->Data[0] +*/ sizeof(tTSPMT);
 
   rewind(fIn);
   for (i = 1; ret && (i <= 4); i++)

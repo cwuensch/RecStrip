@@ -45,7 +45,7 @@ void PSBuffer_Init(tPSBuffer *PSBuffer, word PID, int BufferSize, bool TablePack
 
   PSBuffer->Buffer1 = (byte*) malloc(BufferSize);
   PSBuffer->Buffer2 = (byte*) malloc(BufferSize);
-  PSBuffer->pBuffer = &PSBuffer->Buffer1[0];
+  PSBuffer->pBuffer = PSBuffer->Buffer1;
   PSBuffer->LastCCCounter = 255;
 
   TRACEEXIT;
@@ -60,7 +60,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
   //Stimmt die PID?
   if((Packet->SyncByte == 'G') && ((Packet->PID1 *256) + Packet->PID2 == PSBuffer->PID) && Packet->Payload_Exists)
   {
-    if(PSBuffer->BufferPtr >= PSBuffer->BufferSize)
+    if(PSBuffer->BufferPtr + 184 > PSBuffer->BufferSize)
     {
       if((PSBuffer->ErrorFlag & 0x01) == 0)
       {
@@ -75,7 +75,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
       {
         //Adaptation field gibt es nur bei PES Paketen
         if(Packet->Adapt_Field_Exists)
-          Start += Packet->Data[0];
+          Start += (1 + Packet->Data[0]);  // CW Änderung sicher ??  (Längen-Byte zählt ja auch noch mit)
 
         //Startet ein neues PES-Paket?
         if(Packet->Payload_Unit_Start)

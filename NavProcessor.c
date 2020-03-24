@@ -96,11 +96,11 @@ static int get_ue_golomb32(byte *p, byte *StartBit)
   return (1 << leadingZeroBits) - 1 + d;
 }
 
-static bool GetPTS2(byte *Buffer, dword *pPTS, dword *pDTS)
+bool GetPTS2(byte *Buffer, dword *pPTS, dword *pDTS)
 {
   bool ret = FALSE;
   TRACEENTER;
-  if (((Buffer[0] & 0xf0) == 0xe0) || Buffer[0] == 0xBD)
+  if (/*Buffer &&*/ (((Buffer[0] & 0xf0) == 0xe0) || (Buffer[0] >= 0xB9)) && ((Buffer[3] & 0xC0) == 0x80))
   {
     //MPEG Video Stream
     //00 00 01 E0 00 00 88 C0 0B 35 BD E9 8A 85 15 BD E9 36 25 FF
@@ -128,7 +128,7 @@ static bool GetPTS2(byte *Buffer, dword *pPTS, dword *pDTS)
               ((Buffer[10] & 0xfe) >>  2);
       ret = TRUE;
     }
-    if (pDTS && (Buffer[4] & 0xC0) && ((Buffer[6] & 0xf1) ==  0x31) && ((Buffer[11] & 0xf1) == 0x01) && (Buffer[13] & 0x01) && (Buffer[15] & 0x01))
+    if (pDTS && (Buffer[4] & 0xC0) && ((Buffer[6] & 0xf1) ==  0x31) && ((Buffer[11] & 0xf1) == 0x11) && (Buffer[13] & 0x01) && (Buffer[15] & 0x01))
       *pDTS = ((Buffer[11] & 0x0e) << 28) |
               ((Buffer[12] & 0xff) << 21) |
               ((Buffer[13] & 0xfe) << 13) |
@@ -140,7 +140,7 @@ static bool GetPTS2(byte *Buffer, dword *pPTS, dword *pDTS)
 }
 bool GetPTS(byte *Buffer, dword *pPTS, dword *pDTS)
 {
-  if((Buffer[0] == 0x00) && (Buffer[1] == 0x00) && (Buffer[2] == 0x01))
+  if(/*Buffer &&*/ (Buffer[0] == 0x00) && (Buffer[1] == 0x00) && (Buffer[2] == 0x01))
     return GetPTS2(&Buffer[3], pPTS, pDTS);
   else return FALSE;
 }
@@ -148,7 +148,7 @@ bool GetPTS(byte *Buffer, dword *pPTS, dword *pDTS)
 bool GetPCR(byte *pBuffer, long long *pPCR)
 {
   TRACEENTER;
-  if ((pBuffer[0] == 0x47) && ((pBuffer[3] & 0x20) != 0) && (pBuffer[4] > 0) && (pBuffer[5] & 0x10))
+  if (/*pBuffer &&*/ (pBuffer[0] == 0x47) && ((pBuffer[3] & 0x20) != 0) && (pBuffer[4] > 0) && (pBuffer[5] & 0x10))
   {
     if (pPCR)
     {
@@ -166,7 +166,7 @@ bool GetPCR(byte *pBuffer, long long *pPCR)
 bool GetPCRms(byte *pBuffer, dword *pPCR)
 {
   TRACEENTER;
-  if ((pBuffer[0] == 0x47) && ((pBuffer[3] & 0x20) != 0) && (pBuffer[4] > 0) && (pBuffer[5] & 0x10))
+  if (/*pBuffer &&*/ (pBuffer[0] == 0x47) && ((pBuffer[3] & 0x20) != 0) && (pBuffer[4] > 0) && (pBuffer[5] & 0x10))
   {
     if (pPCR)
     {
@@ -177,6 +177,27 @@ bool GetPCRms(byte *pBuffer, dword *pPCR)
     }
     TRACEEXIT;
     return TRUE;
+  }
+  TRACEEXIT;
+  return FALSE;
+}
+bool SetPCR(byte *pBuffer, long long pPCR)
+{
+  TRACEENTER;
+  if (pBuffer && (pBuffer[0] == 0x47) && ((pBuffer[3] & 0x20) != 0) && (pBuffer[4] >= 7))
+  {
+    long long base = (pPCR / 300LL);
+    int ext = (int) (pPCR % 300);
+
+    pBuffer[5]   = 0x10;
+    pBuffer[10]  = 0x7e;
+    pBuffer[6]   = (byte) ((base >> 25) & 0xff);
+    pBuffer[7]   = (byte) ((base >> 17) & 0xff);
+    pBuffer[8]   = (byte) ((base >> 9) & 0xff);
+    pBuffer[9]   = (byte) ((base >> 1) & 0xff);
+    pBuffer[10] |= (byte) ((base & 1) << 7);
+    pBuffer[10] |= (byte) ((ext >> 8) & 0xff);
+    pBuffer[11]  = (byte) (ext & 0xff);
   }
   TRACEEXIT;
   return FALSE;

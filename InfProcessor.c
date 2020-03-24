@@ -211,7 +211,7 @@ bool LoadInfFromRec(char *AbsRecFileName)
 
   if (HumaxSource)
   {
-    Result = LoadHumaxHeader(fIn, (TYPE_RecHeader_TMSS*)InfBuffer);
+    Result = LoadHumaxHeader(fIn, PATPMTBuf, (TYPE_RecHeader_TMSS*)InfBuffer);
     if (!Result) HumaxSource = FALSE;
   }
   
