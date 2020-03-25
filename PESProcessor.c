@@ -143,7 +143,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
       else
       {
         //Unerwarteter Continuity Counter, Daten verwerfen
-        if(PSBuffer->LastCCCounter == 255)
+        if(PSBuffer->LastCCCounter != 255)
         {
           printf("  CC error while parsing PID %hu\n", PSBuffer->PID);
           PSBuffer_DropCurBuffer(PSBuffer);

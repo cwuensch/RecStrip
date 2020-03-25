@@ -119,7 +119,8 @@ static unsigned int     RecFileBlocks = 0;
 static long long        CurrentPosition = 0, PositionOffset = 0, NrPackets = 0;
 static unsigned int     CurPosBlocks = 0, CurBlockBytes = 0, BlocksOneSecond = 250, BlocksOnePercent;
 static unsigned int     NrSegments = 0, NrCopiedSegments = 0;
-static long long        NrDroppedFillerNALU=0, NrDroppedZeroStuffing=0, NrDroppedAdaptation=0, NrDroppedNullPid=0, NrDroppedEPGPid=0, NrDroppedTxtPid=0, NrScrambledPackets=0, CurScrambledPackets=0, NrIgnoredPackets=0;
+long long               NrDroppedZeroStuffing=0;
+static long long        NrDroppedFillerNALU=0, NrDroppedAdaptation=0, NrDroppedNullPid=0, NrDroppedEPGPid=0, NrDroppedTxtPid=0, NrScrambledPackets=0, CurScrambledPackets=0, NrIgnoredPackets=0;
 static dword            LastTimeStamp = 0, CurTimeStep = 5000;
 static long long        LastPCR = 0, PosLastPCR = 0;
 static signed char      ContinuityCtrs[MAXCONTINUITYPIDS];
@@ -1879,6 +1880,9 @@ int main(int argc, const char* argv[])
 
   if (NrCopiedSegments > 0)
     printf("\nSegments: %d of %d segments copied.\n", NrCopiedSegments, NrSegments);
+  if (MedionMode == 1)
+    NrDroppedZeroStuffing = NrDroppedZeroStuffing / PACKETSIZE;
+
   {
     long long NrDroppedAll = NrDroppedFillerNALU + NrDroppedZeroStuffing + NrDroppedAdaptation + NrDroppedNullPid + NrDroppedEPGPid + NrDroppedTxtPid + (RemoveScrambled ? NrScrambledPackets : 0);
     if(DoCut!=2) NrPackets = (CurrentPosition-PositionOffset) / PACKETSIZE;

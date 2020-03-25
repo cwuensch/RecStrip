@@ -121,6 +121,7 @@ extern word             ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs;
 extern bool             isHDVideo, AlreadyStripped, HumaxSource;
 extern bool             DoStrip, DoSkip, RemoveEPGStream, RemoveTeletext, RebuildNav, RebuildInf, DoInfoOnly, MedionMode, MedionStrip;
 extern int              DoCut, DoMerge;
+extern long long        NrDroppedZeroStuffing;
 extern int              dbg_DelBytesSinceLastVid;
 
 extern TYPE_Bookmark_Info *BookmarkInfo, BookmarkInfo_In;

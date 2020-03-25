@@ -143,7 +143,10 @@ static int PESStream_FindPacketStart(tPESStream *PESStream, dword StartAtPos)
           PESStream->SliceState = ((PESStream->Buffer[i] >= 0x01) && (PESStream->Buffer[i] <= 0xAF));
       }
       else if ((History == 0) && MedionStrip && PESStream->isVideo && PESStream->SliceState)  // 4 Nullen am Stück gefunden (Zero byte padding)
+      {
         i--;  // letzte 0 nicht in Buffer behalten
+        NrDroppedZeroStuffing++;
+      }
     }
     else
       break;
@@ -207,7 +210,14 @@ byte* PESStream_GetNextPacket(tPESStream *PESStream)
     {
       byte *p = &PESStream->Buffer[PESStream->curPacketLength-2];
       while(*p == 0) p--;
-      PESStream->curPacketLength = max((p - PESStream->Buffer) + 2, 7);  // da muss + 2 stehen!!!! +1 ist TS-Doctor Bug!!!
+      p += 2;    // 2 Nullen erhalten ! Da muss + 2 stehen!!!! +1 ist TS-Doctor Bug!!!
+      if (p - PESStream->Buffer <= 7)
+      {
+        printf("ASSERTION ERROR: Empty PES packet found!");
+        p = PESStream->Buffer + 7;
+      }
+      NrDroppedZeroStuffing += (PESStream->curPacketLength - (p - PESStream->Buffer));
+      PESStream->curPacketLength = (p - PESStream->Buffer);
       curPacket->PacketLength1 = 0;
       curPacket->PacketLength2 = 0;
 
