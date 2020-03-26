@@ -228,6 +228,7 @@ byte* PESStream_GetNextPacket(tPESStream *PESStream)
       else
       {
         // Es sind nur Fülldaten im PES-Paket enthalten -> ganzes Paket überspringen
+        NrDroppedZeroStuffing += (PESStream->curPacketLength);
 printf("DEBUG: Assertion. Empty PES packet (after stripping) found!");
         TRACEEXIT;
         return PESStream_GetNextPacket(PESStream);
