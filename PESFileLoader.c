@@ -206,26 +206,32 @@ byte* PESStream_GetNextPacket(tPESStream *PESStream)
   // Remove zero byte stuffing at end of packet
   if (MedionStrip && PESStream->isVideo)
   {
-    if ((PESStream->Buffer[PESStream->curPacketLength-1] == 0) /*&& (PESStream->Buffer[PESStream->curPacketLength-2] == 0) && (PESStream->Buffer[PESStream->curPacketLength-3] == 0) */)
-    {
-      byte *p = &PESStream->Buffer[PESStream->curPacketLength-2];
-      while(*p == 0) p--;
-      p += 2;    // 2 Nullen erhalten ! Da muss + 2 stehen!!!! +1 ist TS-Doctor Bug!!!
-      if (p - PESStream->Buffer <= 7)
-      {
-        printf("ASSERTION ERROR: Empty PES packet found!");
-        p = PESStream->Buffer + 7;
-      }
-      NrDroppedZeroStuffing += (PESStream->curPacketLength - (p - PESStream->Buffer));
-      PESStream->curPacketLength = (p - PESStream->Buffer);
-      curPacket->PacketLength1 = 0;
-      curPacket->PacketLength2 = 0;
+    int HeaderLen = 6;
+    if (curPacket->OptionalHeaderMarker == 2)
+      HeaderLen += (3 + curPacket->PESHeaderLen);
+            
+    curPacket->PacketLength1 = 0;
+    curPacket->PacketLength2 = 0;
 
-//      for (i = PESStream->curPacketLength - 2; i > 7; i--)
-//        if (PESStream->Buffer[i] == 0)
-//          PESStream->curPacketLength--;
-//        else
-//          break;
+    {
+      int newLen;
+      byte *p = &PESStream->Buffer[PESStream->curPacketLength-1];
+      while(*p == 0) p--;
+      
+      newLen = (p - PESStream->Buffer) + 1;
+      if (newLen > HeaderLen)
+      {
+        if(PESStream->Buffer[PESStream->curPacketLength-1] == 0) newLen++;  // mindestens eine Null am Ende erhalten, wenn vorher eine da war (ist TS-Doctor Bug!!!)
+        NrDroppedZeroStuffing += (PESStream->curPacketLength - newLen);
+        PESStream->curPacketLength = newLen;
+      }
+      else
+      {
+        // Es sind nur Fülldaten im PES-Paket enthalten -> ganzes Paket überspringen
+printf("DEBUG: Assertion. Empty PES packet (after stripping) found!");
+        TRACEEXIT;
+        return PESStream_GetNextPacket(PESStream);
+      }
     }
   }
 
