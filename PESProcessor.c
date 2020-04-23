@@ -75,7 +75,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
       {
         //Adaptation field gibt es nur bei PES Paketen
         if(Packet->Adapt_Field_Exists)
-          Start += (1 + Packet->Data[0]);  // CW Änderung sicher ??  (Längen-Byte zählt ja auch noch mit)
+          Start += (1 + Packet->Data[0]);  // CW (Längen-Byte zählt ja auch noch mit!)
 
         //Startet ein neues PES-Paket?
         if(Packet->Payload_Unit_Start)
