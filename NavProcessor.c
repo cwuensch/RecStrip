@@ -119,13 +119,16 @@ bool GetPTS2(byte *Buffer, dword *pPTS, dword *pDTS)
     //..............................1000010.
 
     //Return PTS >> 1 so that we do not need 64 bit variables
-    if (pPTS && (Buffer[4] & 0x80) && ((Buffer[6] & 0xe1) ==  0x21) && (Buffer[8] & 0x01) && (Buffer[10] & 0x01))
+    if ((Buffer[4] & 0x80) && ((Buffer[6] & 0xe1) ==  0x21) && (Buffer[8] & 0x01) && (Buffer[10] & 0x01))
     {
-      *pPTS = ((Buffer[ 6] & 0x0e) << 28) |
-              ((Buffer[ 7] & 0xff) << 21) |
-              ((Buffer[ 8] & 0xfe) << 13) |
-              ((Buffer[ 9] & 0xff) <<  6) |
-              ((Buffer[10] & 0xfe) >>  2);
+      dword PTS;
+      PTS = ((Buffer[ 6] & 0x0e) << 28) |
+            ((Buffer[ 7] & 0xff) << 21) |
+            ((Buffer[ 8] & 0xfe) << 13) |
+            ((Buffer[ 9] & 0xff) <<  6) |
+            ((Buffer[10] & 0xfe) >>  2);
+      if(pPTS) *pPTS = PTS;
+      if(pDTS) *pDTS = PTS;
       ret = TRUE;
     }
     if (pDTS && (Buffer[4] & 0xC0) && ((Buffer[6] & 0xf1) ==  0x31) && ((Buffer[11] & 0xf1) == 0x11) && (Buffer[13] & 0x01) && (Buffer[15] & 0x01))

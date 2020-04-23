@@ -14,10 +14,11 @@
 #include "HumaxHeader.h"
 
 
+tPESStream              PESVideo;
+static tPESStream       PESAudio, PESTeletxt;
 static const byte       PIDs[4] = {100, 101, 102, 0x12};
-static tPESStream       PESVideo, PESAudio, PESTeletxt;
 static byte            *EITBuffer;
-static int              EITLen = 0, EITPos = 0;
+static int              EITLen = 0;
 static byte             ContCtr[4] = {1, 1, 1, 1};
 static bool             DoEITOutput = TRUE;
 
@@ -68,7 +69,7 @@ bool PESStream_Open(tPESStream *PESStream, FILE* fSource, int BufferSize)
 
   memset(PESStream, 0, sizeof(tPESStream));
   
-  if (PESStream->Buffer = (byte*) malloc(BufferSize))
+  if ((PESStream->Buffer = (byte*) malloc(BufferSize)))
   {
     PESStream->BufferSize = BufferSize;
     memset(PESStream->Buffer, 0, BufferSize);
@@ -82,7 +83,7 @@ bool PESStream_Open(tPESStream *PESStream, FILE* fSource, int BufferSize)
     {
       PESStream->FileAtEnd = TRUE;
       PESStream->curPacketLength = 0;
-      PESStream->curPacketPTS = 0xffffffff;
+      PESStream->curPacketDTS = 0xffffffff;
     }
     TRACEEXIT;
     return TRUE;
@@ -112,7 +113,6 @@ void PESStream_Close(tPESStream *PESStream)
 static int PESStream_FindPacketStart(tPESStream *PESStream, dword StartAtPos)
 {
   dword                 History = 0xffffffff;
-  bool                  SkipZeros = FALSE;
   int                   i;
 
   TRACEENTER;
@@ -173,7 +173,7 @@ byte* PESStream_GetNextPacket(tPESStream *PESStream)
     {
       PESStream->FileAtEnd = TRUE;
       PESStream->curPacketLength = 0;
-      PESStream->curPacketPTS = 0xffffffff;
+      PESStream->curPacketDTS = 0xffffffff;
       TRACEEXIT;
       return FALSE;
     }
@@ -197,11 +197,10 @@ byte* PESStream_GetNextPacket(tPESStream *PESStream)
   PESStream->curPayloadStart = (curPacket->OptionalHeaderMarker == 2) ? 9 + curPacket->PESHeaderLen : 6;
   PESStream->SliceState = FALSE;
 
-  // Extract PTS
-  PESStream->curPacketPTS = 0;
+  // Extract DTS
   PESStream->curPacketDTS = 0;
   if (curPacket->PTSpresent)
-    GetPTS2(&PESStream->Buffer[3], &PESStream->curPacketPTS, &PESStream->curPacketDTS);
+    GetPTS2(&PESStream->Buffer[3], NULL, &PESStream->curPacketDTS);
 
   // Remove zero byte stuffing at end of packet
   if (MedionStrip && PESStream->isVideo)
@@ -244,6 +243,11 @@ printf("DEBUG: Assertion. Empty PES packet (after stripping) found!");
 // ---------------------------------------------------------------------------------
 // SIMPLE PES-to-TS MUXER
 // ---------------------------------------------------------------------------------
+static bool           FirstRun = 2;
+static dword          LastVidDTS = 0;
+static byte           curPid = 0;
+static int            StreamNr = 0;
+
 
 // Generate a PMT
 void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word VideoPID, word AudioPID, word TtxPID, tVideoStreamFmt VideoType, tAudioStreamFmt AudioType)
@@ -253,7 +257,6 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word VideoPID, word A
   tTSPMT             *PMT = NULL;
   dword              *CRC = NULL;
   int                 i, Offset = 0;
-  bool                ret = TRUE;
 
   TRACEENTER;
   memset(PATPMTBuf, 0, 2*192);
@@ -383,7 +386,12 @@ bool SimpleMuxer_Open(FILE *fIn, char const* PESAudName, char const* PESTtxName,
 {
   FILE *aud = NULL, *ttx = NULL, *eit = NULL;
   TRACEENTER;
-  
+
+  FirstRun = 2;
+  LastVidDTS = 0;
+  curPid = 0;
+  StreamNr = 0;
+
   if (!(aud = fopen(PESAudName, "rb")))
     printf("  SimpleMuxer: Cannot open file %s.\n", PESAudName);
   if (!(ttx = fopen(PESTtxName, "rb")))
@@ -395,20 +403,22 @@ bool SimpleMuxer_Open(FILE *fIn, char const* PESAudName, char const* PESTtxName,
     int EITMagic = 0;
     if (fread(&EITMagic, 4, 1, eit) && (EITMagic == 0x12345678))
       if (fread(&EITLen, 4, 1, eit))
-        if (EITLen && (EITBuffer = (byte*)malloc(EITLen + 1)))
+      {
+        if (EITLen && ((EITBuffer = (byte*)malloc(EITLen + 1))))
         {
           EITBuffer[0] = 0;  // Pointer field (=0) vor der TableID (nur im ersten TS-Paket der Tabelle, gibt den Offset an, an der die Tabelle startet, z.B. wenn noch Reste der vorherigen am Paketanfang stehen)
-          if (EITLen = fread(&EITBuffer[1], 1, EITLen, eit))
+          if ((EITLen = fread(&EITBuffer[1], 1, EITLen, eit)))
             EITLen += 1;
         }
         else
           printf("  SimpleMuxer: Cannot allocate EIT buffer.\n");
+      }
     fclose(eit);
   }
   if (!EITLen)
     printf("  SimpleMuxer: Cannot open file %s.\n", EITName);
 
-  if (PESStream_Open(&PESVideo, fIn, 500000) && PESStream_Open(&PESAudio, aud, 65536) && PESStream_Open(&PESTeletxt, ttx, 32768))
+  if (PESStream_Open(&PESVideo, fIn, 524288) && PESStream_Open(&PESAudio, aud, 65536) && PESStream_Open(&PESTeletxt, ttx, 32768))
   {
     if (!PESVideo.FileAtEnd)   { PESStream_GetNextPacket(&PESVideo); VideoPID = 100; }
     if (!PESAudio.FileAtEnd)   { PESStream_GetNextPacket(&PESAudio); }
@@ -431,13 +441,10 @@ void SimpleMuxer_DoEITOutput(void)
 
 bool SimpleMuxer_NextTSPacket(tTSPacket *pack)
 {
-  static bool           FirstRun = 2;
-  static dword          LastVidPTS = 0;
-  static byte           curPid = 0;
-  static int            StreamNr = 0;
   static byte          *p;
   static int            len;
   bool                  ret = FALSE;
+
   TRACEENTER;
 
   pack->SyncByte = 'G';
@@ -451,7 +458,7 @@ bool SimpleMuxer_NextTSPacket(tTSPacket *pack)
     pack->Adapt_Field_Exists = TRUE;
     pack->Data[0] = 183;
     memset(&pack->Data[8], 0xff, 176);
-    SetPCR((byte*)pack, (long long)(PESVideo.curPacketPTS-4500) * 2 * 300);
+    SetPCR((byte*)pack, (long long)(PESVideo.curPacketDTS-4500) * 2 * 300);
     FirstRun = 1;
 
     TRACEEXIT;
@@ -466,6 +473,7 @@ bool SimpleMuxer_NextTSPacket(tTSPacket *pack)
         break;
       else
         PESStream_GetNextPacket(&PESVideo);
+    FirstRun = 0;
   }
 
   pack->Payload_Exists = TRUE;
@@ -484,22 +492,22 @@ bool SimpleMuxer_NextTSPacket(tTSPacket *pack)
         StreamNr = 3;
         DoEITOutput = FALSE;
       }
-      else if (!PESVideo.FileAtEnd && (FirstRun || ((PESVideo.curPacketPTS <= PESAudio.curPacketPTS) && (PESVideo.curPacketPTS <= PESTeletxt.curPacketPTS))))
+      else if (!PESVideo.FileAtEnd && (/*FirstRun ||*/ ((PESVideo.curPacketDTS <= PESAudio.curPacketDTS) && (PESVideo.curPacketDTS <= PESTeletxt.curPacketDTS))))
       {
         // Start with video packet ----^
-        FirstRun = 0;
+//        FirstRun = 0;
         p = PESVideo.Buffer;
         len = PESVideo.curPacketLength;
         StreamNr = 0;
-        if (PESVideo.curPacketPTS)
+        if (LastVidDTS)
         {
           pack->Adapt_Field_Exists = TRUE;
           pack->Data[0] = 7;  // Adaptation Field Length
-          LastVidPTS = max(LastVidPTS, PESVideo.curPacketPTS);
-          SetPCR((byte*)pack, (long long)(LastVidPTS - 4500) * 2 * 300);
+          SetPCR((byte*)pack, (long long)(LastVidDTS) * 600 - 20000000);
         }
+        LastVidDTS = PESVideo.curPacketDTS;
       }
-      else if (!PESAudio.FileAtEnd && (PESAudio.curPacketPTS <= PESTeletxt.curPacketPTS))
+      else if (!PESAudio.FileAtEnd && (PESAudio.curPacketDTS <= PESTeletxt.curPacketDTS))
       {
         p = PESAudio.Buffer;
         len = PESAudio.curPacketLength;

@@ -609,7 +609,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   int                   LastBuffer = 0, LastTtxBuffer = 0;
   word                  PMTPID = 0;
   dword                 FileTimeStamp, TtxTime = 0;
-  dword                 FirstPCR = 0, LastPCR = 0, TtxPCR = 0, dPCR = 0;
+  long long             FirstPCR = 0, LastPCR = 0;
+  dword                 FirstPCRms = 0, LastPCRms = 0, TtxPCR = 0, dPCR = 0;
   int                   ReadPackets, Offset, FirstOffset;
   bool                  EITOK = FALSE, SDTOK = FALSE, TtxFound = FALSE, TtxOK = FALSE;
   time_t                StartTimeUnix;
@@ -652,9 +653,9 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       {
         while ((p < RECBUFFERENTRIES*100) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1))
           p++;
-        if (GetPTS(&Buffer[p], &FirstPCR, NULL) && (FirstPCR != 0))
+        if (GetPTS(&Buffer[p], &FirstPCRms, NULL) && (FirstPCRms != 0))
         {
-          FirstPCR = FirstPCR / 45;
+          FirstPCR = (long long)FirstPCRms * 600;
           break;
         }
         p++;
@@ -677,8 +678,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       {
         while ((p < RECBUFFERENTRIES*100) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1))
           p++;
-        if (GetPTS(&Buffer[p], &LastPCR, NULL) && (LastPCR != 0))
-          LastPCR = LastPCR / 45;
+        if (GetPTS(&Buffer[p], &LastPCRms, NULL) && (LastPCRms != 0))
+          LastPCR = (long long)LastPCRms * 600;
         p++;
       }
     }
@@ -691,7 +692,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     }
 
     // Read EPG Event file
-    if (fMDIn = fopen(MDEpgName, "rb"))
+    if ((fMDIn = fopen(MDEpgName, "rb")))
     {
       if (fread(Buffer, 1, 16384, fMDIn) > 0)
       {
@@ -706,7 +707,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     }
 
     // Read first 32 kB of Teletext PES
-    if (fMDIn = fopen(MDTtxName, "rb"))
+    if ((fMDIn = fopen(MDTtxName, "rb")))
     {
       if (fread(Buffer, 1, 32768, fMDIn) > 0)
       {
@@ -738,8 +739,6 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   
   if (MedionMode != 1)
   {
-    FirstPCR = 0; LastPCR = 0;
-
     // Read the first RECBUFFERENTRIES TS packets
 //    FilePos = ftello64(fIn);
     ReadPackets = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn);
@@ -766,7 +765,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           else break;
         }
         //Find the first PCR (for duration calculation)
-        if (GetPCRms(&p[PACKETOFFSET], &FirstPCR) && FirstPCR != 0)
+        if (GetPCR(&p[PACKETOFFSET], &FirstPCR) && FirstPCR != 0)
           break;
         p += PACKETSIZE;
       }
@@ -796,7 +795,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       {
         bool ok = TRUE;
 
-        for(j = 0; j < sizeof(PMTMask); j++)
+        for(j = 0; j < (int)sizeof(PMTMask); j++)
           if((p[j] & ANDMask[j]) != PMTMask[j])
           {
             ok = FALSE;
@@ -820,7 +819,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         //Analyse the PMT
         PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE);
 
-//        p = &Buffer[Offset + PACKETOFFSET];
+        p = &Buffer[Offset + PACKETOFFSET];
         for(i = p-Buffer; i < ReadPackets*PACKETSIZE; i+=PACKETSIZE)
         {
           PSBuffer_ProcessTSPacket(&PMTBuffer, (tTSPacket*)p);
@@ -935,7 +934,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           else break;
         }
         //Find the last PCR
-        GetPCRms(&p[PACKETOFFSET], &LastPCR);
+        GetPCR(&p[PACKETOFFSET], &LastPCR);
         p += PACKETSIZE;
       }
     }
@@ -949,15 +948,18 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   }
   else
   {
-    dPCR = DeltaPCR(FirstPCR, LastPCR);
+    FirstPCRms = (dword)(FirstPCR / 27000);
+    LastPCRms = (dword)(LastPCR / 27000);
+    dPCR = DeltaPCR(FirstPCRms, LastPCRms);
     RecInf->RecHeaderInfo.DurationMin = (int)(dPCR / 60000);
     RecInf->RecHeaderInfo.DurationSec = (dPCR / 1000) % 60;
   }
+printf("  TS: FirstPCR  = %lld (%1.1u:%2.2u:%2.2u,%3.3u), Last: %lld (%1.1u:%2.2u:%2.2u,%3.3u)\n", FirstPCR, (FirstPCRms/3600000), (FirstPCRms/60000 % 60), (FirstPCRms/1000 % 60), (FirstPCRms % 1000), LastPCR, (LastPCRms/3600000), (LastPCRms/60000 % 60), (LastPCRms/1000 % 60), (LastPCRms % 1000));
 printf("  TS: Duration  = %2.2d min %2.2d sec\n", RecInf->RecHeaderInfo.DurationMin, RecInf->RecHeaderInfo.DurationSec);
 
   if(TtxTime && TtxPCR)
   {
-    dPCR = DeltaPCR(FirstPCR, TtxPCR);
+    dPCR = DeltaPCR(FirstPCRms, TtxPCR);
     RecInf->RecHeaderInfo.StartTime = AddTime(TtxTime, -1 * (int)((dPCR/1000+59)/60));
   }
   else

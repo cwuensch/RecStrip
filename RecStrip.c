@@ -62,6 +62,7 @@
 
 //#include "PESProcessor.h"
 
+
 #if defined(_MSC_VER) && _MSC_VER < 1900
   int c99_vsnprintf(char *outBuf, size_t size, const char *format, va_list ap)
   {
@@ -121,8 +122,7 @@ static unsigned int     CurPosBlocks = 0, CurBlockBytes = 0, BlocksOneSecond = 2
 static unsigned int     NrSegments = 0, NrCopiedSegments = 0;
 long long               NrDroppedZeroStuffing=0;
 static long long        NrDroppedFillerNALU=0, NrDroppedAdaptation=0, NrDroppedNullPid=0, NrDroppedEPGPid=0, NrDroppedTxtPid=0, NrScrambledPackets=0, CurScrambledPackets=0, NrIgnoredPackets=0;
-static dword            LastTimeStamp = 0, CurTimeStep = 5000;
-static long long        LastPCR = 0, PosLastPCR = 0;
+static dword            LastPCR = 0, LastTimeStamp = 0, CurTimeStep = 1200;
 static signed char      ContinuityCtrs[MAXCONTINUITYPIDS];
 static bool             ResumeSet = FALSE;
 
@@ -455,7 +455,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     int                 len;
 
     strcpy(MDBaseName, RecFileIn);
-    if(p = strrchr(MDBaseName, '.')) *p = '\0';
+    if((p = strrchr(MDBaseName, '.'))) *p = '\0';
     if(((len = strlen(MDBaseName)) > 6) && (strncmp(&MDBaseName[len-6], "_video", 6) == 0)) MDBaseName[len-6] = '\0';
     snprintf(MDEpgName, sizeof(MDEpgName), "%s_epg.txt", MDBaseName);
     snprintf(MDTtxName, sizeof(MDTtxName), "%s_ttx.pes", MDBaseName);
@@ -911,7 +911,7 @@ int main(int argc, const char* argv[])
         }
         else if(PSBuf.ValidBuffer == 2)
         {
-          int pes_packet_length = (PSBuf.TablePacket ? (((PSBuf.Buffer1[1] & 0x03) << 8) | PSBuf.Buffer1[2]) : 6 + ((PSBuf.Buffer1[4] << 8) | PSBuf.Buffer1[5]));
+          int pes_packet_length = (PSBuf.TablePacket ? (((PSBuf.Buffer2[1] & 0x03) << 8) | PSBuf.Buffer2[2]) : 6 + ((PSBuf.Buffer2[4] << 8) | PSBuf.Buffer2[5]));
 //          if(pes_packet_length <= 6)
             pes_packet_length = PSBuf.ValidBufLen;
           fwrite(PSBuf.Buffer2, pes_packet_length, 1, out);
@@ -1000,14 +1000,10 @@ int main(int argc, const char* argv[])
     { printf("\nPacketSize cannot be changed when appending to an existing recording!\n");  ret = FALSE; }
   else if (DoSkip && (DoCut || DoMerge))
     { printf("\nSkipping of stripped recordings cannot be combined with -r, -c, -a, -m!\n");  DoSkip = FALSE; }
-  else if ((RemoveEPGStream || RemoveTeletext) && !DoStrip)
-  {
-    printf("\nRemove EPG (-e) or teletext (-t) cannot be used without stripping (-s)!\n");
-    if (ExtractTeletext && !RemoveEPGStream)  RemoveTeletext = FALSE;
-    else  ret = FALSE;
-  }
   if (DoInfoOnly && (DoStrip || DoCut || DoMerge || RebuildNav || RebuildInf || ExtractTeletext))
     { printf("\nView info only (-v) disables any other option!\n"); }
+  if (ExtractTeletext && !DoStrip)
+    { RemoveTeletext = FALSE; }
   if (MedionMode==1 && DoStrip)
     { MedionStrip = TRUE; DoStrip = FALSE; }
 
@@ -1037,8 +1033,8 @@ int main(int argc, const char* argv[])
     printf("  -s:        Strip the recording. (if OutFile specified)\n"
            "             Removes unneeded filler packets. May be combined with -c, -r, -a.\n\n");
     printf("  -ss:       Strip and skip. Same as -s, but skips already stripped files.\n\n");
-    printf("  -e:        Remove also the EPG data. (only with -s)\n\n");
-    printf("  -t:        Remove also the teletext data. (only with -s)\n");
+    printf("  -e:        Remove also the EPG data. (can be combined with -s)\n\n");
+    printf("  -t:        Remove also the teletext data. (can be combined with -s)\n");
     printf("  -tt:       Extract subtitles from teletext. (and remove it - only with -s)\n\n");
     printf("  -x:        Remove packets marked as scrambled. (flag could be wrong!)\n\n");
     printf("  -o1/-o2:   Change the packet size for output-rec: \n"
@@ -1104,7 +1100,7 @@ int main(int argc, const char* argv[])
     if (GetInfStripFlags(InfFileIn, &AlreadyStripped, NULL) && AlreadyStripped)
     {
       printf("\nInput File: %s\n", RecFileIn);
-      printf("--> already stripped.\n", RecFileIn);
+      printf("--> already stripped.\n");
       CutProcessor_Free();
       InfProcessor_Free();
       free(PendingBuf); PendingBuf = NULL;
@@ -1529,32 +1525,40 @@ int main(int argc, const char* argv[])
             }
           }
 
-          // Extract Teletext Subtitles
-          if (/*ExtractTeletext &&*/ fTtxOut && CurPID == TeletextPID)
+          if (CurPID == TeletextPID)
           {
-            dword CurPCR = 0;
-            if (GetPCRms(&Buffer[4], &CurPCR))  global_timestamp = CurPCR;
-            ProcessTtxPacket((tTSPacket*) &Buffer[4]);
+            // Extract Teletext Subtitles
+            if (/*ExtractTeletext &&*/ fTtxOut)
+            {
+              dword CurPCR = 0;
+              if (GetPCRms(&Buffer[4], &CurPCR))  global_timestamp = CurPCR;
+              ProcessTtxPacket((tTSPacket*) &Buffer[4]);
+            }
+            // Remove Teletext packets
+            if (RemoveTeletext)
+            {
+              NrDroppedTxtPid++;
+              DropCurPacket = TRUE;
+            }
+          }
+
+          // Remove EPG stream
+          else if (RemoveEPGStream && (CurPID == 0x12))
+          {
+            NrDroppedEPGPid++;
+            DropCurPacket = TRUE;
           }
 
           // STRIPPEN
-          if (DoStrip /*|| RemoveEPGStream || RemoveTeletext*/ && !DropCurPacket)
+          else if (DoStrip && !DropCurPacket)
           {
+            // Remove Null Packets
             if (CurPID == 0x1FFF)
             {
               NrDroppedNullPid++;
               DropCurPacket = TRUE;
             }
-            else if (RemoveEPGStream && CurPID == 0x12)
-            {
-              NrDroppedEPGPid++;
-              DropCurPacket = TRUE;
-            }
-            else if (RemoveTeletext && CurPID == TeletextPID)
-            {
-              NrDroppedTxtPid++;
-              DropCurPacket = TRUE;
-            }
+          
             else if (CurPID == VideoPID)
             {
               switch (ProcessTSPacket(&Buffer[4], CurrentPosition + PACKETOFFSET))
@@ -1644,28 +1648,38 @@ int main(int argc, const char* argv[])
           // PCR berechnen
           if (OutPacketSize > PACKETSIZE)  // OutPacketSize==192 and PACKETSIZE==188
           {
-            long long CurPCR = 0;
-            if (GetPCR(&Buffer[4], &CurPCR))
+            long long CurPCRfull = 0;
+            
+            if (GetPCR(&Buffer[4], &CurPCRfull))
             {
-              if (LastPCR)
-                CurTimeStep = (dword) ((CurPCR - LastPCR) / ((CurrentPosition-PosLastPCR) / PACKETSIZE));
+              dword CurPCR = (CurPCRfull & 0xffffffff);
+              
+              if (LastPCR && CurPCR > LastPCR)
+              {
+                if (MedionMode)
+                  CurTimeStep = (dword)(CurPCR - LastPCR) / ((PESVideo.curPacketLength+8+183) / 184);
+//                else
+//                  CurTimeStep = (dword)(CurPCR - LastPCR) / ((CurrentPosition-PosLastPCR) / PACKETSIZE);
+              }
+              else
+                CurTimeStep = 1200;
               LastPCR = CurPCR;
-              PosLastPCR = CurrentPosition;
-              global_timestamp = (dword) (CurPCR / 27000);
+              LastTimeStamp = CurPCR;
+              GetPCRms(&Buffer[4], &global_timestamp);  // oder global_timestamp = (CurPCRfull / 27000)
             }
-            LastTimeStamp += CurTimeStep;
-            Buffer[0] = ((byte*)&LastTimeStamp)[3];
+            else if (CurPID == VideoPID && LastTimeStamp)
+              LastTimeStamp += CurTimeStep;
+            Buffer[0] = (((byte*)&LastTimeStamp)[3] & 0x3f);
             Buffer[1] = ((byte*)&LastTimeStamp)[2];
             Buffer[2] = ((byte*)&LastTimeStamp)[1];
             Buffer[3] = ((byte*)&LastTimeStamp)[0];
           }
           else if (ExtractTeletext)
           {
-            dword CurPCR = 0;
-            if (GetPCRms(&Buffer[4], &CurPCR))
-              global_timestamp = CurPCR;
+            GetPCRms(&Buffer[4], &global_timestamp);
           }
 
+          // NAV BERECHNEN UND PAKET AUSGEBEN
           if (!DropCurPacket)
           {
             // NAV NEU BERECHNEN
@@ -1726,6 +1740,8 @@ int main(int argc, const char* argv[])
           CurrentPosition += ReadBytes;
           CurBlockBytes += ReadBytes;
         }
+
+        // KEIN PAKET-SYNCBYTE GEFUNDEN
         else if (MedionMode != 1)
         {
           if (HumaxSource && (*((dword*)&Buffer[4]) == HumaxHeaderAnfang) && ((unsigned int)CurrentPosition % HumaxHeaderIntervall == HumaxHeaderIntervall-HumaxHeaderLaenge))

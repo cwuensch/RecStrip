@@ -38,11 +38,13 @@ typedef struct
   bool                  SliceState;
   dword                 curPacketLength;
   dword                 curPayloadStart;
-  dword                 curPacketPTS;
   dword                 curPacketDTS;
   int                   NextStartCodeFound;
   bool                  FileAtEnd;
 } tPESStream;
+
+
+extern tPESStream       PESVideo;
 
 bool PESStream_Open(tPESStream *PESStream, FILE *fSource, int BufferSize);
 void PESStream_Close(tPESStream *PESStream);

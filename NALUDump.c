@@ -179,6 +179,7 @@ static void ProcessPayload_HD(unsigned char *Payload, int size, bool PayloadStar
      && (PesOffset == 1 || PesOffset == 2))
     {
       Payload[i] = 0; // Zero out PES length field
+      History = History | 0xff;
     }
 
     if (NaluFillState <= NALU_FILL)  // Within NALU fill data (NALU_FILL und NALU_INIT)
@@ -268,6 +269,7 @@ static void ProcessPayload_SD(unsigned char *Payload, int size, bool PayloadStar
      && PesOffset >= 1 && PesOffset <= 2)
     {
       Payload[i] = 0; // Zero out PES length field
+      History = History | 0xff;
     }
   }
   TRACEEXIT;
@@ -406,7 +408,7 @@ int ProcessTSPacket(unsigned char *Packet, long long FilePosition)
   else
   {
     // Adaptation Field ohne PCR verwerfen (experimentell!!)
-    if (!TSPacket->Payload_Unit_Start && TSPacket->Adapt_Field_Exists && !GetPCR(Packet, NULL))
+    if (!TSPacket->Payload_Exists && TSPacket->Adapt_Field_Exists && !GetPCR(Packet, NULL))
       return 4;
   }
 
