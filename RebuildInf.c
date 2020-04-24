@@ -645,50 +645,53 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   {
     FILE               *fMDIn = NULL;
     
-    // Read first 500 kB of Video PES (TODO: Allow also multiplexed TS input)
-    if (fread(Buffer, 1, RECBUFFERENTRIES*100 + 20, fIn) > 0)
+    if (MedionMode == 1)
     {
-      int p = 0;
-      while (p < RECBUFFERENTRIES*100)
+      // Read first 500 kB of Video PES (TODO: Allow also multiplexed TS input)
+      if (fread(Buffer, 1, RECBUFFERENTRIES*100 + 20, fIn) > 0)
       {
-        while ((p < RECBUFFERENTRIES*100) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1))
-          p++;
-        if (GetPTS(&Buffer[p], &FirstPCRms, NULL) && (FirstPCRms != 0))
+        int p = 0;
+        while (p < RECBUFFERENTRIES*100)
         {
-          FirstPCR = (long long)FirstPCRms * 600;
-          break;
-        }
-        p++;
-      }
-    }
-    else
-    {
-      printf("  Failed to read the first %d PES bytes.\n", RECBUFFERENTRIES*100);
-      free(Buffer);
-      TRACEEXIT;
-      return FALSE;
-    }
-
-    // Read last 500 kB of Video PES
-    fseeko64(fIn, RecFileSize - RECBUFFERENTRIES*100 - 20, SEEK_SET);
-    if (fread(Buffer, 1, RECBUFFERENTRIES*100 + 20, fIn) == RECBUFFERENTRIES*100 + 20)
-    {
-      int p = 0;
-      while (p < RECBUFFERENTRIES*100)
-      {
-        while ((p < RECBUFFERENTRIES*100) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1))
+          while ((p < RECBUFFERENTRIES*100) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1))
+            p++;
+          if (GetPTS(&Buffer[p], &FirstPCRms, NULL) && (FirstPCRms != 0))
+          {
+            FirstPCR = (long long)FirstPCRms * 600;
+            break;
+          }
           p++;
-        if (GetPTS(&Buffer[p], &LastPCRms, NULL) && (LastPCRms != 0))
-          LastPCR = (long long)LastPCRms * 600;
-        p++;
+        }
       }
-    }
-    else
-    {
-      printf("  Failed to read the last %d PES bytes.\n", RECBUFFERENTRIES*100);
-      free(Buffer);
-      TRACEEXIT;
-      return FALSE;
+      else
+      {
+        printf("  Failed to read the first %d PES bytes.\n", RECBUFFERENTRIES*100);
+        free(Buffer);
+        TRACEEXIT;
+        return FALSE;
+      }
+
+      // Read last 500 kB of Video PES
+      fseeko64(fIn, RecFileSize - RECBUFFERENTRIES*100 - 20, SEEK_SET);
+      if (fread(Buffer, 1, RECBUFFERENTRIES*100 + 20, fIn) == RECBUFFERENTRIES*100 + 20)
+      {
+        int p = 0;
+        while (p < RECBUFFERENTRIES*100)
+        {
+          while ((p < RECBUFFERENTRIES*100) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1))
+            p++;
+          if (GetPTS(&Buffer[p], &LastPCRms, NULL) && (LastPCRms != 0))
+            LastPCR = (long long)LastPCRms * 600;
+          p++;
+        }
+      }
+      else
+      {
+        printf("  Failed to read the last %d PES bytes.\n", RECBUFFERENTRIES*100);
+        free(Buffer);
+        TRACEEXIT;
+        return FALSE;
+      }
     }
 
     // Read EPG Event file
@@ -772,7 +775,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     }
 
 
-    // Springe in die Mitte der Aufnahme
+    // Springe in die Mitte der Aufnahme (für Medion-Analyse die folgenden 10 Zeilen auskommentieren)
     fseeko64(fIn, FilePos + ((RecFileSize/2)/PACKETSIZE * PACKETSIZE), SEEK_SET);
 
     //Read RECBUFFERENTRIES TS pakets for analysis

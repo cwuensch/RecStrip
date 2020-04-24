@@ -884,47 +884,59 @@ int main(int argc, const char* argv[])
 }*/
 
 /*{
-  tPSBuffer PSBuf;
-//  FILE *in = fopen("C:/Topfield/TAP/SamplesTMS/MovieCutter/NALU/MedionTest/SimpleMux4.ts", "rb");
-//  FILE *out = fopen("C:/Topfield/TAP/SamplesTMS/MovieCutter/NALU/MedionTest/SimpleMux4_PESvid.pes", "wb");
-  FILE *in = fopen("C:/Topfield/TAP/SamplesTMS/MovieCutter/NALU/Twilight/Stadt Land Kunst.rec", "rb");
-  FILE *out = fopen("C:/Topfield/TAP/SamplesTMS/MovieCutter/NALU/Twilight/Stadt_epg.pes", "wb");
-  bool LastBuffer = 0;
+  #define DEMUXINFILE "C:/Topfield/TAP/SamplesTMS/MovieCutter/NALU/MedionTest/Test_neu/ohneStrip_A/nach_Strip3/Schnauzen.ts"
+  #define DEMUXOUT    "C:/Topfield/TAP/SamplesTMS/MovieCutter/NALU/MedionTest/Test_neu/ohneStrip_A/nach_Strip3"
+  int PIDs[4]        = { 100, 101, 102, 18 };
+  int i;
 
+  char* OutFiles[4]  = { DEMUXOUT "/Demux_video.pes", DEMUXOUT "/Demux_audio1.pes", DEMUXOUT "/Demux_ttx.pes", DEMUXOUT "/Demux_epg.pes" };
+  bool LastBuffer[4] = { 0, 0, 0, 0 };
+
+  tPSBuffer Streams[4];
+  FILE *in = fopen(DEMUXINFILE, "rb");
+  FILE *out[4] = { fopen(OutFiles[0], "wb"), fopen(OutFiles[1], "wb"), fopen(OutFiles[2], "wb"), fopen(OutFiles[3], "wb") };
   PACKETSIZE = 192;
   PACKETOFFSET = 4;
-  PSBuffer_Init(&PSBuf, 18, 500000, TRUE);
+
+  PSBuffer_Init(&Streams[0], PIDs[0], 524288, FALSE);
+  PSBuffer_Init(&Streams[1], PIDs[1], 65536, FALSE);
+  PSBuffer_Init(&Streams[2], PIDs[2], 32768, FALSE);
+  PSBuffer_Init(&Streams[3], PIDs[3], 32768, TRUE);
 
   while (fread(&Buffer[4-PACKETOFFSET], PACKETSIZE, 1, in))
   {
     if (Buffer[4] == 'G')
     {
-      PSBuffer_ProcessTSPacket(&PSBuf, (tTSPacket*)(&Buffer[4]));
-      if(PSBuf.ValidBuffer != LastBuffer)
+      for (i = 0; i < 4; i++)
       {
-        if(PSBuf.ValidBuffer == 1)
+        PSBuffer_ProcessTSPacket(&Streams[i], (tTSPacket*)(&Buffer[4]));
+
+        if(Streams[i].ValidBuffer != LastBuffer[i])
         {
-          int pes_packet_length = (PSBuf.TablePacket ? (((PSBuf.Buffer1[1] & 0x03) << 8) | PSBuf.Buffer1[2]) : 6 + ((PSBuf.Buffer1[4] << 8) | PSBuf.Buffer1[5]));
-//          if(pes_packet_length <= 6)
-            pes_packet_length = PSBuf.ValidBufLen;
-          fwrite(PSBuf.Buffer1, pes_packet_length, 1, out);
+          byte* pBuffer = NULL;
+          if (Streams[i].ValidBuffer == 1) pBuffer = Streams[i].Buffer1;
+          else if (Streams[i].ValidBuffer == 2) pBuffer = Streams[i].Buffer2;
+          if (pBuffer)
+          {
+            int pes_packet_length = (Streams[i].TablePacket ? (((pBuffer[1] & 0x03) << 8) | pBuffer[2]) : 6 + ((pBuffer[4] << 8) | pBuffer[5]));
+//            if(pes_packet_length <= 6)
+              pes_packet_length = Streams[i].ValidBufLen;
+            fwrite(pBuffer, pes_packet_length, 1, out[i]);
+          }
+          LastBuffer[i] = Streams[i].ValidBuffer;
         }
-        else if(PSBuf.ValidBuffer == 2)
-        {
-          int pes_packet_length = (PSBuf.TablePacket ? (((PSBuf.Buffer2[1] & 0x03) << 8) | PSBuf.Buffer2[2]) : 6 + ((PSBuf.Buffer2[4] << 8) | PSBuf.Buffer2[5]));
-//          if(pes_packet_length <= 6)
-            pes_packet_length = PSBuf.ValidBufLen;
-          fwrite(PSBuf.Buffer2, pes_packet_length, 1, out);
-        }
-        LastBuffer = PSBuf.ValidBuffer;
       }
     }
   }
-  if (PSBuf.BufferPtr)
-    fwrite(PSBuf.pBuffer-PSBuf.BufferPtr, 1, PSBuf.BufferPtr, out);
-  fclose(out);
+
+  for (i = 0; i < 4; i++)
+  {
+    if (Streams[i].BufferPtr)
+      fwrite(Streams[i].pBuffer-Streams[i].BufferPtr, 1, Streams[i].BufferPtr, out[i]);
+    fclose(out[i]);
+    PSBuffer_Reset(&Streams[i]);
+  }
   fclose(in);
-  PSBuffer_Reset(&PSBuf);
   exit(17);
 }*/
 
@@ -943,8 +955,9 @@ int main(int argc, const char* argv[])
       case 's':   DoStrip = TRUE;
                   DoSkip = (argv[1][2] == 's'); break;
       case 'e':   RemoveEPGStream = TRUE; break;
-      case 't':   RemoveTeletext = TRUE;  
-                  ExtractTeletext = (argv[1][2] == 't'); break;
+      case 't':   if(argv[1][2] == 't') ExtractTeletext = TRUE;
+                  else RemoveTeletext = TRUE;
+                  break;
       case 'x':   RemoveScrambled = TRUE; break;
       case 'o':   OutPacketSize   = (argv[1][2] == '2') ? 188 : 192; break;
       case 'M':   MedionMode = TRUE;      break;
@@ -1002,8 +1015,8 @@ int main(int argc, const char* argv[])
     { printf("\nSkipping of stripped recordings cannot be combined with -r, -c, -a, -m!\n");  DoSkip = FALSE; }
   if (DoInfoOnly && (DoStrip || DoCut || DoMerge || RebuildNav || RebuildInf || ExtractTeletext))
     { printf("\nView info only (-v) disables any other option!\n"); }
-  if (ExtractTeletext && !DoStrip)
-    { RemoveTeletext = FALSE; }
+  if (ExtractTeletext && DoStrip)
+    { RemoveTeletext = TRUE; }
   if (MedionMode==1 && DoStrip)
     { MedionStrip = TRUE; DoStrip = FALSE; }
 
@@ -1035,11 +1048,13 @@ int main(int argc, const char* argv[])
     printf("  -ss:       Strip and skip. Same as -s, but skips already stripped files.\n\n");
     printf("  -e:        Remove also the EPG data. (can be combined with -s)\n\n");
     printf("  -t:        Remove also the teletext data. (can be combined with -s)\n");
-    printf("  -tt:       Extract subtitles from teletext. (and remove it - only with -s)\n\n");
+    printf("  -tt:       Extract subtitles from teletext. (together with -s: also remove)\n\n");
     printf("  -x:        Remove packets marked as scrambled. (flag could be wrong!)\n\n");
     printf("  -o1/-o2:   Change the packet size for output-rec: \n"
            "             1: PacketSize = 192 Bytes, 2: PacketSize = 188 Bytes.\n\n");
-    printf("  -v:        View rec information only. Disables any other option.\n");
+    printf("  -v:        View rec information only. Disables any other option.\n\n");
+    printf("  -M:        Medion Mode: Multiplexes 4 separate PES-Files into output.\n");
+    printf("             (With InFile=<name>_video.pes, _audio1, _ttx, _epg are used.)\n");
     printf("\nExamples:\n---------\n");
     printf("  RecStrip 'RecFile.rec'                     RebuildNav.\n\n");
     printf("  RecStrip -s -e InFile.rec OutFile.rec      Strip recording.\n\n");
@@ -1198,14 +1213,16 @@ int main(int argc, const char* argv[])
   if ((HumaxSource || MedionMode==1) && fOut && DoMerge != 1)
   {
     printf("  Generate new PAT/PMT for Humax/Medion recording.\n");
-    if (MedionMode == 1)
+    if (!HumaxSource)
       GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, VideoPID, 101, TeletextPID, STREAM_VIDEO_MPEG2, STREAM_AUDIO_MPEG2);
-    if (fwrite(&PATPMTBuf[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut))
-      PositionOffset -= OutPacketSize;
-    if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], OutPacketSize, 1, fOut))
-      PositionOffset -= OutPacketSize;
-
-    if (MedionMode == 1)
+    if (HumaxSource || MedionStrip)  // dann einmalig einfügen (sonst wird es eh eingefügt)
+    {
+      if (fwrite(&PATPMTBuf[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut))
+        PositionOffset -= OutPacketSize;
+      if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], OutPacketSize, 1, fOut))
+        PositionOffset -= OutPacketSize;
+    }
+    if (!HumaxSource)
       AnalysePMT(&PATPMTBuf[201], (TYPE_RecHeader_TMSS*)InfBuffer);
     NrContinuityPIDs = 0;
   }
@@ -1442,12 +1459,12 @@ int main(int argc, const char* argv[])
 
 
       // PACKET EINLESEN
-      if (MedionMode)
+      if (MedionMode == 1)
       {
         ReadBytes = (SimpleMuxer_NextTSPacket((tTSPacket*) &Buffer[4])) ? PACKETSIZE : 0;
-        if (fOut && !MedionStrip && ((CurrentPosition-PositionOffset) % (10000*PACKETSIZE) == 0))
+        if (fOut && !MedionStrip && ((CurrentPosition-PositionOffset) % (5000*OutPacketSize) == 0))
         {
-          // Wiederhole PAT/PMT und EIT Information alle 10000 Pakete (verzichte darauf, wenn MedionStrip aktiv)
+          // Wiederhole PAT/PMT und EIT Information alle 5000 Pakete (verzichte darauf, wenn MedionStrip aktiv)
           ((tTSPacket*) &PATPMTBuf[4])->ContinuityCount++;
           ((tTSPacket*) &PATPMTBuf[196])->ContinuityCount++;
           if (fwrite(&PATPMTBuf[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut))
@@ -1656,7 +1673,7 @@ int main(int argc, const char* argv[])
               
               if (LastPCR && CurPCR > LastPCR)
               {
-                if (MedionMode)
+                if (MedionMode == 1)
                   CurTimeStep = (dword)(CurPCR - LastPCR) / ((PESVideo.curPacketLength+8+183) / 184);
 //                else
 //                  CurTimeStep = (dword)(CurPCR - LastPCR) / ((CurrentPosition-PosLastPCR) / PACKETSIZE);
