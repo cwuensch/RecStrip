@@ -165,7 +165,7 @@ typedef struct
   TYPE_TpInfo_TMSS      TransponderInfo;
   TYPE_Bookmark_Info    BookmarkInfo;
 //  byte                  HeaderUnused[8192];
-//  tPreviewImages        PreviewImages;
+  tPreviewImages        PreviewImages;
 } TYPE_RecHeader_TMSS;
 
 typedef struct
@@ -177,7 +177,7 @@ typedef struct
   TYPE_TpInfo_TMSC      TransponderInfo;
   TYPE_Bookmark_Info    BookmarkInfo;
 //  byte                  HeaderUnused[8192];
-//  tPreviewImages        PreviewImages;
+  tPreviewImages        PreviewImages;
 } TYPE_RecHeader_TMSC;
 
 typedef struct
@@ -189,7 +189,7 @@ typedef struct
   TYPE_TpInfo_TMST      TransponderInfo;
   TYPE_Bookmark_Info    BookmarkInfo;
 //  byte                  HeaderUnused[8192];
-//  tPreviewImages        PreviewImages;
+  tPreviewImages        PreviewImages;
 } TYPE_RecHeader_TMST;
 
 #endif
