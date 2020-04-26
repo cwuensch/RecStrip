@@ -34,16 +34,16 @@ static inline byte BCD2BIN(byte BCD)
   return (BCD >> 4) * 10 + (BCD & 0x0f);
 }
 
+static inline time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec)
+{ 
+  return (MJD(TFTimeStamp) - 0x9e8b) * 86400 + HOUR(TFTimeStamp) * 3600 + MINUTE(TFTimeStamp) * 60 + TFTimeSec;
+}
+
 static inline tPVRTime Unix2TFTime(dword UnixTimeStamp, byte *const outSec)
 {
   if (outSec)
     *outSec = UnixTimeStamp % 60;
   return (DATE ( (UnixTimeStamp / 86400) + 0x9e8b, (UnixTimeStamp / 3600) % 24, (UnixTimeStamp / 60) % 60 ));
-}
-
-static inline time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec)
-{ 
-  return (MJD(TFTimeStamp) - 0x9e8b) * 86400 + HOUR(TFTimeStamp) * 3600 + MINUTE(TFTimeStamp) * 60 + TFTimeSec;
 }
 
 tPVRTime AddTimeSec(tPVRTime pvrTime, byte pvrTimeSec, byte *const outSec, int addSeconds)
@@ -974,7 +974,7 @@ printf("  TS: Duration  = %2.2d min %2.2d sec\n", RecInf->RecHeaderInfo.Duration
   {
     tzset();
     RecInf->RecHeaderInfo.StartTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, -1*timezone);  // GMT+1
-    if (!RecInf->EventInfo.StartTime || (MJD(FileTimeStamp) - MJD(RecInf->EventInfo.StartTime) <= 1))
+    if (!RecInf->EventInfo.StartTime || (MJD(FileTimeStamp) - MJD(RecInf->RecHeaderInfo.StartTime) <= 1))
       RecInf->RecHeaderInfo.StartTime = AddTimeSec(FileTimeStamp, FileTimeSec, &RecInf->RecHeaderInfo.StartTimeSec, -1 * (int)(RecInf->RecHeaderInfo.DurationMin*60 + RecInf->RecHeaderInfo.DurationSec));
   }
   StartTimeUnix = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec) - 3600;

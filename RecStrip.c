@@ -858,7 +858,7 @@ int main(int argc, const char* argv[])
   time_t                startTime, endTime;
   int                   CurSeg = 0, i = 0, n = 0, k;
   dword                 j = 0;
-  dword                 Percent = 0, BlocksSincePercent = 0;
+  dword                 PMTCounter = 0, Percent = 0, BlocksSincePercent = 0;
   bool                  AbortProcess = FALSE;
   bool                  ret = TRUE;
 
@@ -1217,19 +1217,19 @@ int main(int argc, const char* argv[])
   if(DoMerge == 1) GoToEndOfNav(NULL);
 
   // Spezialanpassung Humax / Medion
-  if ((HumaxSource || MedionMode==1) && fOut && DoMerge != 1)
+  if ((HumaxSource || MedionMode==1) && fOut /*&& DoMerge != 1*/)
   {
     printf("  Generate new PAT/PMT for Humax/Medion recording.\n");
     if (!HumaxSource)
       GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, 0x100, VideoPID, 101, TeletextPID, STREAM_VIDEO_MPEG2, STREAM_AUDIO_MPEG2);
-    if (HumaxSource || MedionStrip)  // dann einmalig einfügen (sonst wird es eh eingefügt)
+    if (DoStrip || MedionStrip)  // dann einmalig einfügen (sonst wird es eh eingefügt)
     {
       if (fwrite(&PATPMTBuf[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut))
         PositionOffset -= OutPacketSize;
       if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], OutPacketSize, 1, fOut))
         PositionOffset -= OutPacketSize;
     }
-    if (!HumaxSource)
+    if (MedionMode == 1)
     {
       ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID = 0x100;
       AnalysePMT(&PATPMTBuf[201], (TYPE_RecHeader_TMSS*)InfBuffer);
@@ -1471,7 +1471,7 @@ int main(int argc, const char* argv[])
       // PACKET EINLESEN
       if (MedionMode == 1)
       {
-        if (fOut && !MedionStrip && ((CurrentPosition-PositionOffset) % (5000*OutPacketSize) == 0))
+        if (fOut && !MedionStrip && (PMTCounter >= 5000))
         {
           // Wiederhole PAT/PMT und EIT Information alle 5000 Pakete (verzichte darauf, wenn MedionStrip aktiv)
           ((tTSPacket*) &PATPMTBuf[4])->ContinuityCount++;
@@ -1481,6 +1481,7 @@ int main(int argc, const char* argv[])
           if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], OutPacketSize, 1, fOut))
             PositionOffset -= OutPacketSize;
           SimpleMuxer_DoEITOutput();
+          PMTCounter = 0;
         }
         ReadBytes = (SimpleMuxer_NextTSPacket((tTSPacket*) &Buffer[4])) ? PACKETSIZE : 0;
       }
@@ -1766,6 +1767,7 @@ int main(int argc, const char* argv[])
 
           CurrentPosition += ReadBytes;
           CurBlockBytes += ReadBytes;
+          if(MedionMode==1) PMTCounter++;
         }
 
         // KEIN PAKET-SYNCBYTE GEFUNDEN
@@ -1777,7 +1779,8 @@ int main(int argc, const char* argv[])
             PositionOffset += HumaxHeaderLaenge;
             CurrentPosition += HumaxHeaderLaenge;
             CurBlockBytes += HumaxHeaderLaenge;
-/*            if (fOut)
+            PMTCounter++;
+            if (fOut && !DoStrip && (PMTCounter >= 30))
             {
               ((tTSPacket*) &PATPMTBuf[4])->ContinuityCount++;
               ((tTSPacket*) &PATPMTBuf[196])->ContinuityCount++;
@@ -1785,7 +1788,8 @@ int main(int argc, const char* argv[])
                 PositionOffset -= OutPacketSize;
               if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], OutPacketSize, 1, fOut))
                 PositionOffset -= OutPacketSize;
-            }  */
+              PMTCounter = 0;
+            }
           }
           else if ((unsigned long long) CurrentPosition + 4096 >= RecFileSize)
           {
