@@ -4,18 +4,35 @@
 //#include                "type.h"
 //#include                "../../../../../Topfield/FireBirdLib/flash/FBLib_flash.h"
 
+#ifdef _MSC_VER
+  #define __attribute__(a)
+#endif
+
+#pragma pack(push, 1)
+typedef struct
+{
+  byte                  Minute;
+  byte                  Hour;
+  word                  Mjd;
+}__attribute__((packed)) tPVRTime;
+#pragma pack(pop)
+
 typedef struct
 {
   char                  Magic[4];               // "TFrc"
   word                  Version;                // 0x8000
-  byte                  Unknown1;
+  byte                  StartTimeSec;           // added by CW (hopefully not used by Toppy)
   byte                  rbn_HasBeenScanned:1;
   byte                  iqt_UnencryptedRec:1;
   byte                  rs_HasBeenStripped:1;
   byte                  rs_ToBeStripped:1;
   byte                  rs_ScrambledPackets:1;
   byte                  Reserved:3;
-  dword                 StartTime;
+  union
+  {
+    dword               StartTime;
+    tPVRTime            StartTime2;
+  } tStartTime;
   word                  DurationMin;
   word                  DurationSec;
 
@@ -64,8 +81,16 @@ typedef struct
   byte                  DurationMin;
   byte                  DurationHour;
   dword                 EventID;
-  dword                 StartTime;
-  dword                 EndTime;
+  union
+  {
+    dword               StartTime;
+    tPVRTime            StartTime2;
+  } tStartTime;
+  union
+  {
+    dword               EndTime;
+    tPVRTime            EndTime2;
+  } tEndTime;
   byte                  RunningStatus;
   byte                  EventNameLength;
   byte                  ParentalRate;

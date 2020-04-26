@@ -25,50 +25,8 @@ byte                   *InfBuffer = NULL;    // dirty hack: erreichbar machen fü
 TYPE_RecHeader_Info    *RecHeaderInfo = NULL;
 static char             OldEventText[1025];
 static size_t           InfSize = 0;
-dword                   OrigStartTime = 0;
-
-
-dword AddTime(dword pvrDate, int addMinutes)  //add minutes to the day
-{
-  word                  day;
-  short                 hour, min;
-
-  TRACEENTER;
-  day = (pvrDate >> 16) & 0xffff;
-  hour= (pvrDate >> 8) & 0xff;
-  min = (pvrDate) & 0xff;
-
-  min += addMinutes % 60;
-  if(min < 0)
-  {
-    hour-=1;
-    min+=60;
-  }
-  else if(min > 59)
-  {
-    hour+=1;
-    min-=60;
-  }
-
-  hour += addMinutes / 60;
-
-  if(hour < 0)
-  {
-    day-=1;
-    hour+=24;
-  }
-  else
-  {
-    while(hour > 23)
-    {
-      day+=1;
-      hour-=24;
-    }
-  }
-
-  TRACEEXIT;
-  return ((day<<16)|(hour<<8)|min);
-}
+tPVRTime                OrigStartTime;
+byte                    OrigStartSec = 0;
 
 
 // ----------------------------------------------
@@ -158,7 +116,8 @@ bool InfProcessor_Init()
 
   //Allocate and clear the buffer
 //  memset(OldEventText, 0, sizeof(OldEventText));
-  OrigStartTime = 0;
+  memset(&OrigStartTime, 0, sizeof(tPVRTime));
+  OrigStartSec = 0;
   RecHeaderInfo = NULL;
   BookmarkInfo  = NULL;
   
@@ -215,8 +174,11 @@ bool LoadInfFromRec(char *AbsRecFileName)
     if (!Result) HumaxSource = FALSE;
   }
   
-  if(!OrigStartTime)
-    OrigStartTime = ((TYPE_RecHeader_Info*)InfBuffer)->StartTime;
+  if(!OrigStartTime.Mjd)
+  {
+    OrigStartTime = ((TYPE_RecHeader_Info*)InfBuffer)->tStartTime.StartTime2;
+    OrigStartSec  = ((TYPE_RecHeader_Info*)InfBuffer)->StartTimeSec;
+  }
   fclose(fIn);
   TRACEEXIT;
   return Result;
@@ -406,7 +368,10 @@ if (RecHeaderInfo->Reserved != 0)
 //  if (Result)
   {
     if(FirstTime)
-      OrigStartTime = RecHeaderInfo->StartTime;
+    {
+      OrigStartTime = RecHeaderInfo->tStartTime.StartTime2;
+      OrigStartSec  = RecHeaderInfo->StartTimeSec;
+    }
     InfDuration = 60*RecHeaderInfo->DurationMin + RecHeaderInfo->DurationSec;
   }
 
@@ -575,7 +540,7 @@ bool SaveInfFile(const char *AbsDestInf, const char *AbsSourceInf)
     fInfOut = fopen(AbsDestInf, "wb");
   if(fInfOut)
   {
-    if (DoStrip && !DoMerge)
+    if ((DoStrip && !DoMerge) || MedionStrip)
     {
       RecHeaderInfo->rs_ToBeStripped = FALSE;
       RecHeaderInfo->rs_HasBeenStripped = TRUE;
@@ -588,7 +553,7 @@ bool SaveInfFile(const char *AbsDestInf, const char *AbsSourceInf)
       RecHeaderInfo->DurationSec = ((NewDurationMS + 500) / 1000) % 60;
     }
     if (NewStartTimeOffset)
-      RecHeaderInfo->StartTime = AddTime(OrigStartTime, NewStartTimeOffset / 60000);
+      RecHeaderInfo->tStartTime.StartTime2 = AddTimeSec(OrigStartTime, OrigStartSec, &RecHeaderInfo->StartTimeSec, NewStartTimeOffset / 1000);
     Result = (fwrite(InfBuffer, 1, InfSize, fInfOut) == InfSize);
 
     // Öffne die Source-inf (falls vorhanden)

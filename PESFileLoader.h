@@ -51,7 +51,7 @@ void PESStream_Close(tPESStream *PESStream);
 byte* PESStream_GetNextPacket(tPESStream *PESStream);
 
 
-void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word VideoPID, word AudioPID, word TtxPID, tVideoStreamFmt VideoType, tAudioStreamFmt AudioType);
+void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPID, word VideoPID, word AudioPID, word TtxPID, tVideoStreamFmt VideoType, tAudioStreamFmt AudioType);
 
 bool SimpleMuxer_Open(FILE *fIn, char const* PESAudName, char const* PESTtxName, char const* EITName);
 void SimpleMuxer_DoEITOutput(void);

@@ -3,7 +3,17 @@ RecStrip 3.0:  NEU:
                  - PCRs werden auf DTS-Basis neu berechnet
                  - bekannte Einschränkung: PCR muss auf der Video-PID übertragen werden! (sonst müsste die PMT neu codiert werden)
 
-RecStrip 2.6:  ?
+RecStrip 2.5b: NEU:
+                 - alle Topfield TimeStamps werden sekundengenau berechnet
+                 - StartTime-Sekundenangabe wird in der inf (Byte 0x06) gespeichert(!)
+
+               BUGFIXES:
+                 - aus Teletext ermittelte Programme Identification wurde nicht in inf eingetragen
+                 - Medion-Mode: fehlerhafte Nullbyte-Entfernung durch zu späte Prüfung auf Video-PES
+                 - Medion-Mode: PMT-PID wurde nicht in inf eingetragen
+                 - Medion-Mode: PAT/PMT und EIT wurden am Anfang doppelt geschrieben
+                 - Medion-Mode: RecFileSize wird aus Summe der Elementar-PES gebildet (korrekte Fortschrittsanzeige)
+                 - End-Meldung: Anzahl der geschriebenen Pakete korrekt berechnet (OutPacketSize)
 
 RecStrip 2.5:  NEU:
                  - EPG- und Teletext-Entfernung auch ohne Strippen möglich

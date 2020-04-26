@@ -154,9 +154,9 @@ bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize)
   return ret;
 }
 
-static inline time_t TF2UnixTime(dword TFTimeStamp)
+static inline time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec)
 { 
-  return ((TFTimeStamp >> 16) - 0x9e8b) * 86400 + ((TFTimeStamp >> 8 ) & 0xff) * 3600 + (TFTimeStamp & 0xff) * 60;
+  return (TFTimeStamp.Mjd - 0x9e8b) * 86400 + TFTimeStamp.Hour * 3600 + TFTimeStamp.Minute * 60 + TFTimeSec;
 }
 
 static bool HDD_SetFileDateTime(char const *AbsFileName, time_t NewDateTime)
@@ -414,7 +414,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
   byte                 *InfBuffer_bak = InfBuffer;
   TYPE_RecHeader_Info  *RecHeaderInfo_bak = RecHeaderInfo;
   TYPE_Bookmark_Info   *BookmarkInfo_bak = BookmarkInfo;
-  dword                 OrigStartTime_bak = OrigStartTime;
+  tPVRTime              OrigStartTime_bak = OrigStartTime;
 //  dword                 InfDuration_bak = InfDuration;
 
   tSegmentMarker2      *SegmentMarker_bak = SegmentMarker;
@@ -470,6 +470,13 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
   {
     int FileOffset = 0, PS;
     setvbuf(fIn, NULL, _IOFBF, BUFSIZE);
+
+    if (MedionMode == 1)
+    {
+      unsigned long long AddSize = 0;
+      if(HDD_GetFileSize(MDAudName, &AddSize))  RecFileSize += AddSize;
+      if(HDD_GetFileSize(MDTtxName, &AddSize))  RecFileSize += AddSize;
+    }
     RecFileBlocks = CalcBlockSize(RecFileSize);
     BlocksOnePercent = (RecFileBlocks * NrInputFiles) / 100;
 
@@ -808,13 +815,13 @@ bool CloseOutputFiles(void)
 
 
   if (*RecFileOut)
-    HDD_SetFileDateTime(RecFileOut, TF2UnixTime(RecHeaderInfo->StartTime));
+    HDD_SetFileDateTime(RecFileOut, TF2UnixTime(RecHeaderInfo->tStartTime.StartTime2, RecHeaderInfo->StartTimeSec));
   if (*InfFileOut)
-    HDD_SetFileDateTime(InfFileOut, TF2UnixTime(RecHeaderInfo->StartTime));
+    HDD_SetFileDateTime(InfFileOut, TF2UnixTime(RecHeaderInfo->tStartTime.StartTime2, RecHeaderInfo->StartTimeSec));
   if (*NavFileOut)
-    HDD_SetFileDateTime(NavFileOut, TF2UnixTime(RecHeaderInfo->StartTime));
+    HDD_SetFileDateTime(NavFileOut, TF2UnixTime(RecHeaderInfo->tStartTime.StartTime2, RecHeaderInfo->StartTimeSec));
   if (*CutFileOut)
-    HDD_SetFileDateTime(CutFileOut, TF2UnixTime(RecHeaderInfo->StartTime));
+    HDD_SetFileDateTime(CutFileOut, TF2UnixTime(RecHeaderInfo->tStartTime.StartTime2, RecHeaderInfo->StartTimeSec));
 
 
   if (*NavFileOld)
@@ -884,8 +891,8 @@ int main(int argc, const char* argv[])
 }*/
 
 /*{
-  #define DEMUXINFILE "C:/Topfield/TAP/SamplesTMS/MovieCutter/NALU/MedionTest/Test_neu/ohneStrip_A/nach_Strip3/Schnauzen.ts"
-  #define DEMUXOUT    "C:/Topfield/TAP/SamplesTMS/MovieCutter/NALU/MedionTest/Test_neu/ohneStrip_A/nach_Strip3"
+  #define DEMUXINFILE "H:/MedionTest/mitStrip/Schnauzen2.ts"
+  #define DEMUXOUT    "H:/MedionTest/mitStrip"
   int PIDs[4]        = { 100, 101, 102, 18 };
   int i;
 
@@ -1214,7 +1221,7 @@ int main(int argc, const char* argv[])
   {
     printf("  Generate new PAT/PMT for Humax/Medion recording.\n");
     if (!HumaxSource)
-      GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, VideoPID, 101, TeletextPID, STREAM_VIDEO_MPEG2, STREAM_AUDIO_MPEG2);
+      GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, 0x100, VideoPID, 101, TeletextPID, STREAM_VIDEO_MPEG2, STREAM_AUDIO_MPEG2);
     if (HumaxSource || MedionStrip)  // dann einmalig einfügen (sonst wird es eh eingefügt)
     {
       if (fwrite(&PATPMTBuf[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut))
@@ -1223,7 +1230,10 @@ int main(int argc, const char* argv[])
         PositionOffset -= OutPacketSize;
     }
     if (!HumaxSource)
+    {
+      ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID = 0x100;
       AnalysePMT(&PATPMTBuf[201], (TYPE_RecHeader_TMSS*)InfBuffer);
+    }
     NrContinuityPIDs = 0;
   }
 
@@ -1461,7 +1471,6 @@ int main(int argc, const char* argv[])
       // PACKET EINLESEN
       if (MedionMode == 1)
       {
-        ReadBytes = (SimpleMuxer_NextTSPacket((tTSPacket*) &Buffer[4])) ? PACKETSIZE : 0;
         if (fOut && !MedionStrip && ((CurrentPosition-PositionOffset) % (5000*OutPacketSize) == 0))
         {
           // Wiederhole PAT/PMT und EIT Information alle 5000 Pakete (verzichte darauf, wenn MedionStrip aktiv)
@@ -1473,6 +1482,7 @@ int main(int argc, const char* argv[])
             PositionOffset -= OutPacketSize;
           SimpleMuxer_DoEITOutput();
         }
+        ReadBytes = (SimpleMuxer_NextTSPacket((tTSPacket*) &Buffer[4])) ? PACKETSIZE : 0;
       }
       else
         ReadBytes = fread(&Buffer[4-PACKETOFFSET], 1, PACKETSIZE, fIn);
@@ -1914,11 +1924,11 @@ int main(int argc, const char* argv[])
   if (NrCopiedSegments > 0)
     printf("\nSegments: %d of %d segments copied.\n", NrCopiedSegments, NrSegments);
   if (MedionMode == 1)
-    NrDroppedZeroStuffing = NrDroppedZeroStuffing / PACKETSIZE;
+    NrDroppedZeroStuffing = NrDroppedZeroStuffing / 184;
 
   {
     long long NrDroppedAll = NrDroppedFillerNALU + NrDroppedZeroStuffing + NrDroppedAdaptation + NrDroppedNullPid + NrDroppedEPGPid + NrDroppedTxtPid + (RemoveScrambled ? NrScrambledPackets : 0);
-    if(DoCut!=2) NrPackets = (CurrentPosition-PositionOffset) / PACKETSIZE;
+    if(DoCut!=2) NrPackets = (CurrentPosition-PositionOffset) / OutPacketSize;
     NrPackets += NrDroppedAll;
     if (NrPackets > 0)
       printf("\nPackets: %lld, FillerNALUs: %lld (%lld%%), ZeroByteStuffing: %lld (%lld%%), AdaptationFields: %lld (%lld%%), NullPackets: %lld (%lld%%), EPG: %lld (%lld%%), Teletext: %lld (%lld%%), Scrambled: %lld (%lld%%), Dropped (all): %lld (%lld%%)\n", NrPackets, NrDroppedFillerNALU, NrDroppedFillerNALU*100/NrPackets, NrDroppedZeroStuffing, NrDroppedZeroStuffing*100/NrPackets, NrDroppedAdaptation, NrDroppedAdaptation*100/NrPackets, NrDroppedNullPid, NrDroppedNullPid*100/NrPackets, NrDroppedEPGPid, NrDroppedEPGPid*100/NrPackets, NrDroppedTxtPid, NrDroppedTxtPid*100/NrPackets, NrScrambledPackets, NrScrambledPackets*100/NrPackets, NrDroppedAll, NrDroppedAll*100/NrPackets);

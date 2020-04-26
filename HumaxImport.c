@@ -114,8 +114,8 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
   PAT->LastSection      = 0;
   PAT->ProgramNr1       = 0;
   PAT->ProgramNr2       = 1;
-  PAT->PMTPID1          = 0;
-  PAT->PMTPID2          = 0xb1;  // ??
+  PAT->PMTPID1          = 0x01;
+  PAT->PMTPID2          = 0x00;  // ??
   PAT->Reserved111      = 7;
 //  PAT->CRC32            = rocksoft_crc((byte*)PAT, sizeof(tTSPAT)-4);    // CRC: 0x786989a2
 //  PAT->CRC32            = crc32m((byte*)PAT, sizeof(tTSPAT)-4);          // CRC: 0x786989a2
@@ -128,8 +128,8 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
   PMT = (tTSPMT*) &Packet->Data[1 /*+ Packet->Data[0]*/];
 
   Packet->SyncByte      = 'G';
-  Packet->PID1          = 0;
-  Packet->PID2          = 0xb1;
+  Packet->PID1          = 0x01;
+  Packet->PID2          = 0x00;
   Packet->Payload_Unit_Start = 1;
   Packet->Payload_Exists = 1;
 
@@ -174,13 +174,15 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
           TeletextPID = HumaxHeader.Allgemein.TeletextPID;
           RecInf->ServiceInfo.ServiceType     = 0;  // SVC_TYPE_Tv
           RecInf->ServiceInfo.ServiceID       = 1;
-          RecInf->ServiceInfo.PMTPID          = 0xb1;
+          RecInf->ServiceInfo.PMTPID          = 0x100;
           RecInf->ServiceInfo.VideoPID        = VideoPID;
           RecInf->ServiceInfo.PCRPID          = VideoPID;
           RecInf->ServiceInfo.AudioPID        = HumaxHeader.Allgemein.AudioPID;
           RecInf->ServiceInfo.VideoStreamType = STREAM_VIDEO_MPEG2;
           RecInf->ServiceInfo.AudioStreamType = STREAM_AUDIO_MPEG2;
-          RecInf->RecHeaderInfo.StartTime     = (HumaxHeader.Allgemein.Datum << 16) | ((HumaxHeader.Allgemein.Zeit/60) << 8) | (HumaxHeader.Allgemein.Zeit%60);
+          RecInf->RecHeaderInfo.tStartTime.StartTime2.Mjd    = HumaxHeader.Allgemein.Datum;
+          RecInf->RecHeaderInfo.tStartTime.StartTime2.Hour   = HumaxHeader.Allgemein.Zeit / 60;
+          RecInf->RecHeaderInfo.tStartTime.StartTime2.Minute = HumaxHeader.Allgemein.Zeit % 60;
           RecInf->RecHeaderInfo.DurationMin   = (word)(HumaxHeader.Allgemein.Dauer / 60);
           RecInf->RecHeaderInfo.DurationSec   = (word)(HumaxHeader.Allgemein.Dauer % 60);
           ContinuityPIDs[0] = VideoPID;

@@ -183,6 +183,10 @@ byte* PESStream_GetNextPacket(tPESStream *PESStream)
   memmove(&PESStream->Buffer[3], &PESStream->Buffer[PESStream->NextStartCodeFound], 3);
   curPacket = (tPESHeader*) PESStream->Buffer;
 
+  // Extract attributes (1)
+  PESStream->PesId = curPacket->StreamID;
+  PESStream->isVideo = (PESStream->PesId >= 0xe0 && PESStream->PesId <= 0xef);
+
   // Ermittle L‰nge
   PESStream->curPacketLength = (curPacket->PacketLength1 * 256) + curPacket->PacketLength2;
   if (PESStream->curPacketLength > 0)
@@ -191,9 +195,7 @@ byte* PESStream_GetNextPacket(tPESStream *PESStream)
 
   PESStream->NextStartCodeFound = PESStream_FindPacketStart(PESStream, PESStream->curPacketLength);
 
-  // Extract attributes
-  PESStream->PesId = curPacket->StreamID;
-  PESStream->isVideo = (PESStream->PesId >= 0xe0 && PESStream->PesId <= 0xef);
+  // Extract attributes (2)
   PESStream->curPayloadStart = (curPacket->OptionalHeaderMarker == 2) ? 9 + curPacket->PESHeaderLen : 6;
   PESStream->SliceState = FALSE;
 
@@ -250,7 +252,7 @@ static int            StreamNr = 0;
 
 
 // Generate a PMT
-void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word VideoPID, word AudioPID, word TtxPID, tVideoStreamFmt VideoType, tAudioStreamFmt AudioType)
+void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPID, word VideoPID, word AudioPID, word TtxPID, tVideoStreamFmt VideoType, tAudioStreamFmt AudioType)
 {
   tTSPacket          *Packet = NULL;
   tTSPAT             *PAT = NULL;
@@ -284,9 +286,9 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word VideoPID, word A
   PAT->SectionNr        = 0;
   PAT->LastSection      = 0;
   PAT->ProgramNr1       = ServiceID / 256;
-  PAT->ProgramNr2       = (ServiceID & 0xff);;
-  PAT->PMTPID1          = 0;
-  PAT->PMTPID2          = 0xb1;  // ??
+  PAT->ProgramNr2       = (ServiceID & 0xff);
+  PAT->PMTPID1          = PMTPID / 256;
+  PAT->PMTPID2          = (PMTPID & 0xff);
   PAT->Reserved111      = 7;
   PAT->CRC32            = crc32m_tab((byte*)PAT, sizeof(tTSPAT)-4);      // CRC: 0x786989a2
   
@@ -297,8 +299,8 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word VideoPID, word A
   PMT = (tTSPMT*) &Packet->Data[1 /*+ Packet->Data[0]*/];
 
   Packet->SyncByte      = 'G';
-  Packet->PID1          = 0;
-  Packet->PID2          = 0xb1;
+  Packet->PID1          = PMTPID / 256;
+  Packet->PID2          = (PMTPID & 0xff);
   Packet->Payload_Unit_Start = 1;
   Packet->Payload_Exists = 1;
 
@@ -391,10 +393,16 @@ bool SimpleMuxer_Open(FILE *fIn, char const* PESAudName, char const* PESTtxName,
   LastVidDTS = 0;
   curPid = 0;
   StreamNr = 0;
+  DoEITOutput = MedionStrip;  // ohne Strip wird es eh regelm‰ﬂig ausgegeben
 
-  if (!(aud = fopen(PESAudName, "rb")))
+  if ((aud = fopen(PESAudName, "rb")))
+    setvbuf(aud, NULL, _IOFBF, BUFSIZE);
+  else
     printf("  SimpleMuxer: Cannot open file %s.\n", PESAudName);
-  if (!(ttx = fopen(PESTtxName, "rb")))
+
+  if ((ttx = fopen(PESTtxName, "rb")))
+    setvbuf(ttx, NULL, _IOFBF, BUFSIZE);
+  else
     printf("  SimpleMuxer: Cannot open file %s.\n", PESTtxName);
 
   EITLen = 0;
