@@ -156,7 +156,7 @@ bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize)
 
 static inline time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec)
 { 
-  return (TFTimeStamp.Mjd - 0x9e8b) * 86400 + TFTimeStamp.Hour * 3600 + TFTimeStamp.Minute * 60 + TFTimeSec;
+  return (MJD(TFTimeStamp) - 0x9e8b) * 86400 + HOUR(TFTimeStamp) * 3600 + MINUTE(TFTimeStamp) * 60 + TFTimeSec;
 }
 
 static bool HDD_SetFileDateTime(char const *AbsFileName, time_t NewDateTime)
@@ -815,13 +815,13 @@ bool CloseOutputFiles(void)
 
 
   if (*RecFileOut)
-    HDD_SetFileDateTime(RecFileOut, TF2UnixTime(RecHeaderInfo->tStartTime.StartTime2, RecHeaderInfo->StartTimeSec));
+    HDD_SetFileDateTime(RecFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
   if (*InfFileOut)
-    HDD_SetFileDateTime(InfFileOut, TF2UnixTime(RecHeaderInfo->tStartTime.StartTime2, RecHeaderInfo->StartTimeSec));
+    HDD_SetFileDateTime(InfFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
   if (*NavFileOut)
-    HDD_SetFileDateTime(NavFileOut, TF2UnixTime(RecHeaderInfo->tStartTime.StartTime2, RecHeaderInfo->StartTimeSec));
+    HDD_SetFileDateTime(NavFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
   if (*CutFileOut)
-    HDD_SetFileDateTime(CutFileOut, TF2UnixTime(RecHeaderInfo->tStartTime.StartTime2, RecHeaderInfo->StartTimeSec));
+    HDD_SetFileDateTime(CutFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
 
 
   if (*NavFileOld)

@@ -8,14 +8,21 @@
   #define __attribute__(a)
 #endif
 
-#pragma pack(push, 1)
+#define DATE(mjd, h, m) ((dword) (((mjd) << 16) | ((h) << 8) | (m)))
+#define MJD(d) ((word) (((d) >> 16) & 0xffff))
+#define TIME(d) ((word) ((d) & 0xffff))
+#define HOUR(d) ((byte) (((d) >> 8) & 0xff))
+#define MINUTE(d) ((byte) ((d) & 0xff))
+
+typedef dword           tPVRTime;
+/*#pragma pack(push, 1)
 typedef struct
 {
   byte                  Minute;
   byte                  Hour;
   word                  Mjd;
 }__attribute__((packed)) tPVRTime;
-#pragma pack(pop)
+#pragma pack(pop) */
 
 typedef struct
 {
@@ -28,11 +35,7 @@ typedef struct
   byte                  rs_ToBeStripped:1;
   byte                  rs_ScrambledPackets:1;
   byte                  Reserved:3;
-  union
-  {
-    dword               StartTime;
-    tPVRTime            StartTime2;
-  } tStartTime;
+  tPVRTime              StartTime;
   word                  DurationMin;
   word                  DurationSec;
 
@@ -81,16 +84,8 @@ typedef struct
   byte                  DurationMin;
   byte                  DurationHour;
   dword                 EventID;
-  union
-  {
-    dword               StartTime;
-    tPVRTime            StartTime2;
-  } tStartTime;
-  union
-  {
-    dword               EndTime;
-    tPVRTime            EndTime2;
-  } tEndTime;
+  tPVRTime              StartTime;
+  tPVRTime              EndTime;
   byte                  RunningStatus;
   byte                  EventNameLength;
   byte                  ParentalRate;

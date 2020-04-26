@@ -180,9 +180,7 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
           RecInf->ServiceInfo.AudioPID        = HumaxHeader.Allgemein.AudioPID;
           RecInf->ServiceInfo.VideoStreamType = STREAM_VIDEO_MPEG2;
           RecInf->ServiceInfo.AudioStreamType = STREAM_AUDIO_MPEG2;
-          RecInf->RecHeaderInfo.tStartTime.StartTime2.Mjd    = HumaxHeader.Allgemein.Datum;
-          RecInf->RecHeaderInfo.tStartTime.StartTime2.Hour   = HumaxHeader.Allgemein.Zeit / 60;
-          RecInf->RecHeaderInfo.tStartTime.StartTime2.Minute = HumaxHeader.Allgemein.Zeit % 60;
+          RecInf->RecHeaderInfo.StartTime     = DATE(HumaxHeader.Allgemein.Datum, HumaxHeader.Allgemein.Zeit / 60, HumaxHeader.Allgemein.Zeit % 60);
           RecInf->RecHeaderInfo.DurationMin   = (word)(HumaxHeader.Allgemein.Dauer / 60);
           RecInf->RecHeaderInfo.DurationSec   = (word)(HumaxHeader.Allgemein.Dauer % 60);
           ContinuityPIDs[0] = VideoPID;

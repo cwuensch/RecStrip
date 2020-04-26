@@ -25,7 +25,7 @@ byte                   *InfBuffer = NULL;    // dirty hack: erreichbar machen fü
 TYPE_RecHeader_Info    *RecHeaderInfo = NULL;
 static char             OldEventText[1025];
 static size_t           InfSize = 0;
-tPVRTime                OrigStartTime;
+tPVRTime                OrigStartTime = 0;
 byte                    OrigStartSec = 0;
 
 
@@ -116,7 +116,7 @@ bool InfProcessor_Init()
 
   //Allocate and clear the buffer
 //  memset(OldEventText, 0, sizeof(OldEventText));
-  memset(&OrigStartTime, 0, sizeof(tPVRTime));
+  OrigStartTime = 0;
   OrigStartSec = 0;
   RecHeaderInfo = NULL;
   BookmarkInfo  = NULL;
@@ -174,9 +174,9 @@ bool LoadInfFromRec(char *AbsRecFileName)
     if (!Result) HumaxSource = FALSE;
   }
   
-  if(!OrigStartTime.Mjd)
+  if(!OrigStartTime)
   {
-    OrigStartTime = ((TYPE_RecHeader_Info*)InfBuffer)->tStartTime.StartTime2;
+    OrigStartTime = ((TYPE_RecHeader_Info*)InfBuffer)->StartTime;
     OrigStartSec  = ((TYPE_RecHeader_Info*)InfBuffer)->StartTimeSec;
   }
   fclose(fIn);
@@ -369,7 +369,7 @@ if (RecHeaderInfo->Reserved != 0)
   {
     if(FirstTime)
     {
-      OrigStartTime = RecHeaderInfo->tStartTime.StartTime2;
+      OrigStartTime = RecHeaderInfo->StartTime;
       OrigStartSec  = RecHeaderInfo->StartTimeSec;
     }
     InfDuration = 60*RecHeaderInfo->DurationMin + RecHeaderInfo->DurationSec;
@@ -553,7 +553,7 @@ bool SaveInfFile(const char *AbsDestInf, const char *AbsSourceInf)
       RecHeaderInfo->DurationSec = ((NewDurationMS + 500) / 1000) % 60;
     }
     if (NewStartTimeOffset)
-      RecHeaderInfo->tStartTime.StartTime2 = AddTimeSec(OrigStartTime, OrigStartSec, &RecHeaderInfo->StartTimeSec, NewStartTimeOffset / 1000);
+      RecHeaderInfo->StartTime = AddTimeSec(OrigStartTime, OrigStartSec, &RecHeaderInfo->StartTimeSec, NewStartTimeOffset / 1000);
     Result = (fwrite(InfBuffer, 1, InfSize, fInfOut) == InfSize);
 
     // Öffne die Source-inf (falls vorhanden)

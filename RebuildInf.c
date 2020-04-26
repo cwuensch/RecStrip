@@ -36,23 +36,22 @@ static inline byte BCD2BIN(byte BCD)
 
 static inline tPVRTime Unix2TFTime(dword UnixTimeStamp, byte *const outSec)
 {
-  tPVRTime ret;
-  ret.Mjd = (UnixTimeStamp / 86400) + 0x9e8b;
-  ret.Hour = (UnixTimeStamp / 3600) % 24;
-  ret.Minute = (UnixTimeStamp / 60) % 60;
   if (outSec)
     *outSec = UnixTimeStamp % 60;
-  return ret;
+  return (DATE ( (UnixTimeStamp / 86400) + 0x9e8b, (UnixTimeStamp / 3600) % 24, (UnixTimeStamp / 60) % 60 ));
 }
 
 static inline time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec)
 { 
-  return (TFTimeStamp.Mjd - 0x9e8b) * 86400 + TFTimeStamp.Hour * 3600 + TFTimeStamp.Minute * 60 + TFTimeSec;
+  return (MJD(TFTimeStamp) - 0x9e8b) * 86400 + HOUR(TFTimeStamp) * 3600 + MINUTE(TFTimeStamp) * 60 + TFTimeSec;
 }
 
 tPVRTime AddTimeSec(tPVRTime pvrTime, byte pvrTimeSec, byte *const outSec, int addSeconds)
 {
-  int Day = pvrTime.Mjd, Hour = pvrTime.Hour, Min = pvrTime.Minute, Sec = pvrTimeSec;
+  word  Day  = MJD(pvrTime);
+  short Hour = HOUR(pvrTime);
+  short Min  = MINUTE(pvrTime);  
+  short Sec = pvrTimeSec;
   TRACEENTER;
 
 /*
@@ -80,13 +79,10 @@ tPVRTime AddTimeSec(tPVRTime pvrTime, byte pvrTimeSec, byte *const outSec, int a
 
   Day += (addSeconds / 86400);
 
-  pvrTime.Mjd = Day;
-  pvrTime.Hour = Hour;
-  pvrTime.Minute = Min;
-  if(outSec) *outSec = Sec;
+  if(outSec) *outSec = (byte)Sec;
 
   TRACEEXIT;
-  return (pvrTime);
+  return (DATE(Day, Hour, Min));
 }
 
 
@@ -410,12 +406,12 @@ static bool AnalyseEIT(byte *Buffer, word ServiceID, TYPE_RecHeader_TMSS *RecInf
             RecInf->EventInfo.ServiceID = ServiceID;
             RecInf->EventInfo.EventID = EventID;
             RecInf->EventInfo.RunningStatus = Event->RunningStatus;
-            RecInf->EventInfo.tStartTime.StartTime = (Event->StartTime[0] << 24) | (Event->StartTime[1] << 16) | (BCD2BIN(Event->StartTime[2]) << 8) | BCD2BIN(Event->StartTime[3]);
+            RecInf->EventInfo.StartTime = (Event->StartTime[0] << 24) | (Event->StartTime[1] << 16) | (BCD2BIN(Event->StartTime[2]) << 8) | BCD2BIN(Event->StartTime[3]);
             RecInf->EventInfo.DurationHour = BCD2BIN(Event->DurationSec[0]);
             RecInf->EventInfo.DurationMin = BCD2BIN(Event->DurationSec[1]);
-            RecInf->EventInfo.tEndTime.EndTime2 = AddTimeSec(RecInf->EventInfo.tStartTime.StartTime2, 0, NULL, RecInf->EventInfo.DurationHour * 3600 + RecInf->EventInfo.DurationMin * 60);            
+            RecInf->EventInfo.EndTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, RecInf->EventInfo.DurationHour * 3600 + RecInf->EventInfo.DurationMin * 60);            
 //            StartTimeUnix = 86400*((RecInf->EventInfo.StartTime>>16) - 40587) + 3600*BCD2BIN(Event->StartTime[2]) + 60*BCD2BIN(Event->StartTime[3]);
-            StartTimeUnix = TF2UnixTime(RecInf->EventInfo.tStartTime.StartTime2, 0);
+            StartTimeUnix = TF2UnixTime(RecInf->EventInfo.StartTime, 0);
 printf("  TS: EvtStart  = %s", ctime(&StartTimeUnix));
 
             NameLen = ShortDesc->EvtNameLen;
@@ -572,9 +568,7 @@ static bool AnalyseTtx(byte *PSBuffer, tPVRTime *const TtxTime, byte *const TtxT
 
             if (TtxTime)
             {
-              TtxTime->Mjd = mjd;
-              TtxTime->Hour = localH;
-              TtxTime->Minute = localM;
+              *TtxTime = DATE(mjd, localH, localM);
               if(TtxTimeSec) *TtxTimeSec = localS;
             }
 
@@ -617,7 +611,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   byte                 *Buffer = NULL;
   int                   LastBuffer = 0, LastTtxBuffer = 0;
   word                  PMTPID = 0;
-  tPVRTime              FileTimeStamp, TtxTime;
+  tPVRTime              FileTimeStamp, TtxTime = 0;
   byte                  FileTimeSec, TtxTimeSec = 0;
   long long             FirstPCR = 0, LastPCR = 0;
   dword                 FirstPCRms = 0, LastPCRms = 0, TtxPCR = 0, dPCR = 0;
@@ -971,19 +965,19 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 printf("  TS: FirstPCR  = %lld (%1.1u:%2.2u:%2.2u,%3.3u), Last: %lld (%1.1u:%2.2u:%2.2u,%3.3u)\n", FirstPCR, (FirstPCRms/3600000), (FirstPCRms/60000 % 60), (FirstPCRms/1000 % 60), (FirstPCRms % 1000), LastPCR, (LastPCRms/3600000), (LastPCRms/60000 % 60), (LastPCRms/1000 % 60), (LastPCRms % 1000));
 printf("  TS: Duration  = %2.2d min %2.2d sec\n", RecInf->RecHeaderInfo.DurationMin, RecInf->RecHeaderInfo.DurationSec);
 
-  if(TtxTime.Mjd && TtxPCR)
+  if(TtxTime && TtxPCR)
   {
     dPCR = DeltaPCR(FirstPCRms, TtxPCR);
-    RecInf->RecHeaderInfo.tStartTime.StartTime2 = AddTimeSec(TtxTime, TtxTimeSec, &RecInf->RecHeaderInfo.StartTimeSec, -1 * (int)(dPCR/1000));
+    RecInf->RecHeaderInfo.StartTime = AddTimeSec(TtxTime, TtxTimeSec, &RecInf->RecHeaderInfo.StartTimeSec, -1 * (int)(dPCR/1000));
   }
   else
   {
     tzset();
-    RecInf->RecHeaderInfo.tStartTime.StartTime2 = AddTimeSec(RecInf->EventInfo.tStartTime.StartTime2, 0, NULL, -1*timezone);  // GMT+1
-    if (!RecInf->EventInfo.tStartTime.StartTime || (FileTimeStamp.Mjd - RecInf->EventInfo.tStartTime.StartTime2.Mjd <= 1))
-      RecInf->RecHeaderInfo.tStartTime.StartTime2 = AddTimeSec(FileTimeStamp, FileTimeSec, &RecInf->RecHeaderInfo.StartTimeSec, -1 * (int)(RecInf->RecHeaderInfo.DurationMin*60 + RecInf->RecHeaderInfo.DurationSec));
+    RecInf->RecHeaderInfo.StartTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, -1*timezone);  // GMT+1
+    if (!RecInf->EventInfo.StartTime || (MJD(FileTimeStamp) - MJD(RecInf->EventInfo.StartTime) <= 1))
+      RecInf->RecHeaderInfo.StartTime = AddTimeSec(FileTimeStamp, FileTimeSec, &RecInf->RecHeaderInfo.StartTimeSec, -1 * (int)(RecInf->RecHeaderInfo.DurationMin*60 + RecInf->RecHeaderInfo.DurationSec));
   }
-  StartTimeUnix = TF2UnixTime(RecInf->RecHeaderInfo.tStartTime.StartTime2, RecInf->RecHeaderInfo.StartTimeSec) - 3600;
+  StartTimeUnix = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec) - 3600;
 printf("  TS: StartTime = %s", (ctime(&StartTimeUnix)));
 
   free(Buffer);
