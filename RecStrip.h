@@ -121,12 +121,12 @@ extern word             ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs;
 extern bool             isHDVideo, AlreadyStripped, HumaxSource;
 extern bool             DoStrip, DoSkip, RemoveEPGStream, RemoveTeletext, RebuildNav, RebuildInf, DoInfoOnly, MedionMode, MedionStrip;
 extern int              DoCut, DoMerge;
-extern long long        NrDroppedZeroStuffing;
 extern int              dbg_DelBytesSinceLastVid;
 
 extern TYPE_Bookmark_Info *BookmarkInfo, BookmarkInfo_In;
 extern tSegmentMarker2 *SegmentMarker,  *SegmentMarker_In;       //[0]=Start of file, [x]=End of file
 extern int              NrSegmentMarker, NrSegmentMarker_In;
+extern long long        NrDroppedZeroStuffing;
 extern int              ActiveSegment;
 extern dword            InfDuration, NewDurationMS, NewStartTimeOffset;
 

@@ -393,7 +393,7 @@ bool SimpleMuxer_Open(FILE *fIn, char const* PESAudName, char const* PESTtxName,
   LastVidDTS = 0;
   curPid = 0;
   StreamNr = 0;
-  DoEITOutput = MedionStrip;  // ohne Strip wird es eh regelm‰ﬂig ausgegeben
+  DoEITOutput = TRUE;
 
   if ((aud = fopen(PESAudName, "rb")))
     setvbuf(aud, NULL, _IOFBF, BUFSIZE);

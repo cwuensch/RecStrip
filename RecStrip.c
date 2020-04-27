@@ -1222,16 +1222,16 @@ int main(int argc, const char* argv[])
     printf("  Generate new PAT/PMT for Humax/Medion recording.\n");
     if (!HumaxSource)
       GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, 0x100, VideoPID, 101, TeletextPID, STREAM_VIDEO_MPEG2, STREAM_AUDIO_MPEG2);
-    if (DoStrip || MedionStrip)  // dann einmalig einfügen (sonst wird es eh eingefügt)
-    {
-      if (fwrite(&PATPMTBuf[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut))
-        PositionOffset -= OutPacketSize;
-      if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], OutPacketSize, 1, fOut))
-        PositionOffset -= OutPacketSize;
-    }
+
+    if (fwrite(&PATPMTBuf[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut))
+      PositionOffset -= OutPacketSize;
+    if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], OutPacketSize, 1, fOut))
+      PositionOffset -= OutPacketSize;
+
     if (MedionMode == 1)
     {
       ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID = 0x100;
+      printf("  TS: PMTPID=%hu", 0x100);
       AnalysePMT(&PATPMTBuf[201], (TYPE_RecHeader_TMSS*)InfBuffer);
     }
     NrContinuityPIDs = 0;
@@ -1471,7 +1471,7 @@ int main(int argc, const char* argv[])
       // PACKET EINLESEN
       if (MedionMode == 1)
       {
-        if (fOut && !MedionStrip && (PMTCounter >= 5000))
+        if (fOut && !MedionStrip && (PMTCounter >= 4998))
         {
           // Wiederhole PAT/PMT und EIT Information alle 5000 Pakete (verzichte darauf, wenn MedionStrip aktiv)
           ((tTSPacket*) &PATPMTBuf[4])->ContinuityCount++;

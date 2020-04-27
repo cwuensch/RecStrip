@@ -350,7 +350,7 @@ static bool AnalyseSDT(byte *PSBuffer, word ServiceID, TYPE_RecHeader_TMSS *RecI
       {
         if ((pService->ServiceID1 * 256 | pService->ServiceID2) == ServiceID)
         {
-//          memset(RecInf->ServiceInfo.ServiceName, 0, sizeof(RecInf->ServiceInfo.ServiceName));
+          memset(RecInf->ServiceInfo.ServiceName, 0, sizeof(RecInf->ServiceInfo.ServiceName));
           strncpy(RecInf->ServiceInfo.ServiceName, (&pServiceDesc->ProviderName + pServiceDesc->ProviderNameLen+1), min((&pServiceDesc->ProviderNameLen)[pServiceDesc->ProviderNameLen+1], sizeof(RecInf->ServiceInfo.ServiceName)-1));
 printf("  TS: SvcName   = %s\n", RecInf->ServiceInfo.ServiceName);
           TRACEEXIT;
@@ -554,16 +554,8 @@ static bool AnalyseTtx(byte *PSBuffer, tPVRTime *const TtxTime, byte *const TtxT
             {
               // negative offset polarity
               localM -= (timeOffsetH2 * 30);
-              while (localM < 0) 
-              {
-                localM += 60;
-                localH--;
-              }
-              while (localH < 0)
-              {
-                localH += 24;
-                mjd--;
-              }
+              while (localM < 0)  { localM += 60; localH--; }
+              while (localH < 0)  { localH += 24; mjd--; }
             }
 
             if (TtxTime)
