@@ -412,7 +412,7 @@ static bool AnalyseEIT(byte *Buffer, word ServiceID, TYPE_RecHeader_TMSS *RecInf
             RecInf->EventInfo.EndTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, RecInf->EventInfo.DurationHour * 3600 + RecInf->EventInfo.DurationMin * 60);            
 //            StartTimeUnix = 86400*((RecInf->EventInfo.StartTime>>16) - 40587) + 3600*BCD2BIN(Event->StartTime[2]) + 60*BCD2BIN(Event->StartTime[3]);
             StartTimeUnix = TF2UnixTime(RecInf->EventInfo.StartTime, 0);
-printf("  TS: EvtStart  = %s", ctime(&StartTimeUnix));
+printf("  TS: EvtStart  = %s\n", TimeStr(&StartTimeUnix));
 
             NameLen = ShortDesc->EvtNameLen;
             TextLen = Buffer[p + sizeof(tShortEvtDesc) + NameLen];
@@ -472,6 +472,7 @@ static bool AnalyseTtx(byte *PSBuffer, tPVRTime *const TtxTime, byte *const TtxT
   int                   magazin, row;
   byte                  b1, b2;
   byte                 *data_block = NULL;
+  time_t                DisplayTime;
 
   TRACEENTER;
 
@@ -582,8 +583,9 @@ static bool AnalyseTtx(byte *PSBuffer, tPVRTime *const TtxTime, byte *const TtxT
               strncpy(ServiceName, programme, SvcNameLen-1);
             }
 printf("  TS: Teletext Programme Identification Data: '%s'\n", programme);
-printf("  TS: Teletext date: mjd=%u, %02hhu:%02hhu:%02hhu\n", mjd, localH, localM, localS);
-            
+DisplayTime = TF2UnixTime(*TtxTime, *TtxTimeSec);
+printf("  TS: Teletext date: %s\n", TimeStr(&DisplayTime));
+//printf("  TS: Teletext date: mjd=%u, %02hhu:%02hhu:%02hhu\n", mjd, localH, localM, localS);
             TRACEEXIT;
             return TRUE;
           }
@@ -970,7 +972,7 @@ printf("  TS: Duration  = %2.2d min %2.2d sec\n", RecInf->RecHeaderInfo.Duration
       RecInf->RecHeaderInfo.StartTime = AddTimeSec(FileTimeStamp, FileTimeSec, &RecInf->RecHeaderInfo.StartTimeSec, -1 * (int)(RecInf->RecHeaderInfo.DurationMin*60 + RecInf->RecHeaderInfo.DurationSec));
   }
   StartTimeUnix = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec) - 3600;
-printf("  TS: StartTime = %s", (ctime(&StartTimeUnix)));
+printf("  TS: StartTime = %s\n", (TimeStr(&StartTimeUnix)));
 
   free(Buffer);
   TRACEEXIT;
