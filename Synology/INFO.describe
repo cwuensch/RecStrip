@@ -1,0 +1,18 @@
+### Needed key ###
+package="RecStrip"
+version="2.4a"
+description="RecStrip enables conversion, examination and size reduction of Topfield TMS recordings."
+maintainer="Christian Wünsch"
+arch="rtd1296"
+
+### Optional key ###
+displayname="RecStrip package"
+firmware="6.1"
+support_url="http://forum.tms-taps.net/viewtopic.php?t=50754"
+distributor="Christian Wünsch"
+distributor_url="http://mc.tms-taps.net/RecStripper"
+thirdparty="yes"
+startable="no"
+silent_install="no"
+silent_upgrade="no"
+silent_uninstall="no"
