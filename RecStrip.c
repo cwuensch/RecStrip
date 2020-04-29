@@ -1780,7 +1780,7 @@ int main(int argc, const char* argv[])
             CurrentPosition += HumaxHeaderLaenge;
             CurBlockBytes += HumaxHeaderLaenge;
             PMTCounter++;
-            if (fOut && !DoStrip && (PMTCounter >= 30))
+            if (fOut && !DoStrip && (PMTCounter >= 29))
             {
               ((tTSPacket*) &PATPMTBuf[4])->ContinuityCount++;
               ((tTSPacket*) &PATPMTBuf[196])->ContinuityCount++;

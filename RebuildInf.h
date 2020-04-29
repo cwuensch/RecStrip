@@ -187,6 +187,7 @@ typedef struct
 //extern FILE            *fIn;  // dirty Hack
 
 tPVRTime AddTimeSec(tPVRTime pvrTime, byte pvrTimeSec, byte *const outSec, int addSeconds);
+void InitInfStruct(TYPE_RecHeader_TMSS *RecInf);
 bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf);
 bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf);
 

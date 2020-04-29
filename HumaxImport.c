@@ -88,6 +88,7 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
   bool                  ret = TRUE;
 
   TRACEENTER;
+  InitInfStruct(RecInf);
   memset(PATPMTBuf, 0, 2*192);
 
   Packet = (tTSPacket*) &PATPMTBuf[4];
@@ -184,6 +185,12 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
           RecInf->RecHeaderInfo.DurationMin   = (word)(HumaxHeader.Allgemein.Dauer / 60);
           RecInf->RecHeaderInfo.DurationSec   = (word)(HumaxHeader.Allgemein.Dauer % 60);
           ContinuityPIDs[0] = VideoPID;
+        }
+        else if (i == 2)
+        {
+          char *p = strrchr(HumaxHeader.Allgemein.Dateiname, '_');
+          if(p) *p = '\0';
+          strncpy(RecInf->ServiceInfo.ServiceName, HumaxHeader.Allgemein.Dateiname, sizeof(RecInf->ServiceInfo.ServiceName));
         }
         if (HumaxHeader.ZusInfoID == HumaxBookmarksID)
         {

@@ -140,7 +140,7 @@ static byte hamming_decode(byte b)
 
 
 //------ RebuildINF
-static void InitInfStruct(TYPE_RecHeader_TMSS *RecInf)
+void InitInfStruct(TYPE_RecHeader_TMSS *RecInf)
 {
   TRACEENTER;
   memset(RecInf, 0, sizeof(TYPE_RecHeader_TMSS));
@@ -629,7 +629,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     return FALSE;
   }
 
-  InitInfStruct(RecInf);
+  if (!HumaxSource)
+    InitInfStruct(RecInf);
 
   //Get the time stamp of the .rec. We assume that this is the time when the recording has finished
   {
@@ -789,53 +790,56 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     Offset = FindNextPacketStart(Buffer, ReadPackets*PACKETSIZE);
     if (Offset >= 0)
     {
-      //Find a PMT packet to get its PID
-      p = &Buffer[Offset + PACKETOFFSET];
-
-      for(i = Offset; i < ReadPackets*PACKETSIZE; i+=PACKETSIZE)
+      if (!HumaxSource)
       {
-        bool ok = TRUE;
+        //Find a PMT packet to get its PID
+        p = &Buffer[Offset + PACKETOFFSET];
 
-        for(j = 0; j < (int)sizeof(PMTMask); j++)
-          if((p[j] & ANDMask[j]) != PMTMask[j])
+        for(i = Offset; i < ReadPackets*PACKETSIZE; i+=PACKETSIZE)
+        {
+          bool ok = TRUE;
+
+          for(j = 0; j < (int)sizeof(PMTMask); j++)
+            if((p[j] & ANDMask[j]) != PMTMask[j])
+            {
+              ok = FALSE;
+              break;
+            }
+
+          if(ok)
           {
-            ok = FALSE;
+            PMTPID = ((p[1] << 8) | p[2]) & 0x1fff;
             break;
           }
 
-        if(ok)
-        {
-          PMTPID = ((p[1] << 8) | p[2]) & 0x1fff;
-          break;
-        }
-
-        p += PACKETSIZE;
-      }
-
-      if(PMTPID)
-      {
-        RecInf->ServiceInfo.PMTPID = PMTPID;
-        printf("  TS: PMTPID=%hu", PMTPID);
-
-        //Analyse the PMT
-        PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE);
-
-        p = &Buffer[Offset + PACKETOFFSET];
-        for(i = p-Buffer; i < ReadPackets*PACKETSIZE; i+=PACKETSIZE)
-        {
-          PSBuffer_ProcessTSPacket(&PMTBuffer, (tTSPacket*)p);
-          if(PMTBuffer.ValidBuffer != 0)
-            break;
           p += PACKETSIZE;
         }
 
-        AnalysePMT(PMTBuffer.Buffer1, /*PMTBuffer.ValidBufLen,*/ RecInf);
-        PSBuffer_Reset(&PMTBuffer);
-      }
-      else
-      {
-        printf("  Failed to locate a PMT packet.\n");
-        ret = FALSE;
+        if(PMTPID)
+        {
+          RecInf->ServiceInfo.PMTPID = PMTPID;
+          printf("  TS: PMTPID=%hu", PMTPID);
+
+          //Analyse the PMT
+          PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE);
+
+          p = &Buffer[Offset + PACKETOFFSET];
+          for(i = p-Buffer; i < ReadPackets*PACKETSIZE; i+=PACKETSIZE)
+          {
+            PSBuffer_ProcessTSPacket(&PMTBuffer, (tTSPacket*)p);
+            if(PMTBuffer.ValidBuffer != 0)
+              break;
+            p += PACKETSIZE;
+          }
+
+          AnalysePMT(PMTBuffer.Buffer1, /*PMTBuffer.ValidBufLen,*/ RecInf);
+          PSBuffer_Reset(&PMTBuffer);
+        }
+        else
+        {
+          printf("  Failed to locate a PMT packet.\n");
+          ret = FALSE;
+        }
       }
 
       //If we're here, it should be possible to find the associated EPG event
@@ -847,7 +851,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           PSBuffer_Init(&TtxBuffer, TeletextPID, 16384, FALSE);
         LastBuffer = 0; LastTtxBuffer = 0;
 
-//        fseeko64(fIn, FilePos + ((RecFileSize/2)/PACKETSIZE * PACKETSIZE) + Offset, SEEK_SET);
+        fseeko64(fIn, FilePos + ((RecFileSize/2)/PACKETSIZE * PACKETSIZE) + Offset, SEEK_SET);
         for(j = 0; j < 10; j++)
         {
           ReadPackets = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn);
@@ -969,7 +973,15 @@ printf("  TS: Duration  = %2.2d min %2.2d sec\n", RecInf->RecHeaderInfo.Duration
     tzset();
     RecInf->RecHeaderInfo.StartTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, -1*timezone);  // GMT+1
     if (!RecInf->EventInfo.StartTime || (MJD(FileTimeStamp) - MJD(RecInf->RecHeaderInfo.StartTime) <= 1))
-      RecInf->RecHeaderInfo.StartTime = AddTimeSec(FileTimeStamp, FileTimeSec, &RecInf->RecHeaderInfo.StartTimeSec, -1 * (int)(RecInf->RecHeaderInfo.DurationMin*60 + RecInf->RecHeaderInfo.DurationSec));
+    {
+      if (HumaxSource)
+        RecInf->RecHeaderInfo.StartTime = AddTimeSec(FileTimeStamp, FileTimeSec, &RecInf->RecHeaderInfo.StartTimeSec, -1 * (int)(RecInf->RecHeaderInfo.DurationMin*60 + RecInf->RecHeaderInfo.DurationSec));
+      else
+      {
+        RecInf->RecHeaderInfo.StartTime = FileTimeStamp;
+        RecInf->RecHeaderInfo.StartTimeSec = FileTimeSec;
+      }
+    }
   }
   StartTimeUnix = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec) - 3600;
 printf("  TS: StartTime = %s\n", (TimeStr(&StartTimeUnix)));

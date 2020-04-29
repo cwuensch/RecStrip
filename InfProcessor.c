@@ -166,13 +166,14 @@ bool LoadInfFromRec(char *AbsRecFileName)
     TRACEEXIT;
     return FALSE;
   }
-  Result = GenerateInfFile(fIn, (TYPE_RecHeader_TMSS*)InfBuffer);
 
   if (HumaxSource)
   {
     Result = LoadHumaxHeader(fIn, PATPMTBuf, (TYPE_RecHeader_TMSS*)InfBuffer);
     if (!Result) HumaxSource = FALSE;
   }
+
+  Result = GenerateInfFile(fIn, (TYPE_RecHeader_TMSS*)InfBuffer);
   
   if(!OrigStartTime)
   {
