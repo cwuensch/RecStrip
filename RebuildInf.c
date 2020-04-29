@@ -21,6 +21,7 @@
 #include "RebuildInf.h"
 #include "NavProcessor.h"
 #include "TtxProcessor.h"
+#include "HumaxHeader.h"
 
 #ifdef _WIN32
   #define timezone _timezone
@@ -34,16 +35,16 @@ static inline byte BCD2BIN(byte BCD)
   return (BCD >> 4) * 10 + (BCD & 0x0f);
 }
 
-static inline time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec)
-{ 
-  return (MJD(TFTimeStamp) - 0x9e8b) * 86400 + HOUR(TFTimeStamp) * 3600 + MINUTE(TFTimeStamp) * 60 + TFTimeSec;
-}
-
 static inline tPVRTime Unix2TFTime(dword UnixTimeStamp, byte *const outSec)
 {
   if (outSec)
     *outSec = UnixTimeStamp % 60;
   return (DATE ( (UnixTimeStamp / 86400) + 0x9e8b, (UnixTimeStamp / 3600) % 24, (UnixTimeStamp / 60) % 60 ));
+}
+
+time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec)
+{ 
+  return (MJD(TFTimeStamp) - 0x9e8b) * 86400 + HOUR(TFTimeStamp) * 3600 + MINUTE(TFTimeStamp) * 60 + TFTimeSec;
 }
 
 tPVRTime AddTimeSec(tPVRTime pvrTime, byte pvrTimeSec, byte *const outSec, int addSeconds)
@@ -232,7 +233,7 @@ bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
             RecInf->ServiceInfo.VideoPID = PID;
             RecInf->ServiceInfo.VideoStreamType = Elem->stream_type;
             ContinuityPIDs[0] = PID;
-            snprintf(&Log[strlen(Log)], sizeof(Log)-strlen(Log), ", Stream=0x%x, VPID=%hu, HD=%d", RecInf->ServiceInfo.VideoStreamType, VideoPID, isHDVideo);
+            snprintf(&Log[strlen(Log)], sizeof(Log)-strlen(Log), ", Stream=0x%hhx, VPID=%hu, HD=%d", RecInf->ServiceInfo.VideoStreamType, VideoPID, isHDVideo);
           }
           break;
         }
@@ -609,12 +610,11 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   byte                  FileTimeSec, TtxTimeSec = 0;
   long long             FirstPCR = 0, LastPCR = 0;
   dword                 FirstPCRms = 0, LastPCRms = 0, TtxPCR = 0, dPCR = 0;
-  int                   ReadPackets, Offset, FirstOffset;
+  int                   Offset, ReadBytes, i;
   bool                  EITOK = FALSE, SDTOK = FALSE, TtxFound = FALSE, TtxOK = FALSE;
   time_t                StartTimeUnix;
   byte                 *p;
   long long             FilePos = 0;
-  int                   i, j;
   bool                  ret = TRUE;
 
   const byte            ANDMask[7] = {0xFF, 0xC0, 0x00, 0xD0, 0xFF, 0xFF, 0xFC};
@@ -629,6 +629,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     return FALSE;
   }
 
+  rewind(fIn);
   if (!HumaxSource)
     InitInfStruct(RecInf);
 
@@ -646,7 +647,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     
     if (MedionMode == 1)
     {
-      // Read first 500 kB of Video PES (TODO: Allow also multiplexed TS input)
+      // Read first 500 kB of Video PES
       if (fread(Buffer, 1, RECBUFFERENTRIES*100 + 20, fIn) > 0)
       {
         int p = 0;
@@ -738,13 +739,13 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     if(!TtxFound)
       printf ("  Failed to get start time from Teletext.\n");
   }
-  
+
+
   if (MedionMode != 1)
   {
     // Read the first RECBUFFERENTRIES TS packets
-//    FilePos = ftello64(fIn);
-    ReadPackets = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn);
-    if(ReadPackets != RECBUFFERENTRIES)
+    ReadBytes = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn) * PACKETSIZE;
+    if(ReadBytes != RECBUFFERENTRIES * PACKETSIZE)
     {
       printf("  Failed to read the first %d TS packets.\n", RECBUFFERENTRIES);
       free(Buffer);
@@ -752,18 +753,16 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       return FALSE;
     }
 
-    FirstOffset = FindNextPacketStart(Buffer, ReadPackets*PACKETSIZE);
-    Offset = FirstOffset;
+    Offset = FindNextPacketStart(Buffer, ReadBytes);
     if (Offset >= 0)
     {
       p = &Buffer[Offset];
-      for(i = Offset; i < ReadPackets*PACKETSIZE - 14; i+=PACKETSIZE)
+      while (p <= &Buffer[ReadBytes-16])
       {
-        if ((p[PACKETOFFSET] != 'G') && (i < ReadPackets*PACKETSIZE-5573))
+        if ((p[PACKETOFFSET] != 'G') && (p <= &Buffer[ReadBytes-5573]))
         {
-          Offset = FindNextPacketStart(p, ReadPackets*PACKETSIZE - i);
-          if(Offset >= 0)
-           { p += Offset;  i += Offset; }
+          Offset = FindNextPacketStart(p, &Buffer[ReadBytes] - p);
+          if(Offset >= 0)  p += Offset;
           else break;
         }
         //Find the first PCR (for duration calculation)
@@ -774,12 +773,16 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     }
 
 
-    // Springe in die Mitte der Aufnahme (für Medion-Analyse die folgenden 10 Zeilen und Z.856 auf 0 setzen)
-    fseeko64(fIn, FilePos + ((RecFileSize/2)/PACKETSIZE * PACKETSIZE), SEEK_SET);
+    // Springe in die Mitte der Aufnahme (für Medion-Analyse mit PAT/PMT nur am Start, die folgenden 13 Zeilen auskommentieren und Z.852 auf 0 setzen)
+    if (HumaxSource)
+      FilePos = ((RecFileSize/2)/HumaxHeaderIntervall * HumaxHeaderIntervall);
+    else
+      FilePos = ((RecFileSize/2)/PACKETSIZE * PACKETSIZE);
+    fseeko64(fIn, FilePos, SEEK_SET);
 
     //Read RECBUFFERENTRIES TS pakets for analysis
-    ReadPackets = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn);
-    if(ReadPackets < RECBUFFERENTRIES)
+    ReadBytes = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn) * PACKETSIZE;
+    if(ReadBytes < RECBUFFERENTRIES * PACKETSIZE)
     {
       printf("  Failed to read %d TS packets from the middle.\n", RECBUFFERENTRIES);
       free(Buffer);
@@ -787,7 +790,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       return FALSE;
     }
 
-    Offset = FindNextPacketStart(Buffer, ReadPackets*PACKETSIZE);
+    Offset = FindNextPacketStart(Buffer, ReadBytes);
     if (Offset >= 0)
     {
       if (!HumaxSource)
@@ -795,22 +798,16 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         //Find a PMT packet to get its PID
         p = &Buffer[Offset + PACKETOFFSET];
 
-        for(i = Offset; i < ReadPackets*PACKETSIZE; i+=PACKETSIZE)
+        while (p <= &Buffer[ReadBytes-188])
         {
           bool ok = TRUE;
 
-          for(j = 0; j < (int)sizeof(PMTMask); j++)
-            if((p[j] & ANDMask[j]) != PMTMask[j])
-            {
-              ok = FALSE;
-              break;
-            }
+          for (i = 0; i < (int)sizeof(PMTMask); i++)
+            if((p[i] & ANDMask[i]) != PMTMask[i])
+             { ok = FALSE;  break; }
 
-          if(ok)
-          {
-            PMTPID = ((p[1] << 8) | p[2]) & 0x1fff;
-            break;
-          }
+          if (ok)
+           { PMTPID = ((p[1] << 8) | p[2]) & 0x1fff;  break; }
 
           p += PACKETSIZE;
         }
@@ -824,7 +821,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE);
 
           p = &Buffer[Offset + PACKETOFFSET];
-          for(i = p-Buffer; i < ReadPackets*PACKETSIZE; i+=PACKETSIZE)
+          while (p <= &Buffer[ReadBytes-188])
           {
             PSBuffer_ProcessTSPacket(&PMTBuffer, (tTSPacket*)p);
             if(PMTBuffer.ValidBuffer != 0)
@@ -851,13 +848,14 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           PSBuffer_Init(&TtxBuffer, TeletextPID, 16384, FALSE);
         LastBuffer = 0; LastTtxBuffer = 0;
 
-        fseeko64(fIn, FilePos + ((RecFileSize/2)/PACKETSIZE * PACKETSIZE) + Offset, SEEK_SET);
-        for(j = 0; j < 10; j++)
+        FilePos = FilePos + Offset;
+        fseeko64(fIn, FilePos, SEEK_SET);
+        for (i = 0; i < 300; i++)
         {
-          ReadPackets = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn);
+          ReadBytes = fread(Buffer, PACKETSIZE, 168, fIn) * PACKETSIZE;
           p = &Buffer[PACKETOFFSET];
 
-          for(i = 0; i < ReadPackets; i++)
+          while (p <= &Buffer[ReadBytes-188])
           {
             if (!SDTOK)
             {
@@ -898,6 +896,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             p += PACKETSIZE;
           }
           if(EITOK && SDTOK && (TtxOK || TeletextPID == 0xffff)) break;
+          if(HumaxSource)
+            fseeko64(fIn, +HumaxHeaderLaenge, SEEK_CUR);
         }
         if(!SDTOK)
           printf ("  Failed to get service name from SDT.\n");
@@ -914,10 +914,10 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 
 
     //Read the last RECBUFFERENTRIES TS pakets
-    fseeko64(fIn, FilePos + ((((RecFileSize-FilePos)/PACKETSIZE) - RECBUFFERENTRIES) * PACKETSIZE), SEEK_SET);
-    ReadPackets = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn);
-  //  fseeko64(fIn, FilePos, SEEK_SET);
-    if(ReadPackets != RECBUFFERENTRIES)
+    FilePos = FilePos + ((((RecFileSize-FilePos)/PACKETSIZE) - RECBUFFERENTRIES) * PACKETSIZE);
+    fseeko64(fIn, FilePos, SEEK_SET);
+    ReadBytes = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn) * PACKETSIZE;
+    if(ReadBytes != RECBUFFERENTRIES * PACKETSIZE)
     {
       printf ("  Failed to read the last %d TS packets.\n", RECBUFFERENTRIES);
       free(Buffer);
@@ -925,18 +925,16 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       return FALSE;
     }
 
-    Offset = FindNextPacketStart(Buffer, ReadPackets*PACKETSIZE);
+    Offset = FindNextPacketStart(Buffer, ReadBytes);
     if (Offset >= 0)
     {
-//printf("Assertion: Offset is 0 ? Offset=%d\n", Offset);
       p = &Buffer[Offset];
-      for(i = Offset; i < ReadPackets*PACKETSIZE - 14; i+=PACKETSIZE)
+      while (p <= &Buffer[ReadBytes-16])
       {
-        if ((p[PACKETOFFSET] != 'G') && (i < ReadPackets*PACKETSIZE-5573))
+        if ((p[PACKETOFFSET] != 'G') && (p <= &Buffer[ReadBytes-5573]))
         {
-          Offset = FindNextPacketStart(p, ReadPackets*PACKETSIZE - i);
-          if(Offset >= 0)
-           { p += Offset;  i += Offset; }
+          Offset = FindNextPacketStart(p, &Buffer[ReadBytes] - p);
+          if (Offset >= 0)  p += Offset;
           else break;
         }
         //Find the last PCR
@@ -968,19 +966,14 @@ printf("  TS: Duration  = %2.2d min %2.2d sec\n", RecInf->RecHeaderInfo.Duration
     dPCR = DeltaPCR(FirstPCRms, TtxPCR);
     RecInf->RecHeaderInfo.StartTime = AddTimeSec(TtxTime, TtxTimeSec, &RecInf->RecHeaderInfo.StartTimeSec, -1 * (int)(dPCR/1000));
   }
-  else
+  else if (!HumaxSource)
   {
     tzset();
     RecInf->RecHeaderInfo.StartTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, -1*timezone);  // GMT+1
     if (!RecInf->EventInfo.StartTime || (MJD(FileTimeStamp) - MJD(RecInf->RecHeaderInfo.StartTime) <= 1))
     {
-      if (HumaxSource)
-        RecInf->RecHeaderInfo.StartTime = AddTimeSec(FileTimeStamp, FileTimeSec, &RecInf->RecHeaderInfo.StartTimeSec, -1 * (int)(RecInf->RecHeaderInfo.DurationMin*60 + RecInf->RecHeaderInfo.DurationSec));
-      else
-      {
-        RecInf->RecHeaderInfo.StartTime = FileTimeStamp;
-        RecInf->RecHeaderInfo.StartTimeSec = FileTimeSec;
-      }
+      RecInf->RecHeaderInfo.StartTime = FileTimeStamp;
+      RecInf->RecHeaderInfo.StartTimeSec = FileTimeSec;
     }
   }
   StartTimeUnix = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec) - 3600;

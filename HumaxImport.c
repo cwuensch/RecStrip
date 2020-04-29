@@ -13,6 +13,7 @@
 #include "RecStrip.h"
 #include "RecHeader.h"
 #include "RebuildInf.h"
+#include "TtxProcessor.h"
 #include "HumaxHeader.h"
 
 
@@ -72,7 +73,6 @@ static dword crc32m(const unsigned char *buf, size_t len)
   crc = ((crc & 0x000000ff) << 24 | (crc & 0x0000ff00) << 8 | (crc & 0x00ff0000) >> 8 | (crc & 0xff000000) >> 24);
   return crc;
 } */
-
 
 bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecInf)
 {
@@ -170,6 +170,7 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
       {
         if (i == 1)
         {
+          time_t DisplayTime;
           printf("  Importing Humax header\n");
           VideoPID = HumaxHeader.Allgemein.VideoPID;
           TeletextPID = HumaxHeader.Allgemein.TeletextPID;
@@ -185,10 +186,15 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
           RecInf->RecHeaderInfo.DurationMin   = (word)(HumaxHeader.Allgemein.Dauer / 60);
           RecInf->RecHeaderInfo.DurationSec   = (word)(HumaxHeader.Allgemein.Dauer % 60);
           ContinuityPIDs[0] = VideoPID;
+          printf("    PMTPID=%hu, SID=%hu, PCRPID=%hu, Stream=0x%hhx, VPID=%hu, TtxPID=%hu\n", RecInf->ServiceInfo.PMTPID, RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID, RecInf->ServiceInfo.VideoStreamType, VideoPID, TeletextPID);
+
+          DisplayTime = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, 0);
+          printf("    Start Time: %s\n", TimeStr(&DisplayTime));
         }
         else if (i == 2)
         {
           char *p = strrchr(HumaxHeader.Allgemein.Dateiname, '_');
+          printf("    Orig Rec Name: %s\n", HumaxHeader.Allgemein.Dateiname);
           if(p) *p = '\0';
           strncpy(RecInf->ServiceInfo.ServiceName, HumaxHeader.Allgemein.Dateiname, sizeof(RecInf->ServiceInfo.ServiceName));
         }
@@ -222,9 +228,8 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
             }
             else if (j >= 0)
             {
-              tTSAC3Desc *Desc0     =   (tTSAC3Desc*) &Packet->Data[Offset];
+              tTSAC3Desc *Desc0     = (tTSAC3Desc*) &Packet->Data[Offset];
 
-              printf("    Tonspur %d: %d (%s) \n", j, HumaxTonspuren->Items[j].PID, HumaxTonspuren->Items[j].Name);
               Elem->ESPID1          = HumaxTonspuren->Items[j].PID / 256;
               Elem->ESPID2          = HumaxTonspuren->Items[j].PID % 256;
               Elem->ESInfoLen1      = 0;
@@ -250,6 +255,7 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
                 Desc->DescrLength   = 4;
                 memcpy(Desc->LanguageCode, "deu", 3);
               }
+              printf("    Audio Track %d: PID=%d, Type=0x%x (%s) \n", j, HumaxTonspuren->Items[j].PID, Elem->stream_type, HumaxTonspuren->Items[j].Name);
 
               if (NrContinuityPIDs < MAXCONTINUITYPIDS)
               {

@@ -154,11 +154,6 @@ bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize)
   return ret;
 }
 
-static inline time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec)
-{ 
-  return (MJD(TFTimeStamp) - 0x9e8b) * 86400 + HOUR(TFTimeStamp) * 3600 + MINUTE(TFTimeStamp) * 60 + TFTimeSec;
-}
-
 static bool HDD_SetFileDateTime(char const *AbsFileName, time_t NewDateTime)
 {
   struct stat64         statbuf;
@@ -251,7 +246,7 @@ static int GetPacketSize(FILE *RecFile, int *OutOffset)
   Buffer = (byte*) malloc(5573);
   if (Buffer)
   {
-    fseeko64(RecFile, +9024, SEEK_CUR);
+    fseeko64(RecFile, 9024, SEEK_SET);
     if (fread(Buffer, 1, 5573, RecFile) == 5573)
     {
       char *p = strrchr(RecFileIn, '.');

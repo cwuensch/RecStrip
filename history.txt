@@ -6,6 +6,7 @@ RecStrip 3.0:  NEU:
 RecStrip 2.5b: NEU:
                  - alle Topfield TimeStamps werden sekundengenau berechnet
                  - StartTime-Sekundenangabe wird in der inf (Byte 0x06) gespeichert(!)
+                 - Humax-Mode: Ermittlung von Startzeit und Program Identification aus Teletext
 
                BUGFIXES:
                  - aus Teletext ermittelte Programme Identification wurde nicht in inf eingetragen
