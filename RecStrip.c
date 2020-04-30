@@ -788,7 +788,7 @@ bool CloseOutputFiles(void)
     {
       printf("  ERROR: Failed closing the output file.\n");
       CutFileSave(CutFileOut);
-      SaveInfFile(InfFileOut, (DoMerge!=1) ? InfFileFirstIn : NULL);
+      SaveInfFile(InfFileOut, InfFileFirstIn);
       CloseTeletextOut();
       CutProcessor_Free();
       InfProcessor_Free();
@@ -802,7 +802,7 @@ bool CloseOutputFiles(void)
   if ((*CutFileOut || (*InfFileOut && WriteCutInf)) && !CutFileSave(CutFileOut))
     printf("  WARNING: Cannot create cut %s.\n", CutFileOut);
 
-  if (*InfFileOut && !SaveInfFile(InfFileOut, (DoMerge!=1) ? InfFileFirstIn : NULL))
+  if (*InfFileOut && !SaveInfFile(InfFileOut, InfFileFirstIn))
     printf("  WARNING: Cannot create inf %s.\n", InfFileOut);
 
   if (ExtractTeletext && !CloseTeletextOut())
@@ -1839,7 +1839,7 @@ int main(int argc, const char* argv[])
           if (ret)
           {
             CutFileSave(CutFileOut);
-            SaveInfFile(InfFileOut, (DoMerge!=1) ? InfFileFirstIn : NULL);
+            SaveInfFile(InfFileOut, InfFileFirstIn);
           }
           CloseTeletextOut();
           if(MedionMode == 1) SimpleMuxer_Close();
