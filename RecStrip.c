@@ -517,7 +517,6 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     snprintf(InfFileIn, sizeof(InfFileIn), "%s.inf", RecFileIn);
     if(FirstTime) strcpy(InfFileFirstIn, InfFileIn);
     printf("\nInf file: %s\n", InfFileIn);
-    InfFileOld[0] = '\0';
 
     if (LoadInfFile(InfFileIn, FirstTime))
     {
@@ -647,10 +646,19 @@ SONST
   SONST
     -> inf = NULL */
 
+  InfFileOld[0] = '\0';
   if (*RecFileOut)
   {
     if (RebuildInf || *InfFileIn)
-      snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf", RecFileOut);
+    {  
+      if (DoMerge == 1)
+      {
+        snprintf(InfFileOld, sizeof(InfFileOld), "%s.inf", RecFileOut);
+        snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf_new", RecFileOut);
+      }
+      else
+        snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf", RecFileOut);
+    }
     else
       InfFileOut[0] = '\0';
   }
@@ -658,7 +666,7 @@ SONST
   {
     if (RebuildInf /*|| !*InfFileIn*/)
     {
-      RebuildInf = TRUE;
+//      RebuildInf = TRUE;
       if(!*InfFileIn) WriteCutInf = TRUE;
       InfFileIn[0] = '\0';
       snprintf(InfFileOld, sizeof(InfFileOld), "%s.inf", RecFileIn);
@@ -697,7 +705,7 @@ SONST
   {
     if (RebuildNav /*|| !*NavFileIn*/)
     {
-      RebuildNav = TRUE;
+//      RebuildNav = TRUE;
       snprintf(NavFileOld, sizeof(NavFileOld), "%s.nav", RecFileIn);
       snprintf(NavFileOut, sizeof(NavFileOut), "%s.nav_new", RecFileIn);
     }
@@ -886,19 +894,36 @@ int main(int argc, const char* argv[])
 }*/
 
 /*{
-  #define DEMUXINFILE "H:/MedionTest/mitStrip/Schnauzen2.ts"
-  #define DEMUXOUT    "H:/MedionTest/mitStrip"
-  int PIDs[4]        = { 100, 101, 102, 18 };
-  int i;
+  const char *Types[4]       = { "video", "audio1", "ttx", "epg" };
+  const char *DemuxInFile = argv[1];
 
-  char* OutFiles[4]  = { DEMUXOUT "/Demux_video.pes", DEMUXOUT "/Demux_audio1.pes", DEMUXOUT "/Demux_ttx.pes", DEMUXOUT "/Demux_epg.pes" };
-  bool LastBuffer[4] = { 0, 0, 0, 0 };
+  char        DemuxOut[FBLIB_DIR_SIZE];
+  tPSBuffer   Streams[4];
+  FILE       *out[4], *in;
+  int         PIDs[4]        = { atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), 18 };
+  bool        LastBuffer[4]  = { 0, 0, 0, 0 };
+  int         FileOffset, i;
 
-  tPSBuffer Streams[4];
-  FILE *in = fopen(DEMUXINFILE, "rb");
-  FILE *out[4] = { fopen(OutFiles[0], "wb"), fopen(OutFiles[1], "wb"), fopen(OutFiles[2], "wb"), fopen(OutFiles[3], "wb") };
-  PACKETSIZE = 192;
-  PACKETOFFSET = 4;
+  const char *p = strrchr(DemuxInFile, '/');
+  if(!p)      p = strrchr(DemuxInFile, '\\');
+  if(!p)      p = &DemuxInFile[strlen(DemuxInFile)];
+
+  memset(DemuxOut, 0, sizeof(DemuxOut));
+  strncpy(DemuxOut, DemuxInFile, min(p-DemuxInFile, sizeof(DemuxOut)-1));
+  printf("Output Dir: %s\n", DemuxOut);
+
+  printf("PIDS: Video=%hu, Audio=%hu, Teletext=%hu, EPG=%hu\n\n", PIDs[0], PIDs[1], PIDs[2], PIDs[3]);
+
+  in = fopen(DemuxInFile, "rb");
+  for (i = 0; i < 4; i++)
+  {
+    char OutFile[FBLIB_DIR_SIZE];
+    snprintf(OutFile, sizeof(OutFile), "%s/Demux_%s.pes", DemuxOut, Types[i]);
+    out[i] = fopen(OutFile, "wb");
+  }
+
+  GetPacketSize(in, &FileOffset);
+  rewind(in);
 
   PSBuffer_Init(&Streams[0], PIDs[0], 524288, FALSE);
   PSBuffer_Init(&Streams[1], PIDs[1], 65536, FALSE);
@@ -939,7 +964,7 @@ int main(int argc, const char* argv[])
     PSBuffer_Reset(&Streams[i]);
   }
   fclose(in);
-  exit(17);
+  exit(0);
 }*/
 
 
@@ -1108,6 +1133,8 @@ int main(int argc, const char* argv[])
     strcpy(RecFileOut, Temp);
     NrInputFiles = argc;
   }
+//  InfFileOld[0] = '\0';  // Müssten nicht alle OutFiles mit initialisiert werden?
+//  NavFileOld[0] = '\0';  // So muss sichergestellt sein, dass CloseOutputFiles() nur nach OpenOutputFiles() aufgerufen wird!
 
   // Prüfen, ob Aufnahme bereits gestrippt
   if (DoSkip && !DoMerge)
@@ -1324,7 +1351,13 @@ int main(int argc, const char* argv[])
 
           // aktuelle Output-Files schließen
           if (!CloseOutputFiles())
+          {
+            CloseInputFiles(FALSE);
+            CutProcessor_Free();
+            InfProcessor_Free();
+            free(PendingBuf); PendingBuf = NULL;
             exit(10);
+          }
 
           NrPackets += (SegmentMarker[1].Position / PACKETSIZE);
           NrSegmentMarker = NrSegmentMarker_bak;
@@ -1912,8 +1945,13 @@ int main(int argc, const char* argv[])
   printf("\n");
 
   if ((fOut || (DoCut != 2)) && !CloseOutputFiles())
+  {
+    CloseInputFiles(FALSE);
+    CutProcessor_Free();
+    InfProcessor_Free();
+    free(PendingBuf); PendingBuf = NULL;
     exit(10);
-
+  }
   CloseInputFiles(TRUE);
 
   CutProcessor_Free();
