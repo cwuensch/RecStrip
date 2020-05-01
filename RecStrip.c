@@ -874,8 +874,8 @@ int main(int argc, const char* argv[])
   printf("- based on Naludump 0.1.1 by Udo Richter -\n");
   printf("- based on MovieCutter 3.6 -\n");
   printf("- portions of Mpeg2cleaner (S. Poeschel), RebuildNav (Firebird) & TFTool (jkIT)\n");
-
-
+  tzset();
+  printf("\nCurrent timezone: %s (GMT%+d)\n", tzname[0], -timezone/3600);
 
 /*{
   tPESStream PES;

@@ -39,12 +39,12 @@ static inline tPVRTime Unix2TFTime(dword UnixTimeStamp, byte *const outSec)
 {
   if (outSec)
     *outSec = UnixTimeStamp % 60;
-  return (DATE ( (UnixTimeStamp / 86400) + 0x9e8b, (UnixTimeStamp / 3600) % 24, (UnixTimeStamp / 60) % 60 ));
+  return (DATE ( ((UnixTimeStamp-timezone) / 86400) + 0x9e8b, (UnixTimeStamp / 3600) % 24, (UnixTimeStamp / 60) % 60 ));
 }
 
 time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec)
 { 
-  return (MJD(TFTimeStamp) - 0x9e8b) * 86400 + HOUR(TFTimeStamp) * 3600 + MINUTE(TFTimeStamp) * 60 + TFTimeSec;
+  return (MJD(TFTimeStamp) - 0x9e8b) * 86400 + HOUR(TFTimeStamp) * 3600 + MINUTE(TFTimeStamp) * 60 + TFTimeSec + timezone;
 }
 
 tPVRTime AddTimeSec(tPVRTime pvrTime, byte pvrTimeSec, byte *const outSec, int addSeconds)
@@ -408,9 +408,10 @@ static bool AnalyseEIT(byte *Buffer, word ServiceID, TYPE_RecHeader_TMSS *RecInf
             RecInf->EventInfo.EventID = EventID;
             RecInf->EventInfo.RunningStatus = Event->RunningStatus;
             RecInf->EventInfo.StartTime = (Event->StartTime[0] << 24) | (Event->StartTime[1] << 16) | (BCD2BIN(Event->StartTime[2]) << 8) | BCD2BIN(Event->StartTime[3]);
+            RecInf->EventInfo.StartTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, -1*timezone);  // GMT+1
             RecInf->EventInfo.DurationHour = BCD2BIN(Event->DurationSec[0]);
             RecInf->EventInfo.DurationMin = BCD2BIN(Event->DurationSec[1]);
-            RecInf->EventInfo.EndTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, RecInf->EventInfo.DurationHour * 3600 + RecInf->EventInfo.DurationMin * 60);            
+            RecInf->EventInfo.EndTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, RecInf->EventInfo.DurationHour * 3600 + RecInf->EventInfo.DurationMin * 60);
 //            StartTimeUnix = 86400*((RecInf->EventInfo.StartTime>>16) - 40587) + 3600*BCD2BIN(Event->StartTime[2]) + 60*BCD2BIN(Event->StartTime[3]);
             StartTimeUnix = TF2UnixTime(RecInf->EventInfo.StartTime, 0);
 printf("  TS: EvtStart  = %s\n", TimeStr(&StartTimeUnix));
@@ -968,15 +969,14 @@ printf("  TS: Duration  = %2.2d min %2.2d sec\n", RecInf->RecHeaderInfo.Duration
   }
   else if (!HumaxSource)
   {
-    tzset();
-    RecInf->RecHeaderInfo.StartTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, -1*timezone);  // GMT+1
+    RecInf->RecHeaderInfo.StartTime = RecInf->EventInfo.StartTime;
     if (!RecInf->EventInfo.StartTime || (MJD(FileTimeStamp) - MJD(RecInf->RecHeaderInfo.StartTime) <= 1))
     {
       RecInf->RecHeaderInfo.StartTime = FileTimeStamp;
       RecInf->RecHeaderInfo.StartTimeSec = FileTimeSec;
     }
   }
-  StartTimeUnix = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec) - 3600;
+  StartTimeUnix = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec);
 printf("  TS: StartTime = %s\n", (TimeStr(&StartTimeUnix)));
 
   free(Buffer);
