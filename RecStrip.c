@@ -442,6 +442,13 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     NrSegmentMarker = 0;
   }
 
+  for (k = 0; k < MAXCONTINUITYPIDS; k++)
+  {
+    ContinuityPIDs[k] = (word) -1;
+    ContinuityCtrs[k] = -1;
+  }
+  NrContinuityPIDs = 0;
+
   // Spezialanpassung Medion
   if (MedionMode)
   {
@@ -875,7 +882,7 @@ int main(int argc, const char* argv[])
   printf("- based on MovieCutter 3.6 -\n");
   printf("- portions of Mpeg2cleaner (S. Poeschel), RebuildNav (Firebird) & TFTool (jkIT)\n");
   tzset();
-  printf("\nCurrent timezone: %s (GMT%+d)\n", tzname[0], -timezone/3600);
+  printf("\nCurrent timezone: %s (GMT%+ld)\n", tzname[0], -timezone/3600);
 
 /*{
   tPESStream PES;
@@ -1119,12 +1126,6 @@ int main(int argc, const char* argv[])
   }
 
   // Variablen initialisieren
-  for (k = 0; k < MAXCONTINUITYPIDS; k++)
-  {
-    ContinuityPIDs[k] = (word) -1;
-    ContinuityCtrs[k] = -1;
-  }
-
   if (DoMerge)
   {
     char Temp[FBLIB_DIR_SIZE];
@@ -1255,8 +1256,8 @@ int main(int argc, const char* argv[])
       ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID = 0x100;
       printf("  TS: PMTPID=%hu", 0x100);
       AnalysePMT(&PATPMTBuf[201], (TYPE_RecHeader_TMSS*)InfBuffer);
+      NrContinuityPIDs = 0;
     }
-    NrContinuityPIDs = 0;
   }
 
   // Spezialanpassung Medion (Teletext-Extraktion)
@@ -1920,8 +1921,6 @@ int main(int argc, const char* argv[])
         CutTimeOffset = -(int)LastTimems;
       SetFirstPacketAfterBreak();
       SetTeletextBreak(TRUE, TeletextPage);
-      for (k = 0; k < NrContinuityPIDs; k++)
-        ContinuityCtrs[k] = -1;
       if(DoStrip)  NALUDump_Init();  // NoContinuityCheck = TRUE;
 
       if (!OpenInputFiles(RecFileIn, FALSE))
