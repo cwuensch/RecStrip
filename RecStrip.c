@@ -882,7 +882,7 @@ int main(int argc, const char* argv[])
   printf("- based on MovieCutter 3.6 -\n");
   printf("- portions of Mpeg2cleaner (S. Poeschel), RebuildNav (Firebird) & TFTool (jkIT)\n");
   tzset();
-  printf("\nCurrent timezone: %s (GMT%+ld)\n", tzname[0], -timezone/3600);
+  printf("\nLocal timezone: %s (GMT%+ld)\n", tzname[0], -timezone/3600);
 
 /*{
   tPESStream PES;
