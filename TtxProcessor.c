@@ -270,9 +270,9 @@ static void remap_g0_charset(uint8_t c) {
 
 static void timestamp_to_srttime(uint32_t timestamp, char *buffer) {
   uint16_t h = (word) (timestamp / 3600000);
-  uint8_t  m = (byte) (timestamp / 60000 - 60 * h);
-  uint8_t  s = (byte) (timestamp / 1000 - 3600 * h - 60 * m);
-  uint16_t u = (word) (timestamp - 3600000 * h - 60000 * m - 1000 * s);
+  uint8_t  m = (byte) ((timestamp / 60000) % 60);
+  uint8_t  s = (byte) ((timestamp / 1000) % 60);
+  uint16_t u = (word) (timestamp % 1000);
   sprintf(buffer, "%02hu:%02hhu:%02hhu,%03hu", h, m, s, u);
 }
 

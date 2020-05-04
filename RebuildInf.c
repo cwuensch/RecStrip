@@ -408,13 +408,12 @@ static bool AnalyseEIT(byte *Buffer, word ServiceID, TYPE_RecHeader_TMSS *RecInf
             RecInf->EventInfo.EventID = EventID;
             RecInf->EventInfo.RunningStatus = Event->RunningStatus;
             RecInf->EventInfo.StartTime = (Event->StartTime[0] << 24) | (Event->StartTime[1] << 16) | (BCD2BIN(Event->StartTime[2]) << 8) | BCD2BIN(Event->StartTime[3]);
-            RecInf->EventInfo.StartTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, -1*timezone);  // GMT+1
             RecInf->EventInfo.DurationHour = BCD2BIN(Event->DurationSec[0]);
             RecInf->EventInfo.DurationMin = BCD2BIN(Event->DurationSec[1]);
             RecInf->EventInfo.EndTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, RecInf->EventInfo.DurationHour * 3600 + RecInf->EventInfo.DurationMin * 60);
 //            StartTimeUnix = 86400*((RecInf->EventInfo.StartTime>>16) - 40587) + 3600*BCD2BIN(Event->StartTime[2]) + 60*BCD2BIN(Event->StartTime[3]);
             StartTimeUnix = TF2UnixTime(RecInf->EventInfo.StartTime, 0);
-printf("  TS: EvtStart  = %s\n", TimeStr(&StartTimeUnix));
+printf("  TS: EvtStart  = %s (UTC)\n", TimeStr(&StartTimeUnix));
 
             NameLen = ShortDesc->EvtNameLen;
             TextLen = Buffer[p + sizeof(tShortEvtDesc) + NameLen];
@@ -467,7 +466,7 @@ printf("  TS: ExtEvent  = %s\n", RecInf->ExtEventInfo.Text);
   return FALSE;
 }
 
-static bool AnalyseTtx(byte *PSBuffer, tPVRTime *const TtxTime, byte *const TtxTimeSec, char *const ServiceName, int SvcNameLen)
+static bool AnalyseTtx(byte *PSBuffer, tPVRTime *const TtxTime, byte *const TtxTimeSec, int *const TtxTimeZone, char *const ServiceName, int SvcNameLen)
 {
   char                  programme[50];
   int                   PESLength = 0, p = 0;
@@ -552,6 +551,7 @@ static bool AnalyseTtx(byte *PSBuffer, tPVRTime *const TtxTime, byte *const TtxT
               mjd    += (localH / 24);
               localM  = localM % 60;
               localH  = localH % 24;
+              if(TtxTimeZone) *TtxTimeZone = -1 * (int)timeOffsetH2 * 1800;
             }
             else
             {
@@ -559,6 +559,7 @@ static bool AnalyseTtx(byte *PSBuffer, tPVRTime *const TtxTime, byte *const TtxT
               localM -= (timeOffsetH2 * 30);
               while (localM < 0)  { localM += 60; localH--; }
               while (localH < 0)  { localH += 24; mjd--; }
+              if(TtxTimeZone) *TtxTimeZone = (int)timeOffsetH2 * 1800;
             }
 
             if (TtxTime)
@@ -584,9 +585,10 @@ static bool AnalyseTtx(byte *PSBuffer, tPVRTime *const TtxTime, byte *const TtxT
 //              memset(ServiceName, 0, SvcNameLen);
               strncpy(ServiceName, programme, SvcNameLen-1);
             }
+
 printf("  TS: Teletext Programme Identification Data: '%s'\n", programme);
 DisplayTime = TF2UnixTime(*TtxTime, *TtxTimeSec);
-printf("  TS: Teletext date: %s\n", TimeStr(&DisplayTime));
+printf("  TS: Teletext date: %s (GMT%+d)\n", TimeStr(&DisplayTime), -*TtxTimeZone/3600);
 //printf("  TS: Teletext date: mjd=%u, %02hhu:%02hhu:%02hhu\n", mjd, localH, localM, localS);
             TRACEEXIT;
             return TRUE;
@@ -609,6 +611,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   word                  PMTPID = 0;
   tPVRTime              FileTimeStamp, TtxTime = 0;
   byte                  FileTimeSec, TtxTimeSec = 0;
+  int                   TtxTimeZone = 0;
   long long             FirstPCR = 0, LastPCR = 0;
   dword                 FirstPCRms = 0, LastPCRms = 0, TtxPCR = 0, dPCR = 0;
   int                   Offset, ReadBytes, i;
@@ -721,7 +724,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         {
           while ((p < 32000) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1 || Buffer[p+3] != 0xBD))
             p++;
-          TtxFound = AnalyseTtx(&Buffer[p], &TtxTime, &TtxTimeSec, RecInf->ServiceInfo.ServiceName, sizeof(RecInf->ServiceInfo.ServiceName));
+          TtxFound = AnalyseTtx(&Buffer[p], &TtxTime, &TtxTimeSec, &TtxTimeZone, RecInf->ServiceInfo.ServiceName, sizeof(RecInf->ServiceInfo.ServiceName));
           if(TtxFound && !TtxOK)
             TtxOK = GetPTS(&Buffer[p], NULL, &TtxPCR) && (TtxPCR != 0);
           if(TtxOK)
@@ -885,7 +888,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                 if(TtxBuffer.ValidBuffer != LastTtxBuffer)
                 {
                   byte *pBuffer = (TtxBuffer.ValidBuffer==1) ? TtxBuffer.Buffer1 : TtxBuffer.Buffer2;
-                  TtxFound = AnalyseTtx(pBuffer, &TtxTime, &TtxTimeSec, (SDTOK ? NULL : RecInf->ServiceInfo.ServiceName), sizeof(RecInf->ServiceInfo.ServiceName));
+                  TtxFound = AnalyseTtx(pBuffer, &TtxTime, &TtxTimeSec, &TtxTimeZone, (SDTOK ? NULL : RecInf->ServiceInfo.ServiceName), sizeof(RecInf->ServiceInfo.ServiceName));
                   LastTtxBuffer = TtxBuffer.ValidBuffer;
                 }
               }
@@ -915,8 +918,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 
 
     //Read the last RECBUFFERENTRIES TS pakets
-    FilePos = FilePos + ((((RecFileSize-FilePos)/PACKETSIZE) - RECBUFFERENTRIES) * PACKETSIZE);
-    fseeko64(fIn, FilePos, SEEK_SET);
+//    FilePos = FilePos + ((((RecFileSize-FilePos)/PACKETSIZE) - RECBUFFERENTRIES) * PACKETSIZE);
+    fseeko64(fIn, -RECBUFFERENTRIES * PACKETSIZE, SEEK_END);
     ReadBytes = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn) * PACKETSIZE;
     if(ReadBytes != RECBUFFERENTRIES * PACKETSIZE)
     {
@@ -943,6 +946,14 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         p += PACKETSIZE;
       }
     }
+  }
+
+  if (EITOK)
+  {
+    RecInf->EventInfo.StartTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, (TtxOK ? -1*TtxTimeZone : -1*timezone));  // GMT+1
+    RecInf->EventInfo.EndTime   = AddTimeSec(RecInf->EventInfo.EndTime,   0, NULL, (TtxOK ? -1*TtxTimeZone : -1*timezone));
+    StartTimeUnix = TF2UnixTime(RecInf->EventInfo.StartTime, 0);
+printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStr(&StartTimeUnix), -TtxTimeZone/3600);
   }
 
   if(!FirstPCR || !LastPCR)
