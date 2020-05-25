@@ -909,25 +909,52 @@ int main(int argc, const char* argv[])
   char        DemuxOut[FBLIB_DIR_SIZE];
   tPSBuffer   Streams[4];
   FILE       *out[4], *in;
-  int         PIDs[4]        = { atoi(argv[2]), atoi(argv[3]), atoi(argv[4]), 18 };
+  int         PIDs[4];
   bool        LastBuffer[4]  = { 0, 0, 0, 0 };
   int         FileOffset, i;
+  char       *p;
 
-  const char *p = strrchr(DemuxInFile, '/');
-  if(!p)      p = strrchr(DemuxInFile, '\\');
-  if(!p)      p = &DemuxInFile[strlen(DemuxInFile)];
+//  const char *p = strrchr(DemuxInFile, '/');
+//  if(!p)      p = strrchr(DemuxInFile, '\\');
+
+  if (argc <= 1)
+  {
+    printf("\nUsage: ts2pes <Input.ts> [<VideoPID>, <AudioPID>, <TeletextPID>]\n");
+    exit(1);
+  }
+
+  p = strrchr(DemuxInFile, '.');
+  if(!p)  p = &DemuxInFile[strlen(DemuxInFile)];
 
   memset(DemuxOut, 0, sizeof(DemuxOut));
   strncpy(DemuxOut, DemuxInFile, min(p-DemuxInFile, sizeof(DemuxOut)-1));
+  printf("\nInput File: %s\n", DemuxInFile);
   printf("Output Dir: %s\n", DemuxOut);
 
-  printf("PIDS: Video=%hu, Audio=%hu, Teletext=%hu, EPG=%hu\n\n", PIDs[0], PIDs[1], PIDs[2], PIDs[3]);
+  PIDs[4] = 18;
+  if (argc > 2)
+  {
+    for (i = 0; i < 3; i++)
+      PIDs[i] = atoi(argv[i+2]);
+  }
+  else
+  {
+    InfProcessor_Init();
+    HDD_GetFileSize(DemuxInFile, &RecFileSize);
+    LoadInfFromRec(DemuxInFile);
+    if (VideoPID)
+    {
+      PIDs[0] = VideoPID, PIDs[1] = ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.AudioPID, PIDs[2] = TeletextPID; PIDs[3] = 18;
+    }
+    InfProcessor_Free();
+  }
+  printf("\nPIDS: Video=%hu, Audio=%hu, Teletext=%hu, EPG=%hu\n\n", PIDs[0], PIDs[1], PIDs[2], PIDs[3]);
 
   in = fopen(DemuxInFile, "rb");
   for (i = 0; i < 4; i++)
   {
     char OutFile[FBLIB_DIR_SIZE];
-    snprintf(OutFile, sizeof(OutFile), "%s/Demux_%s.pes", DemuxOut, Types[i]);
+    snprintf(OutFile, sizeof(OutFile), "%s_%s.pes", DemuxOut, Types[i]);
     out[i] = fopen(OutFile, "wb");
   }
 
@@ -1392,6 +1419,7 @@ int main(int argc, const char* argv[])
             for (k = 0; k < NrContinuityPIDs; k++)
               ContinuityCtrs[k] = -1;
             if(DoStrip)  NALUDump_Init();  // NoContinuityCheck = TRUE;
+            LastPCR = 0;
 
             // Position neu berechnen
             PositionOffset += SkippedBytes;
@@ -1475,8 +1503,8 @@ int main(int argc, const char* argv[])
             NavProcessor_Init();
             if(!RebuildNav && *RecFileOut && *NavFileIn)  SetFirstPacketAfterBreak();
             if(DoStrip) NALUDump_Init();
-            LastTimems = 0;
             LastPCR = 0;
+            LastTimems = 0;
             LastTimeStamp = 0;
             dbg_DelBytesSinceLastVid = 0;
 
@@ -1704,7 +1732,7 @@ int main(int argc, const char* argv[])
             }
           }
 
-          // PCR berechnen
+          // Arrival Timestamps (m2ts)
           if (OutPacketSize > PACKETSIZE)  // OutPacketSize==192 and PACKETSIZE==188
           {
             long long CurPCRfull = 0;
@@ -1924,6 +1952,7 @@ int main(int argc, const char* argv[])
       SetFirstPacketAfterBreak();
       SetTeletextBreak(TRUE, TeletextPage);
       if(DoStrip)  NALUDump_Init();  // NoContinuityCheck = TRUE;
+      LastPCR = 0;
 
       if (!OpenInputFiles(RecFileIn, FALSE))
       {

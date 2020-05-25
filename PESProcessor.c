@@ -71,82 +71,80 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
     else
     {
       //Continuity Counter ok? Falls nicht Buffer komplett verwerfen
-      if((PSBuffer->LastCCCounter == 255) || (Packet->ContinuityCount == ((PSBuffer->LastCCCounter + 1) % 16)))
-      {
-        //Adaptation field gibt es nur bei PES Paketen
-        if(Packet->Adapt_Field_Exists)
-          Start += (1 + Packet->Data[0]);  // CW (Längen-Byte zählt ja auch noch mit!)
-
-        //Startet ein neues PES-Paket?
-        if(Packet->Payload_Unit_Start)
-        {
-          // PES-Packet oder Table?
-          if (PSBuffer->TablePacket)
-          {
-            RemainingBytes = Packet->Data[Start];
-            Start++;
-          }
-          else
-          {
-            for (RemainingBytes = 0; RemainingBytes < 184-Start-2; RemainingBytes++)
-              if (Packet->Data[Start+RemainingBytes]==0 && Packet->Data[Start+RemainingBytes+1]==0 && Packet->Data[Start+RemainingBytes+2]==1)
-                break;
-          }
-
-          if(PSBuffer->BufferPtr != 0)
-          {
-            //Restliche Bytes umkopieren und neuen Buffer beginnen
-            if(RemainingBytes != 0)
-            {
-              memcpy(PSBuffer->pBuffer, &Packet->Data[Start], RemainingBytes);
-              PSBuffer->BufferPtr += RemainingBytes;
-            }
-
-            //Puffer mit den abfragbaren Daten markieren
-            switch(PSBuffer->ValidBuffer)
-            {
-              case 0:
-              case 2: PSBuffer->ValidBuffer = 1; break;
-              case 1: PSBuffer->ValidBuffer = 2; break;
-            }
-
-            PSBuffer->ValidBufLen = PSBuffer->BufferPtr;
-            PSBuffer->PSFileCtr++;
-          }
-
-          //Neuen Puffer aktivieren
-          switch(PSBuffer->ValidBuffer)
-          {
-            case 0:
-            case 2: PSBuffer->pBuffer = PSBuffer->Buffer1; break;
-            case 1: PSBuffer->pBuffer = PSBuffer->Buffer2; break;
-          }
-          PSBuffer->BufferPtr = 0;
-
-          //Erste Daten kopieren
-          memset(PSBuffer->pBuffer, 0, PSBuffer->BufferSize);
-          memcpy(PSBuffer->pBuffer, &Packet->Data[Start+RemainingBytes], 184-Start-RemainingBytes);
-          PSBuffer->pBuffer += (184-Start-RemainingBytes);
-          PSBuffer->BufferPtr += (184-Start-RemainingBytes);
-        }
-        else
-        {
-          //Weiterkopieren
-          if(PSBuffer->BufferPtr != 0)
-          {
-            memcpy(PSBuffer->pBuffer, &Packet->Data[Start], 184-Start);
-            PSBuffer->pBuffer += (184-Start);
-            PSBuffer->BufferPtr += (184-Start);
-          }
-        }
-      }
-      else
+      if((PSBuffer->LastCCCounter != 255) && (Packet->ContinuityCount != ((PSBuffer->LastCCCounter + 1) % 16)))
       {
         //Unerwarteter Continuity Counter, Daten verwerfen
         if(PSBuffer->LastCCCounter != 255)
         {
           printf("  CC error while parsing PID %hu\n", PSBuffer->PID);
           PSBuffer_DropCurBuffer(PSBuffer);
+        }
+      }
+        
+      //Adaptation field gibt es nur bei PES Paketen
+      if(Packet->Adapt_Field_Exists)
+        Start += (1 + Packet->Data[0]);  // CW (Längen-Byte zählt ja auch noch mit!)
+
+      //Startet ein neues PES-Paket?
+      if(Packet->Payload_Unit_Start)
+      {
+        // PES-Packet oder Table?
+        if (PSBuffer->TablePacket)
+        {
+          RemainingBytes = Packet->Data[Start];
+          Start++;
+        }
+        else
+        {
+          for (RemainingBytes = 0; RemainingBytes < 184-Start-2; RemainingBytes++)
+            if (Packet->Data[Start+RemainingBytes]==0 && Packet->Data[Start+RemainingBytes+1]==0 && Packet->Data[Start+RemainingBytes+2]==1)
+              break;
+        }
+
+        if(PSBuffer->BufferPtr != 0)
+        {
+          //Restliche Bytes umkopieren und neuen Buffer beginnen
+          if(RemainingBytes != 0)
+          {
+            memcpy(PSBuffer->pBuffer, &Packet->Data[Start], RemainingBytes);
+            PSBuffer->BufferPtr += RemainingBytes;
+          }
+
+          //Puffer mit den abfragbaren Daten markieren
+          switch(PSBuffer->ValidBuffer)
+          {
+            case 0:
+            case 2: PSBuffer->ValidBuffer = 1; break;
+            case 1: PSBuffer->ValidBuffer = 2; break;
+          }
+
+          PSBuffer->ValidBufLen = PSBuffer->BufferPtr;
+          PSBuffer->PSFileCtr++;
+        }
+
+        //Neuen Puffer aktivieren
+        switch(PSBuffer->ValidBuffer)
+        {
+          case 0:
+          case 2: PSBuffer->pBuffer = PSBuffer->Buffer1; break;
+          case 1: PSBuffer->pBuffer = PSBuffer->Buffer2; break;
+        }
+        PSBuffer->BufferPtr = 0;
+
+        //Erste Daten kopieren
+        memset(PSBuffer->pBuffer, 0, PSBuffer->BufferSize);
+        memcpy(PSBuffer->pBuffer, &Packet->Data[Start+RemainingBytes], 184-Start-RemainingBytes);
+        PSBuffer->pBuffer += (184-Start-RemainingBytes);
+        PSBuffer->BufferPtr += (184-Start-RemainingBytes);
+      }
+      else
+      {
+        //Weiterkopieren
+        if(PSBuffer->BufferPtr != 0)
+        {
+          memcpy(PSBuffer->pBuffer, &Packet->Data[Start], 184-Start);
+          PSBuffer->pBuffer += (184-Start);
+          PSBuffer->BufferPtr += (184-Start);
         }
       }
 
