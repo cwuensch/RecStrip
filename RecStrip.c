@@ -410,6 +410,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
   TYPE_RecHeader_Info  *RecHeaderInfo_bak = RecHeaderInfo;
   TYPE_Bookmark_Info   *BookmarkInfo_bak = BookmarkInfo;
   tPVRTime              OrigStartTime_bak = OrigStartTime;
+  byte                  OrigStartSec_bak = OrigStartSec;
 //  dword                 InfDuration_bak = InfDuration;
 
   tSegmentMarker2      *SegmentMarker_bak = SegmentMarker;
@@ -603,6 +604,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     SegmentMarker = SegmentMarker_bak;
     NrSegmentMarker = NrSegmentMarker_bak;
     OrigStartTime = OrigStartTime_bak;
+    OrigStartSec = OrigStartSec_bak;
 //    InfDuration = InfDuration + InfDuration_bak;  // eigentlich unnötig
   }
 
@@ -999,7 +1001,7 @@ int main(int argc, const char* argv[])
     if (Streams[i].BufferPtr)
       fwrite(Streams[i].pBuffer-Streams[i].BufferPtr, 1, Streams[i].BufferPtr, out[i]);
 #ifdef _DEBUG
-    printf("Max. PES length (PID=%hu): %d\n", Streams[i].PID, Streams[i].maxPESLen);
+    printf("Max. PES length (PID=%hu): %u\n", Streams[i].PID, Streams[i].maxPESLen);
 #endif
     fclose(out[i]);
     if(Streams[i].ErrorFlag) ret = 2;

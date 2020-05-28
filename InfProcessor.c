@@ -371,7 +371,12 @@ if (RecHeaderInfo->Reserved != 0)
     if(FirstTime)
     {
       OrigStartTime = RecHeaderInfo->StartTime;
-      OrigStartSec  = RecHeaderInfo->StartTimeSec;
+      if (RecHeaderInfo->StartTimeSec)
+      {
+        if(!OrigStartSec) OrigStartSec = RecHeaderInfo->StartTimeSec;
+      }
+      else
+        RecHeaderInfo->StartTimeSec = OrigStartSec;
     }
     InfDuration = 60*RecHeaderInfo->DurationMin + RecHeaderInfo->DurationSec;
   }

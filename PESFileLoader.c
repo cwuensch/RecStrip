@@ -198,7 +198,7 @@ byte* PESStream_GetNextPacket(tPESStream *PESStream)
 
   PESStream->NextStartCodeFound = PESStream_FindPacketStart(PESStream, PESStream->curPacketLength);
 #ifdef _DEBUG
-  if (PESStream->curPacketLength > PESStream->maxPESLen)
+  if (PESStream->curPacketLength > (dword)PESStream->maxPESLen)
     PESStream->maxPESLen = PESStream->curPacketLength;
 #endif
 

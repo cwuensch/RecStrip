@@ -7,6 +7,7 @@
 extern byte                *InfBuffer;
 extern TYPE_RecHeader_Info *RecHeaderInfo;
 extern tPVRTime             OrigStartTime;
+extern byte                 OrigStartSec;
 
 bool InfProcessor_Init(void);
 bool LoadInfFromRec(char *AbsRecFileName);
