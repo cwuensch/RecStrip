@@ -117,7 +117,7 @@ static int PESStream_FindPacketStart(tPESStream *PESStream, dword StartAtPos)
 
   TRACEENTER;
 
-  for (i = StartAtPos; i < PESStream->BufferSize; i++)
+  for (i = StartAtPos; i+2 < PESStream->BufferSize; i++)
   {
     if (fread(&PESStream->Buffer[i], 1, 1, PESStream->fSrc))
     {  
@@ -153,8 +153,11 @@ static int PESStream_FindPacketStart(tPESStream *PESStream, dword StartAtPos)
   }
   PESStream->curPacketLength = i;
 
-  if (i >= PESStream->BufferSize)
+  if (i+2 >= PESStream->BufferSize)
+  {
     printf("  PESFileLoader: Insufficient buffer size!\n");
+    PESStream->ErrorFlag = TRUE;
+  }
 
   TRACEEXIT;
   return 0;
@@ -194,6 +197,10 @@ byte* PESStream_GetNextPacket(tPESStream *PESStream)
   PESStream->curPacketLength += 6;
 
   PESStream->NextStartCodeFound = PESStream_FindPacketStart(PESStream, PESStream->curPacketLength);
+#ifdef _DEBUG
+  if (PESStream->curPacketLength > PESStream->maxPESLen)
+    PESStream->maxPESLen = PESStream->curPacketLength;
+#endif
 
   // Extract attributes (2)
   PESStream->curPayloadStart = (curPacket->OptionalHeaderMarker == 2) ? 9 + curPacket->PESHeaderLen : 6;
@@ -426,14 +433,14 @@ bool SimpleMuxer_Open(FILE *fIn, char const* PESAudName, char const* PESTtxName,
   if (!EITLen)
     printf("  SimpleMuxer: Cannot open file %s.\n", EITName);
 
-  if (PESStream_Open(&PESVideo, fIn, 524288) && PESStream_Open(&PESAudio, aud, 65536) && PESStream_Open(&PESTeletxt, ttx, 32768))
+  if (PESStream_Open(&PESVideo, fIn, VIDEOBUFSIZE) && PESStream_Open(&PESAudio, aud, 65536) && PESStream_Open(&PESTeletxt, ttx, 32768))
   {
     if (!PESVideo.FileAtEnd)   { PESStream_GetNextPacket(&PESVideo); VideoPID = 100; }
     if (!PESAudio.FileAtEnd)   { PESStream_GetNextPacket(&PESAudio); }
     if (!PESTeletxt.FileAtEnd) { PESStream_GetNextPacket(&PESTeletxt); TeletextPID = 102; }
 
     TRACEEXIT;
-    return TRUE;
+    return (!PESVideo.ErrorFlag && !PESAudio.ErrorFlag && !PESTeletxt.ErrorFlag);
   }
 
   TRACEEXIT;
@@ -595,6 +602,9 @@ bool SimpleMuxer_NextTSPacket(tTSPacket *pack)
       curPid = 0;
     }
   }
+
+  if (ret && (PESVideo.ErrorFlag || PESAudio.ErrorFlag || PESTeletxt.ErrorFlag))
+    ret = -1;
 
   TRACEEXIT;
   return ret;

@@ -12,6 +12,7 @@
 #define FBLIB_DIR_SIZE             512
 #define RECBUFFERENTRIES          5000
 #define PENDINGBUFSIZE           65536
+#define VIDEOBUFSIZE           2097152
 
 //audio & video format
 typedef enum

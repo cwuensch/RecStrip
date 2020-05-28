@@ -41,6 +41,10 @@ typedef struct
   dword                 curPacketDTS;
   int                   NextStartCodeFound;
   bool                  FileAtEnd;
+  bool                  ErrorFlag;
+#ifdef _DEBUG
+  int                   maxPESLen;
+#endif
 } tPESStream;
 
 

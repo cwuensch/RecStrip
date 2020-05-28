@@ -912,11 +912,13 @@ int main(int argc, const char* argv[])
   int         PIDs[4];
   bool        LastBuffer[4]  = { 0, 0, 0, 0 };
   int         FileOffset, i;
+  int         ret = 0;
   char       *p;
 
 //  const char *p = strrchr(DemuxInFile, '/');
 //  if(!p)      p = strrchr(DemuxInFile, '\\');
 
+  printf("\n- TS-to-PES converter -\n");
   if (argc <= 1)
   {
     printf("\nUsage: ts2pes <Input.ts> [<VideoPID>, <AudioPID>, <TeletextPID>]\n");
@@ -931,7 +933,7 @@ int main(int argc, const char* argv[])
   printf("\nInput File: %s\n", DemuxInFile);
   printf("Output Dir: %s\n", DemuxOut);
 
-  PIDs[4] = 18;
+  PIDs[3] = 18;
   if (argc > 2)
   {
     for (i = 0; i < 3; i++)
@@ -961,7 +963,7 @@ int main(int argc, const char* argv[])
   GetPacketSize(in, &FileOffset);
   rewind(in);
 
-  PSBuffer_Init(&Streams[0], PIDs[0], 524288, FALSE);
+  PSBuffer_Init(&Streams[0], PIDs[0], VIDEOBUFSIZE, FALSE);
   PSBuffer_Init(&Streams[1], PIDs[1], 65536, FALSE);
   PSBuffer_Init(&Streams[2], PIDs[2], 32768, FALSE);
   PSBuffer_Init(&Streams[3], PIDs[3], 32768, TRUE);
@@ -996,11 +998,15 @@ int main(int argc, const char* argv[])
   {
     if (Streams[i].BufferPtr)
       fwrite(Streams[i].pBuffer-Streams[i].BufferPtr, 1, Streams[i].BufferPtr, out[i]);
+#ifdef _DEBUG
+    printf("Max. PES length (PID=%hu): %d\n", Streams[i].PID, Streams[i].maxPESLen);
+#endif
     fclose(out[i]);
+    if(Streams[i].ErrorFlag) ret = 2;
     PSBuffer_Reset(&Streams[i]);
   }
   fclose(in);
-  exit(0);
+  exit(ret);
 }*/
 
 
@@ -1542,7 +1548,12 @@ int main(int argc, const char* argv[])
           SimpleMuxer_DoEITOutput();
           PMTCounter = 0;
         }
-        ReadBytes = (SimpleMuxer_NextTSPacket((tTSPacket*) &Buffer[4])) ? PACKETSIZE : 0;
+        if ((ReadBytes = SimpleMuxer_NextTSPacket((tTSPacket*) &Buffer[4])))
+        {
+          if (ReadBytes < 0)
+            AbortProcess = TRUE;
+          ReadBytes = PACKETSIZE;
+        }
       }
       else
         ReadBytes = fread(&Buffer[4-PACKETOFFSET], 1, PACKETSIZE, fIn);
@@ -1974,6 +1985,11 @@ int main(int argc, const char* argv[])
   }
   printf("\n");
 
+#ifdef _DEBUG
+  if (MedionMode)
+    printf("Max. Video PES length: %u\n", PESVideo.maxPESLen);
+#endif
+
   if ((fOut || (DoCut != 2)) && !CloseOutputFiles())
   {
     CloseInputFiles(FALSE);
@@ -2010,5 +2026,5 @@ int main(int argc, const char* argv[])
 //    getchar();
   #endif
   TRACEEXIT;
-  exit(0);
+  exit(ret && !AbortProcess);
 }

@@ -1,15 +1,21 @@
 RecStrip 3.0:  NEU:
-                 - PES-basiertes Stripping! (Demultiplex - Strip - Remultiplex) - experimentell
+                 - PES-basiertes Stripping! (Demultiplex - Strip - Remultiplex)
                  - PCRs werden auf DTS-Basis neu berechnet
                  - bekannte Einschränkung: PCR muss auf der Video-PID übertragen werden! (sonst müsste die PMT neu codiert werden)
 
 RecStrip 2.5b: NEU:
                  - alle Topfield TimeStamps werden sekundengenau berechnet
                  - StartTime-Sekundenangabe wird in der inf (Byte 0x06) gespeichert(!)
+                 - neue Berechnung der Arrival Timestamps bei Konvertierung ts->m2ts
+                 - korrekte(re) Zeitzonen-Behandlung (UnixTime=UTC, TFTime=lokale Zeitzone)
+                 - EPG-Zeitversatz wird aus Teletext-Zeitzone berechnet
                  - Humax-Mode: Ermittlung von Startzeit und Program Identification aus Teletext
+                 - verbesserte Behandlung von Buffer Overflows in PESProcessor und PESFileLoader
 
                BUGFIXES:
+                 - PESProcessor hatte nach Continuity-Error das erste Packet des neuen PES-Pakets verworfen
                  - aus Teletext ermittelte Programme Identification wurde nicht in inf eingetragen
+                 - bei Appending wurde vorhandene Source-inf nicht beibehalten
                  - Medion-Mode: fehlerhafte Nullbyte-Entfernung durch zu späte Prüfung auf Video-PES
                  - Medion-Mode: PMT-PID wurde nicht in inf eingetragen
                  - Medion-Mode: PAT/PMT und EIT wurden am Anfang doppelt geschrieben
