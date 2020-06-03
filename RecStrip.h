@@ -3,7 +3,7 @@
 
 #include "RecHeader.h"
 
-#define VERSION                  "v2.5b"
+#define VERSION                  "v2.6"
 
 #define NRBOOKMARKS                177   // eigentlich werden nur 48 Bookmarks unterstützt!! (SRP2401)
 #define NRSEGMENTMARKER            101
