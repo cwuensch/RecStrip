@@ -106,7 +106,6 @@ tSegmentMarker2        *SegmentMarker = NULL;       //[0]=Start of file, [x]=End
 int                     NrSegmentMarker = 0;
 int                     ActiveSegment = 0;
 dword                   InfDuration = 0, NewDurationMS = 0, NewStartTimeOffset = 0;
-int                     CutTimeOffset = 0;
 
 // Lokale Variablen
 static char             NavFileIn[FBLIB_DIR_SIZE], NavFileOut[FBLIB_DIR_SIZE], NavFileOld[FBLIB_DIR_SIZE], InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], InfFileOld[FBLIB_DIR_SIZE], InfFileFirstIn[FBLIB_DIR_SIZE], CutFileIn[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE], TeletextOut[FBLIB_DIR_SIZE];
@@ -120,6 +119,7 @@ static unsigned int     RecFileBlocks = 0;
 static long long        CurrentPosition = 0, PositionOffset = 0, NrPackets = 0;
 static unsigned int     CurPosBlocks = 0, CurBlockBytes = 0, BlocksOneSecond = 250, BlocksOnePercent;
 static unsigned int     NrSegments = 0, NrCopiedSegments = 0;
+static int              CutTimeOffset = 0;
 long long               NrDroppedZeroStuffing=0;
 static long long        NrDroppedFillerNALU=0, NrDroppedAdaptation=0, NrDroppedNullPid=0, NrDroppedEPGPid=0, NrDroppedTxtPid=0, NrScrambledPackets=0, CurScrambledPackets=0, NrIgnoredPackets=0;
 static dword            LastPCR = 0, LastTimeStamp = 0, CurTimeStep = 1200;
@@ -559,7 +559,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     {
       AddDefaultSegmentMarker();
       CutFileIn[0] = '\0';
-      DoCut = 0;
+//      DoCut = 0;
     }
   }
 
@@ -591,7 +591,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     {
       // beide ohne cut-File -> letzten SegmentMarker anpassen
       SegmentMarker_bak[1].Position = RecFileBlocks;
-      SegmentMarker_bak[1].Timems = InfDuration * 60000;
+      SegmentMarker_bak[1].Timems = InfDuration * 1000;
     }
 
     // dirty hack: vorherige Pointer für InfBuffer und SegmentMarker wiederherstellen
@@ -1211,7 +1211,7 @@ int main(int argc, const char* argv[])
     if (NrSegmentMarker >= 2)
       CutTimeOffset = -(int)SegmentMarker[NrSegmentMarker-1].Timems;
 //    else
-//      CutTimeOffset = -(int)InfDuration;
+//      CutTimeOffset = -(int)InfDuration * 1000;
     if ((int)LastTimems > -CutTimeOffset)
       CutTimeOffset = -(int)LastTimems;
     if(ExtractTeletext) last_timestamp = -CutTimeOffset;
@@ -1342,7 +1342,7 @@ int main(int argc, const char* argv[])
 
   for (curInputFile = 0; curInputFile < NrInputFiles; curInputFile++)
   {
-/*    if (BookmarkInfo)
+    if (DoMerge && BookmarkInfo)
     {
       // Bookmarks kurz vor der Schnittstelle löschen
       while ((j > 0) && (BookmarkInfo->Bookmarks[j-1] + 3*BlocksOneSecond >= CalcBlockSize(CurrentPosition-PositionOffset)))
@@ -1356,12 +1356,12 @@ int main(int argc, const char* argv[])
       if (DoCut == 1 || DoMerge)
         if (CurrentPosition-PositionOffset > 0)
           AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + 9023));
-    } */
+    }
 
     while (fIn)
     {
       // SCHNEIDEN
-      if (((DoCut && NrSegmentMarker > 2) || DoMerge) && (CurSeg < NrSegmentMarker-1) && (CurrentPosition >= SegmentMarker[CurSeg].Position))
+      if ((DoCut && NrSegmentMarker > 2) && (CurSeg < NrSegmentMarker-1) && (CurrentPosition >= SegmentMarker[CurSeg].Position))
       {
         // Wir sind am Sprung zu einem neuen Segment CurSeg angekommen
 
@@ -1408,7 +1408,7 @@ int main(int argc, const char* argv[])
         }
 
         // SEGMENT ÜBERSPRINGEN (wenn nicht-markiert)
-        while ((DoCut && NrSegmentMarker > 2) && (CurSeg < NrSegmentMarker-1) && (CurrentPosition >= SegmentMarker[CurSeg].Position) && !SegmentMarker[CurSeg].Selected)
+        while ((DoCut && NrSegmentMarker >= 2) && (CurSeg < NrSegmentMarker-1) && (CurrentPosition >= SegmentMarker[CurSeg].Position) && !SegmentMarker[CurSeg].Selected)
         {
           if (OutCutVersion >= 4)
             printf("[Segment %d]  -%12llu %12lld-%-12lld %s\n", ++n, CurrentPosition, SegmentMarker[CurSeg].Position, SegmentMarker[CurSeg+1].Position, SegmentMarker[CurSeg].pCaption);
@@ -1456,7 +1456,7 @@ int main(int argc, const char* argv[])
           SegmentMarker[CurSeg].Selected = FALSE;
           SegmentMarker[CurSeg].Percent = 0;
 
-          if (BookmarkInfo && (DoCut || (DoMerge && CurrentPosition == 0)))
+          if (BookmarkInfo && DoCut)
           {
             // Bookmarks kurz vor der Schnittstelle löschen
             while ((j > 0) && (BookmarkInfo->Bookmarks[j-1] + 3*BlocksOneSecond >= CalcBlockSize(CurrentPosition-PositionOffset)))  // CurPos - SkippedBytes ?
@@ -1959,7 +1959,7 @@ int main(int argc, const char* argv[])
       if (NrSegmentMarker >= 2)
         CutTimeOffset -= (int)SegmentMarker[NrSegmentMarker-1].Timems;
 //      else
-//        CutTimeOffset -= (int)InfDuration;
+//        CutTimeOffset -= (int)InfDuration * 1000;
       if (-(int)LastTimems < CutTimeOffset)
         CutTimeOffset = -(int)LastTimems;
       SetFirstPacketAfterBreak();
@@ -1978,6 +1978,8 @@ int main(int argc, const char* argv[])
         exit(5);
       }
 
+      CurSeg++;
+      if(NewStartTimeOffset == 0) NewStartTimeOffset = 1;
       CurPosBlocks = 0;
       CurBlockBytes = 0;
       BlocksSincePercent = 0;

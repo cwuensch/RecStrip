@@ -85,8 +85,9 @@ void AddDefaultSegmentMarker(void)
   TRACEENTER;
 
   ResetSegmentMarkers();
+//  SegmentMarker[0].Selected = TRUE;
   SegmentMarker[1].Position = RecFileSize;
-  SegmentMarker[1].Timems   = InfDuration * 60000;
+  SegmentMarker[1].Timems   = InfDuration * 1000;
   SegmentMarker[1].Percent  = 100.0;
   NrSegmentMarker = 2;
 
@@ -531,7 +532,7 @@ bool CutFileLoad(const char *AbsCutName)
     {
       SegmentMarker[NrSegmentMarker - 1].Position = RecFileSize;
       if (!SegmentMarker[NrSegmentMarker - 1].Timems)
-        SegmentMarker[NrSegmentMarker - 1].Timems = (InfDuration*60000);
+        SegmentMarker[NrSegmentMarker - 1].Timems = InfDuration * 1000;
     }
 
     // Prozent-Angaben neu berechnen (müssen künftig nicht mehr in der .cut gespeichert werden)

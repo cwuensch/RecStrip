@@ -1305,6 +1305,6 @@ dword NavGetPosTimeStamp(tTimeStamp2 TimeStamps[], int NrTimeStamps, long long F
   else
   {
     TRACEEXIT;
-    return ((dword) (((float)FilePosition / RecFileSize) * (60*InfDuration)) * 1000);
+    return ((dword) ((float)FilePosition / RecFileSize) * InfDuration * 1000);
   }
 }
