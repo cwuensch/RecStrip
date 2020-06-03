@@ -577,7 +577,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
       BookmarkInfo_bak->Bookmarks[BookmarkInfo_bak->NrBookmarks++] = BookmarkInfo->Bookmarks[i];
 
     // neu ermittelte SegmentMarker kopieren
-    if (NrSegmentMarker_bak > 2 || NrSegmentMarker > 2 || (SegmentMarker && SegmentMarker[0].pCaption))
+//    if (NrSegmentMarker_bak > 2 || NrSegmentMarker > 2 || (SegmentMarker && SegmentMarker[0].pCaption))
     {
       // letzten SegmentMarker der ersten Aufnahme löschen (wird ersetzt durch Segment 0 der zweiten)
       if (NrSegmentMarker_bak >= 2)
@@ -587,12 +587,12 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
       for (i = 0; i < NrSegmentMarker; i++)
         SegmentMarker_bak[NrSegmentMarker_bak++] = SegmentMarker[i];
     }
-    else if (NrSegmentMarker_bak >= 2)
+/*    else if (NrSegmentMarker_bak >= 2)
     {
       // beide ohne cut-File -> letzten SegmentMarker anpassen
       SegmentMarker_bak[1].Position = RecFileBlocks;
       SegmentMarker_bak[1].Timems = InfDuration * 1000;
-    }
+    } */
 
     // dirty hack: vorherige Pointer für InfBuffer und SegmentMarker wiederherstellen
 //    free(InfBuf_tmp); InfBuf_tmp = NULL;
