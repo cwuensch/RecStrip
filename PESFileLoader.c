@@ -433,7 +433,7 @@ bool SimpleMuxer_Open(FILE *fIn, char const* PESAudName, char const* PESTtxName,
   if (!EITLen)
     printf("  SimpleMuxer: Cannot open file %s.\n", EITName);
 
-  if (PESStream_Open(&PESVideo, fIn, VIDEOBUFSIZE) && PESStream_Open(&PESAudio, aud, 65536) && PESStream_Open(&PESTeletxt, ttx, 32768))
+  if (PESStream_Open(&PESVideo, fIn, VIDEOBUFSIZE) && PESStream_Open(&PESAudio, aud, 131027) && PESStream_Open(&PESTeletxt, ttx, 32768))
   {
     if (!PESVideo.FileAtEnd)   { PESStream_GetNextPacket(&PESVideo); VideoPID = 100; }
     if (!PESAudio.FileAtEnd)   { PESStream_GetNextPacket(&PESAudio); }

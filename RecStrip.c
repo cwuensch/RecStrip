@@ -115,8 +115,9 @@ static byte            *PendingBuf = NULL;
 static int              PendingBufLen = 0, PendingBufStart = 0;
 static bool             isPending = FALSE;
 
+long long               CurrentPosition = 0;
 static unsigned int     RecFileBlocks = 0;
-static long long        CurrentPosition = 0, PositionOffset = 0, NrPackets = 0;
+static long long        PositionOffset = 0, NrPackets = 0;
 static unsigned int     CurPosBlocks = 0, CurBlockBytes = 0, BlocksOneSecond = 250, BlocksOnePercent;
 static unsigned int     NrSegments = 0, NrCopiedSegments = 0;
 static int              CutTimeOffset = 0;
@@ -448,7 +449,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     ContinuityPIDs[k] = (word) -1;
     ContinuityCtrs[k] = -1;
   }
-  NrContinuityPIDs = 0;
+  NrContinuityPIDs = 1;
 
   // Spezialanpassung Medion
   if (MedionMode)
@@ -540,7 +541,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
 
   if (ret)
   {
-    if (AlreadyStripped)
+    if (FirstTime && AlreadyStripped)
       printf("  INFO: File has already been stripped.\n");
 
     // ggf. nav-File öffnen
@@ -1030,7 +1031,7 @@ int main(int argc, const char* argv[])
                   else RemoveTeletext = TRUE;
                   break;
       case 'x':   RemoveScrambled = TRUE; break;
-      case 'o':   OutPacketSize   = (argv[1][2] == '2') ? 188 : 192; break;
+      case 'o':   OutPacketSize   = (argv[1][2] == '1') ? 188 : 192; break;
       case 'M':   MedionMode = TRUE;      break;
       case 'v':   DoInfoOnly = TRUE;      break;
       default:    printf("\nUnknown argument: -%c\n", argv[1][1]);
@@ -1122,15 +1123,15 @@ int main(int argc, const char* argv[])
     printf("  -tt:       Extract subtitles from teletext. (together with -s: also remove)\n\n");
     printf("  -x:        Remove packets marked as scrambled. (flag could be wrong!)\n\n");
     printf("  -o1/-o2:   Change the packet size for output-rec: \n"
-           "             1: PacketSize = 192 Bytes, 2: PacketSize = 188 Bytes.\n\n");
+           "             1: PacketSize = 188 Bytes, 2: PacketSize = 192 Bytes.\n\n");
     printf("  -v:        View rec information only. Disables any other option.\n\n");
     printf("  -M:        Medion Mode: Multiplexes 4 separate PES-Files into output.\n");
     printf("             (With InFile=<name>_video.pes, _audio1, _ttx, _epg are used.)\n");
     printf("\nExamples:\n---------\n");
     printf("  RecStrip 'RecFile.rec'                     RebuildNav.\n\n");
     printf("  RecStrip -s -e InFile.rec OutFile.rec      Strip recording.\n\n");
-    printf("  RecStrip -n -i -o1 InFile.ts OutFile.rec   Convert TS to Topfield rec.\n\n");
-    printf("  RecStrip -r -s -e -o2 InRec.rec OutMpg.ts  Strip & cut rec and convert to TS.\n");
+    printf("  RecStrip -n -i -o2 InFile.ts OutFile.rec   Convert TS to Topfield rec.\n\n");
+    printf("  RecStrip -r -s -e -o1 InRec.rec OutMpg.ts  Strip & cut rec and convert to TS.\n");
     TRACEEXIT;
     exit(1);
   }
@@ -1215,6 +1216,7 @@ int main(int argc, const char* argv[])
     if ((int)LastTimems > -CutTimeOffset)
       CutTimeOffset = -(int)LastTimems;
     if(ExtractTeletext) last_timestamp = -CutTimeOffset;
+    NewStartTimeOffset = 1;
     CloseInputFiles(FALSE);
   }
 
@@ -1428,6 +1430,7 @@ int main(int argc, const char* argv[])
               ContinuityCtrs[k] = -1;
             if(DoStrip)  NALUDump_Init();  // NoContinuityCheck = TRUE;
             LastPCR = 0;
+//            LastTimeStamp = 0;
 
             // Position neu berechnen
             PositionOffset += SkippedBytes;
@@ -1754,7 +1757,7 @@ int main(int argc, const char* argv[])
             {
               dword CurPCR = (CurPCRfull & 0xffffffff);
               
-              if (LastPCR && CurPCR > LastPCR)
+              if (LastPCR && (CurPCR > LastPCR) && (CurPCR - LastPCR <= 1080000))  // 40 ms
               {
                 if (MedionMode == 1)
                   CurTimeStep = (dword)(CurPCR - LastPCR) / ((PESVideo.curPacketLength+8+183) / 184);
@@ -1966,6 +1969,7 @@ int main(int argc, const char* argv[])
       SetTeletextBreak(TRUE, TeletextPage);
       if(DoStrip)  NALUDump_Init();  // NoContinuityCheck = TRUE;
       LastPCR = 0;
+//      LastTimeStamp = 0;
 
       if (!OpenInputFiles(RecFileIn, FALSE))
       {
@@ -1979,6 +1983,10 @@ int main(int argc, const char* argv[])
       }
 
       CurSeg++;
+      if (NrSegments == 0)
+      {
+        NrCopiedSegments = 1; NrSegments = 1;
+      }
       if(NewStartTimeOffset == 0) NewStartTimeOffset = 1;
       CurPosBlocks = 0;
       CurBlockBytes = 0;

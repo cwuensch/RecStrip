@@ -14,7 +14,6 @@ typedef struct
   byte                 *pBuffer;
   byte                  LastCCCounter;
   byte                 *Buffer1, *Buffer2;
-  int                   PSFileCtr;
   bool                  ErrorFlag;
 #ifdef _DEBUG
   int                   maxPESLen;

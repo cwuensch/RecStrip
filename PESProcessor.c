@@ -53,18 +53,14 @@ void PSBuffer_Init(tPSBuffer *PSBuffer, word PID, int BufferSize, bool TablePack
 
 void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
 {
-  byte                  RemainingBytes, Start = 0;
+  byte                  RemainingBytes = 0, Start = 0;
+  bool                  PESStart = Packet->Payload_Unit_Start;
   
   TRACEENTER;
 
   //Stimmt die PID?
   if((Packet->SyncByte == 'G') && ((Packet->PID1 *256) + Packet->PID2 == PSBuffer->PID) && Packet->Payload_Exists)
   {
-#ifdef _DEBUG
-    if(PSBuffer->BufferPtr > PSBuffer->maxPESLen)
-      PSBuffer->maxPESLen = PSBuffer->BufferPtr;
-#endif
-
     //Continuity Counter ok? Falls nicht Buffer komplett verwerfen
     if((PSBuffer->LastCCCounter != 255) && (Packet->ContinuityCount != ((PSBuffer->LastCCCounter + 1) % 16)))
     {
@@ -78,7 +74,16 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
         
     //Adaptation field gibt es nur bei PES Paketen
     if(Packet->Adapt_Field_Exists)
+    {
       Start += (1 + Packet->Data[0]);  // CW (Längen-Byte zählt ja auch noch mit!)
+
+      // Liegt ein DiscontinueFlag vor?
+      if ((Packet->Data[0] > 0) && ((Packet->Data[1] & 0x80) > 0))
+      {
+        printf("  Discontinuity flag while parsing PID %hu\n", PSBuffer->PID);
+        PSBuffer_DropCurBuffer(PSBuffer);
+      }
+    }
 
     //Startet ein neues PES-Paket?
     if(Packet->Payload_Unit_Start)
@@ -94,41 +99,65 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
         for (RemainingBytes = 0; RemainingBytes < 184-Start-2; RemainingBytes++)
           if (Packet->Data[Start+RemainingBytes]==0 && Packet->Data[Start+RemainingBytes+1]==0 && Packet->Data[Start+RemainingBytes+2]==1)
             break;
-      }
 
-      if(PSBuffer->BufferPtr != 0)
-      {
-        //Restliche Bytes umkopieren und neuen Buffer beginnen
-        if(RemainingBytes != 0)
+        if (RemainingBytes == 184-Start-2)
         {
-          if(PSBuffer->BufferPtr + RemainingBytes <= PSBuffer->BufferSize)
+          if (Packet->Data[Start+RemainingBytes+2] == 0)
           {
-            memcpy(PSBuffer->pBuffer, &Packet->Data[Start], RemainingBytes);
-            PSBuffer->BufferPtr += RemainingBytes;
+            if (Packet->Data[Start+RemainingBytes+1] != 0)  RemainingBytes++;
           }
           else
+            RemainingBytes += 2;
+        }
+      }
+
+      if (RemainingBytes < 184 - Start)
+      {
+        //Restliche Bytes umkopieren und neuen Buffer beginnen
+        if(PSBuffer->BufferPtr != 0)
+        {
+          if(RemainingBytes != 0)
           {
-            printf("  PS buffer overflow while parsing PID %hu\n", PSBuffer->PID);
-            PSBuffer->ErrorFlag = TRUE;
+            if(PSBuffer->BufferPtr + RemainingBytes <= PSBuffer->BufferSize)
+            {
+              memcpy(PSBuffer->pBuffer, &Packet->Data[Start], RemainingBytes);
+              PSBuffer->BufferPtr += RemainingBytes;
+            }
+            else
+            {
+              printf("  PS buffer overflow while parsing PID %hu\n", PSBuffer->PID);
+              PSBuffer->ErrorFlag = TRUE;
+            }
           }
         }
+
+#ifdef _DEBUG
+        if(PSBuffer->BufferPtr > PSBuffer->maxPESLen)
+          PSBuffer->maxPESLen = PSBuffer->BufferPtr;
+#endif
 
         //Puffer mit den abfragbaren Daten markieren
         PSBuffer->ValidBuffer = (PSBuffer->ValidBuffer % 2) + 1;  // 0 und 2 -> 1, 1 -> 2
         PSBuffer->ValidBufLen = PSBuffer->BufferPtr;
 
-        PSBuffer->PSFileCtr++;
+        //Neuen Puffer aktivieren
+        switch(PSBuffer->ValidBuffer)
+        {
+          case 0:
+          case 2: PSBuffer->pBuffer = PSBuffer->Buffer1; break;
+          case 1: PSBuffer->pBuffer = PSBuffer->Buffer2; break;
+        }
+        PSBuffer->BufferPtr = 0;
       }
-
-      //Neuen Puffer aktivieren
-      switch(PSBuffer->ValidBuffer)
+      else
       {
-        case 0:
-        case 2: PSBuffer->pBuffer = PSBuffer->Buffer1; break;
-        case 1: PSBuffer->pBuffer = PSBuffer->Buffer2; break;
+        PESStart = FALSE;
+        RemainingBytes = 0;
       }
-      PSBuffer->BufferPtr = 0;
+    }
 
+    if (PESStart)
+    {
       //Erste Daten kopieren
       memset(PSBuffer->pBuffer, 0, PSBuffer->BufferSize);
       memcpy(PSBuffer->pBuffer, &Packet->Data[Start+RemainingBytes], 184-Start-RemainingBytes);

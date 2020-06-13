@@ -130,6 +130,7 @@ extern int              NrSegmentMarker, NrSegmentMarker_In;
 extern long long        NrDroppedZeroStuffing;
 extern int              ActiveSegment;
 extern dword            InfDuration, NewDurationMS, NewStartTimeOffset;
+extern long long        CurrentPosition;
 
 
 bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize);

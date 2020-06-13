@@ -352,17 +352,14 @@ if (RecHeaderInfo->Reserved != 0)
     }
     if (k >= NrContinuityPIDs)
     {
-      for (k = NrContinuityPIDs; k > 1; k--)
-      {
-        if (k < MAXCONTINUITYPIDS)
-          ContinuityPIDs[k] = ContinuityPIDs[k-1];
-      }
-      ContinuityPIDs[1] = ServiceInfo->AudioPID;
       if (NrContinuityPIDs < MAXCONTINUITYPIDS)
         NrContinuityPIDs++;
+      for (k = NrContinuityPIDs-1; k > 1; k--)
+        ContinuityPIDs[k] = ContinuityPIDs[k-1];
+      ContinuityPIDs[1] = ServiceInfo->AudioPID;
     }
 
-    if (RecHeaderInfo->rs_HasBeenStripped)
+    if (FirstTime && RecHeaderInfo->rs_HasBeenStripped)
       AlreadyStripped = TRUE;
   }
 
@@ -546,7 +543,7 @@ bool SaveInfFile(const char *AbsDestInf, const char *AbsSourceInf)
     fInfOut = fopen(AbsDestInf, "wb");
   if(fInfOut)
   {
-    if ((DoStrip && !DoMerge) || MedionStrip)
+    if ((DoStrip && (DoMerge != 1 || AlreadyStripped)) || MedionStrip)
     {
       RecHeaderInfo->rs_ToBeStripped = FALSE;
       RecHeaderInfo->rs_HasBeenStripped = TRUE;
