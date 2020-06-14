@@ -439,7 +439,7 @@ int ProcessTSPacket(unsigned char *Packet, long long FilePosition)
   else
   {
     // Adaptation Field ohne PCR verwerfen (experimentell!!)
-    if (!TSPacket->Payload_Exists && TSPacket->Adapt_Field_Exists && !GetPCR(Packet, NULL))
+    if (TSPacket->Adapt_Field_Exists && !GetPCR(Packet, NULL) /*&& (!TSPacket->Payload_Exists || TSPacket->Data[0] == 183)*/)
       return 4;
   }
 
