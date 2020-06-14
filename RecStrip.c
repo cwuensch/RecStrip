@@ -1604,13 +1604,15 @@ int main(int argc, const char* argv[])
           // auf verschlüsselte Pakete prüfen
           if (((tTSPacket*) &Buffer[4])->Scrambling_Ctrl >= 2)
           {
-            CurScrambledPackets++;
-            if (CurScrambledPackets <= 100)
-            {              
-              if (((tTSPacket*) &Buffer[4])->Payload_Exists)
+            if (((tTSPacket*) &Buffer[4])->Payload_Exists)
+            {
+              CurScrambledPackets++;
+              if (CurScrambledPackets <= 100)
+              {              
                 printf("WARNING [%s]: Scrambled packet bit at pos %lld, PID %u -> %s\n", ((((tTSPacket*) &Buffer[4])->Adapt_Field_Exists && Buffer[8] >= 182) ? "ok" : "!!"), CurrentPosition, CurPID, (RemoveScrambled ? "packet removed" : "ignored"));
-              if (CurScrambledPackets == 100)             
-              printf("There where scrambled packets. No more scrambled warnings will be shown...\n");
+                if (CurScrambledPackets == 100)
+                  printf("There were scrambled packets. No more scrambled warnings will be shown...\n");
+              }
             }
             if ((CurScrambledPackets > CurPosBlocks) && (CurPosBlocks >= 100))  // ~ 2% der Pakete
             {

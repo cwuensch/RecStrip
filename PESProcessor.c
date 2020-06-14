@@ -129,16 +129,16 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
               PSBuffer->ErrorFlag = TRUE;
             }
           }
-        }
 
 #ifdef _DEBUG
-        if(PSBuffer->BufferPtr > PSBuffer->maxPESLen)
-          PSBuffer->maxPESLen = PSBuffer->BufferPtr;
+          if(PSBuffer->BufferPtr > PSBuffer->maxPESLen)
+            PSBuffer->maxPESLen = PSBuffer->BufferPtr;
 #endif
 
-        //Puffer mit den abfragbaren Daten markieren
-        PSBuffer->ValidBuffer = (PSBuffer->ValidBuffer % 2) + 1;  // 0 und 2 -> 1, 1 -> 2
-        PSBuffer->ValidBufLen = PSBuffer->BufferPtr;
+          //Puffer mit den abfragbaren Daten markieren
+          PSBuffer->ValidBuffer = (PSBuffer->ValidBuffer % 2) + 1;  // 0 und 2 -> 1, 1 -> 2
+          PSBuffer->ValidBufLen = PSBuffer->BufferPtr;
+        }
 
         //Neuen Puffer aktivieren
         switch(PSBuffer->ValidBuffer)

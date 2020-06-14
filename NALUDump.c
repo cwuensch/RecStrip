@@ -159,15 +159,15 @@ static void ProcessPayload_HD(unsigned char *Payload, int size, bool PayloadStar
       LastKeepByte = i;
       continue;
     }
-    else if (PesId >= 0xe0 && PesId <= 0xef) // video stream
+    else if (PesId >= 0xe0 && PesId <= 0xef)  // video stream
     {
-      if (History >= 0x00000100 && History <= 0x0000017F) // NALU start code
+      if (History >= 0x00000100 && History <= 0x0000017F)  // NALU start code
       {
         int NaluId = History & 0xff;
         NaluFillState = ((NaluId & 0x1f) == 0x0c) ? NALU_FILL : NALU_NONE;
         if ((NaluFillState == NALU_FILL) && (i == 3))
         {
-  //        DropByte = TRUE;        // CW
+//          DropByte = TRUE;        // CW
           LastKeepByte = -1;      // CW
           DropAllPayload = TRUE;  // CW
         }
@@ -175,18 +175,22 @@ static void ProcessPayload_HD(unsigned char *Payload, int size, bool PayloadStar
           LastKeepByte = i;
         continue;
       }
-      else if ((NaluFillState >= NALU_NONE) && (Payload[i] == 0xff))
+    }
+    if ((PesId >= 0xe0 && PesId <= 0xef) || (PesId == -1))  // video or no stream
+    {
+      if ((NaluFillState >= NALU_NONE) && (Payload[i] == 0xff))
       {
         NaluFillState = NALU_FILLWITHOUTSTART;
-        if (i == 0)
+//        DropByte = TRUE;
+        if (i == 0 && size > 100)
           DropAllPayload = TRUE;
-        continue;
       }
     }
-    if (PesId >= 0xe0 && PesId <= 0xef // video stream
+
+    if (PesId >= 0xe0 && PesId <= 0xef  // video stream
      && (PesOffset == 1 || PesOffset == 2))
     {
-      Payload[i] = 0; // Zero out PES length field
+      Payload[i] = 0;  // Zero out PES length field
       History = History | 0xff;
     }
 
@@ -204,7 +208,7 @@ static void ProcessPayload_HD(unsigned char *Payload, int size, bool PayloadStar
         {
           if (NaluFillState == NALU_FILLWITHOUTSTART)
             printf("cNaluDumper: Filler NALU without startcode deleted (length=%d)\n", i-LastKeepByte);
-          NaluFillState = NALU_TERM; // Last byte of NALU fill, next byte sets NaluFillEnd=true
+          NaluFillState = NALU_TERM;  // Last byte of NALU fill, next byte sets NaluFillEnd=true
           DropByte = TRUE;
         }
         else
@@ -242,6 +246,13 @@ static void ProcessPayload_HD(unsigned char *Payload, int size, bool PayloadStar
       LastKeepByte = i; // Last useful byte
   }
 
+  if (NaluFillState == NALU_FILLWITHOUTSTART)
+  {
+    if (i - LastKeepByte >= 100)
+      printf("cNaluDumper: Filler NALU without start- and endcode deleted (length=%d)\n", i-LastKeepByte-1);
+    else
+      LastKeepByte = size - 1;
+  }
   Info->DropAllPayloadBytes = (LastKeepByte == -1);
   Info->DropPayloadEndBytes = size-1-LastKeepByte;
   TRACEEXIT;
@@ -356,10 +367,13 @@ int ProcessTSPacket(unsigned char *Packet, long long FilePosition)
       if (!DropAllPayload && Info.DropPayloadEndBytes > 0)  // Payload ends with 0xff NALU Fill
       {
         // Last packet of useful data
+
         // Do early termination of NALU fill data
-        Packet[TS_SIZE-1] = 0x80;
-        DropAllPayload = TRUE;
+        if (NaluFillState == NALU_FILL)
+          Packet[TS_SIZE-1] = 0x80;
+
         // Drop all packets AFTER this one
+        DropAllPayload = TRUE;
 
         // Since we already wrote the 0x80, we have to make sure that
         // as soon as we stop dropping packets, any beginning NALU fill of next
