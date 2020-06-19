@@ -138,16 +138,16 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
           //Puffer mit den abfragbaren Daten markieren
           PSBuffer->ValidBuffer = (PSBuffer->ValidBuffer % 2) + 1;  // 0 und 2 -> 1, 1 -> 2
           PSBuffer->ValidBufLen = PSBuffer->BufferPtr;
-        }
 
-        //Neuen Puffer aktivieren
-        switch(PSBuffer->ValidBuffer)
-        {
-          case 0:
-          case 2: PSBuffer->pBuffer = PSBuffer->Buffer1; break;
-          case 1: PSBuffer->pBuffer = PSBuffer->Buffer2; break;
+          //Neuen Puffer aktivieren
+          switch(PSBuffer->ValidBuffer)
+          {
+            case 0:
+            case 2: PSBuffer->pBuffer = PSBuffer->Buffer1; break;
+            case 1: PSBuffer->pBuffer = PSBuffer->Buffer2; break;
+          }
+          PSBuffer->BufferPtr = 0;
         }
-        PSBuffer->BufferPtr = 0;
       }
       else
       {

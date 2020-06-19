@@ -232,6 +232,7 @@ static inline dword CalcBlockSize(long long Size)
     return (dword)(Size >> 6) / 141;
   else
   {
+//return 0;
     Size = -Size;
     return (dword)(-((Size >> 6) / 141));
   }
