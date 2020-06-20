@@ -1015,6 +1015,7 @@ int main(int argc, const char* argv[])
 
 
   // Eingabe-Parameter prüfen
+  if (argc <= 1)  AbortProcess = TRUE;
   while ((argc > 1) && (argv && argv[1] && argv[1][0] == '-' && (argv[1][2] == '\0' || argv[1][3] == '\0')))
   {
     switch (argv[1][1])
@@ -1035,8 +1036,10 @@ int main(int argc, const char* argv[])
       case 'o':   OutPacketSize   = (argv[1][2] == '1') ? 188 : 192; break;
       case 'M':   MedionMode = TRUE;      break;
       case 'v':   DoInfoOnly = TRUE;      break;
+      case 'h':
+      case '?':   ret = FALSE; AbortProcess = TRUE; break;
       default:    printf("\nUnknown argument: -%c\n", argv[1][1]);
-                  ret = FALSE;
+                  ret = FALSE; AbortProcess = TRUE;  // Show help text
     }
     argv[1] = argv[0];
     argv++;
@@ -1065,13 +1068,15 @@ int main(int argc, const char* argv[])
   else RecFileOut[0] = '\0';
   if (DoCut == 2)
   {
-//    const char *p = strrchr(RecFileOut, PATH_SEPARATOR);  // ggf. Dateinamen entfernen
-//    memset(OutDir, 0, sizeof(OutDir));
-//    strncpy(OutDir, RecFileOut, min((p) ? (size_t)(p - RecFileOut) : strlen(RecFileOut), sizeof(OutDir)-1));
-    if (HDD_DirExist(RecFileOut))
-      strncpy(OutDir, RecFileOut, sizeof(OutDir));
+    if (*RecFileOut)
+    {
+      if (HDD_DirExist(RecFileOut))
+        strncpy(OutDir, RecFileOut, sizeof(OutDir));
+      else
+        { printf("\nOutput folder '%s' does not exist.\nPlease specify an existing folder, or omit it to use current directory!\n", RecFileOut);  ret = FALSE; }
+    }
     else
-      OutDir[0] = '\0';
+      OutDir[0] = '\0';  // use current dir
     GetNextFreeCutName(RecFileIn, RecFileOut, OutDir);
   }
   else OutDir[0] = '\0';
@@ -1095,44 +1100,47 @@ int main(int argc, const char* argv[])
 
   if (!ret)
   {
-    printf("\nUsage:\n------\n");
-    printf(" RecStrip <RecFile>           Scan the rec file and set Crypt- und RbN-Flag in\n"
-           "                              the source inf.\n"
-           "                              If source inf/nav not present, generate them new.\n\n");
-    printf(" RecStrip <InFile> <OutFile>  Create a copy of the input rec.\n"
-           "                              If a inf/nav/cut file exists, copy and adapt it.\n"
-           "                              If source inf is present, set Crypt and RbN-Flag\n"
-           "                              and reset ToBeStripped if successfully stripped.\n");
-    printf("\nParameters:\n-----------\n");
-    printf("  -n/-i:     Always generate a new nav/inf file from the rec.\n"
-           "             If no OutFile is specified, source nav/inf will be overwritten!\n\n");
-    printf("  -r:        Cut the recording according to cut-file. (if OutFile specified)\n"
-           "             Copies only the selected segments into the new rec.\n\n");
-    printf("  -c:        Copies each selected segment into a single new rec-file.\n"
-           "             The output files will be auto-named. OutFile is ignored.\n"
-           "             (instead of OutFile an output folder may be specified.)\n\n");
-    printf("  -a:        Append second, ... file to the first file. (file1 gets modified!)\n"
-           "             If combined with -r, only the selected segments are appended.\n"
-           "             If combined with -s, only the copied part will be stripped.\n\n");
-    printf("  -m:        Merge file2, file3, ... into a new file1. (file1 is created!)\n"
-           "             If combined with -s, all input files will be stripped.\n\n");
-    printf("  -s:        Strip the recording. (if OutFile specified)\n"
-           "             Removes unneeded filler packets. May be combined with -c, -r, -a.\n\n");
-    printf("  -ss:       Strip and skip. Same as -s, but skips already stripped files.\n\n");
-    printf("  -e:        Remove also the EPG data. (can be combined with -s)\n\n");
-    printf("  -t:        Remove also the teletext data. (can be combined with -s)\n");
-    printf("  -tt:       Extract subtitles from teletext. (together with -s: also remove)\n\n");
-    printf("  -x:        Remove packets marked as scrambled. (flag could be wrong!)\n\n");
-    printf("  -o1/-o2:   Change the packet size for output-rec: \n"
-           "             1: PacketSize = 188 Bytes, 2: PacketSize = 192 Bytes.\n\n");
-    printf("  -v:        View rec information only. Disables any other option.\n\n");
-    printf("  -M:        Medion Mode: Multiplexes 4 separate PES-Files into output.\n");
-    printf("             (With InFile=<name>_video.pes, _audio1, _ttx, _epg are used.)\n");
-    printf("\nExamples:\n---------\n");
-    printf("  RecStrip 'RecFile.rec'                     RebuildNav.\n\n");
-    printf("  RecStrip -s -e InFile.rec OutFile.rec      Strip recording.\n\n");
-    printf("  RecStrip -n -i -o2 InFile.ts OutFile.rec   Convert TS to Topfield rec.\n\n");
-    printf("  RecStrip -r -s -e -o1 InRec.rec OutMpg.ts  Strip & cut rec and convert to TS.\n");
+    if (AbortProcess)
+    {
+      printf("\nUsage:\n------\n");
+      printf(" RecStrip <RecFile>           Scan the rec file and set Crypt- und RbN-Flag in\n"
+             "                              the source inf.\n"
+             "                              If source inf/nav not present, generate them new.\n\n");
+      printf(" RecStrip <InFile> <OutFile>  Create a copy of the input rec.\n"
+             "                              If a inf/nav/cut file exists, copy and adapt it.\n"
+             "                              If source inf is present, set Crypt and RbN-Flag\n"
+             "                              and reset ToBeStripped if successfully stripped.\n");
+      printf("\nParameters:\n-----------\n");
+      printf("  -n/-i:     Always generate a new nav/inf file from the rec.\n"
+             "             If no OutFile is specified, source nav/inf will be overwritten!\n\n");
+      printf("  -r:        Cut the recording according to cut-file. (if OutFile specified)\n"
+             "             Copies only the selected segments into the new rec.\n\n");
+      printf("  -c:        Copies each selected segment into a single new rec-file.\n"
+             "             The output files will be auto-named. OutFile is ignored.\n"
+             "             (instead of OutFile an output folder may be specified.)\n\n");
+      printf("  -a:        Append second, ... file to the first file. (file1 gets modified!)\n"
+             "             If combined with -r, only the selected segments are appended.\n"
+             "             If combined with -s, only the copied part will be stripped.\n\n");
+      printf("  -m:        Merge file2, file3, ... into a new file1. (file1 is created!)\n"
+             "             If combined with -s, all input files will be stripped.\n\n");
+      printf("  -s:        Strip the recording. (if OutFile specified)\n"
+             "             Removes unneeded filler packets. May be combined with -c, -r, -a.\n\n");
+      printf("  -ss:       Strip and skip. Same as -s, but skips already stripped files.\n\n");
+      printf("  -e:        Remove also the EPG data. (can be combined with -s)\n\n");
+      printf("  -t:        Remove also the teletext data. (can be combined with -s)\n");
+      printf("  -tt:       Extract subtitles from teletext. (together with -s: also remove)\n\n");
+      printf("  -x:        Remove packets marked as scrambled. (flag could be wrong!)\n\n");
+      printf("  -o1/-o2:   Change the packet size for output-rec: \n"
+             "             1: PacketSize = 188 Bytes, 2: PacketSize = 192 Bytes.\n\n");
+      printf("  -v:        View rec information only. Disables any other option.\n\n");
+      printf("  -M:        Medion Mode: Multiplexes 4 separate PES-Files into output.\n");
+      printf("             (With InFile=<name>_video.pes, _audio1, _ttx, _epg are used.)\n");
+      printf("\nExamples:\n---------\n");
+      printf("  RecStrip 'RecFile.rec'                     RebuildNav.\n\n");
+      printf("  RecStrip -s -e InFile.rec OutFile.rec      Strip recording.\n\n");
+      printf("  RecStrip -n -i -o2 InFile.ts OutFile.rec   Convert TS to Topfield rec.\n\n");
+      printf("  RecStrip -r -s -e -o1 InRec.rec OutMpg.ts  Strip & cut rec and convert to TS.\n");
+    }
     TRACEEXIT;
     exit(1);
   }
@@ -1972,7 +1980,7 @@ int main(int argc, const char* argv[])
       SetTeletextBreak(TRUE, TeletextPage);
       if(DoStrip)  NALUDump_Init();  // NoContinuityCheck = TRUE;
       LastPCR = 0;
-//      LastTimeStamp = 0;
+      LastTimeStamp = 0;
 
       if (!OpenInputFiles(RecFileIn, FALSE))
       {
