@@ -198,6 +198,7 @@ typedef struct
 
 
 dword crc32m_tab(const unsigned char *buf, size_t len);
+bool SaveHumaxHeader(char *const VidFileName, char *const OutFileName);
 bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecInf);
 
 #endif

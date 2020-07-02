@@ -1306,6 +1306,15 @@ int main(int argc, const char* argv[])
       AnalysePMT(&PATPMTBuf[201], (TYPE_RecHeader_TMSS*)InfBuffer);
       NrContinuityPIDs = 0;
     }
+
+    if (HumaxSource)
+    {
+      char HumaxFile[FBLIB_DIR_SIZE + 6], *p;
+      strcpy(HumaxFile, RecFileOut);
+      if((p = strrchr(HumaxFile, '.'))) *p = '\0';  // ".rec" entfernen
+      strcat(HumaxFile, ".humax");
+      SaveHumaxHeader(RecFileIn, HumaxFile);
+    }
   }
 
   // Spezialanpassung Medion (Teletext-Extraktion)

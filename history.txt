@@ -12,6 +12,7 @@ RecStrip 2.6: NEU:
                  - korrekte(re) Zeitzonen-Behandlung (UnixTime=UTC, TFTime=lokale Zeitzone)
                  - EPG-Zeitversatz wird aus Teletext-Zeitzone berechnet
                  - Humax-Mode: Ermittlung von Startzeit und Program Identification aus Teletext
+                 - Humax-Mode: Original-Header wird in eine .humax-Datei ausgegeben
                  - verbesserte Behandlung von Buffer Overflows in PESProcessor und PESFileLoader
 
                BUGFIXES:

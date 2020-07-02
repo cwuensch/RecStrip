@@ -74,6 +74,37 @@ static dword crc32m(const unsigned char *buf, size_t len)
   return crc;
 } */
 
+bool SaveHumaxHeader(char *const VidFileName, char *const OutFileName)
+{
+  FILE                 *fIn, *fOut;
+  byte                  HumaxHeader[HumaxHeaderLaenge];
+  int                   i;
+  bool                  ret = TRUE;
+
+  if ((fIn = fopen(VidFileName, "rb")))
+  {
+    if ((fOut = fopen(OutFileName, "wb")))
+    {
+      for (i = 1; i <= 4; i++)
+      {
+        fseeko64(fIn, (i*HumaxHeaderIntervall) - HumaxHeaderLaenge, SEEK_SET);
+        if (fread(&HumaxHeader, HumaxHeaderLaenge, 1, fIn))
+        {
+          if (*(dword*)HumaxHeader == HumaxHeaderAnfang)
+            ret = fwrite(&HumaxHeader, HumaxHeaderLaenge, 1, fOut) && ret;
+          else
+            ret = FALSE;
+        }
+        else
+          ret = FALSE;
+      }
+      ret = (fclose(fOut) == 0) && ret;
+    }
+    fclose(fIn);
+  }
+  return ret;
+}
+
 bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecInf)
 {
   tHumaxHeader          HumaxHeader;
