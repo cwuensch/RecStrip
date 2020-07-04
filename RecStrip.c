@@ -559,8 +559,10 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     printf("\nCut file: %s\n", CutFileIn);
     if (!CutFileLoad(CutFileIn))
     {
-      AddDefaultSegmentMarker();
       CutFileIn[0] = '\0';
+      AddDefaultSegmentMarker();
+      if(!FirstTime && DoCut)
+        SegmentMarker[0].Selected = TRUE;
 //      DoCut = 0;
     }
   }
@@ -1979,6 +1981,7 @@ int main(int argc, const char* argv[])
       RecFileIn[sizeof(RecFileIn)-1] = '\0';
 
       PositionOffset -= CurrentPosition;
+      CurSeg = NrSegmentMarker - 1;
       if (NrSegmentMarker >= 2)
         CutTimeOffset -= (int)SegmentMarker[NrSegmentMarker-1].Timems;
 //      else
@@ -2002,8 +2005,7 @@ int main(int argc, const char* argv[])
         exit(5);
       }
 
-      CurSeg++;
-      if (NrSegments == 0)
+      if (DoCut && NrSegments == 0)
       {
         NrCopiedSegments = 1; NrSegments = 1;
       }
