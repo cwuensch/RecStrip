@@ -40,6 +40,7 @@ typedef struct
   dword                 curPayloadStart;
   dword                 curPacketDTS;
   int                   NextStartCodeFound;
+  bool                  DTSOverflow;
   bool                  FileAtEnd;
   bool                  ErrorFlag;
 #ifdef _DEBUG

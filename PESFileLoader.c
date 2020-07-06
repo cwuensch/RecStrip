@@ -209,7 +209,11 @@ byte* PESStream_GetNextPacket(tPESStream *PESStream)
   // Extract DTS
   PESStream->curPacketDTS = 0;
   if (curPacket->PTSpresent)
+  {
+    dword lastPacketDTS = PESStream->curPacketDTS;
     GetPTS2(&PESStream->Buffer[3], NULL, &PESStream->curPacketDTS);
+    PESStream->DTSOverflow = (PESStream->curPacketDTS < lastPacketDTS);
+  }
 
   // Remove zero byte stuffing at end of packet
   if (MedionStrip && PESStream->isVideo)
@@ -507,7 +511,7 @@ bool SimpleMuxer_NextTSPacket(tTSPacket *pack)
         StreamNr = 3;
         DoEITOutput = FALSE;
       }
-      else if (!PESVideo.FileAtEnd && (/*FirstRun ||*/ ((PESVideo.curPacketDTS <= PESAudio.curPacketDTS) && (PESVideo.curPacketDTS <= PESTeletxt.curPacketDTS))))
+      else if (!PESVideo.FileAtEnd && (/*FirstRun ||*/ ((PESVideo.curPacketDTS <= PESAudio.curPacketDTS) && (PESVideo.curPacketDTS <= PESTeletxt.curPacketDTS) && !PESVideo.DTSOverflow)))
       {
         // Start with video packet ----^
 //        FirstRun = 0;
@@ -522,17 +526,23 @@ bool SimpleMuxer_NextTSPacket(tTSPacket *pack)
         }
         LastVidDTS = PESVideo.curPacketDTS;
       }
-      else if (!PESAudio.FileAtEnd && (PESAudio.curPacketDTS <= PESTeletxt.curPacketDTS))
+      else if (!PESAudio.FileAtEnd && (PESAudio.curPacketDTS <= PESTeletxt.curPacketDTS) && !PESAudio.DTSOverflow)
       {
         p = PESAudio.Buffer;
         len = PESAudio.curPacketLength;
         StreamNr = 1;
       }
-      else if (!PESTeletxt.FileAtEnd)
+      else if (!PESTeletxt.FileAtEnd && !PESTeletxt.DTSOverflow)
       {
         p = PESTeletxt.Buffer;
         len = PESTeletxt.curPacketLength;
         StreamNr = 2;
+      }
+      else /*if (PESVideo.DTSOverflow && PESAudio.DTSOverflow && PESTeletxt.DTSOverflow) */
+      {
+        PESVideo.DTSOverflow = FALSE;
+        PESAudio.DTSOverflow = FALSE;
+        PESTeletxt.DTSOverflow = FALSE;
       }
       pack->Payload_Unit_Start = TRUE;
       curPid = PIDs[StreamNr];
