@@ -1095,10 +1095,10 @@ int main(int argc, const char* argv[])
     { printf("\nSkipping of stripped recordings cannot be combined with -r, -c, -a, -m!\n");  DoSkip = FALSE; }
   if (DoInfoOnly && (DoStrip || DoCut || DoMerge || RebuildNav || RebuildInf || ExtractTeletext))
     { printf("\nView info only (-v) disables any other option!\n"); }
-  if (ExtractTeletext && DoStrip)
-    { RemoveTeletext = TRUE; }
   if (MedionMode==1 && DoStrip)
     { MedionStrip = TRUE; DoStrip = FALSE; }
+  if (ExtractTeletext && DoStrip)
+    { RemoveTeletext = TRUE; }
 
   if (!ret)
   {
