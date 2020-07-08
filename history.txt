@@ -24,6 +24,7 @@ RecStrip 2.6: NEU:
                  - Merge: auch bei Merge neues Bookmark an Schnittstelle setzen und Stripped-Flag setzen
                  - Append: vorhandene Source-inf wurde nicht beibehalten
                  - Medion-Mode: fehlerhafte Nullbyte-Entfernung durch zu späte Prüfung auf Video-PES
+                 - Medion-Mode: korrekte Behandlung von DTS-Überlauf in Eingabe-PES
                  - Medion-Mode: PMT-PID wurde nicht in inf eingetragen
                  - Medion-Mode: PAT/PMT und EIT wurden am Anfang doppelt geschrieben
                  - Medion-Mode: RecFileSize wird aus Summe der Elementar-PES gebildet (korrekte Fortschrittsanzeige)

@@ -1779,7 +1779,7 @@ int main(int argc, const char* argv[])
             {
               dword CurPCR = (CurPCRfull & 0xffffffff);
               
-              if (LastPCR && (CurPCR > LastPCR) && (CurPCR - LastPCR <= 1080000))  // 40 ms
+              if (LastPCR /*&& (CurPCR > LastPCR)*/ && (CurPCR - LastPCR <= 1080000))  // 40 ms
               {
                 if (MedionMode == 1)
                   CurTimeStep = (dword)(CurPCR - LastPCR) / ((PESVideo.curPacketLength+8+183) / 184);

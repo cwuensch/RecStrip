@@ -699,6 +699,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     }
 
     // Read EPG Event file
+    RecInf->ServiceInfo.ServiceID = 1;
     if ((fMDIn = fopen(MDEpgName, "rb")))
     {
       if (fread(Buffer, 1, 16384, fMDIn) > 0)

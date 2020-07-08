@@ -1,6 +1,8 @@
 #ifndef __PESFILELOADERH__
 #define __PESFILELOADERH__
 
+#define PCRTOPTSOFFSET_SD 20000000
+
 typedef struct
 {
   byte                  StartCode[3];

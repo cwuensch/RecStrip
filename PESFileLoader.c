@@ -527,9 +527,11 @@ bool SimpleMuxer_NextTSPacket(tTSPacket *pack)
         StreamNr = 0;
         if (LastVidDTS)
         {
+          long long newPCR = (long long)(LastVidDTS) * 600 - PCRTOPTSOFFSET_SD;
           pack->Adapt_Field_Exists = TRUE;
           pack->Data[0] = 7;  // Adaptation Field Length
-          SetPCR((byte*)pack, (long long)(LastVidDTS) * 600 - 20000000);
+          if(newPCR < 0) newPCR += 2576980377600LL;  // falls Überlauf von LastVidDTS (= 2^32 * 600)
+          SetPCR((byte*)pack, newPCR);
         }
         LastVidDTS = PESVideo.curPacketDTS;
       }
