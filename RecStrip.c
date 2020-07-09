@@ -1097,8 +1097,8 @@ int main(int argc, const char* argv[])
     { printf("\nView info only (-v) disables any other option!\n"); }
   if (MedionMode==1 && DoStrip)
     { MedionStrip = TRUE; DoStrip = FALSE; }
-  if (ExtractTeletext && DoStrip)
-    { RemoveTeletext = TRUE; }
+//  if (ExtractTeletext && DoStrip)
+//    { RemoveTeletext = TRUE; }
 
   if (!ret)
   {
@@ -1130,7 +1130,7 @@ int main(int argc, const char* argv[])
       printf("  -ss:       Strip and skip. Same as -s, but skips already stripped files.\n\n");
       printf("  -e:        Remove also the EPG data. (can be combined with -s)\n\n");
       printf("  -t:        Remove also the teletext data. (can be combined with -s)\n");
-      printf("  -tt:       Extract subtitles from teletext. (together with -s: also remove)\n\n");
+      printf("  -tt:       Extract subtitles from teletext. (combine with -t to remove ttx)\n\n");
       printf("  -x:        Remove packets marked as scrambled. (flag could be wrong!)\n\n");
       printf("  -o1/-o2:   Change the packet size for output-rec: \n"
              "             1: PacketSize = 188 Bytes, 2: PacketSize = 192 Bytes.\n\n");

@@ -5,6 +5,7 @@ RecStrip 3.0:  NEU:
 
 RecStrip 2.6: NEU:
                  - Vertauschung der Ausgabe-Paketgröße (o1 = 188 Bytes, o2 = 192 Bytes)
+                 - Parameter -tt extrahiert den Teletext, ohne ihn zu entfernen (dazu ist -t nötig)
                  - Merge (-m) kann auch mit Schnitt (-r) kombiniert werden, um nur einzelne Segmente zusammenzufügen
                  - alle Topfield TimeStamps werden sekundengenau berechnet
                  - NALUDump löscht auch Filler-NALUs ohne Startcode (mehr als 10 mal 0xff, gefolgt von 0x80 - experimentell!)
