@@ -67,7 +67,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
       //Unerwarteter Continuity Counter, Daten verwerfen
       if(PSBuffer->LastCCCounter != 255)
       {
-        printf("  CC error while parsing PID %hu\n", PSBuffer->PID);
+        printf("  PESProcessor: CC error while parsing PID %hu\n", PSBuffer->PID);
         PSBuffer_DropCurBuffer(PSBuffer);
       }
     }
@@ -146,11 +146,8 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
 #endif
 
           //Puffer mit den abfragbaren Daten markieren
-          if (!PSBuffer->ErrorFlag)
-          {
-            PSBuffer->ValidBuffer = (PSBuffer->ValidBuffer % 2) + 1;  // 0 und 2 -> 1, 1 -> 2
-            PSBuffer->ValidBufLen = PSBuffer->BufferPtr;
-          }
+          PSBuffer->ValidBuffer = (PSBuffer->ValidBuffer % 2) + 1;  // 0 und 2 -> 1, 1 -> 2
+          PSBuffer->ValidBufLen = PSBuffer->BufferPtr;
 
           //Neuen Puffer aktivieren
           switch(PSBuffer->ValidBuffer)
@@ -160,7 +157,6 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
             case 1: PSBuffer->pBuffer = PSBuffer->Buffer2; break;
           }
           PSBuffer->BufferPtr = 0;
-          PSBuffer->ErrorFlag = FALSE;
         }
       }
       else
@@ -213,7 +209,6 @@ void PSBuffer_DropCurBuffer(tPSBuffer *PSBuffer)
   }
   memset(PSBuffer->pBuffer, 0, PSBuffer->BufferSize);
   PSBuffer->BufferPtr = 0;
-  PSBuffer->ErrorFlag = FALSE;
   PSBuffer->LastCCCounter = 255;
   TRACEEXIT;
 }

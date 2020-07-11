@@ -607,7 +607,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 {
   tPSBuffer             PMTBuffer, EITBuffer, TtxBuffer;
   byte                 *Buffer = NULL;
-  int                   LastBuffer = 0, LastTtxBuffer = 0;
+  int                   LastPMTBuffer = 0, LastEITBuffer = 0, LastTtxBuffer = 0;
   word                  PMTPID = 0;
   tPVRTime              FileTimeStamp, TtxTime = 0;
   byte                  FileTimeSec, TtxTimeSec = 0;
@@ -829,8 +829,12 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           while (p <= &Buffer[ReadBytes-188])
           {
             PSBuffer_ProcessTSPacket(&PMTBuffer, (tTSPacket*)p);
-            if(PMTBuffer.ValidBuffer != 0)
-              break;
+            if (PMTBuffer.ValidBuffer != LastPMTBuffer)
+            {
+              if(!PMTBuffer.ErrorFlag) break;
+              PMTBuffer.ErrorFlag = FALSE;
+              LastPMTBuffer = PMTBuffer.ValidBuffer;
+            }
             p += PACKETSIZE;
           }
 
@@ -851,7 +855,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         PSBuffer_Init(&EITBuffer, 0x0012, 16384, TRUE);
         if (TeletextPID != 0xffff)
           PSBuffer_Init(&TtxBuffer, TeletextPID, 16384, FALSE);
-        LastBuffer = 0; LastTtxBuffer = 0;
+        LastPMTBuffer = 0; LastEITBuffer = 0; LastTtxBuffer = 0;
 
         FilePos = FilePos + Offset;
         fseeko64(fIn, FilePos, SEEK_SET);
@@ -865,20 +869,23 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             if (!SDTOK)
             {
               PSBuffer_ProcessTSPacket(&PMTBuffer, (tTSPacket*)p);
-              if(PMTBuffer.ValidBuffer)
+              if(PMTBuffer.ValidBuffer != LastPMTBuffer)
               {
                 byte* pBuffer = (PMTBuffer.ValidBuffer==1) ? PMTBuffer.Buffer1 : PMTBuffer.Buffer2;
-                SDTOK = AnalyseSDT(pBuffer, RecInf->ServiceInfo.ServiceID, RecInf);
+                SDTOK = !PMTBuffer.ErrorFlag && AnalyseSDT(pBuffer, RecInf->ServiceInfo.ServiceID, RecInf);
+                PMTBuffer.ErrorFlag = FALSE;
+                LastPMTBuffer = PMTBuffer.ValidBuffer;
               }
             }
             if (!EITOK)
             {
               PSBuffer_ProcessTSPacket(&EITBuffer, (tTSPacket*)p);
-              if(EITBuffer.ValidBuffer != LastBuffer)
+              if(EITBuffer.ValidBuffer != LastEITBuffer)
               {
                 byte *pBuffer = (EITBuffer.ValidBuffer==1) ? EITBuffer.Buffer1 : EITBuffer.Buffer2;
-                EITOK = AnalyseEIT(pBuffer, RecInf->ServiceInfo.ServiceID, RecInf);
-                LastBuffer = EITBuffer.ValidBuffer;
+                EITOK = !EITBuffer.ErrorFlag && AnalyseEIT(pBuffer, RecInf->ServiceInfo.ServiceID, RecInf);
+                EITBuffer.ErrorFlag = FALSE;
+                LastEITBuffer = EITBuffer.ValidBuffer;
               }
             }
             if (TeletextPID != 0xffff && !TtxOK)
@@ -889,7 +896,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                 if(TtxBuffer.ValidBuffer != LastTtxBuffer)
                 {
                   byte *pBuffer = (TtxBuffer.ValidBuffer==1) ? TtxBuffer.Buffer1 : TtxBuffer.Buffer2;
-                  TtxFound = AnalyseTtx(pBuffer, &TtxTime, &TtxTimeSec, &TtxTimeZone, (SDTOK ? NULL : RecInf->ServiceInfo.ServiceName), sizeof(RecInf->ServiceInfo.ServiceName));
+                  TtxFound = !TtxBuffer.ErrorFlag && AnalyseTtx(pBuffer, &TtxTime, &TtxTimeSec, &TtxTimeZone, (SDTOK ? NULL : RecInf->ServiceInfo.ServiceName), sizeof(RecInf->ServiceInfo.ServiceName));
+                  TtxBuffer.ErrorFlag = FALSE;
                   LastTtxBuffer = TtxBuffer.ValidBuffer;
                 }
               }
