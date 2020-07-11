@@ -53,7 +53,7 @@ void PSBuffer_Init(tPSBuffer *PSBuffer, word PID, int BufferSize, bool TablePack
 
 void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
 {
-  byte                  RemainingBytes = 0, Start = 0;
+  int                   RemainingBytes = 0, Start = 0;
   bool                  PESStart = Packet->Payload_Unit_Start;
   
   TRACEENTER;
@@ -75,12 +75,19 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
     //Adaptation field gibt es nur bei PES Paketen
     if(Packet->Adapt_Field_Exists)
     {
-      Start += (1 + Packet->Data[0]);  // CW (Längen-Byte zählt ja auch noch mit!)
+      if(Packet->Data[0] > 182)
+      {
+        printf("  PESProcessor: Illegal Adaptation field length (%hu) on PID %hu\n", Packet->Data[0], PSBuffer->PID);
+        PSBuffer->ErrorFlag = TRUE;
+        Start = 184;
+      }
+      else
+        Start += (1 + Packet->Data[0]);  // CW (Längen-Byte zählt ja auch noch mit!)
 
       // Liegt ein DiscontinueFlag vor?
       if ((Packet->Data[0] > 0) && ((Packet->Data[1] & 0x80) > 0))
       {
-        printf("  Discontinuity flag while parsing PID %hu\n", PSBuffer->PID);
+        printf("  PESProcessor: Discontinuity flag while parsing PID %hu\n", PSBuffer->PID);
         PSBuffer_DropCurBuffer(PSBuffer);
       }
     }
@@ -91,8 +98,11 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
       // PES-Packet oder Table?
       if (PSBuffer->TablePacket)
       {
-        RemainingBytes = Packet->Data[Start];
-        Start++;
+        if (Start < 184)
+        {
+          RemainingBytes = Packet->Data[Start];
+          Start++;
+        }
       }
       else
       {
@@ -125,7 +135,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
             }
             else
             {
-              printf("  PS buffer overflow while parsing PID %hu\n", PSBuffer->PID);
+              printf("  PESProcessor: PS buffer overflow while parsing PID %hu\n", PSBuffer->PID);
               PSBuffer->ErrorFlag = TRUE;
             }
           }
@@ -136,8 +146,11 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
 #endif
 
           //Puffer mit den abfragbaren Daten markieren
-          PSBuffer->ValidBuffer = (PSBuffer->ValidBuffer % 2) + 1;  // 0 und 2 -> 1, 1 -> 2
-          PSBuffer->ValidBufLen = PSBuffer->BufferPtr;
+          if (!PSBuffer->ErrorFlag)
+          {
+            PSBuffer->ValidBuffer = (PSBuffer->ValidBuffer % 2) + 1;  // 0 und 2 -> 1, 1 -> 2
+            PSBuffer->ValidBufLen = PSBuffer->BufferPtr;
+          }
 
           //Neuen Puffer aktivieren
           switch(PSBuffer->ValidBuffer)
@@ -147,6 +160,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
             case 1: PSBuffer->pBuffer = PSBuffer->Buffer2; break;
           }
           PSBuffer->BufferPtr = 0;
+          PSBuffer->ErrorFlag = FALSE;
         }
       }
       else
@@ -177,7 +191,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
         }
         else
         {
-          printf("  PS buffer overflow while parsing PID %hu\n", PSBuffer->PID);
+          printf("  PESProcessor: PS buffer overflow while parsing PID %hu\n", PSBuffer->PID);
           PSBuffer->ErrorFlag = TRUE;
         }
       }
@@ -199,6 +213,7 @@ void PSBuffer_DropCurBuffer(tPSBuffer *PSBuffer)
   }
   memset(PSBuffer->pBuffer, 0, PSBuffer->BufferSize);
   PSBuffer->BufferPtr = 0;
+  PSBuffer->ErrorFlag = FALSE;
   PSBuffer->LastCCCounter = 255;
   TRACEEXIT;
 }
