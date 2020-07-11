@@ -2060,5 +2060,6 @@ int main(int argc, const char* argv[])
 //    getchar();
   #endif
   TRACEEXIT;
-  exit(ret && !AbortProcess);
+//  if(!ret || AbortProcess) exit(9);  // (kann nicht passieren)
+  exit(0);
 }
