@@ -341,7 +341,7 @@ bool StrToUTF8(const unsigned char *SourceString, unsigned char *DestString, byt
           p = strstr(ISO6937, Dia);
           if(p)
           {
-            Index = (p - ISO6937);
+            Index = (int)(p - ISO6937);
             memcpy(DestString, &UTF8[Index], 2);
             DestString += 2;
           }

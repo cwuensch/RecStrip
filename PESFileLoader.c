@@ -195,7 +195,7 @@ byte* PESStream_GetNextPacket(tPESStream *PESStream)
   // Ermittle Länge
   PESStream->curPacketLength = (curPacket->PacketLength1 * 256) + curPacket->PacketLength2;
   if (PESStream->curPacketLength > 0)
-    PESStream->curPacketLength = fread(&PESStream->Buffer[6], 1, PESStream->curPacketLength, PESStream->fSrc);
+    PESStream->curPacketLength = (dword)fread(&PESStream->Buffer[6], 1, PESStream->curPacketLength, PESStream->fSrc);
   PESStream->curPacketLength += 6;
 
   PESStream->NextStartCodeFound = PESStream_FindPacketStart(PESStream, PESStream->curPacketLength);
@@ -234,7 +234,7 @@ byte* PESStream_GetNextPacket(tPESStream *PESStream)
       byte *p = &PESStream->Buffer[PESStream->curPacketLength-1];
       while(*p == 0) p--;
       
-      newLen = (p - PESStream->Buffer) + 1;
+      newLen = (int)(p - PESStream->Buffer) + 1;
       if (newLen > HeaderLen)
       {
         if(PESStream->Buffer[PESStream->curPacketLength-1] == 0) newLen++;  // mindestens eine Null am Ende erhalten, wenn vorher eine da war (ist TS-Doctor Bug!!!)
@@ -430,7 +430,7 @@ bool SimpleMuxer_Open(FILE *fIn, char const* PESAudName, char const* PESTtxName,
         if (EITLen && ((EITBuffer = (byte*)malloc(EITLen + 1))))
         {
           EITBuffer[0] = 0;  // Pointer field (=0) vor der TableID (nur im ersten TS-Paket der Tabelle, gibt den Offset an, an der die Tabelle startet, z.B. wenn noch Reste der vorherigen am Paketanfang stehen)
-          if ((EITLen = fread(&EITBuffer[1], 1, EITLen, eit)))
+          if ((EITLen = (int)fread(&EITBuffer[1], 1, EITLen, eit)))
             EITLen += 1;
         }
         else

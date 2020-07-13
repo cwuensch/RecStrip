@@ -75,7 +75,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
     //Adaptation field gibt es nur bei PES Paketen
     if(Packet->Adapt_Field_Exists)
     {
-      if(Packet->Data[0] > 182)
+      if(Packet->Data[0] > 183)
       {
         printf("  PESProcessor: Illegal Adaptation field length (%hu) on PID %hu\n", Packet->Data[0], PSBuffer->PID);
         PSBuffer->ErrorFlag = TRUE;
@@ -112,9 +112,9 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
 
         if (RemainingBytes == 184-Start-2)
         {
-          if (Packet->Data[Start+RemainingBytes+2] == 0)
+          if (Packet->Data[Start+RemainingBytes+1] == 0)
           {
-            if (Packet->Data[Start+RemainingBytes+1] != 0)  RemainingBytes++;
+            if (Packet->Data[Start+RemainingBytes] != 0)  RemainingBytes++;
           }
           else
             RemainingBytes += 2;

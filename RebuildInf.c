@@ -749,7 +749,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   if (MedionMode != 1)
   {
     // Read the first RECBUFFERENTRIES TS packets
-    ReadBytes = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn) * PACKETSIZE;
+    ReadBytes = (int)fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn) * PACKETSIZE;
     if(ReadBytes != RECBUFFERENTRIES * PACKETSIZE)
     {
       printf("  Failed to read the first %d TS packets.\n", RECBUFFERENTRIES);
@@ -766,7 +766,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       {
         if ((p[PACKETOFFSET] != 'G') && (p <= &Buffer[ReadBytes-5573]))
         {
-          Offset = FindNextPacketStart(p, &Buffer[ReadBytes] - p);
+          Offset = FindNextPacketStart(p, (int)(&Buffer[ReadBytes] - p));
           if(Offset >= 0)  p += Offset;
           else break;
         }
@@ -786,7 +786,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     fseeko64(fIn, FilePos, SEEK_SET);
 
     //Read RECBUFFERENTRIES TS pakets for analysis
-    ReadBytes = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn) * PACKETSIZE;
+    ReadBytes = (int)fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn) * PACKETSIZE;
     if(ReadBytes < RECBUFFERENTRIES * PACKETSIZE)
     {
       printf("  Failed to read %d TS packets from the middle.\n", RECBUFFERENTRIES);
@@ -861,7 +861,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         fseeko64(fIn, FilePos, SEEK_SET);
         for (i = 0; i < 300; i++)
         {
-          ReadBytes = fread(Buffer, PACKETSIZE, 168, fIn) * PACKETSIZE;
+          ReadBytes = (int)fread(Buffer, PACKETSIZE, 168, fIn) * PACKETSIZE;
           p = &Buffer[PACKETOFFSET];
 
           while (p <= &Buffer[ReadBytes-188])
@@ -929,7 +929,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     //Read the last RECBUFFERENTRIES TS pakets
 //    FilePos = FilePos + ((((RecFileSize-FilePos)/PACKETSIZE) - RECBUFFERENTRIES) * PACKETSIZE);
     fseeko64(fIn, -RECBUFFERENTRIES * PACKETSIZE, SEEK_END);
-    ReadBytes = fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn) * PACKETSIZE;
+    ReadBytes = (int)fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn) * PACKETSIZE;
     if(ReadBytes != RECBUFFERENTRIES * PACKETSIZE)
     {
       printf ("  Failed to read the last %d TS packets.\n", RECBUFFERENTRIES);
@@ -946,7 +946,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       {
         if ((p[PACKETOFFSET] != 'G') && (p <= &Buffer[ReadBytes-5573]))
         {
-          Offset = FindNextPacketStart(p, &Buffer[ReadBytes] - p);
+          Offset = FindNextPacketStart(p, (int)(&Buffer[ReadBytes] - p));
           if (Offset >= 0)  p += Offset;
           else break;
         }

@@ -210,7 +210,7 @@ bool LoadInfFile(char *AbsInfName, bool FirstTime)
     fInfIn = fopen(AbsInfName, "rb");
   if(fInfIn)
   {
-    fseek(fInfIn, 0, SEEK_END);
+    fseeko64(fInfIn, 0, SEEK_END);
     InfFileSize = ftell(fInfIn);
     rewind(fInfIn);
     Result = (fread(InfBuffer, 1, InfSize, fInfIn) + 4 >= InfSize);
@@ -270,7 +270,7 @@ bool LoadInfFile(char *AbsInfName, bool FirstTime)
     }
 
     // Event-Strings von Datenmüll reinigen
-    p = strlen(RecHeader->EventInfo.EventNameDescription);
+    p = (int)strlen(RecHeader->EventInfo.EventNameDescription);
     if (p < sizeof(RecHeader->EventInfo.EventNameDescription))
       memset(&RecHeader->EventInfo.EventNameDescription[p], 0, sizeof(RecHeader->EventInfo.EventNameDescription) - p);
     p = RecHeader->ExtEventInfo.TextLength;
@@ -293,7 +293,7 @@ bool LoadInfFile(char *AbsInfName, bool FirstTime)
         {
           if(RecHeader->ExtEventInfo.Text[p] < 0x20)  p++;
           snprintf(&OldEventText[strlen(OldEventText)], sizeof(OldEventText)-strlen(OldEventText), ((k % 2 == 0) ? ((OldEventText[0]>=0x15) ? "\xC2\x8A%s: " : "\x8A%s: ") : "%s"), &RecHeader->ExtEventInfo.Text[p]);
-          p += strlen(&RecHeader->ExtEventInfo.Text[p]) + 1;
+          p += (int)strlen(&RecHeader->ExtEventInfo.Text[p]) + 1;
         }
       }
       else
@@ -437,7 +437,7 @@ void SetInfEventText(const char *pCaption)
   }
   else
     strncpy(RecHeader->ExtEventInfo.Text, OldEventText, sizeof(RecHeader->ExtEventInfo.Text));
-  RecHeader->ExtEventInfo.TextLength = min(strlen(RecHeader->ExtEventInfo.Text), sizeof(RecHeader->ExtEventInfo.Text));
+  RecHeader->ExtEventInfo.TextLength = (word) min(strlen(RecHeader->ExtEventInfo.Text), sizeof(RecHeader->ExtEventInfo.Text));
   RecHeader->ExtEventInfo.NrItemizedPairs = 0;
 
   TRACEEXIT;
@@ -515,7 +515,7 @@ bool SetInfStripFlags(const char *AbsInfFile, bool SetHasBeenScanned, bool Reset
           RecHeaderInfo.rbn_HasBeenScanned = TRUE;
         if (ResetToBeStripped)
           RecHeaderInfo.rs_ToBeStripped = FALSE;
-        ret = fwrite(&RecHeaderInfo, 1, 8, fInfIn);
+        ret = (int) fwrite(&RecHeaderInfo, 1, 8, fInfIn);
         ret = fclose(fInfIn) && ret;
       }
     }
@@ -567,7 +567,7 @@ bool SaveInfFile(const char *AbsDestInf, const char *AbsSourceInf)
     if (fInfIn && !RebuildInf)
     {
       byte *InfBuffer2 = (byte*) malloc(32768);
-      fseek(fInfIn, InfSize, SEEK_SET);
+      fseeko64(fInfIn, InfSize, SEEK_SET);
       do {
         BytesRead = fread(InfBuffer2, 1, 32768, fInfIn);
         if (BytesRead > 0)

@@ -216,7 +216,7 @@ static bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
       if(c) *c = '\0';
 
       // Remove line breaks in the end
-      p = strlen(Buffer);
+      p = (int)strlen(Buffer);
       while (p && (Buffer[p-1] == '\r' || Buffer[p-1] == '\n' || Buffer[p-1] == ';'))
         Buffer[--p] = '\0';
 

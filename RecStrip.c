@@ -457,7 +457,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
   {
     char                MDBaseName[FBLIB_DIR_SIZE];
     char               *p;
-    int                 len;
+    size_t              len;
 
     strcpy(MDBaseName, RecFileIn);
     if((p = strrchr(MDBaseName, '.'))) *p = '\0';
@@ -601,7 +601,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     // dirty hack: vorherige Pointer für InfBuffer und SegmentMarker wiederherstellen
 //    free(InfBuf_tmp); InfBuf_tmp = NULL;
     InfProcessor_Free();
-    if (Segments_tmp) free(Segments_tmp); Segments_tmp = NULL;
+    if(Segments_tmp) { free(Segments_tmp); Segments_tmp = NULL; }
     InfBuffer = InfBuffer_bak;
     RecHeaderInfo = RecHeaderInfo_bak;
     BookmarkInfo = BookmarkInfo_bak;
@@ -887,6 +887,9 @@ int main(int argc, const char* argv[])
   printf("- based on Naludump 0.1.1 by Udo Richter -\n");
   printf("- based on MovieCutter 3.6 -\n");
   printf("- portions of Mpeg2cleaner (S. Poeschel), RebuildNav (Firebird) & TFTool (jkIT)\n");
+#ifdef _DEBUG
+  printf("(int: %d, long: %d, dword: %d, word: %d, short: %d, byte: %d, char: %d)\n", sizeof(int), sizeof(long), sizeof(dword), sizeof(word), sizeof(short), sizeof(byte), sizeof(char));
+#endif
 #ifndef LINUX
   tzset();
   printf("\nLocal timezone: %s (GMT%+ld)\n", tzname[0], -timezone/3600);
@@ -1581,7 +1584,7 @@ int main(int argc, const char* argv[])
         }
       }
       else
-        ReadBytes = fread(&Buffer[4-PACKETOFFSET], 1, PACKETSIZE, fIn);
+        ReadBytes = (int)fread(&Buffer[4-PACKETOFFSET], 1, PACKETSIZE, fIn);
 
       if (ReadBytes == PACKETSIZE)
       {
@@ -1935,7 +1938,7 @@ int main(int argc, const char* argv[])
         if (AbortProcess)
         {
           fclose(fIn); fIn = NULL;
-          if (fOut) fclose(fOut); fOut = NULL;
+          if(fOut) { fclose(fOut); fOut = NULL; }
           CloseNavFileIn();
           CloseNavFileOut();
           if (ret)
@@ -1948,6 +1951,7 @@ int main(int argc, const char* argv[])
           CutProcessor_Free();
           InfProcessor_Free();
           free(PendingBuf);
+          printf("\n RecStrip aborted.\n");
           TRACEEXIT;
           exit(8);
         }
