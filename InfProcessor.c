@@ -539,7 +539,7 @@ bool SaveInfFile(const char *AbsDestInf, const char *AbsSourceInf)
   }
 
   //Encode the new inf and write it to the disk
-  if(AbsDestInf)
+  if(AbsDestInf && *AbsDestInf)
     fInfOut = fopen(AbsDestInf, "wb");
   if(fInfOut)
   {
@@ -586,7 +586,8 @@ bool SaveInfFile(const char *AbsDestInf, const char *AbsSourceInf)
   }
   else
   {
-    printf("SaveInfFile() E0908: New inf not created.\n");
+    if (AbsDestInf && *AbsDestInf)
+      printf("SaveInfFile() E0908: New inf not created.\n");
     Result = FALSE;
   }
   

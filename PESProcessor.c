@@ -161,6 +161,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
       }
       else
       {
+        printf("  PESProcessor: TS packet is marked as Payload Start, but does not contain a start code (PID %hu)\n", PSBuffer->PID);
         PESStart = FALSE;
         RemainingBytes = 0;
       }

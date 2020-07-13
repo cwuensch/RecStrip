@@ -16,6 +16,7 @@ del *.d
 del *.o
 
 copy /y RecStrip_VS\Release\RecStrip.exe RecStrip_Win32.exe
+copy /y RecStrip_VS\x64\Release\RecStrip.exe RecStrip_x64.exe
 
 if not "%1"=="/quiet" (
   if not "%2"=="/quiet" (
