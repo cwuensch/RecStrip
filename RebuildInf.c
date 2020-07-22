@@ -379,6 +379,10 @@ static bool AnalyseEIT(byte *Buffer, word ServiceID, TYPE_RecHeader_TMSS *RecInf
 
   if ((EIT->TableID == TABLE_EIT) && ((EIT->ServiceID1 * 256 | EIT->ServiceID2) == ServiceID))
   {
+    memset(RecInf->EventInfo.EventNameDescription, 0, sizeof(RecInf->EventInfo.EventNameDescription));
+    memset(RecInf->ExtEventInfo.Text, 0, sizeof(RecInf->ExtEventInfo.Text));
+    RecInf->ExtEventInfo.TextLength = 0;
+
     SectionLength = EIT->SectionLen1 * 256 | EIT->SectionLen2;
     SectionLength -= (sizeof(tTSEIT) - 3);
     p = sizeof(tTSEIT);
@@ -706,13 +710,13 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       if (fread(Buffer, 1, 16384, fMDIn) > 0)
       {
         byte *p = Buffer;
-        while (!EITOK && (*(int*)p == 0x12345678))
+        while ((*(int*)p == 0x12345678))
         {
           tTSEIT *EIT = (tTSEIT*)(&p[8]);
           RecInf->ServiceInfo.ServiceID = (EIT->ServiceID1 * 256 | EIT->ServiceID2);
           EITOK = AnalyseEIT(&p[8], RecInf->ServiceInfo.ServiceID, RecInf);
 
-          if (!EITOK)
+//          if (!EITOK)
           {
             while ((p-Buffer < 16331) && ((p[0] != '\r') || (p[1] != '\n') || (p[2] != '-') || (memcmp(p, "\r\n-------------------------------------------------\r\n", 53) != 0)))
               p++;
