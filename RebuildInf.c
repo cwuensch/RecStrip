@@ -702,14 +702,23 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     RecInf->ServiceInfo.ServiceID = 1;
     if ((fMDIn = fopen(MDEpgName, "rb")))
     {
+      memset(Buffer, 0, 16384);
       if (fread(Buffer, 1, 16384, fMDIn) > 0)
       {
-        if (*(int*)Buffer == 0x12345678)
+        byte *p = Buffer;
+        while (!EITOK && (*(int*)p == 0x12345678))
         {
-          tTSEIT *EIT = (tTSEIT*)(&Buffer[8]);
+          tTSEIT *EIT = (tTSEIT*)(&p[8]);
           RecInf->ServiceInfo.ServiceID = (EIT->ServiceID1 * 256 | EIT->ServiceID2);
-          EITOK = AnalyseEIT(&Buffer[8], RecInf->ServiceInfo.ServiceID, RecInf);
-        }
+          EITOK = AnalyseEIT(&p[8], RecInf->ServiceInfo.ServiceID, RecInf);
+
+          if (!EITOK)
+          {
+            while ((p-Buffer < 16331) && ((p[0] != '\r') || (p[1] != '\n') || (p[2] != '-') || (memcmp(p, "\r\n-------------------------------------------------\r\n", 53) != 0)))
+              p++;
+            p += 53;
+          }
+        };
       }
       fclose(fMDIn);
     }
