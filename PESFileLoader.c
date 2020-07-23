@@ -16,9 +16,9 @@
 
 tPESStream              PESVideo;
 static tPESStream       PESAudio, PESTeletxt;
+byte                   *EPGBuffer;
+int                     EPGLen = 0;
 static const byte       PIDs[4] = {100, 101, 102, 0x12};
-static byte            *EITBuffer;
-static int              EITLen = 0;
 static byte             ContCtr[4] = {1, 1, 1, 1};
 static bool             DoEITOutput = TRUE;
 
@@ -420,25 +420,25 @@ bool SimpleMuxer_Open(FILE *fIn, char const* PESAudName, char const* PESTtxName,
   else
     printf("  SimpleMuxer: Cannot open file %s.\n", PESTtxName);
 
-  EITLen = 0;
+/*  EPGLen = 0;
   if ((eit = fopen(EITName, "rb")))
   {
     int EITMagic = 0;
     if (fread(&EITMagic, 4, 1, eit) && (EITMagic == 0x12345678))
-      if (fread(&EITLen, 4, 1, eit))
+      if (fread(&EPGLen, 4, 1, eit))
       {
-        if (EITLen && ((EITBuffer = (byte*)malloc(EITLen + 1))))
+        if (EPGLen && ((EPGBuffer = (byte*)malloc(EPGLen + 1))))
         {
-          EITBuffer[0] = 0;  // Pointer field (=0) vor der TableID (nur im ersten TS-Paket der Tabelle, gibt den Offset an, an der die Tabelle startet, z.B. wenn noch Reste der vorherigen am Paketanfang stehen)
-          if ((EITLen = (int)fread(&EITBuffer[1], 1, EITLen, eit)))
-            EITLen += 1;
+          EPGBuffer[0] = 0;  // Pointer field (=0) vor der TableID (nur im ersten TS-Paket der Tabelle, gibt den Offset an, an der die Tabelle startet, z.B. wenn noch Reste der vorherigen am Paketanfang stehen)
+          if ((EPGLen = (int)fread(&EPGBuffer[1], 1, EPGLen, eit)))
+            EPGLen += 1;
         }
         else
           printf("  SimpleMuxer: Cannot allocate EIT buffer.\n");
       }
     fclose(eit);
-  }
-  if (!EITLen)
+  } */
+  if (EITName && !EPGLen)
     printf("  SimpleMuxer: Cannot open file %s.\n", EITName);
 
   if (PESStream_Open(&PESVideo, fIn, VIDEOBUFSIZE) && PESStream_Open(&PESAudio, aud, 131027) && PESStream_Open(&PESTeletxt, ttx, 32768))
@@ -511,10 +511,10 @@ bool SimpleMuxer_NextTSPacket(tTSPacket *pack)
       if ((PESVideo.DTSOverflow /*|| PESVideo.FileAtEnd*/) && (PESAudio.DTSOverflow /*|| PESAudio.FileAtEnd*/) && (PESTeletxt.DTSOverflow /*|| PESTeletxt.FileAtEnd*/))
         PESVideo.DTSOverflow = PESAudio.DTSOverflow = PESTeletxt.DTSOverflow = FALSE;
 
-      if (DoEITOutput && EITLen)
+      if (DoEITOutput && EPGLen)
       {
-        p = EITBuffer;
-        len = EITLen;
+        p = EPGBuffer;
+        len = EPGLen;
         StreamNr = 3;
         DoEITOutput = FALSE;
       }
@@ -632,9 +632,9 @@ void SimpleMuxer_Close(void)
   PESStream_Close(&PESVideo);
   PESStream_Close(&PESAudio);
   PESStream_Close(&PESTeletxt);
-  free(EITBuffer);
-  EITBuffer = NULL;
-  EITLen = 0;
+  free(EPGBuffer);
+  EPGBuffer = NULL;
+  EPGLen = 0;
 
   TRACEEXIT;
 }

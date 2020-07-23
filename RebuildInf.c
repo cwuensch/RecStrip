@@ -18,6 +18,7 @@
 #include "RecStrip.h"
 #include "RecHeader.h"
 #include "PESProcessor.h"
+#include "PESFileLoader.h"
 #include "RebuildInf.h"
 #include "NavProcessor.h"
 #include "TtxProcessor.h"
@@ -702,31 +703,6 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       }
     }
 
-    // Read EPG Event file
-    RecInf->ServiceInfo.ServiceID = 1;
-    if ((fMDIn = fopen(MDEpgName, "rb")))
-    {
-      memset(Buffer, 0, 16384);
-      if (fread(Buffer, 1, 16384, fMDIn) > 0)
-      {
-        byte *p = Buffer;
-        while ((*(int*)p == 0x12345678))
-        {
-          tTSEIT *EIT = (tTSEIT*)(&p[8]);
-          RecInf->ServiceInfo.ServiceID = (EIT->ServiceID1 * 256 | EIT->ServiceID2);
-          EITOK = AnalyseEIT(&p[8], RecInf->ServiceInfo.ServiceID, RecInf);
-
-//          if (!EITOK)
-          {
-            while ((p-Buffer < 16331) && ((p[0] != '\r') || (p[1] != '\n') || (p[2] != '-') || (memcmp(p, "\r\n-------------------------------------------------\r\n", 53) != 0)))
-              p++;
-            p += 53;
-          }
-        };
-      }
-      fclose(fMDIn);
-    }
-
     // Read first 32 kB of Teletext PES
     if ((fMDIn = fopen(MDTtxName, "rb")))
     {
@@ -752,10 +728,46 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       fclose(fMDIn);
     }
 
-    if(!EITOK)
-      printf ("  Failed to get the EIT information.\n");
+    // Read EPG Event file
+    RecInf->ServiceInfo.ServiceID = 1;
+    if ((fMDIn = fopen(MDEpgName, "rb")))
+    {
+      memset(Buffer, 0, 16384);
+      if (fread(Buffer, 1, 16384, fMDIn) > 0)
+      {
+        byte *p = Buffer;
+        dword PCRDuration = DeltaPCR((dword)(FirstPCR / 27000), (dword)(LastPCR / 27000)) / 1000;
+        dword MidTimeUTC = AddTimeSec(TtxTime, TtxTimeSec, NULL, TtxTimeZone + PCRDuration/2);
+
+        while ((p - Buffer < 16380) && (*(int*)p == 0x12345678))
+        {
+          int EITLen = *(int*)(&p[4]);
+          tTSEIT *EIT = (tTSEIT*)(&p[8]);
+          RecInf->ServiceInfo.ServiceID = (EIT->ServiceID1 * 256 | EIT->ServiceID2);
+          if ((EITOK = AnalyseEIT(&p[8], RecInf->ServiceInfo.ServiceID, RecInf)))
+          {
+            EPGLen = 0;
+            if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
+            if (EITLen && ((EPGBuffer = (byte*)malloc(EITLen + 1))))
+            {
+              EPGBuffer[0] = 0;  // Pointer field (=0) vor der TableID (nur im ersten TS-Paket der Tabelle, gibt den Offset an, an der die Tabelle startet, z.B. wenn noch Reste der vorherigen am Paketanfang stehen)
+              memcpy(&EPGBuffer[1], &p[8], EITLen); 
+              EPGLen = EITLen;
+            }
+
+            if (!TtxOK || ((RecInf->EventInfo.StartTime <= MidTimeUTC) && (RecInf->EventInfo.EndTime >= MidTimeUTC)))
+              break;
+          }
+          p = p + 8 + EITLen + 53;
+        };
+      }
+      fclose(fMDIn);
+    }
+
     if(!TtxFound)
       printf ("  Failed to get start time from Teletext.\n");
+    if(!EITOK)
+      printf ("  Failed to get the EIT information.\n");
   }
 
 

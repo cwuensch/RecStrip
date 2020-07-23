@@ -52,6 +52,8 @@ typedef struct
 
 
 extern tPESStream       PESVideo;
+extern byte            *EPGBuffer;
+extern int              EPGLen;
 
 bool PESStream_Open(tPESStream *PESStream, FILE *fSource, int BufferSize);
 void PESStream_Close(tPESStream *PESStream);
