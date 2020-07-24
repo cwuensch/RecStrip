@@ -629,7 +629,7 @@ static bool OpenOutputFiles(void)
     if (DoMerge == 1)
       HDD_GetFileSize(RecFileOut, &OutFileSize);
 
-//    fOut = fopen(RecFileOut, ((DoMerge==1) ? "r+b" : "wb"));
+    fOut = fopen(RecFileOut, ((DoMerge==1) ? "r+b" : "wb"));
     if (fOut)
     {
       setvbuf(fOut, NULL, _IOFBF, BUFSIZE);
@@ -644,8 +644,8 @@ static bool OpenOutputFiles(void)
     }
     else
     {
-//      TRACEEXIT;
-//      return FALSE;
+      TRACEEXIT;
+      return FALSE;
     }
   }
 
@@ -728,8 +728,8 @@ SONST
     }
   }
 
-//  if (*NavFileOut && LoadNavFileOut(NavFileOut))
-//    printf("\nNav output: %s\n", NavFileOut);
+  if (*NavFileOut && LoadNavFileOut(NavFileOut))
+    printf("\nNav output: %s\n", NavFileOut);
 
   // CutFileOut ermitteln
   if (*RecFileOut)
@@ -1297,16 +1297,16 @@ int main(int argc, const char* argv[])
   if(DoMerge == 1) GoToEndOfNav(NULL);
 
   // Spezialanpassung Humax / Medion
-  if ((HumaxSource || MedionMode==1) /*&& fOut /*&& DoMerge != 1*/)
+  if ((HumaxSource || MedionMode==1) && fOut /*&& DoMerge != 1*/)
   {
     printf("  Generate new PAT/PMT for Humax/Medion recording.\n");
     if (!HumaxSource)
       GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, 0x100, VideoPID, 101, TeletextPID, STREAM_VIDEO_MPEG2, STREAM_AUDIO_MPEG2);
 
-//    if (fwrite(&PATPMTBuf[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut))
-//      PositionOffset -= OutPacketSize;
-//    if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], OutPacketSize, 1, fOut))
-//      PositionOffset -= OutPacketSize;
+    if (fwrite(&PATPMTBuf[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut))
+      PositionOffset -= OutPacketSize;
+    if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], OutPacketSize, 1, fOut))
+      PositionOffset -= OutPacketSize;
 
     if (MedionMode == 1)
     {
@@ -1368,7 +1368,7 @@ int main(int argc, const char* argv[])
   printf("\n");
   time(&startTime);
   memset(Buffer, 0, sizeof(Buffer));
-/*
+
   for (curInputFile = 0; curInputFile < NrInputFiles; curInputFile++)
   {
     if (DoMerge && BookmarkInfo)
@@ -1449,8 +1449,8 @@ int main(int argc, const char* argv[])
 
           if (CurSeg < NrSegmentMarker-1)
           {
-            long long SkippedBytes = (((SegmentMarker[CurSeg].Position) /* / PACKETSIZE) * PACKETSIZE *//*) ) - CurrentPosition;
-            fseeko64(fIn, ((SegmentMarker[CurSeg].Position) /* / PACKETSIZE) * PACKETSIZE *//*), SEEK_SET);
+            long long SkippedBytes = (((SegmentMarker[CurSeg].Position) /* / PACKETSIZE) * PACKETSIZE */) ) - CurrentPosition;
+            fseeko64(fIn, ((SegmentMarker[CurSeg].Position) /* / PACKETSIZE) * PACKETSIZE */), SEEK_SET);
             SetFirstPacketAfterBreak();
             SetTeletextBreak(FALSE, TeletextPage);
             for (k = 0; k < NrContinuityPIDs; k++)
@@ -1649,7 +1649,7 @@ int main(int argc, const char* argv[])
             }
 
             // entfernen, wenn nav neu berechnet wird
-            if (RemoveScrambled  /*&& (RebuildNav || !*NavFileOut)*//*)
+            if (RemoveScrambled  /*&& (RebuildNav || !*NavFileOut)*/)
             {
               DropCurPacket = TRUE;
               if(DoStrip && (CurPID == VideoPID) && ((tTSPacket*) &Buffer[4])->Payload_Exists)
@@ -1660,7 +1660,7 @@ int main(int argc, const char* argv[])
           if (CurPID == TeletextPID)
           {
             // Extract Teletext Subtitles
-            if (/*ExtractTeletext &&*//* fTtxOut)
+            if (/*ExtractTeletext &&*/ fTtxOut)
             {
               dword CurPCR = 0;
               if (GetPCRms(&Buffer[4], &CurPCR))  global_timestamp = CurPCR;
@@ -1785,10 +1785,8 @@ int main(int argc, const char* argv[])
             if (GetPCR(&Buffer[4], &CurPCRfull))
             {
               dword CurPCR = (CurPCRfull & 0xffffffff);
-
-if (LastPCR && (CurPCR - LastPCR != 1080000))
-  printf("ASSERTION: PCR Diff: %u\n", CurPCR - LastPCR);
-              if (LastPCR /*&& (CurPCR > LastPCR)*//* && (CurPCR - LastPCR <= 1080000))  // 40 ms + Puffer
+              
+              if (LastPCR /*&& (CurPCR > LastPCR)*/ && (CurPCR - LastPCR <= 1080000))  // 40 ms
               {
                 if (MedionMode == 1)
                   CurTimeStep = (dword)(CurPCR - LastPCR) / ((PESVideo.curPacketLength+8+183) / 184);
@@ -2028,7 +2026,7 @@ if (LastPCR && (CurPCR - LastPCR != 1080000))
     }
   }
   printf("\n");
-*/
+
 #ifdef _DEBUG
   if (MedionMode)
     printf("Max. Video PES length: %u\n", PESVideo.maxPESLen);
