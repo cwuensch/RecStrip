@@ -26,6 +26,7 @@ RecStrip 2.6: NEU:
                  - Append: vorhandene Source-inf wurde nicht beibehalten
                  - Medion-Mode: fehlerhafte Nullbyte-Entfernung durch zu späte Prüfung auf Video-PES
                  - Medion-Mode: korrekte Behandlung von DTS-Überlauf in Eingabe-PES
+                 - Medion-Mode: bei EPG-Daten mit mehreren Events wird das in der Mitte der Aufnahme gewählt
                  - Medion-Mode: PMT-PID wurde nicht in inf eingetragen
                  - Medion-Mode: PAT/PMT und EIT wurden am Anfang doppelt geschrieben
                  - Medion-Mode: RecFileSize wird aus Summe der Elementar-PES gebildet (korrekte Fortschrittsanzeige)
