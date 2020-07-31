@@ -129,7 +129,8 @@ extern tSegmentMarker2 *SegmentMarker,  *SegmentMarker_In;       //[0]=Start of 
 extern int              NrSegmentMarker, NrSegmentMarker_In;
 extern long long        NrDroppedZeroStuffing;
 extern int              ActiveSegment;
-extern dword            InfDuration, NewDurationMS, NewStartTimeOffset;
+extern dword            InfDuration, NewDurationMS;
+extern int              NewStartTimeOffset;
 extern long long        CurrentPosition;
 
 

@@ -9,7 +9,7 @@ RecStrip 2.6: NEU:
                  - Merge (-m) kann auch mit Schnitt (-r) kombiniert werden, um nur einzelne Segmente zusammenzufügen
                  - alle Topfield TimeStamps werden sekundengenau berechnet
                  - NALUDump löscht auch Filler-NALUs ohne Startcode (mehr als 10 mal 0xff, gefolgt von 0x80 - experimentell!)
-                 - StartTime-Sekundenangabe wird in der inf (Byte 0x06) gespeichert(!)
+                 - StartTime-Sekundenangabe wird in der inf (Byte 0x06) gespeichert, bei Scan im Input-File (!)
                  - korrekte(re) Zeitzonen-Behandlung (UnixTime=UTC, TFTime=lokale Zeitzone)
                  - EPG-Zeitversatz wird aus Teletext-Zeitzone berechnet
                  - Humax-Mode: Ermittlung von Startzeit und Program Identification aus Teletext

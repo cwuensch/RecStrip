@@ -105,7 +105,8 @@ TYPE_Bookmark_Info     *BookmarkInfo = NULL;
 tSegmentMarker2        *SegmentMarker = NULL;       //[0]=Start of file, [x]=End of file
 int                     NrSegmentMarker = 0;
 int                     ActiveSegment = 0;
-dword                   InfDuration = 0, NewDurationMS = 0, NewStartTimeOffset = 0;
+dword                   InfDuration = 0, NewDurationMS = 0;
+int                     NewStartTimeOffset = -1;
 
 // Lokale Variablen
 static char             NavFileIn[FBLIB_DIR_SIZE], NavFileOut[FBLIB_DIR_SIZE], NavFileOld[FBLIB_DIR_SIZE], InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], InfFileOld[FBLIB_DIR_SIZE], InfFileFirstIn[FBLIB_DIR_SIZE], CutFileIn[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE], TeletextOut[FBLIB_DIR_SIZE];
@@ -420,6 +421,8 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
   int                   k;
 
   TRACEENTER;
+//  CurrentStartTime = 0;
+//  CurrentStartSec = 0;
 
   if (!FirstTime)
   {
@@ -756,7 +759,7 @@ SONST
   return TRUE;
 }
 
-void CloseInputFiles(bool SetStripFlags)
+static void CloseInputFiles(bool SetStripFlags, bool SetStartTime)
 {
   TRACEENTER;
 
@@ -770,7 +773,7 @@ void CloseInputFiles(bool SetStripFlags)
     time_t OldInfTime = 0;
     if (stat64(RecFileIn, &statbuf) == 0)
       OldInfTime = statbuf.st_mtime;
-    SetInfStripFlags(InfFileIn, !DoCut, DoStrip && !DoMerge && DoCut!=2);
+    SetInfStripFlags(InfFileIn, !DoCut, DoStrip && !DoMerge && DoCut!=2, SetStartTime);
     if (OldInfTime)
       HDD_SetFileDateTime(InfFileIn, statbuf.st_mtime);
   }
@@ -780,7 +783,7 @@ void CloseInputFiles(bool SetStripFlags)
   TRACEEXIT;
 }
 
-bool CloseOutputFiles(void)
+static bool CloseOutputFiles(void)
 {
   TRACEENTER;
 
@@ -1112,8 +1115,8 @@ int main(int argc, const char* argv[])
     if (AbortProcess)
     {
       printf("\nUsage:\n------\n");
-      printf(" RecStrip <RecFile>           Scan the rec file and set Crypt- und RbN-Flag in\n"
-             "                              the source inf.\n"
+      printf(" RecStrip <RecFile>           Scan the rec file and set Crypt- and RbN-Flag and\n"
+             "                              StartTime (seconds) in the source inf.\n"
              "                              If source inf/nav not present, generate them new.\n\n");
       printf(" RecStrip <InFile> <OutFile>  Create a copy of the input rec.\n"
              "                              If a inf/nav/cut file exists, copy and adapt it.\n"
@@ -1234,8 +1237,8 @@ int main(int argc, const char* argv[])
     if ((int)LastTimems > -CutTimeOffset)
       CutTimeOffset = -(int)LastTimems;
     if(ExtractTeletext) last_timestamp = -CutTimeOffset;
-    NewStartTimeOffset = 1;
-    CloseInputFiles(FALSE);
+    NewStartTimeOffset = 0;
+    CloseInputFiles(FALSE, FALSE);
   }
 
   // Input-Files öffnen
@@ -1252,7 +1255,7 @@ int main(int argc, const char* argv[])
   if (!VideoPID || VideoPID == (word)-1)
   {
     printf("Warning: No video PID determined.\n");
-/*    CloseInputFiles(FALSE);
+/*    CloseInputFiles(FALSE, FALSE);
     CutProcessor_Free();
     InfProcessor_Free();
     free(PendingBuf); PendingBuf = NULL;      
@@ -1419,7 +1422,7 @@ int main(int argc, const char* argv[])
           // aktuelle Output-Files schließen
           if (!CloseOutputFiles())
           {
-            CloseInputFiles(FALSE);
+            CloseInputFiles(FALSE, FALSE);
             CutProcessor_Free();
             InfProcessor_Free();
             free(PendingBuf); PendingBuf = NULL;
@@ -1507,8 +1510,8 @@ int main(int argc, const char* argv[])
           if (DoCut == 1)
           {
             // SCHNEIDEN: Zeit neu berechnen
-            if (NewStartTimeOffset == 0)
-              NewStartTimeOffset = max(SegmentMarker[CurSeg].Timems, 1);
+            if (NewStartTimeOffset < 0)
+              NewStartTimeOffset = SegmentMarker[CurSeg].Timems;
             NewDurationMS += (SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems);
           }
           else if (DoCut == 2)
@@ -1982,7 +1985,7 @@ int main(int argc, const char* argv[])
 
     if (DoMerge && (curInputFile < NrInputFiles-1))
     {
-      CloseInputFiles(TRUE);
+      CloseInputFiles(TRUE, FALSE);
 
       // nächstes Input-File aus Parameter-String ermitteln
       strncpy(RecFileIn, argv[curInputFile+1], sizeof(RecFileIn));
@@ -2017,7 +2020,7 @@ int main(int argc, const char* argv[])
       {
         NrCopiedSegments = 1; NrSegments = 1;
       }
-      if(NewStartTimeOffset == 0) NewStartTimeOffset = 1;
+      if(NewStartTimeOffset < 0) NewStartTimeOffset = 0;
       CurPosBlocks = 0;
       CurBlockBytes = 0;
       BlocksSincePercent = 0;
@@ -2034,13 +2037,13 @@ int main(int argc, const char* argv[])
 
   if ((fOut || (DoCut != 2)) && !CloseOutputFiles())
   {
-    CloseInputFiles(FALSE);
+    CloseInputFiles(FALSE, FALSE);
     CutProcessor_Free();
     InfProcessor_Free();
     free(PendingBuf); PendingBuf = NULL;
     exit(10);
   }
-  CloseInputFiles(TRUE);
+  CloseInputFiles(TRUE, (!*RecFileOut));
 
   CutProcessor_Free();
   InfProcessor_Free();

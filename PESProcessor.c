@@ -131,6 +131,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
             if(PSBuffer->BufferPtr + RemainingBytes <= PSBuffer->BufferSize)
             {
               memcpy(PSBuffer->pBuffer, &Packet->Data[Start], RemainingBytes);
+              PSBuffer->pBuffer += RemainingBytes;
               PSBuffer->BufferPtr += RemainingBytes;
             }
             else

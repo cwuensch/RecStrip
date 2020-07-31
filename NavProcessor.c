@@ -662,15 +662,15 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
                   navHD.Timems += TimeOffset;
                   TimeOffset_new = (navHD.Timems >= 1000 ? navHD.Timems : 0) - LastTimems;
                   if(TimeOffset_new < TimeOffset || TimeOffset_new > TimeOffset + 1000) TimeOffset = TimeOffset_new;
-                  if(labs(TimeOffset) < 1000) TimeOffset = 0;
+                  if(abs(TimeOffset) < 1000) TimeOffset = 0;
                   navHD.Timems -= TimeOffset;
                   FirstRecordAfterCut = FALSE;
                 }
-                else if (labs(navHD.Timems - LastTimems) >= 3000)
+                else if (abs(navHD.Timems - LastTimems) >= 3000)
                 {
                   navHD.Timems += TimeOffset;
                   TimeOffset = navHD.Timems - LastTimems;
-                  if(labs(TimeOffset) < 1000) TimeOffset = 0;
+                  if(abs(TimeOffset) < 1000) TimeOffset = 0;
                   navHD.Timems -= TimeOffset;
                 }
 
@@ -849,15 +849,15 @@ static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
         navSD.Timems += TimeOffset;
         TimeOffset_new = (navSD.Timems >= 1000 ? navSD.Timems : 0) - LastTimems;
         if(TimeOffset_new < TimeOffset || TimeOffset_new > TimeOffset + 1000) TimeOffset = TimeOffset_new;
-        if(labs(TimeOffset) < 1000) TimeOffset = 0;
+        if(abs(TimeOffset) < 1000) TimeOffset = 0;
         navSD.Timems -= TimeOffset;
         FirstRecordAfterCut = FALSE;
       }
-      else if (labs(navSD.Timems - LastTimems) >= 3000)
+      else if (abs(navSD.Timems - LastTimems) >= 3000)
       {
         navSD.Timems += TimeOffset;
         TimeOffset = navSD.Timems - LastTimems;
-        if(labs(TimeOffset) < 1000) TimeOffset = 0;
+        if(abs(TimeOffset) < 1000) TimeOffset = 0;
         navSD.Timems -= TimeOffset;
       }
 

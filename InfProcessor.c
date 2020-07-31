@@ -16,6 +16,7 @@
 #include "RebuildInf.h"
 #include "RecStrip.h"
 #include "HumaxHeader.h"
+#include "TtxProcessor.h"
 
 extern bool StrToUTF8(const char *SourceString, char *DestString, byte DefaultISO8859CharSet);
 
@@ -25,8 +26,8 @@ byte                   *InfBuffer = NULL;    // dirty hack: erreichbar machen fü
 TYPE_RecHeader_Info    *RecHeaderInfo = NULL;
 static char             OldEventText[1025];
 static size_t           InfSize = 0;
-tPVRTime                OrigStartTime = 0;
-byte                    OrigStartSec = 0;
+tPVRTime                OrigStartTime = 0;  //, CurrentStartTime = 0;
+byte                    OrigStartSec = 0;   //, CurrentStartSec = 0;
 
 
 // ----------------------------------------------
@@ -116,8 +117,8 @@ bool InfProcessor_Init()
 
   //Allocate and clear the buffer
 //  memset(OldEventText, 0, sizeof(OldEventText));
-  OrigStartTime = 0;
-  OrigStartSec = 0;
+  OrigStartTime = 0;  // CurrentStartTime = 0;
+  OrigStartSec = 0;   // CurrentStartSec = 0;
   RecHeaderInfo = NULL;
   BookmarkInfo  = NULL;
   
@@ -175,6 +176,8 @@ bool LoadInfFromRec(char *AbsRecFileName)
 
   Result = GenerateInfFile(fIn, (TYPE_RecHeader_TMSS*)InfBuffer);
   
+//  CurrentStartTime = ((TYPE_RecHeader_Info*)InfBuffer)->StartTime;
+//  CurrentStartSec  = ((TYPE_RecHeader_Info*)InfBuffer)->StartTimeSec;
   if(!OrigStartTime)
   {
     OrigStartTime = ((TYPE_RecHeader_Info*)InfBuffer)->StartTime;
@@ -367,14 +370,28 @@ if (RecHeaderInfo->Reserved != 0)
   {
     if(FirstTime)
     {
-      OrigStartTime = RecHeaderInfo->StartTime;
+      if (abs(RecHeaderInfo->StartTime - OrigStartTime) > 1)
+      {
+        time_t StartTimeUnix = TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec);
+        printf("  INF: StartTime (%s) differs from TS start! Taking %s.\n", TimeStr(&StartTimeUnix), (RecHeaderInfo->StartTimeSec ? "inf" : "TS"));
+      }
       if (RecHeaderInfo->StartTimeSec)
       {
-        if(!OrigStartSec) OrigStartSec = RecHeaderInfo->StartTimeSec;
+        OrigStartTime = RecHeaderInfo->StartTime;
+        OrigStartSec  = RecHeaderInfo->StartTimeSec;
       }
       else
+      {
+        RecHeaderInfo->StartTime   = OrigStartTime;
         RecHeaderInfo->StartTimeSec = OrigStartSec;
+      }
     }
+/*    if (RecHeaderInfo->StartTimeSec)
+    {
+      CurrentStartTime = RecHeaderInfo->StartTime;
+      CurrentStartSec  = RecHeaderInfo->StartTimeSec;
+    } */
+
     InfDuration = 60*RecHeaderInfo->DurationMin + RecHeaderInfo->DurationSec;
   }
 
@@ -496,7 +513,7 @@ bool GetInfStripFlags(const char *AbsInfFile, bool *const OutHasBeenStripped, bo
   return FALSE;
 }
 
-bool SetInfStripFlags(const char *AbsInfFile, bool SetHasBeenScanned, bool ResetToBeStripped)
+bool SetInfStripFlags(const char *AbsInfFile, bool SetHasBeenScanned, bool ResetToBeStripped, bool SetStartTime)
 {
   FILE                 *fInfIn;
   TYPE_RecHeader_Info   RecHeaderInfo;
@@ -507,7 +524,7 @@ bool SetInfStripFlags(const char *AbsInfFile, bool SetHasBeenScanned, bool Reset
   {
     if ((fInfIn = fopen(AbsInfFile, "r+b")))
     {
-      fread(&RecHeaderInfo, 1, 8, fInfIn);
+      fread(&RecHeaderInfo, 1, 12, fInfIn);
       rewind(fInfIn);
       if ((strncmp(RecHeaderInfo.Magic, "TFrc", 4) == 0) && (RecHeaderInfo.Version == 0x8000))
       {
@@ -515,7 +532,12 @@ bool SetInfStripFlags(const char *AbsInfFile, bool SetHasBeenScanned, bool Reset
           RecHeaderInfo.rbn_HasBeenScanned = TRUE;
         if (ResetToBeStripped)
           RecHeaderInfo.rs_ToBeStripped = FALSE;
-        ret = (int) fwrite(&RecHeaderInfo, 1, 8, fInfIn);
+        if (SetStartTime)
+        {
+          RecHeaderInfo.StartTime   = OrigStartTime;
+          RecHeaderInfo.StartTimeSec = OrigStartSec;
+        }
+        ret = (int) fwrite(&RecHeaderInfo, 1, 12, fInfIn);
         ret = fclose(fInfIn) && ret;
       }
     }
@@ -555,7 +577,7 @@ bool SaveInfFile(const char *AbsDestInf, const char *AbsSourceInf)
       RecHeaderInfo->DurationMin = (word)((NewDurationMS + 500) / 60000);
       RecHeaderInfo->DurationSec = ((NewDurationMS + 500) / 1000) % 60;
     }
-    if (NewStartTimeOffset)
+    if (NewStartTimeOffset > 0)
       RecHeaderInfo->StartTime = AddTimeSec(OrigStartTime, OrigStartSec, &RecHeaderInfo->StartTimeSec, NewStartTimeOffset / 1000);
     Result = (fwrite(InfBuffer, 1, InfSize, fInfOut) == InfSize);
 
