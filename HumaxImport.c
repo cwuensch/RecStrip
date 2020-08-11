@@ -199,7 +199,7 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
 
       if (ret)
       {
-        if (i == 1)
+        if (i == 1)  // Header 1: Programm-Information
         {
           time_t DisplayTime;
           printf("  Importing Humax header\n");
@@ -222,25 +222,25 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
           DisplayTime = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, 0);
           printf("    Start Time: %s\n", TimeStr(&DisplayTime));
         }
-        else if (i == 2)
+        else if (i == 2)  // Header 2: Original-Dateiname
         {
           char *p = strrchr(HumaxHeader.Allgemein.Dateiname, '_');
           printf("    Orig Rec Name: %s\n", HumaxHeader.Allgemein.Dateiname);
           if(p) *p = '\0';
           strncpy(RecInf->ServiceInfo.ServiceName, HumaxHeader.Allgemein.Dateiname, sizeof(RecInf->ServiceInfo.ServiceName));
         }
-        if (HumaxHeader.ZusInfoID == HumaxBookmarksID)
+        if (HumaxHeader.ZusInfoID == HumaxBookmarksID)  // Header 3: Bookmarks
         {
           tHumaxBlock_Bookmarks* HumaxBookmarks = (tHumaxBlock_Bookmarks*)HumaxHeader.ZusInfos;
           RecInf->BookmarkInfo.NrBookmarks = HumaxBookmarks->Anzahl;
           for (j = 0; j < HumaxBookmarks->Anzahl; j++)
             RecInf->BookmarkInfo.Bookmarks[j] = (dword) ((long long)HumaxBookmarks->Items[j] * 32768 / 9024);
         }
-        else if (HumaxHeader.ZusInfoID == HumaxTonSpurenID)
+        else if (HumaxHeader.ZusInfoID == HumaxTonSpurenID)  // Header 4: Tonspuren
         {
           tHumaxBlock_Tonspuren* HumaxTonspuren = (tHumaxBlock_Tonspuren*)HumaxHeader.ZusInfos;
 
-          for (j = HumaxTonspuren->Anzahl; j >= -1; j--)
+          for (j = -1; j <= HumaxTonspuren->Anzahl; j++)
           {
             tTSAudioDesc *Desc    = NULL;
 
@@ -249,7 +249,7 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
             Elem->Reserved2       = 0xf;
             Offset                += sizeof(tElemStream);
 
-            if (j >= HumaxTonspuren->Anzahl)
+            if (j < 0)
             {
               Elem->stream_type     = STREAM_VIDEO_MPEG2;
               Elem->ESPID1          = VideoPID / 256;
@@ -257,14 +257,14 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
               Elem->ESInfoLen1      = 0;
               Elem->ESInfoLen2      = 0;
             }
-            else if (j >= 0)
+            else if (j < HumaxTonspuren->Anzahl)
             {
               tTSAC3Desc *Desc0     = (tTSAC3Desc*) &Packet->Data[Offset];
 
               Elem->ESPID1          = HumaxTonspuren->Items[j].PID / 256;
               Elem->ESPID2          = HumaxTonspuren->Items[j].PID % 256;
               Elem->ESInfoLen1      = 0;
-              if ((j >= 1) && (strstr(HumaxTonspuren->Items[j].Name, "2ch") == 0))
+              if ((j >= 1) && (strstr(HumaxTonspuren->Items[j].Name, "2ch") == 0) && (strstr(HumaxTonspuren->Items[j].Name, "fra") == 0))
               {
                 Elem->stream_type   = STREAM_AUDIO_MPEG4_AC3_PLUS;  // STREAM_AUDIO_MPEG4_AC3;
                 Elem->ESInfoLen2    = sizeof(tTSAC3Desc) + sizeof(tTSAudioDesc);
@@ -284,7 +284,7 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
               {
                 Desc->DescrTag      = DESC_Audio;
                 Desc->DescrLength   = 4;
-                memcpy(Desc->LanguageCode, "deu", 3);
+                strncpy(Desc->LanguageCode, HumaxTonspuren->Items[j].Name, 3);
               }
               printf("    Audio Track %d: PID=%d, Type=0x%x (%s) \n", j, HumaxTonspuren->Items[j].PID, Elem->stream_type, HumaxTonspuren->Items[j].Name);
 

@@ -488,14 +488,27 @@ bool SimpleMuxer_NextTSPacket(tTSPacket *pack)
     return TRUE;
   } */
 
-  // Skip video packets until Sequence header code (0xB3)
   if (FirstRun)
   {
+    // Skip video packets until Sequence header code (0xB3)
     while (!PESVideo.FileAtEnd)
       if (PESVideo.Buffer[PESVideo.curPayloadStart]==0 && PESVideo.Buffer[PESVideo.curPayloadStart+1]==0 && PESVideo.Buffer[PESVideo.curPayloadStart+2]==1 && PESVideo.Buffer[PESVideo.curPayloadStart+3]==0xB3)
         break;
       else
         PESStream_GetNextPacket(&PESVideo);
+
+    // Skip audio and teletext packets with DTS > 2 sec before first video packet
+    if (!PESVideo.FileAtEnd && PESVideo.curPacketDTS >= 90000)
+    {
+      dword AudioSkipped = 0, TtxSkipped = 0;
+      while (!PESAudio.FileAtEnd && (PESAudio.curPacketDTS + 90000 < PESVideo.curPacketDTS))
+        { PESStream_GetNextPacket(&PESAudio); AudioSkipped++; }
+      while (!PESTeletxt.FileAtEnd && (PESTeletxt.curPacketDTS + 90000 < PESVideo.curPacketDTS))
+        { PESStream_GetNextPacket(&PESTeletxt); TtxSkipped++; }
+
+      if (AudioSkipped || TtxSkipped)
+        printf("  SimpleMuxer: %u audio packets, %u teletext packets skipped at beginning.\n", AudioSkipped, TtxSkipped);
+    }
     FirstRun = 0;
   }
 
