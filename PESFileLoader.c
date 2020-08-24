@@ -114,7 +114,7 @@ void PESStream_Close(tPESStream *PESStream)
 static int PESStream_FindPacketStart(tPESStream *PESStream, dword StartAtPos)
 {
   dword                 History = 0xffffffff;
-  int                   i;
+  int                   SkipFirst = 0, i;
 
   TRACEENTER;
 
@@ -139,12 +139,12 @@ static int PESStream_FindPacketStart(tPESStream *PESStream, dword StartAtPos)
           }
 
           // Ignore first audio packet, if invalid length
-          if (!PESStream->NextStartCodeFound && !PESStream->isVideo)
+          if (!PESStream->NextStartCodeFound && !PESStream->isVideo && SkipFirst < 3)
           {
             if (PESStream->Buffer[i+1] >= 32)   // (PESStream->Buffer[i+1] * 256 + PESStream->Buffer[i+2] > 8000)
             {
               printf("  SimpleMuxer: First audio / teletext packet skipped (invalid length %hu).\n", PESStream->Buffer[i+1] * 256 + PESStream->Buffer[i+2]);
-              PESStream->NextStartCodeFound = i;
+              SkipFirst++;
               continue;
             }
           }
