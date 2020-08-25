@@ -121,7 +121,7 @@ void CloseNavFileIn(void);
 bool CloseNavFileOut(void);
 
 // Für CutProcessor
-tTimeStamp2* NavLoad(const char *AbsInNav, int *const OutNrTimeStamps);
+tTimeStamp2* NavLoad(const char *AbsInRec, int *const OutNrTimeStamps);
 dword NavGetPosTimeStamp(tTimeStamp2 TimeStamps[], int NrTimeStamps, long long FilePosition);
 
 #endif

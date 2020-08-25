@@ -344,6 +344,34 @@ static bool CutDecodeFromBM(dword Bookmarks[])
   return ret;
 }
 
+void CutImportFromBM(dword Bookmarks[], dword NrBookmarks)
+{
+  int                   i;
+  TRACEENTER;
+
+  ResetSegmentMarkers();
+  ActiveSegment = 0;
+
+  if(NrBookmarks > 0)
+  {
+    int NrTimeStamps;
+    tTimeStamp2 *TimeStamps = NavLoad(RecFileOut, &NrTimeStamps);
+
+    NrSegmentMarker = NrBookmarks + 2;
+    if (NrSegmentMarker > NRSEGMENTMARKER) NrSegmentMarker = NRSEGMENTMARKER;
+
+    for (i = 1; i < NrSegmentMarker-1; i++)
+    {
+      SegmentMarker[i].Position = Bookmarks[i-1] * 9024LL;
+      SegmentMarker[i].Selected = FALSE;
+      SegmentMarker[i].Timems = (TimeStamps) ? NavGetPosTimeStamp(TimeStamps, NrTimeStamps, SegmentMarker[i].Position) : 0;
+      SegmentMarker[i].Percent = 0;
+      SegmentMarker[i].pCaption = NULL;
+    }
+  }
+  TRACEEXIT;
+}
+
 bool CutProcessor_Init(void)
 {
   TRACEENTER;

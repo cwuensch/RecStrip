@@ -29,6 +29,7 @@ extern bool             WriteCutInf;
 
 void AddDefaultSegmentMarker(void);
 void GetFileNameFromRec(const char *RecFileName, const char *NewExt, char *const OutCutFileName);
+void CutImportFromBM(dword Bookmarks[], dword NrBookmarks);
 bool CutProcessor_Init(void);
 bool CutFileLoad(const char *AbsCutName);
 bool CutFileSave(const char* AbsCutName);

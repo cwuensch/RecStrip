@@ -674,6 +674,7 @@ SONST
       }
       else
         snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf", RecFileOut);
+      if(!*InfFileIn && !HumaxSource) WriteCutInf = TRUE;
     }
     else
       InfFileOut[0] = '\0';
@@ -821,6 +822,13 @@ static bool CloseOutputFiles(void)
       return FALSE;
     }
     fOut = NULL;
+  }
+
+  if (HumaxSource && *CutFileOut && BookmarkInfo && BookmarkInfo->NrBookmarks)
+  {
+    CutImportFromBM(BookmarkInfo->Bookmarks, BookmarkInfo->NrBookmarks);
+    SegmentMarker[NrSegmentMarker-1].Position = CurrentPosition - PositionOffset;
+    SegmentMarker[NrSegmentMarker-1].Timems = NewDurationMS;
   }
 
   if ((*CutFileOut || (*InfFileOut && WriteCutInf)) && !CutFileSave(CutFileOut))
