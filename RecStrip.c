@@ -828,7 +828,8 @@ static bool CloseOutputFiles(void)
   {
     CutImportFromBM(RecFileOut, BookmarkInfo->Bookmarks, BookmarkInfo->NrBookmarks);
     SegmentMarker[NrSegmentMarker-1].Position = CurrentPosition - PositionOffset;
-    SegmentMarker[NrSegmentMarker-1].Timems = NewDurationMS;
+    if(NewDurationMS)
+      SegmentMarker[NrSegmentMarker-1].Timems = NewDurationMS;
   }
 
   if ((*CutFileOut || (*InfFileOut && WriteCutInf)) && !CutFileSave(CutFileOut))
@@ -847,8 +848,8 @@ static bool CloseOutputFiles(void)
     HDD_SetFileDateTime(InfFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
   if (*NavFileOut)
     HDD_SetFileDateTime(NavFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
-  if (*CutFileOut)
-    HDD_SetFileDateTime(CutFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
+//  if (*CutFileOut)
+//    HDD_SetFileDateTime(CutFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
 
 
   if (*NavFileOld)
