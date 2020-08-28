@@ -344,7 +344,7 @@ static bool CutDecodeFromBM(dword Bookmarks[])
   return ret;
 }
 
-void CutImportFromBM(dword Bookmarks[], dword NrBookmarks)
+void CutImportFromBM(const char *RecFile, dword Bookmarks[], dword NrBookmarks)
 {
   int                   i;
   TRACEENTER;
@@ -355,7 +355,7 @@ void CutImportFromBM(dword Bookmarks[], dword NrBookmarks)
   if(NrBookmarks > 0)
   {
     int NrTimeStamps;
-    tTimeStamp2 *TimeStamps = NavLoad(RecFileOut, &NrTimeStamps);
+    tTimeStamp2 *TimeStamps = NavLoad(RecFile, &NrTimeStamps);
 
     NrSegmentMarker = NrBookmarks + 2;
     if (NrSegmentMarker > NRSEGMENTMARKER) NrSegmentMarker = NRSEGMENTMARKER;

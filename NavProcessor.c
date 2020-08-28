@@ -1267,7 +1267,7 @@ TAP_PrintNet("Achtung! I-Frame an %llu hat denselben Timestamp wie sein Vorgänge
   // Free the nav-Buffer and close the file
   fclose(fNav);
 
-  // Reserve a new buffer of the correct size to hold only the different time stamps
+/*  // Reserve a new buffer of the correct size to hold only the different time stamps
   TimeStamps = (tTimeStamp2*) malloc(NrTimeStamps * sizeof(tTimeStamp2));
   if(!TimeStamps)
   {
@@ -1279,7 +1279,11 @@ TAP_PrintNet("Achtung! I-Frame an %llu hat denselben Timestamp wie sein Vorgänge
 
   // Copy the time stamps to the new array
   memcpy(TimeStamps, TimeStampBuffer, NrTimeStamps * sizeof(tTimeStamp2));  
-  free(TimeStampBuffer);
+  free(TimeStampBuffer);  */
+
+  TimeStamps = (tTimeStamp2*) realloc(TimeStampBuffer, NrTimeStamps * sizeof(tTimeStamp2));
+  if(!TimeStamps) TimeStamps = TimeStampBuffer;
+
   *OutNrTimeStamps = NrTimeStamps;
 
   TRACEEXIT;

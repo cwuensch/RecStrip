@@ -826,7 +826,7 @@ static bool CloseOutputFiles(void)
 
   if (HumaxSource && *CutFileOut && BookmarkInfo && BookmarkInfo->NrBookmarks)
   {
-    CutImportFromBM(BookmarkInfo->Bookmarks, BookmarkInfo->NrBookmarks);
+    CutImportFromBM(RecFileOut, BookmarkInfo->Bookmarks, BookmarkInfo->NrBookmarks);
     SegmentMarker[NrSegmentMarker-1].Position = CurrentPosition - PositionOffset;
     SegmentMarker[NrSegmentMarker-1].Timems = NewDurationMS;
   }
