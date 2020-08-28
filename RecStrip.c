@@ -1103,7 +1103,7 @@ int main(int argc, const char* argv[])
 
   if (!*RecFileIn)
     { printf("\nNo input file specified!\n");  ret = FALSE; }
-  else if ((DoCut || DoStrip || DoMerge || OutPacketSize) && (!*RecFileOut || strcmp(RecFileIn, RecFileOut)==0))
+  else if (!DoInfoOnly && (DoCut || DoStrip || DoMerge || OutPacketSize) && (!*RecFileOut || strcmp(RecFileIn, RecFileOut)==0))
     { printf("\nNo output file specified or output same as input!\n");  ret = FALSE; }
   else if (DoMerge && DoCut==2)
     { printf("\nMerging cannot be used together with cut mode (single segment copy)!\n");  ret = FALSE; }
