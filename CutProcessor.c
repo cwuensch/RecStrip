@@ -338,6 +338,7 @@ static bool CutDecodeFromBM(dword Bookmarks[])
       if ((i == 0) && (SegmentMarker[0].Position == 0) && (SegmentMarker[0].Timems < 1000))
         SegmentMarker[0].Timems = 0;
     }
+    if(TimeStamps) free(TimeStamps);
   }
 
   TRACEEXIT;
@@ -368,6 +369,7 @@ void CutImportFromBM(const char *RecFile, dword Bookmarks[], dword NrBookmarks)
       SegmentMarker[i].Percent = 0;
       SegmentMarker[i].pCaption = NULL;
     }
+    if(TimeStamps) free(TimeStamps);
   }
   TRACEEXIT;
 }
@@ -519,12 +521,10 @@ bool CutFileLoad(const char *AbsCutName)
             }
           }
         }
+        free(TimeStamps);
       }
       else
-      {
-        if(TimeStamps) free(TimeStamps);
         ResetSegmentMarkers();
-      }
     }
   }
 
