@@ -882,8 +882,9 @@ void ProcessTtxPacket(tTSPacket *Packet)
   TRACEEXIT;
 }
 
-bool CloseTeletextOut(void)
+bool CloseTeletextOut(const char* AbsOutFile)
 {
+  unsigned long long OutFileSize = 0;
   bool          ret = TRUE;
 
   TRACEENTER;
@@ -898,10 +899,14 @@ bool CloseTeletextOut(void)
       process_page(&page_buffer);
     }
 
-    ret = (/*fflush(fNavOut) == 0 &&*/ fclose(fTtxOut) == 0);
+    ret = (/*fflush(fTtxOut) == 0 &&*/ fclose(fTtxOut) == 0);
   }
   fTtxOut = NULL;
   PSBuffer_Reset(&TtxBuffer);
+
+  if (AbsOutFile && *AbsOutFile)
+    if (HDD_GetFileSize(AbsOutFile, &OutFileSize) && (OutFileSize == 0))
+      remove(AbsOutFile);
 
   TRACEEXIT;
   return ret;

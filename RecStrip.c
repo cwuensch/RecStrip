@@ -814,7 +814,7 @@ static bool CloseOutputFiles(void)
       printf("  ERROR: Failed closing the output file.\n");
       CutFileSave(CutFileOut);
       SaveInfFile(InfFileOut, InfFileFirstIn);
-      CloseTeletextOut();
+      CloseTeletextOut(TeletextOut);
       CutProcessor_Free();
       InfProcessor_Free();
       free(PendingBuf); PendingBuf = NULL;
@@ -838,7 +838,7 @@ static bool CloseOutputFiles(void)
   if (*InfFileOut && !SaveInfFile(InfFileOut, InfFileFirstIn))
     printf("  WARNING: Cannot create inf %s.\n", InfFileOut);
 
-  if (ExtractTeletext && !CloseTeletextOut())
+  if (ExtractTeletext && !CloseTeletextOut(TeletextOut))
     printf("  WARNING: Cannot create teletext %s.\n", TeletextOut);
 
 
@@ -1366,7 +1366,7 @@ int main(int argc, const char* argv[])
           }
         }
         fclose(fMDIn);
-        CloseTeletextOut();
+        CloseTeletextOut(TeletextOut);
       }
     }
   } */
@@ -1541,7 +1541,7 @@ int main(int argc, const char* argv[])
             {
               fclose(fIn); fIn = NULL;
               CloseNavFileIn();
-              CloseTeletextOut();
+              CloseTeletextOut(TeletextOut);
               if(MedionMode == 1) SimpleMuxer_Close();
               CutProcessor_Free();
               InfProcessor_Free();
@@ -1962,7 +1962,7 @@ int main(int argc, const char* argv[])
             CutFileSave(CutFileOut);
             SaveInfFile(InfFileOut, InfFileFirstIn);
           }
-          CloseTeletextOut();
+          CloseTeletextOut(TeletextOut);
           if(MedionMode == 1) SimpleMuxer_Close();
           CutProcessor_Free();
           InfProcessor_Free();
