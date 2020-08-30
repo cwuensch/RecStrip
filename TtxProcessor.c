@@ -486,7 +486,7 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
 
     if ((config.page == 0) && (flag_subtitle == YES) && (i < 0xff)) {
       config.page = (m << 8) | (unham_8_4(packet->data[1]) << 4) | unham_8_4(packet->data[0]);
-      printf("  TTX: Trying to extract subtitles from page %d\n\n", config.page);
+      printf("  TTX: Trying to extract subtitles from page %03x\n\n", config.page);
     }
 
      // Page number and control bits
