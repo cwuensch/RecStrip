@@ -146,8 +146,8 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
   PAT->LastSection      = 0;
   PAT->ProgramNr1       = 0;
   PAT->ProgramNr2       = 1;
-  PAT->PMTPID1          = 0x01;
-  PAT->PMTPID2          = 0x00;  // ??
+  PAT->PMTPID1          = 0;
+  PAT->PMTPID2          = 64;
   PAT->Reserved111      = 7;
 //  PAT->CRC32            = rocksoft_crc((byte*)PAT, sizeof(tTSPAT)-4);    // CRC: 0x786989a2
 //  PAT->CRC32            = crc32m((byte*)PAT, sizeof(tTSPAT)-4);          // CRC: 0x786989a2
@@ -160,8 +160,8 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
   PMT = (tTSPMT*) &Packet->Data[1 /*+ Packet->Data[0]*/];
 
   Packet->SyncByte      = 'G';
-  Packet->PID1          = 0x01;
-  Packet->PID2          = 0x00;
+  Packet->PID1          = 0;
+  Packet->PID2          = 64;
   Packet->Payload_Unit_Start = 1;
   Packet->Payload_Exists = 1;
 
