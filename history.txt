@@ -5,14 +5,16 @@ RecStrip 3.0:  NEU:
 
 RecStrip 2.6: NEU:
                  - Vertauschung der Ausgabe-Paketgröße (o1 = 188 Bytes, o2 = 192 Bytes)
+                 - StartTime-Sekundenangabe wird in der inf (Byte 0x06) gespeichert, bei Scan im Input-File (!)
                  - Parameter -tt extrahiert den Teletext, ohne ihn zu entfernen (dazu ist -t nötig)
+                 - Teletext-Page für Untertitel-Extraktion KANN spezifiziert werden (optional)
                  - Merge (-m) kann auch mit Schnitt (-r) kombiniert werden, um nur einzelne Segmente zusammenzufügen
                  - alle Topfield TimeStamps werden sekundengenau berechnet
                  - NALUDump löscht auch Filler-NALUs ohne Startcode (mehr als 10 mal 0xff, gefolgt von 0x80 - experimentell!)
-                 - StartTime-Sekundenangabe wird in der inf (Byte 0x06) gespeichert, bei Scan im Input-File (!)
                  - korrekte(re) Zeitzonen-Behandlung (UnixTime=UTC, TFTime=lokale Zeitzone)
                  - EPG-Zeitversatz wird aus Teletext-Zeitzone berechnet
                  - Humax-Mode: Ermittlung von Startzeit und Program Identification aus Teletext
+                 - Humax-Mode: Bookmarks werden als Segment-Marker importiert, .cut-File wird ausgegeben
                  - Humax-Mode: Original-Header wird in eine .humax-Datei ausgegeben
                  - verbesserte Behandlung von Buffer Overflows in PESProcessor und PESFileLoader
 
@@ -29,7 +31,10 @@ RecStrip 2.6: NEU:
                  - Medion-Mode: bei EPG-Daten mit mehreren Events wird das in der Mitte der Aufnahme gewählt
                  - Medion-Mode: PMT-PID wurde nicht in inf eingetragen
                  - Medion-Mode: PAT/PMT und EIT wurden am Anfang doppelt geschrieben
+                 - Medion-Mode: Überspringt Audio/Ttx-Pakete mit zu großer PTS-Abweichung am Anfang der Aufnahme
+                 - Medion-Mode: Ignoriert bis zu 3 Audio-Pakete mit illegaler Länge am Dateianfang
                  - Medion-Mode: RecFileSize wird aus Summe der Elementar-PES gebildet (korrekte Fortschrittsanzeige)
+                 - Humax-Mode: Tonspuren in PMT in Original-Reihenfolge ausgeben, frz. Arte nicht als AC3 markieren
                  - End-Meldung: Anzahl der geschriebenen Pakete korrekt berechnet (OutPacketSize)
 
 RecStrip 2.5:  NEU:
