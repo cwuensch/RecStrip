@@ -420,8 +420,8 @@ static bool AnalyseEIT(byte *Buffer, word ServiceID, TYPE_RecHeader_TMSS *RecInf
             StartTimeUnix = TF2UnixTime(RecInf->EventInfo.StartTime, 0);
 printf("  TS: EvtStart  = %s (UTC)\n", TimeStr(&StartTimeUnix));
 
-            NameLen = ShortDesc->EvtNameLen;
-            TextLen = Buffer[p + sizeof(tShortEvtDesc) + NameLen];
+            NameLen = min(ShortDesc->EvtNameLen, sizeof(RecInf->EventInfo.EventNameDescription) - 1);
+            TextLen = min(Buffer[p + sizeof(tShortEvtDesc) + NameLen], sizeof(RecInf->EventInfo.EventNameDescription) - NameLen - 1);
             RecInf->EventInfo.EventNameLength = NameLen;
             strncpy(RecInf->EventInfo.EventNameDescription, (char*)&Buffer[p + sizeof(tShortEvtDesc)], NameLen);
 printf("  TS: EventName = %s\n", RecInf->EventInfo.EventNameDescription);
@@ -803,7 +803,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     }
 
 
-    // Springe in die Mitte der Aufnahme (für Medion-Analyse mit PAT/PMT nur am Start, die folgenden 13 Zeilen auskommentieren und Z.852 auf 0 setzen)
+    // Springe in die Mitte der Aufnahme (für Medion-Analyse mit PAT/PMT nur am Start, die folgenden 13 Zeilen auskommentieren [und Z.886 auf 0 setzen -> nicht mehr nötig(?)]
     if (HumaxSource)
       FilePos = ((RecFileSize/2)/HumaxHeaderIntervall * HumaxHeaderIntervall);
     else
@@ -883,7 +883,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         LastPMTBuffer = 0; LastEITBuffer = 0; LastTtxBuffer = 0;
 
         FilePos = FilePos + Offset;
-        fseeko64(fIn, FilePos, SEEK_SET);
+        fseeko64(fIn, FilePos, SEEK_SET);  // Hier auf 0 setzen (?)
         for (i = 0; i < 300; i++)
         {
           ReadBytes = (int)fread(Buffer, PACKETSIZE, 168, fIn) * PACKETSIZE;

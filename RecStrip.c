@@ -131,7 +131,8 @@ static bool             ResumeSet = FALSE;
 
 static bool HDD_FileExist(const char *AbsFileName)
 {
-  return (AbsFileName && (access(AbsFileName, 0) == 0));
+  struct stat           statbuf;
+  return (stat(AbsFileName, &statbuf) == 0);
 }
 
 static bool HDD_DirExist(const char *AbsDirName)

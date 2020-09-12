@@ -203,11 +203,11 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
         {
           time_t DisplayTime;
           printf("  Importing Humax header\n");
-          VideoPID = HumaxHeader.Allgemein.VideoPID;
-          TeletextPID = HumaxHeader.Allgemein.TeletextPID;
+          VideoPID                            = HumaxHeader.Allgemein.VideoPID;
+          TeletextPID                         = HumaxHeader.Allgemein.TeletextPID;
           RecInf->ServiceInfo.ServiceType     = 0;  // SVC_TYPE_Tv
           RecInf->ServiceInfo.ServiceID       = 1;
-          RecInf->ServiceInfo.PMTPID          = 0x100;
+          RecInf->ServiceInfo.PMTPID          = 64;
           RecInf->ServiceInfo.VideoPID        = VideoPID;
           RecInf->ServiceInfo.PCRPID          = VideoPID;
           RecInf->ServiceInfo.AudioPID        = HumaxHeader.Allgemein.AudioPID;
