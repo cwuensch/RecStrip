@@ -259,13 +259,19 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
             }
             else if (j < HumaxTonspuren->Anzahl)
             {
-              tTSAC3Desc *Desc0     = (tTSAC3Desc*) &Packet->Data[Offset];
-
               Elem->ESPID1          = HumaxTonspuren->Items[j].PID / 256;
               Elem->ESPID2          = HumaxTonspuren->Items[j].PID % 256;
               Elem->ESInfoLen1      = 0;
               if ((j >= 1) && (strstr(HumaxTonspuren->Items[j].Name, "2ch") == 0) && (strstr(HumaxTonspuren->Items[j].Name, "fra") == 0))
               {
+                tTSAC3Desc *Desc0   = (tTSAC3Desc*) &Packet->Data[Offset];
+
+                if (HumaxTonspuren->Items[j].PID == RecInf->ServiceInfo.AudioPID)
+                {
+                  RecInf->ServiceInfo.AudioStreamType = STREAM_AUDIO_MPEG4_AC3_PLUS;
+                  RecInf->ServiceInfo.AudioTypeFlag = 1;
+                }
+
                 Elem->stream_type   = STREAM_AUDIO_MPEG4_AC3_PLUS;  // STREAM_AUDIO_MPEG4_AC3;
                 Elem->ESInfoLen2    = sizeof(tTSAC3Desc) + sizeof(tTSAudioDesc);
 //                strcpy(&Packet->Data[Offset], "\x05\x04" "AC-3" "\x0A\x04" "deu");

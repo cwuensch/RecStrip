@@ -24,11 +24,11 @@
 #include "TtxProcessor.h"
 #include "HumaxHeader.h"
 
-#ifdef _WIN32
+/*#ifdef _WIN32
   #define timezone _timezone
 #else
   extern long timezone;
-#endif
+#endif*/
 
 
 static inline byte BCD2BIN(byte BCD)
@@ -38,14 +38,25 @@ static inline byte BCD2BIN(byte BCD)
 
 static inline tPVRTime Unix2TFTime(dword UnixTimeStamp, byte *const outSec)
 {
+#ifndef LINUX
+  UnixTimeStamp -= timezone;
+  if (localtime(&UnixTimeStamp)->tm_isdst)
+    UnixTimeStamp += 3600;
+#endif
   if (outSec)
     *outSec = UnixTimeStamp % 60;
-  return (DATE ( ((UnixTimeStamp-timezone) / 86400) + 0x9e8b, (UnixTimeStamp / 3600) % 24, (UnixTimeStamp / 60) % 60 ));
+  return (DATE ( (UnixTimeStamp / 86400) + 0x9e8b, (UnixTimeStamp / 3600) % 24, (UnixTimeStamp / 60) % 60 ));
 }
 
 time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec)
 { 
-  return (MJD(TFTimeStamp) - 0x9e8b) * 86400 + HOUR(TFTimeStamp) * 3600 + MINUTE(TFTimeStamp) * 60 + TFTimeSec + timezone;
+  time_t Result = (MJD(TFTimeStamp) - 0x9e8b) * 86400 + HOUR(TFTimeStamp) * 3600 + MINUTE(TFTimeStamp) * 60 + TFTimeSec + timezone;
+#ifndef LINUX
+  Result += timezone;
+  if (localtime(&Result)->tm_isdst)
+    Result -= 3600;
+#endif
+  return Result;
 }
 
 tPVRTime AddTimeSec(tPVRTime pvrTime, byte pvrTimeSec, byte *const outSec, int addSeconds)
@@ -984,10 +995,14 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 
   if (EITOK)
   {
-    RecInf->EventInfo.StartTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, (TtxOK ? -1*TtxTimeZone : -1*timezone));  // GMT+1
-    RecInf->EventInfo.EndTime   = AddTimeSec(RecInf->EventInfo.EndTime,   0, NULL, (TtxOK ? -1*TtxTimeZone : -1*timezone));
+    struct tm timeinfo;
+
     StartTimeUnix = TF2UnixTime(RecInf->EventInfo.StartTime, 0);
-printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStr(&StartTimeUnix), -TtxTimeZone/3600);
+    localtime_s(&timeinfo, &StartTimeUnix);
+    RecInf->EventInfo.StartTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, (TtxOK ? -1*TtxTimeZone : -1*timezone + 3600*timeinfo.tm_isdst));  // GMT+1
+    RecInf->EventInfo.EndTime   = AddTimeSec(RecInf->EventInfo.EndTime,   0, NULL, (TtxOK ? -1*TtxTimeZone : -1*timezone + 3600*timeinfo.tm_isdst));
+    StartTimeUnix = TF2UnixTime(RecInf->EventInfo.StartTime, 0);
+printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStr(&StartTimeUnix), -TtxTimeZone/3600 + timeinfo.tm_isdst);
   }
 
   if(!FirstPCR || !LastPCR)
