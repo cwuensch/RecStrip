@@ -50,7 +50,7 @@ static inline tPVRTime Unix2TFTime(dword UnixTimeStamp, byte *const outSec)
 
 time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec)
 { 
-  time_t Result = (MJD(TFTimeStamp) - 0x9e8b) * 86400 + HOUR(TFTimeStamp) * 3600 + MINUTE(TFTimeStamp) * 60 + TFTimeSec + timezone;
+  time_t Result = (MJD(TFTimeStamp) - 0x9e8b) * 86400 + HOUR(TFTimeStamp) * 3600 + MINUTE(TFTimeStamp) * 60 + TFTimeSec;
 #ifndef LINUX
   Result += timezone;
   if (localtime(&Result)->tm_isdst)
