@@ -109,7 +109,8 @@ dword                   InfDuration = 0, NewDurationMS = 0;
 int                     NewStartTimeOffset = -1;
 
 // Lokale Variablen
-static char             NavFileIn[FBLIB_DIR_SIZE], NavFileOut[FBLIB_DIR_SIZE], NavFileOld[FBLIB_DIR_SIZE], InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], InfFileOld[FBLIB_DIR_SIZE], InfFileFirstIn[FBLIB_DIR_SIZE], CutFileIn[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE], TeletextOut[FBLIB_DIR_SIZE];
+static char             InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], InfFileFirstIn[FBLIB_DIR_SIZE], InfFileOld[FBLIB_DIR_SIZE], NavFileOut[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE], TeletextOut[FBLIB_DIR_SIZE];
+static bool             HasNavIn, HasNavOld;
 static FILE            *fIn = NULL;
 static FILE            *fOut = NULL;
 static byte            *PendingBuf = NULL;
@@ -406,6 +407,8 @@ static void AddBookmark(dword BookmarkIndex, dword BlockNr)
 static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
 {
   bool                  ret = TRUE;
+  char                  NavFileIn[FBLIB_DIR_SIZE];
+  char                  CutFileIn[FBLIB_DIR_SIZE];
 //  byte                 *InfBuf_tmp = NULL;
   tSegmentMarker2      *Segments_tmp = NULL;
 
@@ -552,11 +555,9 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     // ggf. nav-File öffnen
     snprintf(NavFileIn, sizeof(NavFileIn), "%s.nav", RecFileIn);
     printf("\nNav file: %s\n", NavFileIn);
-    if (!LoadNavFileIn(NavFileIn))
-    {
+    HasNavIn = LoadNavFileIn(NavFileIn);
+    if (!HasNavIn)
       printf("  WARNING: Cannot open nav file %s.\n", NavFileIn);
-      NavFileIn[0] = '\0';
-    }
   
     // ggf. cut-File einlesen
     GetFileNameFromRec(RecFileIn, ".cut", CutFileIn);
@@ -708,10 +709,10 @@ SONST
   SONST
     -> nav = NULL */
 
-  NavFileOld[0] = '\0';
+  HasNavOld = FALSE;
   if (*RecFileOut)
   {
-    if (RebuildNav || *NavFileIn)
+    if (RebuildNav || HasNavIn)
     {
       if (DoStrip || RemoveEPGStream || RemoveTeletext || RemoveScrambled || OutPacketSize != PACKETSIZE) RebuildNav = TRUE;
       snprintf(NavFileOut, sizeof(NavFileOut), "%s.nav", RecFileOut);
@@ -721,10 +722,10 @@ SONST
   }
   else
   {
-    if (RebuildNav /*|| !*NavFileIn*/)
+    if (RebuildNav /*|| !HasNavIn*/)
     {
 //      RebuildNav = TRUE;
-      snprintf(NavFileOld, sizeof(NavFileOld), "%s.nav", RecFileIn);
+      HasNavOld = TRUE;
       snprintf(NavFileOut, sizeof(NavFileOut), "%s.nav_new", RecFileIn);
     }
     else
@@ -853,9 +854,10 @@ static bool CloseOutputFiles(void)
 //    HDD_SetFileDateTime(CutFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
 
 
-  if (*NavFileOld)
+  if (HasNavOld)
   {
-    char NavFileBak[FBLIB_DIR_SIZE];
+    char NavFileOld[FBLIB_DIR_SIZE], NavFileBak[FBLIB_DIR_SIZE];
+    snprintf(NavFileOld, sizeof(NavFileOut), "%s.nav", RecFileIn);
     snprintf(NavFileBak, sizeof(NavFileBak), "%s_bak", NavFileOld);
     remove(NavFileBak);
     rename(NavFileOld, NavFileBak);
@@ -1215,7 +1217,7 @@ int main(int argc, const char* argv[])
     NrInputFiles = argc;
   }
 //  InfFileOld[0] = '\0';  // Müssten nicht alle OutFiles mit initialisiert werden?
-//  NavFileOld[0] = '\0';  // So muss sichergestellt sein, dass CloseOutputFiles() nur nach OpenOutputFiles() aufgerufen wird!
+//  HasNavOld = FALSE;    // So muss sichergestellt sein, dass CloseOutputFiles() nur nach OpenOutputFiles() aufgerufen wird!
 
   // Prüfen, ob Aufnahme bereits gestrippt
   if (DoSkip && !DoMerge)
@@ -1383,7 +1385,7 @@ int main(int argc, const char* argv[])
     }
   } */
 
-  if(!RebuildNav && *RecFileOut && *NavFileIn)  SetFirstPacketAfterBreak();
+  if(!RebuildNav && *RecFileOut && HasNavIn)  SetFirstPacketAfterBreak();
 
 
   // -----------------------------------------------
@@ -1563,7 +1565,7 @@ int main(int argc, const char* argv[])
               exit(7);
             }
             NavProcessor_Init();
-            if(!RebuildNav && *RecFileOut && *NavFileIn)  SetFirstPacketAfterBreak();
+            if(!RebuildNav && *RecFileOut && HasNavIn)  SetFirstPacketAfterBreak();
             if(DoStrip) NALUDump_Init();
             LastPCR = 0;
             LastTimems = 0;
@@ -1851,7 +1853,7 @@ int main(int argc, const char* argv[])
                 dbg_DelBytesSinceLastVid = 0;
               }
             }
-            else if (*RecFileOut && *NavFileIn)
+            else if (*RecFileOut && HasNavIn)
               QuickNavProcess(CurrentPosition, PositionOffset);
 
             // PACKET AUSGEBEN

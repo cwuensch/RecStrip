@@ -36,7 +36,7 @@ static inline byte BCD2BIN(byte BCD)
   return (BCD >> 4) * 10 + (BCD & 0x0f);
 }
 
-static inline tPVRTime Unix2TFTime(dword UnixTimeStamp, byte *const outSec)
+static inline tPVRTime Unix2TFTime(time_t UnixTimeStamp, byte *const outSec)
 {
 #ifndef LINUX
   UnixTimeStamp -= timezone;
@@ -49,7 +49,7 @@ static inline tPVRTime Unix2TFTime(dword UnixTimeStamp, byte *const outSec)
 }
 
 time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec)
-{ 
+{
   time_t Result = (MJD(TFTimeStamp) - 0x9e8b) * 86400 + HOUR(TFTimeStamp) * 3600 + MINUTE(TFTimeStamp) * 60 + TFTimeSec;
 #ifndef LINUX
   Result += timezone;
@@ -431,7 +431,7 @@ static bool AnalyseEIT(byte *Buffer, word ServiceID, TYPE_RecHeader_TMSS *RecInf
             StartTimeUnix = TF2UnixTime(RecInf->EventInfo.StartTime, 0);
 printf("  TS: EvtStart  = %s (UTC)\n", TimeStr(&StartTimeUnix));
 
-            NameLen = min(ShortDesc->EvtNameLen, sizeof(RecInf->EventInfo.EventNameDescription) - 1);
+            NameLen = ShortDesc->EvtNameLen;
             TextLen = min(Buffer[p + sizeof(tShortEvtDesc) + NameLen], sizeof(RecInf->EventInfo.EventNameDescription) - NameLen - 1);
             RecInf->EventInfo.EventNameLength = NameLen;
             strncpy(RecInf->EventInfo.EventNameDescription, (char*)&Buffer[p + sizeof(tShortEvtDesc)], NameLen);
@@ -657,7 +657,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   {
     struct stat64 statbuf;
     fstat64(fileno(fIn), &statbuf);
-    FileTimeStamp = Unix2TFTime((dword) statbuf.st_mtime, &FileTimeSec);
+    FileTimeStamp = Unix2TFTime(statbuf.st_mtime, &FileTimeSec);
   }
 
   //Spezial-Anpassung, um Medion-PES (EPG und Teletext) auszulesen
@@ -995,14 +995,15 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 
   if (EITOK)
   {
-    struct tm timeinfo;
+    struct tm *timeinfo; bool isdst;
 
     StartTimeUnix = TF2UnixTime(RecInf->EventInfo.StartTime, 0);
-    localtime_s(&timeinfo, &StartTimeUnix);
-    RecInf->EventInfo.StartTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, (TtxOK ? -1*TtxTimeZone : -1*timezone + 3600*timeinfo.tm_isdst));  // GMT+1
-    RecInf->EventInfo.EndTime   = AddTimeSec(RecInf->EventInfo.EndTime,   0, NULL, (TtxOK ? -1*TtxTimeZone : -1*timezone + 3600*timeinfo.tm_isdst));
+    timeinfo = localtime(&StartTimeUnix);
+    isdst = timeinfo->tm_isdst;
+    RecInf->EventInfo.StartTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, (TtxOK ? -1*TtxTimeZone : -1*timezone + 3600*isdst));  // GMT+1
+    RecInf->EventInfo.EndTime   = AddTimeSec(RecInf->EventInfo.EndTime,   0, NULL, (TtxOK ? -1*TtxTimeZone : -1*timezone + 3600*isdst));
     StartTimeUnix = TF2UnixTime(RecInf->EventInfo.StartTime, 0);
-printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStr(&StartTimeUnix), -TtxTimeZone/3600 + timeinfo.tm_isdst);
+printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStr(&StartTimeUnix), -TtxTimeZone/3600 + isdst);
   }
 
   if(!FirstPCR || !LastPCR)
