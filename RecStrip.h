@@ -3,7 +3,7 @@
 
 #include "RecHeader.h"
 
-#define VERSION                  "v2.6"
+#define VERSION                  "v2.7"
 
 #define NRBOOKMARKS                177   // eigentlich werden nur 48 Bookmarks unterstützt!! (SRP2401)
 #define NRSEGMENTMARKER            101
@@ -116,10 +116,10 @@ extern char             RecFileIn[], RecFileOut[], MDEpgName[], MDTtxName[];
 extern byte             PATPMTBuf[];
 extern unsigned long long RecFileSize;
 extern SYSTEM_TYPE      SystemType;
-extern byte             PACKETSIZE, PACKETOFFSET;
+extern byte             PACKETSIZE, PACKETOFFSET, OutPacketSize;
 extern word             VideoPID, TeletextPID, TeletextPage;
 extern word             ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs;
-extern bool             isHDVideo, AlreadyStripped, HumaxSource;
+extern bool             isHDVideo, AlreadyStripped, HumaxSource, EycosSource;
 extern bool             DoStrip, DoSkip, RemoveEPGStream, RemoveTeletext, RebuildNav, RebuildInf, DoInfoOnly, MedionMode, MedionStrip;
 extern int              DoCut, DoMerge;
 extern int              dbg_DelBytesSinceLastVid;
@@ -134,6 +134,8 @@ extern int              NewStartTimeOffset;
 extern long long        CurrentPosition;
 
 
+dword CalcBlockSize(long long Size);
+bool HDD_FileExist(const char *AbsFileName);
 bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize);
 bool isPacketStart(const byte PacketArray[], int ArrayLen);        // braucht 9*192+5 = 1733 / 3*192+5 = 581
 int  FindNextPacketStart(const byte PacketArray[], int ArrayLen);  // braucht 20*192+1733 = 5573 / 1185+1733 = 2981

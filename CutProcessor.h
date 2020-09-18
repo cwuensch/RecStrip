@@ -5,6 +5,8 @@
   #define __attribute__(a)
 #endif
 
+#include "RecHeader.h"
+
 #pragma pack(push, 1)
 typedef struct
 {
@@ -27,9 +29,12 @@ typedef struct
 extern int              OutCutVersion;
 extern bool             WriteCutInf;
 
+void ResetSegmentMarkers(void);
 void AddDefaultSegmentMarker(void);
 void GetFileNameFromRec(const char *RecFileName, const char *NewExt, char *const OutCutFileName);
 void CutImportFromBM(const char* RecFile, dword Bookmarks[], dword NrBookmarks);
+void CutExportToBM(TYPE_Bookmark_Info *BookmarkInfo);
+bool CutImportFromTimeStamps(int Version, byte PacketSize);
 bool CutProcessor_Init(void);
 bool CutFileLoad(const char *AbsCutName);
 bool CutFileSave(const char* AbsCutName);

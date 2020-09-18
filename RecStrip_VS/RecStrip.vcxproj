@@ -147,6 +147,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\CutProcessor.h" />
+    <ClInclude Include="..\EycosHeader.h" />
     <ClInclude Include="..\hamming.h" />
     <ClInclude Include="..\HumaxHeader.h" />
     <ClInclude Include="..\InfProcessor.h" />
@@ -163,6 +164,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\CutProcessor.c" />
+    <ClCompile Include="..\EycosImport.c" />
     <ClCompile Include="..\HumaxImport.c" />
     <ClCompile Include="..\InfProcessor.c" />
     <ClCompile Include="..\NALUDump.c" />
