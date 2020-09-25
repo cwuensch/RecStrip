@@ -2,8 +2,12 @@ RecStrip 3.0:  NEU:
                  - PES-basiertes Stripping! (Demultiplex - Strip - Remultiplex)
                  - PCRs werden auf DTS-Basis neu berechnet
                  - bekannte Einschränkung: PCR muss auf der Video-PID übertragen werden! (sonst müsste die PMT neu codiert werden)
+                 - (ab 3.0a) Support zum Import von Aufnahmen aus Eycos S80.12HD
 
-RecStrip 2.6: NEU:
+RecStrip 2.7:  NEU:
+                 - Support zum Import von Aufnahmen aus Eycos S80.12HD
+
+RecStrip 2.6:  NEU:
                  - Vertauschung der Ausgabe-Paketgröße (o1 = 188 Bytes, o2 = 192 Bytes)
                  - StartTime-Sekundenangabe wird in der inf (Byte 0x06) gespeichert, bei Scan im Input-File (!)
                  - Parameter -tt extrahiert den Teletext, ohne ihn zu entfernen (dazu ist -t nötig)
@@ -11,7 +15,7 @@ RecStrip 2.6: NEU:
                  - Merge (-m) kann auch mit Schnitt (-r) kombiniert werden, um nur einzelne Segmente zusammenzufügen
                  - alle Topfield TimeStamps werden sekundengenau berechnet
                  - NALUDump löscht auch Filler-NALUs ohne Startcode (mehr als 10 mal 0xff, gefolgt von 0x80 - experimentell!)
-                 - korrekte(re) Zeitzonen-Behandlung (UnixTime=UTC, TFTime=lokale Zeitzone)
+                 - korrekte(re) Zeitzonen-Behandlung, inkl. Sommerzeit (UnixTime=UTC, TFTime=lokale Zeitzone)
                  - EPG-Zeitversatz wird aus Teletext-Zeitzone berechnet
                  - Humax-Mode: Ermittlung von Startzeit und Program Identification aus Teletext
                  - Humax-Mode: Bookmarks werden als Segment-Marker importiert, .cut-File wird ausgegeben

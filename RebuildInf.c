@@ -433,7 +433,7 @@ static bool AnalyseEIT(byte *Buffer, word ServiceID, TYPE_RecHeader_TMSS *RecInf
 printf("  TS: EvtStart  = %s (UTC)\n", TimeStr(&StartTimeUnix));
 
             NameLen = ShortDesc->EvtNameLen;
-            TextLen = min(Buffer[p + sizeof(tShortEvtDesc) + NameLen], sizeof(RecInf->EventInfo.EventNameDescription) - NameLen - 1);
+            TextLen = min(Buffer[p + sizeof(tShortEvtDesc) + NameLen], (byte)sizeof(RecInf->EventInfo.EventNameDescription) - NameLen - 1);
             RecInf->EventInfo.EventNameLength = NameLen;
             strncpy(RecInf->EventInfo.EventNameDescription, (char*)&Buffer[p + sizeof(tShortEvtDesc)], NameLen);
 printf("  TS: EventName = %s\n", RecInf->EventInfo.EventNameDescription);
@@ -1008,14 +1008,19 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 
   if (EITOK)
   {
-    struct tm *timeinfo; bool isdst;
+    int time_offset = 0;
     StartTimeUnix = TF2UnixTime(RecInf->EventInfo.StartTime, 0);
-    timeinfo = localtime(&StartTimeUnix);
-    isdst = timeinfo->tm_isdst;
-    RecInf->EventInfo.StartTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, (TtxOK ? -1*TtxTimeZone : -1*timezone + 3600*isdst));  // GMT+1
-    RecInf->EventInfo.EndTime   = AddTimeSec(RecInf->EventInfo.EndTime,   0, NULL, (TtxOK ? -1*TtxTimeZone : -1*timezone + 3600*isdst));
+#ifndef LINUX
+    {
+      struct tm *timeinfo;
+      timeinfo = localtime(&StartTimeUnix);
+      time_offset = -1*timezone + 3600*timeinfo->tm_isdst;
+    }
+#endif
+    RecInf->EventInfo.StartTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, (TtxOK ? -1*TtxTimeZone : time_offset));  // GMT+1
+    RecInf->EventInfo.EndTime   = AddTimeSec(RecInf->EventInfo.EndTime,   0, NULL, (TtxOK ? -1*TtxTimeZone : time_offset));
     StartTimeUnix = TF2UnixTime(RecInf->EventInfo.StartTime, 0);
-printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStr(&StartTimeUnix), -TtxTimeZone/3600 + isdst);
+printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStr(&StartTimeUnix), (TtxOK ? -1*TtxTimeZone : time_offset));
   }
 
   if(!FirstPCR || !LastPCR)

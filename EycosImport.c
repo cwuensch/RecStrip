@@ -305,7 +305,7 @@ bool LoadEycosHeader(char *AbsTrpFileName, byte *const PATPMTBuf, TYPE_RecHeader
               Desc->DescrTag      = DESC_Audio;
               Desc->DescrLength   = 4;
 
-              NrAudio = strlen((char*)EycosHeader.AudioNames) / 2;
+              NrAudio = (int) strlen((char*)EycosHeader.AudioNames) / 2;
               for (k = 0; k < NrAudio; k++)
               {
                 if (EycosHeader.AudioNames[k] == EycosHeader.Pids[j].PID)
@@ -354,7 +354,7 @@ bool LoadEycosHeader(char *AbsTrpFileName, byte *const PATPMTBuf, TYPE_RecHeader
     if ((ret = (ret && fread(&EycosEvent, sizeof(tEycosEvent), 1, fIfo))))
     {
       time_t EvtStartUnix, EvtEndUnix, DisplayTime;
-      int NameLen = min(strlen(EycosEvent.Title), sizeof(RecInf->EventInfo.EventNameDescription) - 1);
+      int NameLen = (int) min(strlen(EycosEvent.Title), sizeof(RecInf->EventInfo.EventNameDescription) - 1);
       int TextLen = sizeof(RecInf->EventInfo.EventNameDescription) - NameLen - 1;
 
       RecInf->EventInfo.ServiceID = RecInf->ServiceInfo.ServiceID;
@@ -367,7 +367,7 @@ bool LoadEycosHeader(char *AbsTrpFileName, byte *const PATPMTBuf, TYPE_RecHeader
       for (k = 0; k < 5; k++)
       {
         char *pCurDesc = ((k > 0) && (EycosEvent.LongDesc[k].DescBlock[0] < 0x20)) ? &EycosEvent.LongDesc[k].DescBlock[1] : EycosEvent.LongDesc[k].DescBlock;
-        NameLen = min(strlen(pCurDesc), sizeof(RecInf->ExtEventInfo.Text) - TextLen - 1);
+        NameLen = (int) min(strlen(pCurDesc), sizeof(RecInf->ExtEventInfo.Text) - TextLen - 1);
         strncpy(&RecInf->ExtEventInfo.Text[TextLen], pCurDesc, sizeof(RecInf->ExtEventInfo.Text) - TextLen - 1);
         TextLen += NameLen;
         if(NameLen < 248) break;
@@ -412,7 +412,7 @@ if (HOUR(RecInf->EventInfo.EndTime) != EycosEvent.EvtEndHour || MINUTE(RecInf->E
   if ((fIdx = fopen(IdxFile, "rb")))
   {
     tEycosIdxEntry EycosIdx;
-    bool ReadOk = fread(&EycosIdx, sizeof(tEycosIdxEntry), 1, fIdx);
+    size_t ReadOk = fread(&EycosIdx, sizeof(tEycosIdxEntry), 1, fIdx);
 
     for (j = 1; j < NrSegmentMarker-1 && ReadOk; j++)
     {
