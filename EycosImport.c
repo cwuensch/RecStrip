@@ -198,8 +198,9 @@ bool LoadEycosHeader(char *AbsTrpFileName, byte *const PATPMTBuf, TYPE_RecHeader
       // Bookmarks importieren
       ResetSegmentMarkers();
       SegmentMarker[NrSegmentMarker++].Timems = 0;
-      for (j = 0; j < min(EycosHeader.NrBookmarks, NRSEGMENTMARKER); j++)
+      for (j = 0; j < NRSEGMENTMARKER; j++)
       {
+        if (EycosHeader.Bookmarks[j] == 0) break;
         if (EycosHeader.Bookmarks[j] > SegmentMarker[NrSegmentMarker].Timems)
           SegmentMarker[NrSegmentMarker++].Timems = EycosHeader.Bookmarks[j];
         else

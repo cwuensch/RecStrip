@@ -92,7 +92,7 @@ typedef struct
   char                  SatelliteName3[16];
   char                  SenderName2[20];
   char                  Group[6];       // ?
-  int                   NrBookmarks;
+  int                   NOTNrBookmarks;
   dword                 Bookmarks[32];
   byte                  Unknown5[12];
   word                  ConstantT2;     // "T#"
