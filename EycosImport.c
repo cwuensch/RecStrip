@@ -74,8 +74,8 @@ int EycosGetNrParts(const char* AbsTrpName)
 
 bool LoadEycosHeader(char *AbsTrpFileName, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecInf)
 {
-  FILE                 *fIfo, *fTxt;
-  char                  IfoFile[FBLIB_DIR_SIZE], TxtFile[FBLIB_DIR_SIZE], *p;
+  FILE                 *fIfo, *fTxt, *fIdx;
+  char                  IfoFile[FBLIB_DIR_SIZE], TxtFile[FBLIB_DIR_SIZE], IdxFile[FBLIB_DIR_SIZE], *p;
   tEycosHeader          EycosHeader;
   tEycosEvent           EycosEvent;
   tTSPacket            *Packet = NULL;
@@ -97,8 +97,10 @@ bool LoadEycosHeader(char *AbsTrpFileName, byte *const PATPMTBuf, TYPE_RecHeader
   strcpy(IfoFile, AbsTrpFileName);
   if((p = strrchr(IfoFile, '.'))) *p = '\0';  // ".trp" entfernen
   strcpy(TxtFile, IfoFile);
+  strcpy(IdxFile, IfoFile);
   strcat(IfoFile, ".ifo");
   strcat(TxtFile, ".txt");
+  strcat(IdxFile, ".idx");
 
   // Ifo-Datei laden
   if ((fIfo = fopen(IfoFile, "rb")))
@@ -198,7 +200,10 @@ bool LoadEycosHeader(char *AbsTrpFileName, byte *const PATPMTBuf, TYPE_RecHeader
       SegmentMarker[NrSegmentMarker++].Timems = 0;
       for (j = 0; j < min(EycosHeader.NrBookmarks, NRSEGMENTMARKER); j++)
       {
-        SegmentMarker[NrSegmentMarker++].Timems = EycosHeader.Bookmarks[j];
+        if (EycosHeader.Bookmarks[j] > SegmentMarker[NrSegmentMarker].Timems)
+          SegmentMarker[NrSegmentMarker++].Timems = EycosHeader.Bookmarks[j];
+        else
+          printf("  Eycos-Import: Invalid Bookmark %d: %u is less than %u.\n", j, EycosHeader.Bookmarks[j], SegmentMarker[NrSegmentMarker].Timems);
       }
       SegmentMarker[NrSegmentMarker++].Timems = 0;
 
@@ -210,9 +215,27 @@ bool LoadEycosHeader(char *AbsTrpFileName, byte *const PATPMTBuf, TYPE_RecHeader
         if (EycosHeader.Pids[j].PID == AudioPID)
         {
           RecInf->ServiceInfo.AudioStreamType = EycosHeader.Pids[j].Type;
-          if ((EycosHeader.Pids[j].Type == STREAM_AUDIO_MPEG4_AC3_PLUS) || (EycosHeader.Pids[j].Type == 0x0a))
-            RecInf->ServiceInfo.AudioTypeFlag = 1;
+          switch (EycosHeader.Pids[j].Type)
+          {
+            case STREAM_AUDIO_MPEG1:
+            case STREAM_AUDIO_MPEG2:
+            case 0x05:
+              RecInf->ServiceInfo.AudioTypeFlag = 0;
+              break;
+            case STREAM_AUDIO_MPEG4_AC3_PLUS:
+            case STREAM_AUDIO_MPEG4_AC3:
+            case  0x0a:
+              RecInf->ServiceInfo.AudioTypeFlag = 1;
+              break;
+            case STREAM_AUDIO_MPEG4_AAC:
+            case STREAM_AUDIO_MPEG4_AAC_PLUS:
+              RecInf->ServiceInfo.AudioTypeFlag = 2;
+              break;
+            default:
+              RecInf->ServiceInfo.AudioTypeFlag = 3;
+          }
         }
+
         Elem = (tElemStream*) &Packet->Data[Offset];
         Elem->stream_type     = EycosHeader.Pids[j].Type;
         Elem->ESPID1          = EycosHeader.Pids[j].PID / 256;
@@ -225,15 +248,25 @@ bool LoadEycosHeader(char *AbsTrpFileName, byte *const PATPMTBuf, TYPE_RecHeader
         switch (EycosHeader.Pids[j].Type)
         {
           // Video
-          case STREAM_VIDEO_MPEG2:
           case STREAM_VIDEO_MPEG4_H264:
+          case STREAM_VIDEO_MPEG4_H263:
+          case STREAM_VIDEO_MPEG4_PART2:
+//          case STREAM_VIDEO_VC1:
+//          case STREAM_VIDEO_VC1SM:
           case 0x0b:
+            if (EycosHeader.Pids[j].PID == VideoPID)
+              isHDVideo = TRUE;  // fortsetzen...
+            // (fall-through!)
+
+          case STREAM_VIDEO_MPEG1:
+          case STREAM_VIDEO_MPEG2:
           {
             if (EycosHeader.Pids[j].PID == VideoPID)
             {
               Offset              += sizeof(tElemStream);
               PMT->SectionLen2    += sizeof(tElemStream);
               RecInf->ServiceInfo.VideoStreamType = EycosHeader.Pids[j].Type;
+              printf("    Video Stream: PID=%hu, Type=0x%hhx, HD=%d\n", VideoPID, RecInf->ServiceInfo.VideoStreamType, isHDVideo);
             }
             else
               printf("  Eycos-Import: Video stream (PID=%hu, Type=0x%hx) differs from Video PID %hu.\n", EycosHeader.Pids[j].PID, EycosHeader.Pids[j].Type, VideoPID);
@@ -241,14 +274,19 @@ bool LoadEycosHeader(char *AbsTrpFileName, byte *const PATPMTBuf, TYPE_RecHeader
           }
 
           // Audio normal / AC3
+          case STREAM_AUDIO_MPEG1:
           case STREAM_AUDIO_MPEG2:
           case 0x05:
           case STREAM_AUDIO_MPEG4_AC3_PLUS:
+          case STREAM_AUDIO_MPEG4_AC3:
+          case STREAM_AUDIO_MPEG4_AAC:
+          case STREAM_AUDIO_MPEG4_AAC_PLUS:
+          case STREAM_AUDIO_MPEG4_DTS:
           case 0x0a:
           {
             Offset                += sizeof(tElemStream);
             PMT->SectionLen2      += sizeof(tElemStream);
-            if (EycosHeader.Pids[j].Type == STREAM_AUDIO_MPEG4_AC3_PLUS || EycosHeader.Pids[j].Type == 0x0a)
+            if (EycosHeader.Pids[j].Type == STREAM_AUDIO_MPEG4_AC3_PLUS || EycosHeader.Pids[j].Type == STREAM_AUDIO_MPEG4_AC3 || EycosHeader.Pids[j].Type == 0x0a)
             {
               tTSAC3Desc *Desc0   = (tTSAC3Desc*) &Packet->Data[Offset];
               Desc0->DescrTag     = DESC_AC3;
@@ -369,6 +407,24 @@ if (HOUR(RecInf->EventInfo.EndTime) != EycosEvent.EvtEndHour || MINUTE(RecInf->E
     memset(&Packet->Data[Offset], 0xff, 184 - Offset);
 
     if(NrContinuityPIDs < MAXCONTINUITYPIDS && TeletextPID != 0xffff)  ContinuityPIDs[NrContinuityPIDs++] = TeletextPID;
+  }
+
+  if ((fIdx = fopen(IdxFile, "rb")))
+  {
+    tEycosIdxEntry EycosIdx;
+    bool ReadOk = fread(&EycosIdx, sizeof(tEycosIdxEntry), 1, fIdx);
+
+    for (j = 1; j < NrSegmentMarker-1 && ReadOk; j++)
+    {
+      while ((EycosIdx.Timems + 100 < SegmentMarker[j].Timems) && ReadOk)
+        ReadOk = fread(&EycosIdx, sizeof(tEycosIdxEntry), 1, fIdx);
+      if (ReadOk)
+      {
+        SegmentMarker[j].Position = EycosIdx.PacketNr * 188;
+        BookmarkInfo->Bookmarks[BookmarkInfo->NrBookmarks++] = (dword)(EycosIdx.PacketNr / 48);
+      }
+    }
+    fclose(fIdx);
   }
 
 //  fseeko64(fIn, FilePos, SEEK_SET);

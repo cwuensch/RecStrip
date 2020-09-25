@@ -126,6 +126,13 @@ typedef struct
   char                  ShortDesc[512];
   tEycosDescBlock       LongDesc[8];
 }__attribute__((packed)) tEycosEvent;
+
+typedef struct
+{
+  dword                 Timems;    // in ca. Hunderter-Schritten
+  dword                 Unused1;
+  long long             PacketNr;  // in 188 Byte Packets
+} tEycosIdxEntry;
 #pragma pack(pop)
 
 char* EycosGetPart(char *const OutEycosPart, const char* AbsTrpName, int NrPart);

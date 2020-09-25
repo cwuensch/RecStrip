@@ -854,8 +854,10 @@ static bool CloseOutputFiles(void)
   if (EycosSource && (NrSegmentMarker > 2))
   {
     // SegmentMarker aus TimeStamps importieren (weil Eycos die Bookmarks scheinbar in Millisekunden speichert)
-    if (CutImportFromTimeStamps(3, OutPacketSize))
-      CutExportToBM(BookmarkInfo);
+//    if (CutImportFromTimeStamps(3, OutPacketSize))
+//      CutExportToBM(BookmarkInfo);
+    SegmentMarker[0].Position = 0;
+    SegmentMarker[0].Timems = 0;
   }
 
   if ((*CutFileOut || (*InfFileOut && WriteCutInf)) && !CutFileSave(CutFileOut))
@@ -1060,6 +1062,109 @@ int main(int argc, const char* argv[])
   fclose(in);
   exit(ret);
 }*/
+
+/*// Humax-Fix (falsche PMT-Pid in inf-Datei und Timestamps)
+{
+  const char           *RecFile = argv[1];
+  FILE                 *fInf, *fRec;
+  byte                  Buffer1[192], *Buffer2 = NULL;
+  tTSPacket            *Packet = NULL;
+  tTSPAT               *PAT = NULL;
+  TYPE_RecHeader_TMSS  *RecInf = NULL;
+  struct stat64         statbuf;
+  word                  PMTPid = 0;
+  int                   InfSize = 0;
+  time_t                RecDate = 0;
+  char                  InfFile[FBLIB_DIR_SIZE], NavFile[FBLIB_DIR_SIZE], SrtFile[FBLIB_DIR_SIZE], CutFile[FBLIB_DIR_SIZE], *p;
+  bool                  ChangedInf = FALSE;
+  bool                  ret = FALSE;
+
+  Buffer2 = (byte*)malloc(1048576);
+  memset(Buffer1, 0, sizeof(Buffer1));
+  memset(Buffer2, 0x77, 1048576);
+
+  printf("\n- Time- & Humax-Fix -\n");
+  if (argc <= 1)
+  {
+    printf("\nUsage: TimeFix <Input.ts> [<VideoPID>, <AudioPID>, <TeletextPID>]\n");
+    exit(1);
+  }
+  printf("\nInput File: %s\n", RecFile);
+
+  strcpy(InfFile, RecFile); strcpy(NavFile, RecFile); strcpy(SrtFile, RecFile); strcpy(CutFile, RecFile);
+  if ((p = strrchr(CutFile, '.')))  p[0] = '\0';
+  if ((p = strrchr(SrtFile, '.')))  p[0] = '\0';
+  strcat(InfFile, ".inf"); strcat(NavFile, ".nav"); strcat(SrtFile, ".srt"); strcat(CutFile, ".cut");
+
+  if ((fInf = fopen(InfFile, "rb")))
+  {
+    if ((InfSize = fread(Buffer2, 1, 1048576, fInf)))
+      RecInf = (TYPE_RecHeader_TMSS*) Buffer2;
+    fclose(fInf);
+  }
+  else
+    printf("ERROR reading inf file!\n");
+
+  if (RecInf)
+  {
+    if(stat64(RecFile, &statbuf) == 0)
+    {
+      if(statbuf.st_ctime > 1598961600)  // 01.09.2020 12:00 GMT
+      {
+        if ((fRec = fopen(RecFile, "rb")))
+        {
+          if (fread(Buffer1, sizeof(tTSPAT) + 9, 1, fRec))
+          {
+            Packet = (tTSPacket*) &Buffer1[4];
+            PAT = (tTSPAT*) &Packet->Data[1];
+            PMTPid = 256 * PAT->PMTPID1 + PAT->PMTPID2;
+          }
+          fclose(fRec);
+        }
+        else
+          printf("ERROR reading rec file!\n");
+      }
+    }
+
+    if (PAT)
+    {
+      if (RecInf->ServiceInfo.PMTPID == 256 && PMTPid == 64)
+      {
+        printf("  Change PMTPid in inf: %hu to %hu", RecInf->ServiceInfo.PMTPID, PMTPid);
+        RecInf->ServiceInfo.PMTPID = PMTPid;
+        remove(InfFile);
+        if ((fInf = fopen(InfFile, "wb")))
+        {
+          if (fwrite(Buffer2, 1, InfSize, fInf) == InfSize)
+            printf(" -> SUCCESS\n");
+          else
+            printf(" -> ERROR\n");
+          fclose(fInf);
+          ChangedInf = TRUE;
+        }
+        else
+          printf(" -> ERROR\n");
+      }
+    }
+
+    RecDate = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec);
+    if (stat64(RecFile, &statbuf) == 0)
+    {
+      if (ChangedInf || statbuf.st_mtime != RecDate)
+      {
+        printf("  Change file timestamp to: %s\n", TimeStr(&RecDate));
+        HDD_SetFileDateTime(RecFile, RecDate);
+        HDD_SetFileDateTime(InfFile, RecDate);
+        HDD_SetFileDateTime(NavFile, RecDate);
+        HDD_SetFileDateTime(SrtFile, RecDate);
+      }
+    }
+    ret = TRUE;
+  }
+  printf("Finished.\n");
+  free(Buffer2);
+  exit(0);
+} */
 
   // Eingabe-Parameter prüfen
   if (argc <= 1)  AbortProcess = TRUE;

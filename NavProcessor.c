@@ -1216,11 +1216,10 @@ tTimeStamp2* NavLoad(const char *AbsInRec, int *const OutNrTimeStamps, byte Pack
   HDD_GetFileSize(AbsFileName, &NavSize);
   NavRecordsNr = (dword)((NavSize / (sizeof(tnavSD) * ((isHDVideo) ? 2 : 1))) / 4);  // höchstens jedes 4. Frame ist ein I-Frame (?)
 
-  TimeStampBuffer = (tTimeStamp2*) malloc(NavRecordsNr * sizeof(tTimeStamp2));
-  if (!TimeStampBuffer)
+  if (!NavRecordsNr || !((TimeStampBuffer = (tTimeStamp2*) malloc(NavRecordsNr * sizeof(tTimeStamp2)))))
   {
     fclose(fNav);
-    printf("  Not enough memory to load nav.");
+    printf("  Nav could not be loaded.");
     TRACEEXIT;
     return(NULL);
   }
@@ -1281,9 +1280,11 @@ TAP_PrintNet("Achtung! I-Frame an %llu hat denselben Timestamp wie sein Vorgänge
   memcpy(TimeStamps, TimeStampBuffer, NrTimeStamps * sizeof(tTimeStamp2));  
   free(TimeStampBuffer);  */
 
-  TimeStamps = (tTimeStamp2*) realloc(TimeStampBuffer, NrTimeStamps * sizeof(tTimeStamp2));
-  if(!TimeStamps) TimeStamps = TimeStampBuffer;
-
+  if (NrTimeStamps > 0)
+  {
+    TimeStamps = (tTimeStamp2*) realloc(TimeStampBuffer, NrTimeStamps * sizeof(tTimeStamp2));
+    if(!TimeStamps) TimeStamps = TimeStampBuffer;
+  }
   *OutNrTimeStamps = NrTimeStamps;
 
   TRACEEXIT;
