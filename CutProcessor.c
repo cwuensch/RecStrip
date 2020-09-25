@@ -377,7 +377,7 @@ void CutImportFromBM(const char *RecFile, dword Bookmarks[], dword NrBookmarks)
   TRACEEXIT;
 }
 
-void CutExportToBM(TYPE_Bookmark_Info *BookmarkInfo)
+/*void CutExportToBM(TYPE_Bookmark_Info *BookmarkInfo)
 {
   int                   i;
   TRACEENTER;
@@ -393,9 +393,9 @@ void CutExportToBM(TYPE_Bookmark_Info *BookmarkInfo)
       BookmarkInfo->Bookmarks[BookmarkInfo->NrBookmarks++] = CalcBlockSize(SegmentMarker[i].Position);
   }
   TRACEEXIT;
-}
+}*/
 
-bool CutImportFromTimeStamps(int Version, byte PacketSize)
+static bool CutImportFromTimeStamps(int Version, byte PacketSize)
 {
   tTimeStamp2      *TimeStamps = NULL;
   int               NrTimeStamps, i;
