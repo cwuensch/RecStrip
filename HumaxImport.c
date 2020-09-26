@@ -262,7 +262,7 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
               Elem->ESPID1          = HumaxTonspuren->Items[j].PID / 256;
               Elem->ESPID2          = HumaxTonspuren->Items[j].PID % 256;
               Elem->ESInfoLen1      = 0;
-              if ((j >= 1) && (strstr(HumaxTonspuren->Items[j].Name, "AC") > 0 || strstr(HumaxTonspuren->Items[j].Name, "ac") > 0))   // (strstr(HumaxTonspuren->Items[j].Name, "2ch") == 0) && (strstr(HumaxTonspuren->Items[j].Name, "mis") == 0) && (strstr(HumaxTonspuren->Items[j].Name, "fra") == 0)
+              if ((j >= 1) && (strstr(HumaxTonspuren->Items[j].Name, "AC") != NULL || strstr(HumaxTonspuren->Items[j].Name, "ac") != NULL))   // (strstr(HumaxTonspuren->Items[j].Name, "2ch") == 0) && (strstr(HumaxTonspuren->Items[j].Name, "mis") == 0) && (strstr(HumaxTonspuren->Items[j].Name, "fra") == 0)
               {
                 tTSAC3Desc *Desc0   = (tTSAC3Desc*) &Packet->Data[Offset];
 

@@ -277,7 +277,7 @@ bool LoadEycosHeader(char *AbsTrpFileName, byte *const PATPMTBuf, TYPE_RecHeader
           case 0x0a:
           {
             Offset               += sizeof(tElemStream);
-            if (EycosHeader.Pids[j].Type == EycosHeader.Pids[j].Type == 0x0a)
+            if (EycosHeader.Pids[j].Type == 0x0a)
             {
               tTSAC3Desc *Desc0   = (tTSAC3Desc*) &Packet->Data[Offset];
               Desc0->DescrTag     = DESC_AC3;

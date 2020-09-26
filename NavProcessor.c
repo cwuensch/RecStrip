@@ -1219,7 +1219,7 @@ tTimeStamp2* NavLoad(const char *AbsInRec, int *const OutNrTimeStamps, byte Pack
   if (!NavRecordsNr || !((TimeStampBuffer = (tTimeStamp2*) malloc(NavRecordsNr * sizeof(tTimeStamp2)))))
   {
     fclose(fNav);
-    printf("  Nav could not be loaded.");
+    printf("  Nav could not be loaded.\n");
     TRACEEXIT;
     return(NULL);
   }
