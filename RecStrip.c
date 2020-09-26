@@ -59,7 +59,6 @@
 #include "RebuildInf.h"
 #include "NALUDump.h"
 #include "HumaxHeader.h"
-#include "EycosHeader.h"
 
 //#include "PESProcessor.h"
 
@@ -96,7 +95,7 @@ SYSTEM_TYPE             SystemType = ST_UNKNOWN;
 byte                    PACKETSIZE = 192, PACKETOFFSET = 4, OutPacketSize = 0;
 word                    VideoPID = (word) -1, TeletextPID = (word) -1, TeletextPage = 0;
 word                    ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs = 1;
-bool                    isHDVideo = FALSE, AlreadyStripped = FALSE, HumaxSource = FALSE, EycosSource = FALSE;
+bool                    isHDVideo = FALSE, AlreadyStripped = FALSE, HumaxSource = FALSE;
 bool                    DoStrip = FALSE, DoSkip = FALSE, RemoveScrambled = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE, DoInfoOnly = FALSE, MedionMode = FALSE, MedionStrip = FALSE;
 int                     DoCut = 0, DoMerge = 0;  // DoCut: 1=remove_parts, 2=copy_separate, DoMerge: 1=append, 2=merge
 int                     curInputFile = 0, NrInputFiles = 1;
@@ -131,7 +130,7 @@ static signed char      ContinuityCtrs[MAXCONTINUITYPIDS];
 static bool             ResumeSet = FALSE;
 
 
-bool HDD_FileExist(const char *AbsFileName)
+static bool HDD_FileExist(const char *AbsFileName)
 {
   struct stat           statbuf;
   return (stat(AbsFileName, &statbuf) == 0);
@@ -227,7 +226,7 @@ static void GetNextFreeCutName(const char *SourceFileName, char *const OutCutFil
 // *****  Analyse von REC-Files  *****
 // ----------------------------------------------
 
-dword CalcBlockSize(long long Size)
+static inline dword CalcBlockSize(long long Size)
 {
   // Workaround für die Division durch BLOCKSIZE (9024)
   // Primfaktorenzerlegung: 9024 = 2^6 * 3 * 47
@@ -258,8 +257,6 @@ static int GetPacketSize(FILE *RecFile, int *OutOffset)
       char *p = strrchr(RecFileIn, '.');
       if (p && strcmp(p, ".vid") == 0)
         HumaxSource = TRUE;
-      else if (p && strcmp(p, ".trp") == 0)
-        EycosSource = TRUE;
 
       PACKETSIZE = 188;
       PACKETOFFSET = 0;
@@ -512,17 +509,6 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
 
       LoadInfFromRec(RecFileIn);
 
-      if (EycosSource)
-      {
-        char               EycosPartFile[FBLIB_DIR_SIZE];
-        unsigned long long AddSize = 0;
-        int                EycosNrParts = EycosGetNrParts(RecFileIn);
-        for (k = 1; k < EycosNrParts; k++)
-          if(HDD_GetFileSize(EycosGetPart(EycosPartFile, RecFileIn, k), &AddSize))  RecFileSize += AddSize;
-        RecFileBlocks = CalcBlockSize(RecFileSize);
-        BlocksOnePercent = (RecFileBlocks * NrInputFiles) / 100;
-      }
-
 //      if(DoStrip) ContinuityPIDs[0] = (word) -1;
       printf("  PIDs to be checked for continuity: [0] %s%hd%s", (DoStrip ? "[" : ""), ContinuityPIDs[0], (DoStrip ? "]" : ""));
       for (k = 1; k < NrContinuityPIDs; k++)
@@ -574,18 +560,15 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
       printf("  WARNING: Cannot open nav file %s.\n", NavFileIn);
   
     // ggf. cut-File einlesen
-    if (NrSegmentMarker <= 2 || !EycosSource)
+    GetFileNameFromRec(RecFileIn, ".cut", CutFileIn);
+    printf("\nCut file: %s\n", CutFileIn);
+    if (!CutFileLoad(CutFileIn))
     {
-      GetFileNameFromRec(RecFileIn, ".cut", CutFileIn);
-      printf("\nCut file: %s\n", CutFileIn);
-      if (!CutFileLoad(CutFileIn))
-      {
-//        HasCutIn = FALSE;
-        AddDefaultSegmentMarker();
-        if(!FirstTime && DoCut)
-          SegmentMarker[0].Selected = TRUE;
-//        DoCut = 0;
-      }
+      CutFileIn[0] = '\0';
+      AddDefaultSegmentMarker();
+      if(!FirstTime && DoCut)
+        SegmentMarker[0].Selected = TRUE;
+//      DoCut = 0;
     }
   }
 
@@ -693,7 +676,7 @@ SONST
       }
       else
         snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf", RecFileOut);
-      if(!*InfFileIn && !HumaxSource && !EycosSource) WriteCutInf = TRUE;
+      if(!*InfFileIn && !HumaxSource) WriteCutInf = TRUE;
     }
     else
       InfFileOut[0] = '\0';
@@ -849,15 +832,6 @@ static bool CloseOutputFiles(void)
     SegmentMarker[NrSegmentMarker-1].Position = CurrentPosition - PositionOffset;
     if(NewDurationMS)
       SegmentMarker[NrSegmentMarker-1].Timems = NewDurationMS;
-  }
-
-  if (EycosSource && (NrSegmentMarker > 2))
-  {
-    // SegmentMarker aus TimeStamps importieren (weil Eycos die Bookmarks scheinbar in Millisekunden speichert)
-//    if (CutImportFromTimeStamps(3, OutPacketSize))
-//      CutExportToBM(BookmarkInfo);
-    SegmentMarker[0].Position = 0;
-    SegmentMarker[0].Timems = 0;
   }
 
   if ((*CutFileOut || (*InfFileOut && WriteCutInf)) && !CutFileSave(CutFileOut))
@@ -1345,7 +1319,7 @@ int main(int argc, const char* argv[])
     NrInputFiles = argc;
   }
 //  InfFileOld[0] = '\0';  // Müssten nicht alle OutFiles mit initialisiert werden?
-//  HasNavOld = FALSE;  // So muss sichergestellt sein, dass CloseOutputFiles() nur nach OpenOutputFiles() aufgerufen wird!
+//  HasNavOld = FALSE;    // So muss sichergestellt sein, dass CloseOutputFiles() nur nach OpenOutputFiles() aufgerufen wird!
 
   // Prüfen, ob Aufnahme bereits gestrippt
   if (DoSkip && !DoMerge)
@@ -1451,10 +1425,10 @@ int main(int argc, const char* argv[])
   if(DoMerge == 1) GoToEndOfNav(NULL);
 
   // Spezialanpassung Humax / Medion
-  if ((HumaxSource || EycosSource || MedionMode==1) && fOut /*&& DoMerge != 1*/)
+  if ((HumaxSource || MedionMode==1) && fOut /*&& DoMerge != 1*/)
   {
-    printf("  Generate new PAT/PMT for Humax/Medion/Eycos recording.\n");
-    if (!HumaxSource && !EycosSource)
+    printf("  Generate new PAT/PMT for Humax/Medion recording.\n");
+    if (!HumaxSource)
       GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, 256, VideoPID, 101, TeletextPID, STREAM_VIDEO_MPEG2, STREAM_AUDIO_MPEG2);
 
     if (fwrite(&PATPMTBuf[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut))
@@ -1525,7 +1499,6 @@ int main(int argc, const char* argv[])
 
   for (curInputFile = 0; curInputFile < NrInputFiles; curInputFile++)
   {
-    int EycosCurPart = 0, EycosNrParts = 0;
     if (DoMerge && BookmarkInfo)
     {
       // Bookmarks kurz vor der Schnittstelle löschen
@@ -2130,20 +2103,7 @@ int main(int argc, const char* argv[])
         }
       }
       else
-      {
-        if (EycosSource)
-        {
-          if(!EycosNrParts) EycosNrParts = EycosGetNrParts(RecFileIn);
-          if(EycosCurPart < EycosNrParts - 1)
-          {
-            char EycosPartFile[FBLIB_DIR_SIZE];
-            fclose(fIn);
-            fIn = fopen(EycosGetPart(EycosPartFile, RecFileIn, ++EycosCurPart), "rb");
-            if(fIn) continue;
-          }
-        }
         break;
-      }
     }
 //    NrPackets += ((RecFileSize + PACKETSIZE-1) / PACKETSIZE);
     NrScrambledPackets += CurScrambledPackets;

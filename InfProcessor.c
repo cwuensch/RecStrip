@@ -16,7 +16,6 @@
 #include "RebuildInf.h"
 #include "RecStrip.h"
 #include "HumaxHeader.h"
-#include "EycosHeader.h"
 #include "TtxProcessor.h"
 
 extern bool StrToUTF8(const char *SourceString, char *DestString, byte DefaultISO8859CharSet);
@@ -173,11 +172,6 @@ bool LoadInfFromRec(char *AbsRecFileName)
   {
     Result = LoadHumaxHeader(fIn, PATPMTBuf, (TYPE_RecHeader_TMSS*)InfBuffer);
     if (!Result) HumaxSource = FALSE;
-  }
-  else if (EycosSource)
-  {
-    Result = LoadEycosHeader(AbsRecFileName, PATPMTBuf, (TYPE_RecHeader_TMSS*)InfBuffer);
-    if (!Result) EycosSource = FALSE;
   }
 
   Result = GenerateInfFile(fIn, (TYPE_RecHeader_TMSS*)InfBuffer);
