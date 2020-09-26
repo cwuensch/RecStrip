@@ -19,6 +19,7 @@
 #include "NavProcessor.h"
 #include "TtxProcessor.h"
 #include "RecStrip.h"
+#include "PESFileLoader.h"
 
 
 // Globale Variablen
@@ -41,6 +42,9 @@ static int              PesOffset = 0;
 static int              LastEndNulls = 1;
 static bool             PendingPacket = FALSE;
 
+static bool             PayloadStart = FALSE;
+
+
 // ----------------------------------------------
 // *****  NALU Dump  *****
 // ----------------------------------------------
@@ -49,11 +53,11 @@ inline word TsGetPID(tTSPacket *Packet)
 {
   return ((Packet->PID1 *256) | Packet->PID2);
 }
-inline int TsPayloadOffset(tTSPacket *Packet)
+/*inline int TsPayloadOffset(tTSPacket *Packet)
 {
   int o = (Packet->Adapt_Field_Exists) ? Packet->Data[0]+5 : 4;
   return (o <= TS_SIZE ? o : TS_SIZE);
-}
+}*/
 
 void NALUDump_Init(void)
 {
@@ -77,10 +81,12 @@ void NALUDump_Init(void)
   LastEndNulls = 1;
   PendingPacket = FALSE;
 
+  PayloadStart = TRUE;
+
   TRACEEXIT;
 }
 
-static void TsExtendAdaptionField(byte *Packet, int ToLength)
+/*static void TsExtendAdaptionField(byte *Packet, int ToLength)
 {
   // Hint: ExtendAdaptionField(p, TsPayloadOffset(p) - 4) is a null operation
   tTSPacket *TSPacket;
@@ -395,7 +401,7 @@ int ProcessTSPacket(unsigned char *Packet, long long FilePosition)
       }
     }
 
-    if (Info.ZerosOnly && !TSPacket->Adapt_Field_Exists && (isHDVideo || SliceState) /*&& LastEndNulls>0*/)
+    if (Info.ZerosOnly && !TSPacket->Adapt_Field_Exists && (isHDVideo || SliceState) /*&& LastEndNulls>0*//*)
     {
 //printf("Potential zero-byte-stuffing at position %lld", FilePosition);
       if (LastEndNulls >= 3 || PendingPacket)  // wenn 3 Nullen am Ende -> dann darf FolgePaket ohne anfangen
@@ -439,7 +445,7 @@ int ProcessTSPacket(unsigned char *Packet, long long FilePosition)
   else
   {
     // Adaptation Field ohne PCR verwerfen (experimentell!!)
-    if (TSPacket->Adapt_Field_Exists && !GetPCR(Packet, NULL) /*&& (!TSPacket->Payload_Exists || TSPacket->Data[0] == 183)*/)
+    if (TSPacket->Adapt_Field_Exists && !GetPCR(Packet, NULL) /*&& (!TSPacket->Payload_Exists || TSPacket->Data[0] == 183)*//*)
       return 4;
   }
 
@@ -458,4 +464,197 @@ int ProcessTSPacket(unsigned char *Packet, long long FilePosition)
 
   TRACEEXIT;
   return Result;  // Keep packet
+} */
+
+bool NALUDump_PES(byte *const Packet, int *const Length)
+{
+  dword                 History = 0xffffffff;
+  bool                  SliceState = TRUE;
+  int                   PesId = -1;
+  int                   NaluStart = 0, ZeroStart = 0;
+  bool                  FillerWithoutStart = FALSE;
+  int                   i;
+
+  TRACEENTER;
+
+//fDbg = fopen("C:/Topfield/TAP/SamplesTMS/MovieCutter/NALU/Twilight/Debug.pack", "wb");
+//fwrite(Packet, *Length, 1, fDbg);
+//fclose(fDbg);
+
+  if (PayloadStart)
+  {
+    NaluStart = -1;
+    ZeroStart = -1;
+    SliceState = FALSE;
+  }
+
+  for (i = 0; i < *Length; i++)
+  {
+    if (ZeroStart >= 0)
+    {
+      // Within Zero byte padding data
+      if ((ZeroStart+2 < *Length) && (Packet[ZeroStart] == 0) && (Packet[ZeroStart+1] == 0))
+      {
+        if (i == 0)
+        {
+          i += 2;
+          History = (History << 16);
+        }
+        while ((Packet[i] == 0x0) && (i < *Length))
+        {
+          i++;
+        }
+
+        if (i < *Length)
+        {
+          memmove(&Packet[ZeroStart+2], &Packet[i], *Length-i);
+          *Length = *Length - (i - ZeroStart - 2);
+          NrDroppedZeroStuffing += (i - ZeroStart - 2);
+          i = ZeroStart + 2;
+        }
+        else
+        {
+          *Length = ZeroStart;
+          NrDroppedZeroStuffing += (i - ZeroStart);
+          break;
+        }
+
+        NaluStart = -1;
+      }
+      ZeroStart = -1;
+    }
+    
+    if (NaluStart >= 0)
+    {
+      // Within NALU fill data (NALU_FILL und NALU_INIT)
+      while ((Packet[i] == 0xFF) && (i < *Length))
+      {
+        i++;
+      }
+
+      // We expect a series of 0xff bytes terminated by a single 0x80 byte.
+      if (i < *Length)
+      {
+        if (Packet[i] == 0x80)
+        {
+          // Ende erreicht
+          if (!FillerWithoutStart || i - NaluStart > 10)
+          {
+            if (FillerWithoutStart)
+              printf("cNaluDumper: Filler NALU without startcode deleted (length=%d, pos of PES: %llu)\n", i+1 - NaluStart, CurrentPosition);
+
+            // Löschen von NaluStart bis i
+            memmove(&Packet[NaluStart], &Packet[i+1], *Length-i-1);
+            *Length = *Length - (i+1 - NaluStart);
+            NrDroppedFillerNALU += (i+1 - NaluStart);
+            i = NaluStart - 1;
+            NaluStart = -1;
+            continue;
+          }
+          else
+            NaluStart = -1;
+        }
+        else if (!FillerWithoutStart)  // Invalid NALU fill
+        {
+          // Löschen von NaluStart bis i-1
+          printf("cNaluDumper: Unexpected NALU fill data: 0x%02x (pos of PES: %llu, pos in PES: %d)\n", Packet[i], CurrentPosition, i);
+          memmove(&Packet[NaluStart], &Packet[i], *Length-i);
+          *Length = *Length - (i - NaluStart);
+          NrDroppedFillerNALU += (i - NaluStart);
+          i = NaluStart;
+        }
+      }
+      else if (!FillerWithoutStart || (i - NaluStart >= 100))
+      {
+        if (FillerWithoutStart)
+          printf("cNaluDumper: Filler NALU without start- and endcode deleted (length=%d; pos of PES: %llu)\n", *Length - NaluStart, CurrentPosition);
+        else
+          printf("cNaluDumper: Unexpected end of filler NALU at packet end (pos of PES: %llu)\n", CurrentPosition);
+        NrDroppedFillerNALU += (*Length - NaluStart);
+        *Length = NaluStart;
+        break;
+      }
+      NaluStart = -1;
+    }
+
+    History = (History << 8) | Packet[i];
+
+    if ((History & 0xFFFFFF00) == 0x00000100)
+    {
+      if (Packet[i] >= 0xB9)
+      {
+        // Start of PES packet
+        PesId = History & 0xff;
+        NaluStart = -1;
+        ZeroStart = -1;
+
+        // Zero out PES length field
+        if (i + 2 < *Length)
+        {
+          Packet[++i] = 0;
+          Packet[++i] = 0;
+        }
+        continue;
+      }
+      else if (PesId >= 0xe0 && PesId <= 0xef) // video stream
+      {
+        if (isHDVideo)
+        {
+          if (Packet[i] <= 0x7F) // NALU start code
+          {
+            if ((Packet[i] & 0x1f) == 0x0c)
+            {
+              NaluStart = i-3;  // ab dem Startcode
+              FillerWithoutStart = FALSE;
+            }
+          }
+        }
+        else
+          SliceState = ((Packet[i] >= 0x01) && (Packet[i] <= 0xAF));
+      }
+    }
+    else if (isHDVideo && (Packet[i] == 0xff) /*&& (NaluStart < 0)*/)
+    {
+      NaluStart = i;
+      FillerWithoutStart = TRUE;
+    }
+    else if ((History == 0) && (isHDVideo || SliceState))  // 4 Nullen am Stück gefunden (Zero byte padding)
+    {
+      ZeroStart = i-2;  // ab der zweiten 0
+    }
+  }
+
+  // Mehr als 1 Null am Ende des Pakets entfernen
+  if (PesId >= 0xe0 && PesId <= 0xef) // video stream
+  {
+    tPESHeader *curPacket = (tPESHeader*) Packet;
+    byte *p = &Packet[*Length-1];
+    int HeaderLen = 6, newLen;
+
+    if (curPacket->OptionalHeaderMarker == 2)
+      HeaderLen += (3 + curPacket->PESHeaderLen);
+
+    while(*p == 0) p--;
+      
+    newLen = (int)(p - Packet) + 1;
+    if (newLen > HeaderLen)
+    {
+      if(Packet[*Length-1] == 0) newLen++;  // mindestens eine Null am Ende erhalten, wenn vorher eine da war (ist TS-Doctor Bug!!!)
+      NrDroppedZeroStuffing += (*Length - newLen);
+      *Length = newLen;
+    }
+    else
+    {
+      // Es sind nur Fülldaten im PES-Paket enthalten -> ganzes Paket überspringen
+      if (newLen == *Length)
+        NrDroppedFillerNALU += *Length;
+      else
+        NrDroppedZeroStuffing += *Length;
+      TRACEEXIT;
+      return FALSE;
+    }
+  }
+
+  TRACEEXIT;
+  return TRUE;
 }

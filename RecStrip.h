@@ -3,7 +3,7 @@
 
 #include "RecHeader.h"
 
-#define VERSION                  "v2.6"
+#define VERSION                  "v3.0"
 
 #define NRBOOKMARKS                177   // eigentlich werden nur 48 Bookmarks unterstützt!! (SRP2401)
 #define NRSEGMENTMARKER            101
@@ -11,7 +11,7 @@
 #define BUFSIZE                  65536
 #define FBLIB_DIR_SIZE             512
 #define RECBUFFERENTRIES          5000
-#define PENDINGBUFSIZE           65536
+#define MEDIONBUFFERBYTES       500000
 #define VIDEOBUFSIZE           2097152
 
 //audio & video format
@@ -127,10 +127,11 @@ extern int              dbg_DelBytesSinceLastVid;
 extern TYPE_Bookmark_Info *BookmarkInfo, BookmarkInfo_In;
 extern tSegmentMarker2 *SegmentMarker,  *SegmentMarker_In;       //[0]=Start of file, [x]=End of file
 extern int              NrSegmentMarker, NrSegmentMarker_In;
-extern long long        NrDroppedZeroStuffing;
+extern long long        NrDroppedFillerNALU, NrDroppedZeroStuffing;
 extern int              ActiveSegment;
 extern dword            InfDuration, NewDurationMS;
 extern int              NewStartTimeOffset;
+extern dword            TimeStepPerFrame;
 extern long long        CurrentPosition;
 
 

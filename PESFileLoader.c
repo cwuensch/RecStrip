@@ -29,7 +29,7 @@ static bool             DoEITOutput = TRUE;
   FILE *out = fopen("C:/Users/Test/Desktop/PMTFehler/Star Trek Beyond - 2019-02-18 01-07_DD_ttx.pes", "wb");
   bool LastBuffer = 0;
 
-  PSBuffer_Init(&PSBuf, 0x21, 128000, FALSE);
+  PSBuffer_Init(&PSBuf, 0x21, 128000, FALSE, FALSE, FALSE);
 
   while (fread(Buffer, 192, 1, in))
   {

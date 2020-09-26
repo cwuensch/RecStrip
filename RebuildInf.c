@@ -668,12 +668,12 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     if (MedionMode == 1)
     {
       // Read first 500 kB of Video PES
-      if (fread(Buffer, 1, RECBUFFERENTRIES*100 + 20, fIn) > 0)
+      if (fread(Buffer, 1, MEDIONBUFFERBYTES + 20, fIn) > 0)
       {
         int p = 0;
-        while (p < RECBUFFERENTRIES*100)
+        while (p < MEDIONBUFFERBYTES)
         {
-          while ((p < RECBUFFERENTRIES*100) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1))
+          while ((p < MEDIONBUFFERBYTES) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1))
             p++;
           if (GetPTS(&Buffer[p], NULL, &FirstPCRms) && (FirstPCRms != 0))
           {
@@ -685,20 +685,20 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       }
       else
       {
-        printf("  Failed to read the first %d PES bytes.\n", RECBUFFERENTRIES*100);
+        printf("  Failed to read the first %d PES bytes.\n", MEDIONBUFFERBYTES);
         free(Buffer);
         TRACEEXIT;
         return FALSE;
       }
 
       // Read last 500 kB of Video PES
-      fseeko64(fIn, -RECBUFFERENTRIES*100 - 20, SEEK_END);
-      if (fread(Buffer, 1, RECBUFFERENTRIES*100 + 20, fIn) == RECBUFFERENTRIES*100 + 20)
+      fseeko64(fIn, -MEDIONBUFFERBYTES - 20, SEEK_END);
+      if (fread(Buffer, 1, MEDIONBUFFERBYTES + 20, fIn) == MEDIONBUFFERBYTES + 20)
       {
         int p = 0;
-        while (p < RECBUFFERENTRIES*100)
+        while (p < MEDIONBUFFERBYTES)
         {
-          while ((p < RECBUFFERENTRIES*100) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1))
+          while ((p < MEDIONBUFFERBYTES) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1))
             p++;
           if (GetPTS(&Buffer[p], NULL, &LastPCRms) && (LastPCRms != 0))
             LastPCR = (long long)LastPCRms * 600;
@@ -707,7 +707,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       }
       else
       {
-        printf("  Failed to read the last %d PES bytes.\n", RECBUFFERENTRIES*100);
+        printf("  Failed to read the last %d PES bytes.\n", MEDIONBUFFERBYTES);
         free(Buffer);
         TRACEEXIT;
         return FALSE;
@@ -859,12 +859,12 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           printf("  TS: PMTPID=%hu", PMTPID);
 
           //Analyse the PMT
-          PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE);
+          PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE, TRUE, TRUE);
 
           p = &Buffer[Offset + PACKETOFFSET];
           while (p <= &Buffer[ReadBytes-188])
           {
-            PSBuffer_ProcessTSPacket(&PMTBuffer, (tTSPacket*)p);
+            PSBuffer_ProcessTSPacket(&PMTBuffer, (tTSPacket*)p, FilePos + (p-Buffer));
             if (PMTBuffer.ValidBuffer != LastPMTBuffer)
             {
               if(!PMTBuffer.ErrorFlag) break;
@@ -887,10 +887,10 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       //If we're here, it should be possible to find the associated EPG event
       if (RecInf->ServiceInfo.ServiceID)
       {
-        PSBuffer_Init(&PMTBuffer, 0x0011, 16384, TRUE);
-        PSBuffer_Init(&EITBuffer, 0x0012, 16384, TRUE);
+        PSBuffer_Init(&PMTBuffer, 0x0011, 16384, TRUE, TRUE, TRUE);
+        PSBuffer_Init(&EITBuffer, 0x0012, 16384, TRUE, TRUE, TRUE);
         if (TeletextPID != 0xffff)
-          PSBuffer_Init(&TtxBuffer, TeletextPID, 16384, FALSE);
+          PSBuffer_Init(&TtxBuffer, TeletextPID, 16384, FALSE, TRUE, TRUE);
         LastPMTBuffer = 0; LastEITBuffer = 0; LastTtxBuffer = 0;
 
         FilePos = FilePos + Offset;
@@ -904,7 +904,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           {
             if (!SDTOK)
             {
-              PSBuffer_ProcessTSPacket(&PMTBuffer, (tTSPacket*)p);
+              PSBuffer_ProcessTSPacket(&PMTBuffer, (tTSPacket*)p, FilePos + i*HumaxHeaderIntervall + (p-Buffer));
               if(PMTBuffer.ValidBuffer != LastPMTBuffer)
               {
                 byte* pBuffer = (PMTBuffer.ValidBuffer==1) ? PMTBuffer.Buffer1 : PMTBuffer.Buffer2;
@@ -915,7 +915,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             }
             if (!EITOK)
             {
-              PSBuffer_ProcessTSPacket(&EITBuffer, (tTSPacket*)p);
+              PSBuffer_ProcessTSPacket(&EITBuffer, (tTSPacket*)p, FilePos + i*HumaxHeaderIntervall + (p-Buffer));
               if(EITBuffer.ValidBuffer != LastEITBuffer)
               {
                 byte *pBuffer = (EITBuffer.ValidBuffer==1) ? EITBuffer.Buffer1 : EITBuffer.Buffer2;
@@ -928,7 +928,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             {
               if (!TtxFound)
               {
-                PSBuffer_ProcessTSPacket(&TtxBuffer, (tTSPacket*)p);
+                PSBuffer_ProcessTSPacket(&TtxBuffer, (tTSPacket*)p, FilePos + i*HumaxHeaderIntervall + (p-Buffer));
                 if(TtxBuffer.ValidBuffer != LastTtxBuffer)
                 {
                   byte *pBuffer = (TtxBuffer.ValidBuffer==1) ? TtxBuffer.Buffer1 : TtxBuffer.Buffer2;
@@ -996,8 +996,6 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   if (EITOK)
   {
     int time_offset = 0;
-    struct tm *timeinfo; bool isdst;
-
     StartTimeUnix = TF2UnixTime(RecInf->EventInfo.StartTime, 0);
 #ifndef LINUX
     {

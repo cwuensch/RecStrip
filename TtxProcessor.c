@@ -858,7 +858,7 @@ bool LoadTeletextOut(const char* AbsOutFile)
   fTtxOut = fopen(AbsOutFile, ((DoMerge==1) ? "ab" : "wb"));
   if (fTtxOut)
   {
-    PSBuffer_Init(&TtxBuffer, TeletextPID, 4096, FALSE);
+    PSBuffer_Init(&TtxBuffer, TeletextPID, 4096, FALSE, TRUE, TRUE);
     TRACEEXIT;
     return TRUE;
   }
@@ -867,11 +867,11 @@ bool LoadTeletextOut(const char* AbsOutFile)
   return FALSE;
 }
 
-void ProcessTtxPacket(tTSPacket *Packet)
+void ProcessTtxPacket(tTSPacket *Packet, long long FilePos)
 {
   TRACEENTER;
 
-  PSBuffer_ProcessTSPacket(&TtxBuffer, (tTSPacket*)Packet);
+  PSBuffer_ProcessTSPacket(&TtxBuffer, (tTSPacket*)Packet, FilePos);
   if(TtxBuffer.ValidBuffer != LastBuffer && TtxBuffer.ValidBufLen > 0)
   {
     byte *pBuffer = (TtxBuffer.ValidBuffer==1) ? TtxBuffer.Buffer1 : TtxBuffer.Buffer2;

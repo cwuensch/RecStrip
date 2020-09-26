@@ -9,9 +9,40 @@
 #include "type.h"
 #include "RecStrip.h"
 #include "PESProcessor.h"
+#include "PESFileLoader.h"
+#include "NavProcessor.h"
+#include "NALUDump.h"
+
+
+static byte            *p = NULL;
+static word             TSPID = (word) -1;
+static dword            LastDTS = 0;
+static long long        CurPCR = 0;
+static byte             ContCtr = 0;
+static bool             FirstRun = FALSE, FirstPacket = FALSE, DiscontinuityFlag = FALSE, PayloadUnitStart = FALSE;
 
 
 //------ TS to PS converter
+bool PSBuffer_Init(tPSBuffer *PSBuffer, word PID, int BufferSize, bool TablePacket, bool DropBufferOnErr, bool SkipFirstIncomplete)
+{
+  TRACEENTER;
+
+  memset(PSBuffer, 0, sizeof(tPSBuffer));
+  PSBuffer->PID = PID;
+  PSBuffer->TablePacket = TablePacket;
+  PSBuffer->IgnoreContErrors = !DropBufferOnErr;
+  PSBuffer->StartImmediate = !SkipFirstIncomplete;
+  PSBuffer->BufferSize = BufferSize;
+
+  PSBuffer->Buffer1 = (byte*) malloc(BufferSize);
+  PSBuffer->Buffer2 = (byte*) malloc(BufferSize);
+  PSBuffer->pBuffer = PSBuffer->Buffer1;
+  PSBuffer->LastCCCounter = 255;
+
+  TRACEEXIT;
+  return (PSBuffer->Buffer1 && PSBuffer->Buffer2);
+}
+
 void PSBuffer_Reset(tPSBuffer *PSBuffer)
 {
   TRACEENTER;
@@ -34,24 +65,85 @@ void PSBuffer_Reset(tPSBuffer *PSBuffer)
   TRACEEXIT;
 }
 
-void PSBuffer_Init(tPSBuffer *PSBuffer, word PID, int BufferSize, bool TablePacket)
+void PSBuffer_DropCurBuffer(tPSBuffer *PSBuffer)
 {
   TRACEENTER;
-
-  memset(PSBuffer, 0, sizeof(tPSBuffer));
-  PSBuffer->PID = PID;
-  PSBuffer->TablePacket = TablePacket;
-  PSBuffer->BufferSize = BufferSize;
-
-  PSBuffer->Buffer1 = (byte*) malloc(BufferSize);
-  PSBuffer->Buffer2 = (byte*) malloc(BufferSize);
-  PSBuffer->pBuffer = PSBuffer->Buffer1;
+  switch(PSBuffer->ValidBuffer)
+  {
+    case 0:
+    case 1: PSBuffer->pBuffer = PSBuffer->Buffer1; break;
+    case 2: PSBuffer->pBuffer = PSBuffer->Buffer2; break;
+  }
+  memset(PSBuffer->pBuffer, 0, PSBuffer->BufferSize);
+  PSBuffer->BufferPtr = 0;
+//  PSBuffer->NewPCR = 0;
   PSBuffer->LastCCCounter = 255;
-
   TRACEEXIT;
 }
 
-void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
+void PSBuffer_StartNewBuffer(tPSBuffer *PSBuffer, bool SkipFirstIncomplete, bool ResetContinuity)
+{
+  TRACEENTER;
+
+  if(PSBuffer->BufferPtr != 0)
+  {
+    // Paket strippen
+    if (DoStrip && PSBuffer->PID == VideoPID)
+    {
+//      tPESHeader *CurPESpack = (tPESHeader*)(PSBuffer->pBuffer - PSBuffer->BufferPtr);
+      byte *CurPESpack = (PSBuffer->pBuffer - PSBuffer->BufferPtr);
+//      int HeaderLen = 6;
+
+      // Strippen
+      if (NALUDump_PES((byte*) CurPESpack, &PSBuffer->BufferPtr) == FALSE)
+
+/*      // Prüfen, ob Paket noch Payload enthält
+      if (CurPESpack->OptionalHeaderMarker == 2)
+        HeaderLen += (3 + CurPESpack->PESHeaderLen);
+            
+      if (PSBuffer->BufferPtr <= HeaderLen) */
+      {
+        // Es sind nur Fülldaten im PES-Paket enthalten -> ganzes Paket überspringen
+printf("DEBUG: Assertion. Empty PES packet (after stripping) found!");
+        PSBuffer_DropCurBuffer(PSBuffer);
+        TRACEEXIT;
+        return;
+      }
+    }
+
+    //Puffer mit den abfragbaren Daten markieren
+    PSBuffer->ValidBuffer = (PSBuffer->ValidBuffer % 2) + 1;  // 0 und 2 -> 1, 1 -> 2
+
+    PSBuffer->ValidBufLen = PSBuffer->BufferPtr;
+    PSBuffer->ValidPayloadStart = PSBuffer->NewPayloadStart;
+    PSBuffer->ValidDiscontinue = PSBuffer->NewDiscontinue;
+//    PSBuffer->ValidPCR = PSBuffer->NewPCR;
+//    PSBuffer->PSFileCtr++;
+
+    //Neuen Puffer aktivieren
+    switch(PSBuffer->ValidBuffer)
+    {
+      case 0:
+      case 2: PSBuffer->pBuffer = PSBuffer->Buffer1; break;
+      case 1: PSBuffer->pBuffer = PSBuffer->Buffer2; break;
+    }
+
+    PSBuffer->BufferPtr = 0;
+    PSBuffer->NewPayloadStart = FALSE;
+    PSBuffer->NewDiscontinue = FALSE;
+//    PSBuffer->NewPCR = 0;
+  }
+
+  if (ResetContinuity)
+  {
+    PSBuffer->LastCCCounter = 255;
+    PSBuffer->NewDiscontinue = TRUE;
+  }
+  PSBuffer->StartImmediate = !SkipFirstIncomplete;
+  TRACEEXIT;
+}
+
+void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet, long long FilePosition)
 {
   int                   RemainingBytes = 0, Start = 0;
   bool                  PESStart = Packet->Payload_Unit_Start;
@@ -67,11 +159,15 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
       //Unerwarteter Continuity Counter, Daten verwerfen
       if(PSBuffer->LastCCCounter != 255)
       {
-        printf("  PESProcessor: CC error while parsing PID %hu\n", PSBuffer->PID);
-        PSBuffer_DropCurBuffer(PSBuffer);
+        printf("  PESProcessor: TS continuity mismatch (PID=%hu, pos=%lld, expect=%hhu, found=%hhu)\n", PSBuffer->PID, FilePosition, ((PSBuffer->LastCCCounter + 1) % 16), Packet->ContinuityCount);
+        if (PSBuffer->IgnoreContErrors)
+          PSBuffer_StartNewBuffer(PSBuffer, FALSE, TRUE);
+        else
+          PSBuffer_DropCurBuffer(PSBuffer);
+        PSBuffer->NewDiscontinue = TRUE;
       }
     }
-        
+
     //Adaptation field gibt es nur bei PES Paketen
     if(Packet->Adapt_Field_Exists)
     {
@@ -87,8 +183,12 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
       // Liegt ein DiscontinueFlag vor?
       if ((Packet->Data[0] > 0) && ((Packet->Data[1] & 0x80) > 0))
       {
-        printf("  PESProcessor: Discontinuity flag while parsing PID %hu\n", PSBuffer->PID);
-        PSBuffer_DropCurBuffer(PSBuffer);
+        printf("  PESProcessor: TS discontinuity flag (PID=%hu, pos=%lld)\n", PSBuffer->PID, FilePosition);
+        if (PSBuffer->IgnoreContErrors)
+          PSBuffer_StartNewBuffer(PSBuffer, FALSE, TRUE);
+        else
+          PSBuffer_DropCurBuffer(PSBuffer);
+        PSBuffer->NewDiscontinue = TRUE;
       }
     }
 
@@ -106,6 +206,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
       }
       else
       {
+//        GetPCR((byte*)Packet, &PSBuffer->NewPCR);
         for (RemainingBytes = 0; RemainingBytes < 184-Start-2; RemainingBytes++)
           if (Packet->Data[Start+RemainingBytes]==0 && Packet->Data[Start+RemainingBytes+1]==0 && Packet->Data[Start+RemainingBytes+2]==1)
             break;
@@ -123,9 +224,9 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
 
       if (RemainingBytes < 184 - Start)
       {
-        //Restliche Bytes umkopieren und neuen Buffer beginnen
         if(PSBuffer->BufferPtr != 0)
         {
+          //Restliche Bytes umkopieren
           if(RemainingBytes != 0)
           {
             if(PSBuffer->BufferPtr + RemainingBytes <= PSBuffer->BufferSize)
@@ -140,41 +241,37 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
               PSBuffer->ErrorFlag = TRUE;
             }
           }
+        }
 
 #ifdef _DEBUG
-          if(PSBuffer->BufferPtr > PSBuffer->maxPESLen)
-            PSBuffer->maxPESLen = PSBuffer->BufferPtr;
+        if(PSBuffer->BufferPtr > PSBuffer->maxPESLen)
+          PSBuffer->maxPESLen = PSBuffer->BufferPtr;
 #endif
 
-          //Puffer mit den abfragbaren Daten markieren
-          PSBuffer->ValidBuffer = (PSBuffer->ValidBuffer % 2) + 1;  // 0 und 2 -> 1, 1 -> 2
-          PSBuffer->ValidBufLen = PSBuffer->BufferPtr;
-
-          //Neuen Puffer aktivieren
-          switch(PSBuffer->ValidBuffer)
-          {
-            case 0:
-            case 2: PSBuffer->pBuffer = PSBuffer->Buffer1; break;
-            case 1: PSBuffer->pBuffer = PSBuffer->Buffer2; break;
-          }
-          PSBuffer->BufferPtr = 0;
-        }
+        // Neuen Buffer beginnen
+        PSBuffer_StartNewBuffer(PSBuffer, FALSE, FALSE);
       }
       else
       {
-        printf("  PESProcessor: TS packet is marked as Payload Start, but does not contain a start code (PID %hu)\n", PSBuffer->PID);
+        printf("  PESProcessor: TS packet is marked as Payload Start, but does not contain a start code (PID=%hu, pos=%lld)\n", PSBuffer->PID, FilePosition);
         PESStart = FALSE;
         RemainingBytes = 0;
       }
     }
 
-    if (PESStart)
+    if(PESStart || PSBuffer->StartImmediate)
     {
-      //Erste Daten kopieren
-      memset(PSBuffer->pBuffer, 0, PSBuffer->BufferSize);
-      memcpy(PSBuffer->pBuffer, &Packet->Data[Start+RemainingBytes], 184-Start-RemainingBytes);
-      PSBuffer->pBuffer += (184-Start-RemainingBytes);
-      PSBuffer->BufferPtr += (184-Start-RemainingBytes);
+      // Überspringe Video-Pakete bis Sequence Header Code
+//        if (!isSDVideo || PSBuffer->StartImmediate || Packet->Data[Start+RemainingBytes+3] == 0xB3)
+//        {        
+        //Erste Daten kopieren
+        memset(PSBuffer->pBuffer, 0, PSBuffer->BufferSize);
+        memcpy(PSBuffer->pBuffer, &Packet->Data[Start+RemainingBytes], 184-Start-RemainingBytes);
+        PSBuffer->pBuffer += (184-Start-RemainingBytes);
+        PSBuffer->BufferPtr += (184-Start-RemainingBytes);
+        PSBuffer->NewPayloadStart = PESStart;
+        PSBuffer->StartImmediate = FALSE;
+//        }
     }
     else
     {
@@ -200,17 +297,141 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
   TRACEEXIT;
 }
 
-void PSBuffer_DropCurBuffer(tPSBuffer *PSBuffer)
+
+//---------- PES to TS muxer -----------
+
+void PESMuxer_Init(byte *PESBuffer, word PID, bool pPayloadStart, bool pDiscontinuity)
 {
   TRACEENTER;
-  switch(PSBuffer->ValidBuffer)
+
+  p = PESBuffer;
+  TSPID = PID;
+  FirstPacket = TRUE;
+  PayloadUnitStart = pPayloadStart;
+  DiscontinuityFlag = pDiscontinuity;
+  if (DiscontinuityFlag)
   {
-    case 0:
-    case 1: PSBuffer->pBuffer = PSBuffer->Buffer1; break;
-    case 2: PSBuffer->pBuffer = PSBuffer->Buffer2; break;
+    ContCtr = 0;
+    LastDTS = 0;
   }
-  memset(PSBuffer->pBuffer, 0, PSBuffer->BufferSize);
-  PSBuffer->BufferPtr = 0;
-  PSBuffer->LastCCCounter = 255;
+
+  if (pPayloadStart)
+  {
+    if (LastDTS)
+      CurPCR = (long long)LastDTS * 600 - PCRTOPTSOFFSET;
+    GetPTS2(&PESBuffer[3], NULL, &LastDTS);
+
+if (!TimeStepPerFrame && CurPCR && LastDTS)
+{
+  TimeStepPerFrame = (dword)((long long)LastDTS * 600 - PCRTOPTSOFFSET - CurPCR);
+  printf("  PESMuxer: Detected frame rate: %g frames per second.\n", (float)1000 / (TimeStepPerFrame/27000));
+}
+
+    if (!CurPCR && LastDTS)
+      CurPCR = (long long)LastDTS * 600 - PCRTOPTSOFFSET - (TimeStepPerFrame ? TimeStepPerFrame : (isHDVideo ? 540000 : 1080000));  // 540000 PCR = 20 ms = 1 Frame bei 50 fps
+    if(CurPCR < 0) CurPCR += 2576980377600LL;  // falls Überlauf von LastDTS (= 2^32 * 600)
+  }
+  else
+    CurPCR = 0;
   TRACEEXIT;
+}
+
+void PESMuxer_StartNewFile(void)
+{
+  TRACEENTER;
+  ContCtr = 0;
+  LastDTS = 0;
+  FirstRun = TRUE;
+  TimeStepPerFrame = 0;
+  TRACEEXIT;
+}
+
+bool PESMuxer_NextTSPacket(tTSPacket *const outPacket, int *const PESBufLen)
+{
+  int                   len = *PESBufLen;
+  int                   PayloadBytes, PayloadStart;
+  TRACEENTER;
+
+  if (!outPacket && len)
+  {
+    TRACEEXIT;
+    return FALSE;
+  }
+
+  if (FirstPacket)
+  {
+    memset(outPacket, 0, 12);
+    outPacket->SyncByte = 'G';
+    outPacket->PID1 = TSPID / 256;
+    outPacket->PID2 = (TSPID & 0xff);
+    outPacket->Payload_Exists = TRUE;
+    outPacket->Payload_Unit_Start = PayloadUnitStart;
+    FirstPacket = FALSE;
+  }
+  else
+    outPacket->Payload_Unit_Start = FALSE;
+
+  if (CurPCR || DiscontinuityFlag)
+  {
+    if (DiscontinuityFlag && !FirstRun)
+    {
+      outPacket->Adapt_Field_Exists = TRUE;
+      outPacket->Data[0] = 1;
+      outPacket->Data[1] = 0x80;
+    }
+    if (CurPCR)
+    {
+      outPacket->Adapt_Field_Exists = TRUE;
+      outPacket->Data[0] = 7;  // Adaptation Field Length
+      SetPCR((byte*)outPacket, CurPCR);
+    }
+    DiscontinuityFlag = FALSE;
+    CurPCR = 0;
+  }
+  else
+    outPacket->Adapt_Field_Exists = FALSE;
+
+  outPacket->ContinuityCount = (ContCtr++) % 16;
+
+  PayloadStart = (outPacket->Adapt_Field_Exists) ? (1 + outPacket->Data[0]) : 0;
+  PayloadBytes = 184 - PayloadStart;
+
+  if (len < PayloadBytes)
+  {
+    // Stuffing Bytes im Adaptation Field
+    int FillBytes, FillStart;
+
+    if (outPacket->Adapt_Field_Exists)
+    {
+      FillBytes = PayloadBytes - len;
+      FillStart = 1 + outPacket->Data[0];
+      outPacket->Data[0] += FillBytes;
+      PayloadStart = 1 + outPacket->Data[0];  //  <==>  PayloadStart += FillBytes
+    }
+    else
+    {
+      outPacket->Adapt_Field_Exists = TRUE;
+      FillBytes = PayloadBytes - len - 1;
+      FillStart = 1;
+      outPacket->Data[0] = FillBytes;
+      PayloadStart = 1 + outPacket->Data[0];  //  <==>  PayloadStart = (1 + FillBytes)
+    }
+
+    if ((FillStart == 1) && (FillBytes > 0))
+    {
+      outPacket->Data[1] = 0;
+      FillStart++;
+      FillBytes--;
+    }
+    memset(&outPacket->Data[FillStart], 0xff, FillBytes);
+    PayloadBytes = len;
+  }
+  memcpy(&outPacket->Data[PayloadStart], p, PayloadBytes);
+
+  p += PayloadBytes;
+  *PESBufLen -= PayloadBytes;  
+  FirstRun = FALSE;
+
+  TRACEEXIT;
+  return TRUE;
 }

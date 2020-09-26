@@ -35,5 +35,6 @@ word TsGetPID(tTSPacket *Packet);
 int  TsPayloadOffset(tTSPacket *Packet);
 void NALUDump_Init(void);
 int  ProcessTSPacket(unsigned char *Packet, long long FilePosition);
+bool NALUDump_PES(byte *const Packet, int *const Length);
 
 #endif

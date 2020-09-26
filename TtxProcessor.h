@@ -11,7 +11,7 @@ char* TimeStr(time_t *const UnixTimeStamp);
 void SetTeletextBreak(bool NewInputFile, word SubtitlePage);
 void TtxProcessor_Init(word SubtitlePage);
 bool LoadTeletextOut(const char* AbsOutFile);
-void ProcessTtxPacket(tTSPacket *Packet);
+void ProcessTtxPacket(tTSPacket *Packet, long long FilePos);
 word telx_to_ucs2(byte c);
 void ucs2_to_utf8(char *r, word ch);
 void process_pes_packet(byte *buffer, word size);
