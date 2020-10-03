@@ -199,6 +199,8 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
 
       if (ret)
       {
+        char *p = strrchr(HumaxHeader.Allgemein.Dateiname, '_');
+
         if (i == 1)  // Header 1: Programm-Information
         {
           time_t DisplayTime;
@@ -221,13 +223,20 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
 
           DisplayTime = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, 0);
           printf("    Start Time: %s\n", TimeStr(&DisplayTime));
+
+          if(p) *p = '\0';
+          strncpy(RecInf->EventInfo.EventNameDescription, HumaxHeader.Allgemein.Dateiname, sizeof(RecInf->EventInfo.EventNameDescription) - 1);
+          RecInf->EventInfo.EventNameLength = strlen(RecInf->EventInfo.EventNameDescription);
         }
         else if (i == 2)  // Header 2: Original-Dateiname
         {
-          char *p = strrchr(HumaxHeader.Allgemein.Dateiname, '_');
           printf("    Orig Rec Name: %s\n", HumaxHeader.Allgemein.Dateiname);
           if(p) *p = '\0';
-          strncpy(RecInf->ServiceInfo.ServiceName, HumaxHeader.Allgemein.Dateiname, sizeof(RecInf->ServiceInfo.ServiceName));
+          if (strcmp(HumaxHeader.Allgemein.Dateiname, RecInf->EventInfo.EventNameDescription) != 0)
+          {
+            strncpy(RecInf->ServiceInfo.ServiceName, HumaxHeader.Allgemein.Dateiname, sizeof(RecInf->ServiceInfo.ServiceName));
+            RecInf->ServiceInfo.ServiceName[sizeof(RecInf->ServiceInfo.ServiceName)-1] = '\0';
+          }
         }
         if (HumaxHeader.ZusInfoID == HumaxBookmarksID)  // Header 3: Bookmarks
         {

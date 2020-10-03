@@ -173,7 +173,7 @@ void InitInfStruct(TYPE_RecHeader_TMSS *RecInf)
   RecInf->ServiceInfo.AudioStreamType = 0xff;
   RecInf->ServiceInfo.AudioPID        = 0xfff;
   RecInf->ServiceInfo.AudioTypeFlag   = 3;  // unknown
-  strcpy(RecInf->ServiceInfo.ServiceName, "RecStrip");
+  strcpy(RecInf->ServiceInfo.ServiceName, "");  // "RecStrip"
   TRACEEXIT;
 }
 
@@ -934,7 +934,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                 if(TtxBuffer.ValidBuffer != LastTtxBuffer)
                 {
                   byte *pBuffer = (TtxBuffer.ValidBuffer==1) ? TtxBuffer.Buffer1 : TtxBuffer.Buffer2;
-                  TtxFound = !TtxBuffer.ErrorFlag && AnalyseTtx(pBuffer, &TtxTime, &TtxTimeSec, &TtxTimeZone, ((SDTOK || HumaxSource) ? NULL : RecInf->ServiceInfo.ServiceName), sizeof(RecInf->ServiceInfo.ServiceName));
+                  TtxFound = !TtxBuffer.ErrorFlag && AnalyseTtx(pBuffer, &TtxTime, &TtxTimeSec, &TtxTimeZone, ((SDTOK || (HumaxSource && *RecInf->ServiceInfo.ServiceName)) ? NULL : RecInf->ServiceInfo.ServiceName), sizeof(RecInf->ServiceInfo.ServiceName));
                   TtxBuffer.ErrorFlag = FALSE;
                   LastTtxBuffer = TtxBuffer.ValidBuffer;
                 }
