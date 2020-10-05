@@ -112,6 +112,7 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
   tTSPAT               *PAT = NULL;
   tTSPMT               *PMT = NULL;
   tElemStream          *Elem = NULL;
+  char                  FirstSvcName[32];
   dword                *CRC = NULL;
   int                   Offset = 0;
 //  long long             FilePos = ftello64(fIn);
@@ -225,14 +226,14 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
           printf("    Start Time: %s\n", TimeStr(&DisplayTime));
 
           if(p) *p = '\0';
-          strncpy(RecInf->EventInfo.EventNameDescription, HumaxHeader.Allgemein.Dateiname, sizeof(RecInf->EventInfo.EventNameDescription) - 1);
-          RecInf->EventInfo.EventNameLength = strlen(RecInf->EventInfo.EventNameDescription);
+          strncpy(FirstSvcName, HumaxHeader.Allgemein.Dateiname, sizeof(FirstSvcName));
+          FirstSvcName[sizeof(FirstSvcName)-1] = '\0';
         }
         else if (i == 2)  // Header 2: Original-Dateiname
         {
           printf("    Orig Rec Name: %s\n", HumaxHeader.Allgemein.Dateiname);
           if(p) *p = '\0';
-          if (strcmp(HumaxHeader.Allgemein.Dateiname, RecInf->EventInfo.EventNameDescription) != 0)
+          if (strcmp(HumaxHeader.Allgemein.Dateiname, FirstSvcName) != 0)
           {
             strncpy(RecInf->ServiceInfo.ServiceName, HumaxHeader.Allgemein.Dateiname, sizeof(RecInf->ServiceInfo.ServiceName));
             RecInf->ServiceInfo.ServiceName[sizeof(RecInf->ServiceInfo.ServiceName)-1] = '\0';

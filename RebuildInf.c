@@ -433,7 +433,7 @@ static bool AnalyseEIT(byte *Buffer, word ServiceID, TYPE_RecHeader_TMSS *RecInf
 printf("  TS: EvtStart  = %s (UTC)\n", TimeStr(&StartTimeUnix));
 
             NameLen = ShortDesc->EvtNameLen;
-            TextLen = min(Buffer[p + sizeof(tShortEvtDesc) + NameLen], (byte)sizeof(RecInf->EventInfo.EventNameDescription) - NameLen - 1);
+            TextLen = min(Buffer[p + sizeof(tShortEvtDesc) + NameLen], (byte)(sizeof(RecInf->EventInfo.EventNameDescription) - NameLen - 1));
             RecInf->EventInfo.EventNameLength = NameLen;
             strncpy(RecInf->EventInfo.EventNameDescription, (char*)&Buffer[p + sizeof(tShortEvtDesc)], NameLen);
 printf("  TS: EventName = %s\n", RecInf->EventInfo.EventNameDescription);
@@ -452,21 +452,30 @@ printf("  TS: EventDesc = %s\n", &RecInf->EventInfo.EventNameDescription[NameLen
 //            RecInf->ExtEventInfo.EventID = EventID;
             if ((RecInf->ExtEventInfo.TextLength > 0) && (ExtDesc->ItemDesc < 0x20))
             {
-              strncpy(&RecInf->ExtEventInfo.Text[RecInf->ExtEventInfo.TextLength], (&ExtDesc->ItemDesc) + 1, ExtDesc->ItemDescLen - 1);
-              RecInf->ExtEventInfo.TextLength += ExtDesc->ItemDescLen - 1;
+              char tmp;
+              if (RecInf->ExtEventInfo.TextLength < sizeof(RecInf->ExtEventInfo.Text)-1)
+              {
+                strncpy(&RecInf->ExtEventInfo.Text[RecInf->ExtEventInfo.TextLength], (&ExtDesc->ItemDesc) + 1, min(ExtDesc->ItemDescLen - 1, (word)sizeof(RecInf->ExtEventInfo.Text) - RecInf->ExtEventInfo.TextLength - 1));
+                RecInf->ExtEventInfo.TextLength += min(ExtDesc->ItemDescLen - 1, (word)sizeof(RecInf->ExtEventInfo.Text) - RecInf->ExtEventInfo.TextLength - 1);
+              }
+tmp = (&ExtDesc->ItemDesc)[ExtDesc->ItemDescLen];
+(&ExtDesc->ItemDesc)[ExtDesc->ItemDescLen] = '\0';
+printf("%s", (&ExtDesc->ItemDesc) + 1);
+(&ExtDesc->ItemDesc)[ExtDesc->ItemDescLen] = tmp;
             }
             else
             {
-              strncpy(&RecInf->ExtEventInfo.Text[RecInf->ExtEventInfo.TextLength], &ExtDesc->ItemDesc, ExtDesc->ItemDescLen);
-              RecInf->ExtEventInfo.TextLength += ExtDesc->ItemDescLen;
+              strncpy(&RecInf->ExtEventInfo.Text[RecInf->ExtEventInfo.TextLength], &ExtDesc->ItemDesc, min(ExtDesc->ItemDescLen, (word)sizeof(RecInf->ExtEventInfo.Text) - RecInf->ExtEventInfo.TextLength - 1));
+              RecInf->ExtEventInfo.TextLength += min(ExtDesc->ItemDescLen, (word)sizeof(RecInf->ExtEventInfo.Text) - RecInf->ExtEventInfo.TextLength - 1);
+printf("  TS: EPGExtEvt = %s", RecInf->ExtEventInfo.Text);
             }
-printf("  TS: ExtEvent  = %s\n", RecInf->ExtEventInfo.Text);
           }
 
           SectionLength -= (Desc->DescrLength + sizeof(tTSDesc));
           DescriptorLoopLen -= (Desc->DescrLength + sizeof(tTSDesc));
           p += (Desc->DescrLength + sizeof(tTSDesc));
         }
+printf("\n  TS: ExtEvent  = %s\n", RecInf->ExtEventInfo.Text);
 
         TRACEEXIT;
         return TRUE;
@@ -934,6 +943,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                 if(TtxBuffer.ValidBuffer != LastTtxBuffer)
                 {
                   byte *pBuffer = (TtxBuffer.ValidBuffer==1) ? TtxBuffer.Buffer1 : TtxBuffer.Buffer2;
+// IDEE: Hier vielleicht den Teletext-String in EventNameDescription schreiben, FALLS Länge größer ist als EventNameLength und !EITOK
                   TtxFound = !TtxBuffer.ErrorFlag && AnalyseTtx(pBuffer, &TtxTime, &TtxTimeSec, &TtxTimeZone, ((SDTOK || (HumaxSource && *RecInf->ServiceInfo.ServiceName)) ? NULL : RecInf->ServiceInfo.ServiceName), sizeof(RecInf->ServiceInfo.ServiceName));
                   TtxBuffer.ErrorFlag = FALSE;
                   LastTtxBuffer = TtxBuffer.ValidBuffer;

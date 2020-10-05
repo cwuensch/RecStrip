@@ -260,6 +260,8 @@ static int GetPacketSize(FILE *RecFile, int *OutOffset)
         HumaxSource = TRUE;
       else if (p && strcmp(p, ".trp") == 0)
         EycosSource = TRUE;
+      else if (p && strcmp(p, ".TS4") == 0)
+        isHDVideo = TRUE;
 
       PACKETSIZE = 188;
       PACKETOFFSET = 0;
@@ -1063,10 +1065,10 @@ int main(int argc, const char* argv[])
   exit(ret);
 }*/
 
-/*// Humax-Fix (falsche PMT-Pid in inf-Datei und Timestamps)
+/* // Humax-Fix (falsche PMT-Pid und ServiceInfo in inf-Datei und Timestamps)
 {
   const char           *RecFile = argv[1];
-  FILE                 *fInf, *fRec;
+  FILE                 *fInf, *fRec, *fHumax;
   byte                  Buffer1[192], *Buffer2 = NULL;
   tTSPacket            *Packet = NULL;
   tTSPAT               *PAT = NULL;
@@ -1075,26 +1077,29 @@ int main(int argc, const char* argv[])
   word                  PMTPid = 0;
   int                   InfSize = 0;
   time_t                RecDate = 0;
-  char                  InfFile[FBLIB_DIR_SIZE], NavFile[FBLIB_DIR_SIZE], SrtFile[FBLIB_DIR_SIZE], CutFile[FBLIB_DIR_SIZE], *p;
+  char                  InfFile[FBLIB_DIR_SIZE], NavFile[FBLIB_DIR_SIZE], SrtFile[FBLIB_DIR_SIZE], CutFile[FBLIB_DIR_SIZE], HumaxFile[FBLIB_DIR_SIZE];
+  char                  ServiceName[32], ServiceNameF[32], *p;
   bool                  ChangedInf = FALSE;
   bool                  ret = FALSE;
 
   Buffer2 = (byte*)malloc(1048576);
   memset(Buffer1, 0, sizeof(Buffer1));
   memset(Buffer2, 0x77, 1048576);
+  memset(ServiceName, 0, sizeof(ServiceName));
 
   printf("\n- Time- & Humax-Fix -\n");
   if (argc <= 1)
   {
-    printf("\nUsage: TimeFix <Input.ts> [<VideoPID>, <AudioPID>, <TeletextPID>]\n");
+    printf("\nUsage: TimeFix <Input.ts>\n");
     exit(1);
   }
   printf("\nInput File: %s\n", RecFile);
 
-  strcpy(InfFile, RecFile); strcpy(NavFile, RecFile); strcpy(SrtFile, RecFile); strcpy(CutFile, RecFile);
+  strcpy(InfFile, RecFile); strcpy(NavFile, RecFile); strcpy(CutFile, RecFile); strcpy(SrtFile, RecFile); strcpy(HumaxFile, RecFile);
   if ((p = strrchr(CutFile, '.')))  p[0] = '\0';
   if ((p = strrchr(SrtFile, '.')))  p[0] = '\0';
-  strcat(InfFile, ".inf"); strcat(NavFile, ".nav"); strcat(SrtFile, ".srt"); strcat(CutFile, ".cut");
+  if ((p = strrchr(HumaxFile, '.')))  p[0] = '\0';
+  strcat(InfFile, ".inf"); strcat(NavFile, ".nav"); strcat(CutFile, ".cut"); strcat(SrtFile, ".srt"); strcat(HumaxFile, ".humax"); 
 
   if ((fInf = fopen(InfFile, "rb")))
   {
@@ -1107,7 +1112,7 @@ int main(int argc, const char* argv[])
 
   if (RecInf)
   {
-    if(stat64(RecFile, &statbuf) == 0)
+/*    if(stat64(RecFile, &statbuf) == 0)
     {
       if(statbuf.st_ctime > 1598961600)  // 01.09.2020 12:00 GMT
       {
@@ -1124,14 +1129,52 @@ int main(int argc, const char* argv[])
         else
           printf("ERROR reading rec file!\n");
       }
+    } *//*
+
+    if ((fHumax = fopen(HumaxFile, "rb")))
+    {
+      fseek(fHumax, 96, SEEK_SET);
+      if (fread(ServiceNameF, 1, sizeof(ServiceName), fHumax))
+      {
+        p = strrchr(ServiceNameF, '_');
+        if(p) *p = '\0';
+      }
+      fseek(fHumax, HumaxHeaderLaenge + 96, SEEK_SET);
+      if (fread(ServiceName, 1, sizeof(ServiceName), fHumax))
+      {
+        p = strrchr(ServiceName, '_');
+        if(p) *p = '\0';
+      }
+      if (strcmp(ServiceName, ServiceNameF) == 0)
+        ServiceName[0] = '\0';
+      fclose(fHumax);
     }
 
-    if (PAT)
+    if (PAT || *ServiceName)
     {
       if (RecInf->ServiceInfo.PMTPID == 256 && PMTPid == 64)
       {
         printf("  Change PMTPid in inf: %hu to %hu", RecInf->ServiceInfo.PMTPID, PMTPid);
         RecInf->ServiceInfo.PMTPID = PMTPid;
+        ChangedInf = TRUE;
+      }
+/*      if (*ServiceNameF && !*RecInf->EventInfo.EventNameDescription)
+      {
+        printf("  Change EventName in inf to: '%s'", ServiceNameF);
+        strncpy(RecInf->EventInfo.EventNameDescription, ServiceNameF, sizeof(RecInf->EventInfo.EventNameDescription) - 1);
+        RecInf->EventInfo.EventNameLength = strlen(RecInf->EventInfo.EventNameDescription);
+        ChangedInf = TRUE;
+      } *//*
+      if (*ServiceName && strcmp(RecInf->ServiceInfo.ServiceName, ServiceName) != 0)
+      {
+        printf("  Change ServiceName in inf: '%s' to '%s'", RecInf->ServiceInfo.ServiceName, ServiceName);
+        strncpy(RecInf->ServiceInfo.ServiceName, ServiceName, sizeof(RecInf->ServiceInfo.ServiceName));
+        RecInf->ServiceInfo.ServiceName[sizeof(RecInf->ServiceInfo.ServiceName)-1] = '\0';
+        ChangedInf = TRUE;
+      }
+
+      if (ChangedInf)
+      {
         remove(InfFile);
         if ((fInf = fopen(InfFile, "wb")))
         {
@@ -1143,7 +1186,10 @@ int main(int argc, const char* argv[])
           ChangedInf = TRUE;
         }
         else
+        {
+          ChangedInf = FALSE;
           printf(" -> ERROR\n");
+        }
       }
     }
 
@@ -1153,10 +1199,10 @@ int main(int argc, const char* argv[])
       if (ChangedInf || statbuf.st_mtime != RecDate)
       {
         printf("  Change file timestamp to: %s\n", TimeStr(&RecDate));
-        HDD_SetFileDateTime(RecFile, RecDate);
+//        HDD_SetFileDateTime(RecFile, RecDate);
         HDD_SetFileDateTime(InfFile, RecDate);
-        HDD_SetFileDateTime(NavFile, RecDate);
-        HDD_SetFileDateTime(SrtFile, RecDate);
+//        HDD_SetFileDateTime(NavFile, RecDate);
+//        HDD_SetFileDateTime(SrtFile, RecDate);
       }
     }
     ret = TRUE;
