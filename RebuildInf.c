@@ -453,10 +453,10 @@ printf("  TS: EventDesc = %s\n", &RecInf->EventInfo.EventNameDescription[NameLen
             if ((RecInf->ExtEventInfo.TextLength > 0) && (ExtDesc->ItemDesc < 0x20))
             {
               char tmp;
-              if (RecInf->ExtEventInfo.TextLength < sizeof(RecInf->ExtEventInfo.Text)-1)
+              if (RecInf->ExtEventInfo.TextLength < sizeof(RecInf->ExtEventInfo.Text))
               {
-                strncpy(&RecInf->ExtEventInfo.Text[RecInf->ExtEventInfo.TextLength], (&ExtDesc->ItemDesc) + 1, min(ExtDesc->ItemDescLen - 1, (word)sizeof(RecInf->ExtEventInfo.Text) - RecInf->ExtEventInfo.TextLength - 1));
-                RecInf->ExtEventInfo.TextLength += min(ExtDesc->ItemDescLen - 1, (word)sizeof(RecInf->ExtEventInfo.Text) - RecInf->ExtEventInfo.TextLength - 1);
+                strncpy(&RecInf->ExtEventInfo.Text[RecInf->ExtEventInfo.TextLength], (&ExtDesc->ItemDesc) + 1, min(ExtDesc->ItemDescLen - 1, (word)sizeof(RecInf->ExtEventInfo.Text) - RecInf->ExtEventInfo.TextLength));
+                RecInf->ExtEventInfo.TextLength += min(ExtDesc->ItemDescLen - 1, (word)sizeof(RecInf->ExtEventInfo.Text) - RecInf->ExtEventInfo.TextLength);
               }
 tmp = (&ExtDesc->ItemDesc)[ExtDesc->ItemDescLen];
 (&ExtDesc->ItemDesc)[ExtDesc->ItemDescLen] = '\0';
@@ -465,8 +465,8 @@ printf("%s", (&ExtDesc->ItemDesc) + 1);
             }
             else
             {
-              strncpy(&RecInf->ExtEventInfo.Text[RecInf->ExtEventInfo.TextLength], &ExtDesc->ItemDesc, min(ExtDesc->ItemDescLen, (word)sizeof(RecInf->ExtEventInfo.Text) - RecInf->ExtEventInfo.TextLength - 1));
-              RecInf->ExtEventInfo.TextLength += min(ExtDesc->ItemDescLen, (word)sizeof(RecInf->ExtEventInfo.Text) - RecInf->ExtEventInfo.TextLength - 1);
+              strncpy(&RecInf->ExtEventInfo.Text[RecInf->ExtEventInfo.TextLength], &ExtDesc->ItemDesc, min(ExtDesc->ItemDescLen, (word)sizeof(RecInf->ExtEventInfo.Text) - RecInf->ExtEventInfo.TextLength));
+              RecInf->ExtEventInfo.TextLength += min(ExtDesc->ItemDescLen, (word)sizeof(RecInf->ExtEventInfo.Text) - RecInf->ExtEventInfo.TextLength);
 printf("  TS: EPGExtEvt = %s", RecInf->ExtEventInfo.Text);
             }
           }
