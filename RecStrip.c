@@ -1150,12 +1150,22 @@ int main(int argc, const char* argv[])
       fclose(fHumax);
     }
 
-    if (PAT || *ServiceName)
+    if (PAT)
     {
       if (RecInf->ServiceInfo.PMTPID == 256 && PMTPid == 64)
       {
         printf("  Change PMTPid in inf: %hu to %hu", RecInf->ServiceInfo.PMTPID, PMTPid);
         RecInf->ServiceInfo.PMTPID = PMTPid;
+        ChangedInf = TRUE;
+      }
+    }
+    if (*ServiceName)
+    {
+      if (*ServiceName && strcmp(RecInf->ServiceInfo.ServiceName, ServiceName) != 0)
+      {
+        printf("  Change ServiceName in inf: '%s' to '%s'", RecInf->ServiceInfo.ServiceName, ServiceName);
+        strncpy(RecInf->ServiceInfo.ServiceName, ServiceName, sizeof(RecInf->ServiceInfo.ServiceName));
+        RecInf->ServiceInfo.ServiceName[sizeof(RecInf->ServiceInfo.ServiceName)-1] = '\0';
         ChangedInf = TRUE;
       }
 /*      if (*ServiceNameF && !*RecInf->EventInfo.EventNameDescription)
@@ -1165,31 +1175,30 @@ int main(int argc, const char* argv[])
         RecInf->EventInfo.EventNameLength = strlen(RecInf->EventInfo.EventNameDescription);
         ChangedInf = TRUE;
       } *//*
-      if (*ServiceName && strcmp(RecInf->ServiceInfo.ServiceName, ServiceName) != 0)
+    }
+    if (RecInf->ExtEventInfo.TextLength > 1024)
+    {
+      printf("  Change ExtEventText length in inf: %hu to %hu", RecInf->ExtEventInfo.TextLength, 1024);
+      memset(&Buffer2[0x570], 0, InfSize - 0x570);
+      RecInf->ExtEventInfo.TextLength = 1024;
+      ChangedInf = TRUE;
+    }
+    if (ChangedInf)
+    {
+      remove(InfFile);
+      if ((fInf = fopen(InfFile, "wb")))
       {
-        printf("  Change ServiceName in inf: '%s' to '%s'", RecInf->ServiceInfo.ServiceName, ServiceName);
-        strncpy(RecInf->ServiceInfo.ServiceName, ServiceName, sizeof(RecInf->ServiceInfo.ServiceName));
-        RecInf->ServiceInfo.ServiceName[sizeof(RecInf->ServiceInfo.ServiceName)-1] = '\0';
+        if (fwrite(Buffer2, 1, InfSize, fInf) == InfSize)
+          printf(" -> SUCCESS\n");
+        else
+          printf(" -> ERROR\n");
+        fclose(fInf);
         ChangedInf = TRUE;
       }
-
-      if (ChangedInf)
+      else
       {
-        remove(InfFile);
-        if ((fInf = fopen(InfFile, "wb")))
-        {
-          if (fwrite(Buffer2, 1, InfSize, fInf) == InfSize)
-            printf(" -> SUCCESS\n");
-          else
-            printf(" -> ERROR\n");
-          fclose(fInf);
-          ChangedInf = TRUE;
-        }
-        else
-        {
-          ChangedInf = FALSE;
-          printf(" -> ERROR\n");
-        }
+        ChangedInf = FALSE;
+        printf(" -> ERROR\n");
       }
     }
 

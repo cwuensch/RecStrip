@@ -1030,7 +1030,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     RecInf->EventInfo.StartTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, (TtxOK ? -1*TtxTimeZone : time_offset));  // GMT+1
     RecInf->EventInfo.EndTime   = AddTimeSec(RecInf->EventInfo.EndTime,   0, NULL, (TtxOK ? -1*TtxTimeZone : time_offset));
     StartTimeUnix = TF2UnixTime(RecInf->EventInfo.StartTime, 0);
-printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStr(&StartTimeUnix), (TtxOK ? -1*TtxTimeZone : time_offset));
+printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStr(&StartTimeUnix), (TtxOK ? -1*TtxTimeZone : time_offset) / 3600);
   }
 
   if(!FirstPCR || !LastPCR)
