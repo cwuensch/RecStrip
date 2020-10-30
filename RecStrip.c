@@ -873,13 +873,13 @@ static bool CloseOutputFiles(void)
 
 
   if (*RecFileOut)
-    HDD_SetFileDateTime(RecFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
+    HDD_SetFileDateTime(RecFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, FALSE));
   if (*InfFileOut)
-    HDD_SetFileDateTime(InfFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
+    HDD_SetFileDateTime(InfFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, FALSE));
   if (*NavFileOut)
-    HDD_SetFileDateTime(NavFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
+    HDD_SetFileDateTime(NavFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, FALSE));
 //  if (*CutFileOut)
-//    HDD_SetFileDateTime(CutFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
+//    HDD_SetFileDateTime(CutFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, FALSE));
 
 
   if (HasNavOld)
@@ -934,8 +934,12 @@ int main(int argc, const char* argv[])
   printf("(int: %d, long: %d, dword: %d, word: %d, short: %d, byte: %d, char: %d)\n", sizeof(int), sizeof(long), sizeof(dword), sizeof(word), sizeof(short), sizeof(byte), sizeof(char));
 #endif
 #ifndef LINUX
-  tzset();
-  printf("\nLocal timezone: %s (GMT%+ld)\n", tzname[0], -timezone/3600);
+  {
+    time_t curTime = time(NULL);
+    struct tm *timeInfo = localtime (&curTime);
+    tzset();
+    printf("\nLocal timezone: %s%s (GMT%+ld)\n", tzname[0], (timeInfo->tm_isdst ? " + DST" : ""), -timezone/3600 + timeInfo->tm_isdst);
+  }
 #endif
 
 /*{
@@ -1202,7 +1206,7 @@ int main(int argc, const char* argv[])
       }
     }
 
-    RecDate = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec);
+    RecDate = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec, FALSE);
     if (stat64(RecFile, &statbuf) == 0)
     {
       if (ChangedInf || statbuf.st_mtime != RecDate)

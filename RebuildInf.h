@@ -186,8 +186,8 @@ typedef struct
 
 //extern FILE            *fIn;  // dirty Hack
 
-time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec);
-tPVRTime Unix2TFTime(time_t UnixTimeStamp, byte *const outSec);
+time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec, bool isUTC);
+tPVRTime Unix2TFTime(time_t UnixTimeStamp, byte *const outSec, bool toUTC);
 tPVRTime AddTimeSec(tPVRTime pvrTime, byte pvrTimeSec, byte *const outSec, int addSeconds);
 void InitInfStruct(TYPE_RecHeader_TMSS *RecInf);
 bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf);

@@ -282,6 +282,12 @@ char* TimeStr(time_t *const UnixTimeStamp)
   strftime(TS, sizeof(TS), "%a %d %b %Y %H:%M:%S", localtime(UnixTimeStamp));
   return TS;
 }
+char* TimeStr_UTC(time_t *const UnixTimeStamp)
+{
+  static char TS[26];
+  strftime(TS, sizeof(TS), "%a %d %b %Y %H:%M:%S", gmtime(UnixTimeStamp));
+  return TS;
+}
 
 // UCS-2 (16 bits) to UTF-8 (Unicode Normalization Form C (NFC)) conversion
 void ucs2_to_utf8(char *r, uint16_t ch) {

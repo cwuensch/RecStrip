@@ -378,7 +378,7 @@ if (RecHeaderInfo->Reserved != 0)
     {
       if (abs(RecHeaderInfo->StartTime - OrigStartTime) > 1)
       {
-        time_t StartTimeUnix = TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec);
+        time_t StartTimeUnix = TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, FALSE);
         printf("  INF: StartTime (%s) differs from TS start! Taking %s.\n", TimeStr(&StartTimeUnix), (RecHeaderInfo->StartTimeSec ? "inf" : "TS"));
       }
       if (RecHeaderInfo->StartTimeSec)
