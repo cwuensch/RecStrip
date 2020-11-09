@@ -1187,6 +1187,31 @@ int main(int argc, const char* argv[])
       RecInf->ExtEventInfo.TextLength = 1024;
       ChangedInf = TRUE;
     }
+
+/*    // Convert EPG Event to UTC
+    {
+      tPVRTime EvtStart = RecInf->EventInfo.StartTime;
+      tPVRTime EvtEnd   = RecInf->EventInfo.EndTime;
+      time_t DisplayTime1, DisplayTime2;
+      char DisplayString1[26], DisplayString2[26];
+      
+      if (EvtStart != 0 && EvtEnd != 0)
+      {
+        DisplayTime1 = TF2UnixTime(EvtStart, 0, FALSE);
+        EvtStart = Unix2TFTime(TF2UnixTime(EvtStart, 0, FALSE), 0, TRUE);
+        EvtEnd   = Unix2TFTime(TF2UnixTime(EvtEnd, 0, FALSE), 0, TRUE);
+
+        DisplayTime2 = TF2UnixTime(EvtStart, 0, FALSE);
+        strcpy(DisplayString1, TimeStr(&DisplayTime1));
+        strcpy(DisplayString2, TimeStr(&DisplayTime2));
+        printf("  Change EvtStart from %s to %s\n", DisplayString1, DisplayString2);
+
+        RecInf->EventInfo.StartTime = EvtStart;
+        RecInf->EventInfo.EndTime = EvtEnd;
+        ChangedInf = TRUE;
+      }
+    } *//*
+
     if (ChangedInf)
     {
       remove(InfFile);
