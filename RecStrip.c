@@ -130,6 +130,12 @@ static dword            LastPCR = 0, LastTimeStamp = 0, CurTimeStep = 1200;
 static signed char      ContinuityCtrs[MAXCONTINUITYPIDS];
 static bool             ResumeSet = FALSE;
 
+// Continuity Statistik
+static tContinuityError FileDefect[MAXCONTINUITYPIDS];
+static long long        LastContErrPos = 0;
+static int              NrContErrsInFile = 0;
+char                   *ExtEPGText = NULL;
+
 
 bool HDD_FileExist(const char *AbsFileName)
 {
@@ -219,6 +225,68 @@ static void GetNextFreeCutName(const char *SourceFileName, char *const OutCutFil
 
     strcpy(OutCutFileName, CheckFileName);
   }
+  TRACEEXIT;
+}
+
+
+// ----------------------------------------------
+// *****  Statistik Continuity Errors  *****
+// ----------------------------------------------
+
+static int GetPidId(word PID)
+{
+  int i;
+  TRACEENTER;
+  for (i = 0; i < NrContinuityPIDs; i++)
+  {
+    if (ContinuityPIDs[i] == PID)
+    {
+      TRACEEXIT;
+      return i;
+    }
+  }
+  TRACEEXIT;
+  return -1;
+}
+
+static void PrintFileDefect()
+{
+  int i;
+  TRACEENTER;
+  if (FileDefect[0].PID != 0)
+  {
+    // CONTINUITY ERROR:  Nr.  Position(Prozent)  { PID;  Position }
+    printf("TS Check: Continuity Error:\t%d.\t%.2f%%", NrContErrsInFile, (double)FileDefect[0].Position*100/RecFileSize);
+    for (i = 0; i < NrContinuityPIDs; i++)
+      printf("\t%hu\t%lld", FileDefect[i].PID, FileDefect[i].Position);
+    printf("\n");
+  }
+  TRACEEXIT;
+}
+
+void AddContinuityError(word CurPID, long long CurrentPosition, byte CountShould, byte CountIs)
+{
+  int PidID;
+  TRACEENTER;
+
+  // add error to array
+  if ((PidID = GetPidId(CurPID)) >= 0)
+  {
+    if (FileDefect[PidID].PID || (LastContErrPos == 0) || (CurrentPosition - LastContErrPos > CONT_MAXDIST))
+    {
+      // neuer Fehler
+      PrintFileDefect();
+      NrContErrsInFile++;
+      memset(FileDefect, 0, MAXCONTINUITYPIDS * sizeof(tContinuityError));
+    }
+    FileDefect[PidID].PID         = CurPID;
+    FileDefect[PidID].Position    = CurrentPosition;
+    FileDefect[PidID].CountIs     = (byte) CountIs;
+    FileDefect[PidID].CountShould = (byte) CountShould;
+    LastContErrPos = CurrentPosition;
+  }
+  else
+    printf("ERROR: Too many PIDs! (cannot happen)\n");
   TRACEEXIT;
 }
 
@@ -463,6 +531,9 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     ContinuityCtrs[k] = -1;
   }
   NrContinuityPIDs = 1;
+  memset(FileDefect, 0, MAXCONTINUITYPIDS * sizeof(tContinuityError));
+  NrContErrsInFile = 0;
+  LastContErrPos = 0;
 
   // Spezialanpassung Medion
   if (MedionMode)
@@ -784,6 +855,9 @@ SONST
 static void CloseInputFiles(bool SetStripFlags, bool SetStartTime)
 {
   TRACEENTER;
+
+  PrintFileDefect();
+  printf("\nTSCheck: %d continuity errors found.\n", NrContErrsInFile);
 
   if (fIn)
   {
@@ -1506,6 +1580,27 @@ int main(int argc, const char* argv[])
   // Hier beenden, wenn View Info Only
   if (DoInfoOnly)
   {
+    TYPE_RecHeader_TMSS *Inf_TMSS = (TYPE_RecHeader_TMSS*)InfBuffer;
+    char                EventName[257];
+
+    time_t              StartTimeUnix = TF2UnixTime(Inf_TMSS->RecHeaderInfo.StartTime, Inf_TMSS->RecHeaderInfo.StartTimeSec, FALSE);
+    time_t              EvtStartUnix = TF2UnixTime(Inf_TMSS->EventInfo.StartTime, 0, TRUE);
+    time_t              EvtEndUnix = TF2UnixTime(Inf_TMSS->EventInfo.EndTime, 0, TRUE);
+
+    // Print out details to STDERR
+    memset(EventName, 0, sizeof(EventName));
+    strncpy(EventName, Inf_TMSS->EventInfo.EventNameDescription, min(Inf_TMSS->EventInfo.EventNameLength, sizeof(Inf_TMSS->EventInfo.EventNameDescription)));
+
+    // REC:    RecFileIn;  RecSize;  StartTime (DateTime);  Duration (hh:mm:ss);  FirstPCR;  LastPCR
+    fprintf(stderr, "REC:\t%s\t%llu\t%s\t%02hu:%02hu:%02hu\t%llu\t%llu\n",  RecFileIn,  RecFileSize,  TimeStr(&StartTimeUnix),  Inf_TMSS->RecHeaderInfo.DurationMin/60,  Inf_TMSS->RecHeaderInfo.DurationMin%60,  Inf_TMSS->RecHeaderInfo.DurationSec),  FirstFilePCR,  LastFilePCR;
+
+    // SERVICE:  InfType;   Sender;   ServiceID;  PMTPid;  VideoPid;  AudioPid;  VideoType;  AudioType
+    fprintf(stderr, "SERVICE:\tST_TMS%c\t%s\t%hu\t%hu\t%hu\t%hu\t0x%hx\t0x%hx\n",  (SystemType==ST_TMSS ? 's' : ((SystemType==ST_TMSC) ? 'c' : ((SystemType==ST_TMST) ? 't' : '?'))),  Inf_TMSS->ServiceInfo.ServiceName,  Inf_TMSS->ServiceInfo.ServiceID,  Inf_TMSS->ServiceInfo.PMTPID,  Inf_TMSS->ServiceInfo.VideoPID,  Inf_TMSS->ServiceInfo.AudioPID,  Inf_TMSS->ServiceInfo.VideoStreamType,  Inf_TMSS->ServiceInfo.AudioStreamType);
+
+    // EPG:    EventName;  EventDesc;  EventStart (DateTime);  EventEnd (DateTime);  EventDuration (hh:mm);  ExtEventText (inkl. ItemizedItems, ohne '\n', '\t')
+    fprintf(stderr, "EPG:\t%s\t%s\t%s\t%s\t%02hhu:%02hhu\t%s\n",  EventName,  &Inf_TMSS->EventInfo.EventNameDescription[Inf_TMSS->EventInfo.EventNameLength],  TimeStr(&EvtStartUnix),  TimeStr(&EvtEndUnix),  Inf_TMSS->EventInfo.DurationHour,  Inf_TMSS->EventInfo.DurationMin,  (ExtEPGText ? ExtEPGText : ""));
+    if(ExtEPGText) free(ExtEPGText);
+
     fclose(fIn); fIn = NULL;
     CloseNavFileIn();
     if(MedionMode == 1) SimpleMuxer_Close();
@@ -1852,7 +1947,10 @@ int main(int argc, const char* argv[])
               if (((tTSPacket*) &Buffer[4])->ContinuityCount != *CurCtr)
               {
 //              if (!DoCut || (i < NrSegmentMarker && CurrentPosition != SegmentMarker[i].Position))
-                  printf("TS check: TS continuity mismatch (PID=%hu, pos=%lld, expect=%hhu, found=%hhu, missing=%hhd)\n", CurPID, CurrentPosition, *CurCtr, ((tTSPacket*) &Buffer[4])->ContinuityCount, (((tTSPacket*) &Buffer[4])->ContinuityCount + 16 - *CurCtr) % 16);
+                {
+                  fprintf(stderr, "PID check: TS continuity mismatch (PID=%hu, pos=%lld, expect=%hhu, found=%hhu, missing=%hhd)\n", CurPID, CurrentPosition, *CurCtr, ((tTSPacket*) &Buffer[4])->ContinuityCount, (((tTSPacket*) &Buffer[4])->ContinuityCount + 16 - *CurCtr) % 16);
+                  AddContinuityError(CurPID, CurrentPosition, *CurCtr, ((tTSPacket*) &Buffer[4])->ContinuityCount);
+                }
                 if (CurPID == VideoPID)
                 {
                   SetFirstPacketAfterBreak();

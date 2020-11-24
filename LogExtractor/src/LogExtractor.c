@@ -137,7 +137,7 @@ static SYSTEM_TYPE DetermineInfType(const byte *const InfBuffer, const unsigned 
 static char* RemoveItemizedText(TYPE_RecHeader_TMSS *RecHeader, char *const NewEventText, int NewTextLen)
 {
   // ggf. Itemized Items in ExtEventText entfernen
-  memset(NewEventText, 0, sizeof(NewEventText));
+  memset(NewEventText, 0, NewTextLen);
   {
     int j = 0, k = 0, p = 0;
     char* c;
@@ -194,7 +194,7 @@ static char* TimeStr2(tPVRTime TFTimeStamp, byte TFTimeSec, bool isUTC)
 }
 
 
-static int getPidId(word PID)
+static int GetPidId(word PID)
 {
   int i;
   for (i = 0; i < NrPIDs; i++)
@@ -211,7 +211,7 @@ static int getPidId(word PID)
   return -1;
 }
 
-static void printFileDefect(tContinuityError FileDefect[])
+static void PrintFileDefect(tContinuityError FileDefect[])
 {
   int i;
   if (FileDefect[0].PID != 0)
@@ -271,7 +271,7 @@ int main(int argc, char* argv[])
         strncpy(TextBuffer, Inf_TMSS->EventInfo.EventNameDescription, min(Inf_TMSS->EventInfo.EventNameLength, sizeof(Inf_TMSS->EventInfo.EventNameDescription)));
 
         // Print out inf details
-        // Rec-Name;  StartTime (DateTime);  Duration (mm:ss);  ServiceName;  ServiceID; PMTPID; VideoPID; AudioPID; VideoType; AudioType;  EvtName; EvtShortDesc; EvtStart (DateTime); EvtEnd (DateTime); EvtDuration (hh:mm); ExtEventDesc (inkl. ItemizedItems)
+        // Rec-Name;  StartTime (DateTime);  Duration (hh:mm:ss);  ServiceName;  ServiceID; PMTPID; VideoPID; AudioPID; VideoType; AudioType;  EvtName; EvtShortDesc; EvtStart (DateTime); EvtEnd (DateTime); EvtDuration (hh:mm); ExtEventDesc (inkl. ItemizedItems)
         printf("%s\tST_TMS%c\t",                 argv[1],  (InfType==ST_TMSS ? 's' : ((InfType==ST_TMSC) ? 'c' : ((InfType==ST_TMST) ? 't' : '?'))));
         printf("%s\t%02hu:%02hu:%02hu\t",                   TimeStr2(Inf_TMSS->RecHeaderInfo.StartTime, Inf_TMSS->RecHeaderInfo.StartTimeSec, FALSE), Inf_TMSS->RecHeaderInfo.DurationMin/60,   Inf_TMSS->RecHeaderInfo.DurationMin%60, Inf_TMSS->RecHeaderInfo.DurationSec);
         printf("%s\t%hu\t%hu\t%hu\t%hu\t0x%hx\t0x%hx\t",    Inf_TMSS->ServiceInfo.ServiceName,        Inf_TMSS->ServiceInfo.ServiceID,                Inf_TMSS->ServiceInfo.PMTPID,             Inf_TMSS->ServiceInfo.VideoPID,  Inf_TMSS->ServiceInfo.AudioPID,  Inf_TMSS->ServiceInfo.VideoStreamType,  Inf_TMSS->ServiceInfo.AudioStreamType);
@@ -366,16 +366,17 @@ int main(int argc, char* argv[])
           isEPGText = TRUE;
         }
         else if ( (sscanf(Buffer,      "TS check: TS continuity mismatch (PID=%hu, pos=%lld, expect=%hu, found=%hu, missing=%*hd)", &CurPID, &CurrentPosition, &CountShould, &CountIs) == 4)  // %hhu wird von MSVC wohl nicht unterstützt -> schreibt mehr als ein Byte
+               || (sscanf(Buffer,     "PID check: TS continuity mismatch (PID=%hu, pos=%lld, expect=%hu, found=%hu, missing=%*hd)", &CurPID, &CurrentPosition, &CountShould, &CountIs) == 4)
                || (sscanf(Buffer,   "cNaluDumper: TS continuity mismatch (PID=%hu, pos=%lld, expect=%hu, found=%hu, Offset=%d)",    &CurPID, &CurrentPosition, &CountShould, &CountIs, &Offset) == 5)
                || (sscanf(Buffer, " PESProcessor: TS continuity mismatch (PID=%hu, pos=%lld, expect=%hu, found=%hu)",               &CurPID, &CurrentPosition, &CountShould, &CountIs) == 4) )
         {
           // add error to array
-          if ((PidID = getPidId(CurPID)) >= 0)
+          if ((PidID = GetPidId(CurPID)) >= 0)
           {
             if (FileDefect[PidID].PID || (LastPosition == 0) || (CurrentPosition - LastPosition > MAXDIST))
             {
               // neuer Fehler
-              printFileDefect(FileDefect);
+              PrintFileDefect(FileDefect);
               if (NrErrorsInFile == 0)
                 NrContErrors++;
               NrErrorsInFile++;
@@ -392,7 +393,7 @@ int main(int argc, char* argv[])
         }
         else if (strncmp(Buffer, "Elapsed time:", 13) == 0)
         {
-          printFileDefect(FileDefect);
+          PrintFileDefect(FileDefect);
 
           fgets(Buffer, BUFSIZE, fIn);
           if ((strncmp(Buffer, "ERFOLG:", 7) == 0) || (strncmp(Buffer, "FEHLER", 6) == 0))

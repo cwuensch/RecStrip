@@ -194,6 +194,32 @@ bool LoadInfFromRec(char *AbsRecFileName)
   return Result;
 }
 
+static char* RemoveItemizedText(TYPE_RecHeader_TMSS *RecHeader, char *const NewEventText, int NewTextLen)
+{
+  TRACEENTER;
+  {
+    int j = 0, k = 0, p = 0;
+    while ((j < 2*RecHeader->ExtEventInfo.NrItemizedPairs) && (p < RecHeader->ExtEventInfo.TextLength))
+      if (RecHeader->ExtEventInfo.Text[p++] == '\0')  j++;
+
+    if (j == 2*RecHeader->ExtEventInfo.NrItemizedPairs)
+    {
+      strncpy(NewEventText, &RecHeader->ExtEventInfo.Text[p], min(RecHeader->ExtEventInfo.TextLength - p, NewTextLen-1));
+
+      p = 0;
+      for (k = 0; k < j; k++)
+      {
+        if(RecHeader->ExtEventInfo.Text[p] < 0x20)  p++;
+        snprintf(&NewEventText[strlen(NewEventText)], NewTextLen-strlen(NewEventText), ((k % 2 == 0) ? ((NewEventText[0]>=0x15) ? "\xC2\x8A%s: " : "\x8A%s: ") : "%s"), &RecHeader->ExtEventInfo.Text[p]);
+        p += (int)strlen(&RecHeader->ExtEventInfo.Text[p]) + 1;
+      }
+    }
+    else
+      strncpy(NewEventText, RecHeader->ExtEventInfo.Text, min(RecHeader->ExtEventInfo.TextLength, NewTextLen-1));
+  }
+  TRACEEXIT;
+}
+
 bool LoadInfFile(char *AbsInfName, bool FirstTime)
 {
   FILE                 *fInfIn = NULL;
@@ -288,26 +314,7 @@ bool LoadInfFile(char *AbsInfName, bool FirstTime)
 
     // ggf. Itemized Items in ExtEventText entfernen
     memset(OldEventText, 0, sizeof(OldEventText));
-    {
-      int j = 0, k = 0, p = 0;
-      while ((j < 2*RecHeader->ExtEventInfo.NrItemizedPairs) && (p < RecHeader->ExtEventInfo.TextLength))
-        if (RecHeader->ExtEventInfo.Text[p++] == '\0')  j++;
-
-      if (j == 2*RecHeader->ExtEventInfo.NrItemizedPairs)
-      {
-        strncpy(OldEventText, &RecHeader->ExtEventInfo.Text[p], min(RecHeader->ExtEventInfo.TextLength - p, (int)sizeof(OldEventText)-1));
-
-        p = 0;
-        for (k = 0; k < j; k++)
-        {
-          if(RecHeader->ExtEventInfo.Text[p] < 0x20)  p++;
-          snprintf(&OldEventText[strlen(OldEventText)], sizeof(OldEventText)-strlen(OldEventText), ((k % 2 == 0) ? ((OldEventText[0]>=0x15) ? "\xC2\x8A%s: " : "\x8A%s: ") : "%s"), &RecHeader->ExtEventInfo.Text[p]);
-          p += (int)strlen(&RecHeader->ExtEventInfo.Text[p]) + 1;
-        }
-      }
-      else
-        strncpy(OldEventText, RecHeader->ExtEventInfo.Text, min(RecHeader->ExtEventInfo.TextLength, (int)sizeof(OldEventText)-1));
-    }
+    RemoveItemizedText(RecHeader, OldEventText, sizeof(OldEventText));
 
     // Prüfe auf verschlüsselte Aufnahme
     if (((RecHeaderInfo->CryptFlag & 1) != 0) && !*RecFileOut)
@@ -342,6 +349,8 @@ if (RecHeaderInfo->Reserved != 0)
     {
       printf("  LoadInfFile() E0905: Inconsistant video PID: inf=%hd, rec=%hd.\n", ServiceInfo->VideoPID, VideoPID);
 //      InfProcessor_Free();
+      VideoPID = ServiceInfo->VideoPID;
+      ContinuityPIDs[0] = VideoPID;
       TRACEEXIT;
       return FALSE;
     }
@@ -349,6 +358,7 @@ if (RecHeaderInfo->Reserved != 0)
     {
       printf("  LoadInfFile() E0906: Inconsistant video type: inf=%s, rec=%s.\n", (HDFound ? "HD" : "SD"), (isHDVideo ? "HD" : "SD"));
 //      InfProcessor_Free();
+      isHDVideo = HDFound;
       TRACEEXIT;
       return FALSE;
     }

@@ -31,6 +31,8 @@
   extern long timezone;
 #endif*/
 
+long long               FirstFilePCR = 0, LastFilePCR = 0;
+
 
 static inline byte BCD2BIN(byte BCD)
 {
@@ -391,7 +393,8 @@ static bool AnalyseEIT(byte *Buffer, word ServiceID, TYPE_RecHeader_TMSS *RecInf
   tTSDesc              *Desc = NULL;
   tShortEvtDesc        *ShortDesc = NULL;
   tExtEvtDesc          *ExtDesc = NULL;
-  int                   SectionLength, DescriptorLoopLen, p;
+  char                  ExtEvtText[4097];
+  int                   ExtEvtTextLen = 0, SectionLength, DescriptorLoopLen, p;
   word                  EventID;
 
   TRACEENTER;
@@ -401,6 +404,7 @@ static bool AnalyseEIT(byte *Buffer, word ServiceID, TYPE_RecHeader_TMSS *RecInf
     memset(RecInf->EventInfo.EventNameDescription, 0, sizeof(RecInf->EventInfo.EventNameDescription));
     memset(RecInf->ExtEventInfo.Text, 0, sizeof(RecInf->ExtEventInfo.Text));
     RecInf->ExtEventInfo.TextLength = 0;
+    ExtEvtText[0] = '\0';
 
     SectionLength = EIT->SectionLen1 * 256 | EIT->SectionLen2;
     SectionLength -= (sizeof(tTSEIT) - 3);
@@ -458,22 +462,16 @@ printf("  TS: EventDesc = %s\n", &RecInf->EventInfo.EventNameDescription[NameLen
 //            RecInf->ExtEventInfo.EventID = EventID;
             if ((RecInf->ExtEventInfo.TextLength > 0) && (ExtDesc->ItemDesc < 0x20))
             {
-              char tmp;
-              if (RecInf->ExtEventInfo.TextLength < sizeof(RecInf->ExtEventInfo.Text))
+              if (ExtEvtTextLen < sizeof(ExtEvtText))
               {
-                strncpy(&RecInf->ExtEventInfo.Text[RecInf->ExtEventInfo.TextLength], (&ExtDesc->ItemDesc) + 1, min(ExtDesc->ItemDescLen - 1, (word)sizeof(RecInf->ExtEventInfo.Text) - RecInf->ExtEventInfo.TextLength));
-                RecInf->ExtEventInfo.TextLength += min(ExtDesc->ItemDescLen - 1, (word)sizeof(RecInf->ExtEventInfo.Text) - RecInf->ExtEventInfo.TextLength);
+                strncpy(&ExtEvtText[ExtEvtTextLen], (&ExtDesc->ItemDesc) + 1, min(ExtDesc->ItemDescLen - 1, (word)sizeof(ExtEvtText) - ExtEvtTextLen));
+                ExtEvtTextLen = min(ExtEvtTextLen + ExtDesc->ItemDescLen - 1, (word)sizeof(ExtEvtText));
               }
-tmp = (&ExtDesc->ItemDesc)[ExtDesc->ItemDescLen];
-(&ExtDesc->ItemDesc)[ExtDesc->ItemDescLen] = '\0';
-printf("%s", (&ExtDesc->ItemDesc) + 1);
-(&ExtDesc->ItemDesc)[ExtDesc->ItemDescLen] = tmp;
             }
             else
             {
-              strncpy(&RecInf->ExtEventInfo.Text[RecInf->ExtEventInfo.TextLength], &ExtDesc->ItemDesc, min(ExtDesc->ItemDescLen, (word)sizeof(RecInf->ExtEventInfo.Text) - RecInf->ExtEventInfo.TextLength));
-              RecInf->ExtEventInfo.TextLength += min(ExtDesc->ItemDescLen, (word)sizeof(RecInf->ExtEventInfo.Text) - RecInf->ExtEventInfo.TextLength);
-printf("  TS: EPGExtEvt = %s", RecInf->ExtEventInfo.Text);
+              strncpy(&ExtEvtText[ExtEvtTextLen], &ExtDesc->ItemDesc, min(ExtDesc->ItemDescLen, (word)sizeof(ExtEvtText) - ExtEvtTextLen));
+              ExtEvtTextLen = min(ExtEvtTextLen + ExtDesc->ItemDescLen, (word)sizeof(ExtEvtText));
             }
           }
 
@@ -481,8 +479,26 @@ printf("  TS: EPGExtEvt = %s", RecInf->ExtEventInfo.Text);
           DescriptorLoopLen -= (Desc->DescrLength + sizeof(tTSDesc));
           p += (Desc->DescrLength + sizeof(tTSDesc));
         }
-printf("\n  TS: ExtEvent  = %s\n", RecInf->ExtEventInfo.Text);
+        strncpy(RecInf->ExtEventInfo.Text, ExtEvtText, min(ExtEvtTextLen, sizeof(RecInf->ExtEventInfo.Text)));
+        RecInf->ExtEventInfo.TextLength = ExtEvtTextLen;
+printf("\n  TS: EPGExtEvent  = %s\n", ExtEvtText);
 
+        if (DoInfoOnly)
+        {
+          if ((ExtEPGText = (char*) malloc(4097)))
+          {
+            char *c;
+            strncpy(ExtEPGText, ExtEvtText, 4096);
+            ExtEPGText[4096] = '\0';
+
+            // Ersetze eventuelles '\n', '\t' im Output
+            for (c = ExtEPGText; *c != '\0'; c++)
+            {
+              if (*c == '\n') *c = 0x8A;
+              if (*c == '\t') *c = ' ';
+            }
+          }
+        }
         TRACEEXIT;
         return TRUE;
       }
@@ -645,7 +661,6 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   tPVRTime              FileTimeStamp, TtxTime = 0;
   byte                  FileTimeSec, TtxTimeSec = 0;
   int                   TtxTimeZone = 0;
-  long long             FirstPCR = 0, LastPCR = 0;
   dword                 FirstPCRms = 0, LastPCRms = 0, TtxPCR = 0, dPCR = 0;
   int                   Offset, ReadBytes, i;
   bool                  EITOK = FALSE, SDTOK = FALSE, TtxFound = FALSE, TtxOK = FALSE;
@@ -694,7 +709,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             p++;
           if (GetPTS(&Buffer[p], NULL, &FirstPCRms) && (FirstPCRms != 0))
           {
-            FirstPCR = (long long)FirstPCRms * 600;
+            FirstFilePCR = (long long)FirstPCRms * 600;
             break;
           }
           p++;
@@ -718,7 +733,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           while ((p < RECBUFFERENTRIES*100) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1))
             p++;
           if (GetPTS(&Buffer[p], NULL, &LastPCRms) && (LastPCRms != 0))
-            LastPCR = (long long)LastPCRms * 600;
+            LastFilePCR = (long long)LastPCRms * 600;
           p++;
         }
       }
@@ -764,7 +779,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       if (fread(Buffer, 1, 16384, fMDIn) > 0)
       {
         byte *p = Buffer;
-        dword PCRDuration = DeltaPCR((dword)(FirstPCR / 27000), (dword)(LastPCR / 27000)) / 1000;
+        dword PCRDuration = DeltaPCR((dword)(FirstFilePCR / 27000), (dword)(LastFilePCR / 27000)) / 1000;
         dword MidTimeUTC = AddTimeSec(TtxTime, TtxTimeSec, NULL, TtxTimeZone + PCRDuration/2);
 
         while ((p - Buffer < 16380) && (*(int*)p == 0x12345678))
@@ -824,7 +839,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           else break;
         }
         //Find the first PCR (for duration calculation)
-        if (GetPCR(&p[PACKETOFFSET], &FirstPCR) && FirstPCR != 0)
+        if (GetPCR(&p[PACKETOFFSET], &FirstFilePCR) && FirstFilePCR != 0)
           break;
         p += PACKETSIZE;
       }
@@ -1013,7 +1028,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           else break;
         }
         //Find the last PCR
-        GetPCR(&p[PACKETOFFSET], &LastPCR);
+        GetPCR(&p[PACKETOFFSET], &LastFilePCR);
         p += PACKETSIZE;
       }
     }
@@ -1040,7 +1055,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStr(&StartTimeUnix), (TtxOK ? -1*TtxTimeZone : time_offset) / 3600);
   }
 
-  if(!FirstPCR || !LastPCR)
+  if(!FirstFilePCR || !LastFilePCR)
   {
     printf("  Duration calculation failed (missing PCR). Using 120 minutes.\n");
     RecInf->RecHeaderInfo.DurationMin = 120;
@@ -1048,13 +1063,13 @@ printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStr(&StartTimeUnix), (TtxOK ? -1*T
   }
   else
   {
-    FirstPCRms = (dword)(FirstPCR / 27000);
-    LastPCRms = (dword)(LastPCR / 27000);
+    FirstPCRms = (dword)(FirstFilePCR / 27000);
+    LastPCRms = (dword)(LastFilePCR / 27000);
     dPCR = DeltaPCR(FirstPCRms, LastPCRms);
     RecInf->RecHeaderInfo.DurationMin = (int)(dPCR / 60000);
     RecInf->RecHeaderInfo.DurationSec = (dPCR / 1000) % 60;
   }
-printf("  TS: FirstPCR  = %lld (%1.1u:%2.2u:%2.2u,%3.3u), Last: %lld (%1.1u:%2.2u:%2.2u,%3.3u)\n", FirstPCR, (FirstPCRms/3600000), (FirstPCRms/60000 % 60), (FirstPCRms/1000 % 60), (FirstPCRms % 1000), LastPCR, (LastPCRms/3600000), (LastPCRms/60000 % 60), (LastPCRms/1000 % 60), (LastPCRms % 1000));
+printf("  TS: FirstPCR  = %lld (%1.1u:%2.2u:%2.2u,%3.3u), Last: %lld (%1.1u:%2.2u:%2.2u,%3.3u)\n", FirstFilePCR, (FirstPCRms/3600000), (FirstPCRms/60000 % 60), (FirstPCRms/1000 % 60), (FirstPCRms % 1000), LastFilePCR, (LastPCRms/3600000), (LastPCRms/60000 % 60), (LastPCRms/1000 % 60), (LastPCRms % 1000));
 printf("  TS: Duration  = %2.2d min %2.2d sec\n", RecInf->RecHeaderInfo.DurationMin, RecInf->RecHeaderInfo.DurationSec);
 
   if(TtxTime && TtxPCR)
