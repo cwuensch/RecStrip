@@ -662,7 +662,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   byte                  FileTimeSec, TtxTimeSec = 0;
   int                   TtxTimeZone = 0;
   dword                 FirstPCRms = 0, LastPCRms = 0, TtxPCR = 0, dPCR = 0;
-  int                   Offset, ReadBytes, i;
+  int                   Offset, ReadBytes, Durchlauf, i;
   bool                  EITOK = FALSE, SDTOK = FALSE, TtxFound = FALSE, TtxOK = FALSE;
   time_t                StartTimeUnix;
   byte                 *p;
@@ -846,73 +846,86 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     }
 
 
-    // Springe in die Mitte der Aufnahme (für Medion-Analyse mit PAT/PMT nur am Start, die folgenden 13 Zeilen auskommentieren [und Z.886 auf 0 setzen -> nicht mehr nötig(?)]
-    if (HumaxSource)
-      FilePos = ((RecFileSize/2)/HumaxHeaderIntervall * HumaxHeaderIntervall);
-    else
-      FilePos = ((RecFileSize/2)/PACKETSIZE * PACKETSIZE);
-    fseeko64(fIn, FilePos, SEEK_SET);
-
-    //Read RECBUFFERENTRIES TS pakets for analysis
-    ReadBytes = (int)fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn) * PACKETSIZE;
-    if(ReadBytes < RECBUFFERENTRIES * PACKETSIZE)
+    for (Durchlauf = 0; Durchlauf <= 1; Durchlauf++)
     {
-      printf("  Failed to read %d TS packets from the middle.\n", RECBUFFERENTRIES);
-      free(Buffer);
-      TRACEEXIT;
-      return FALSE;
-    }
-
-    Offset = FindNextPacketStart(Buffer, ReadBytes);
-    if (Offset >= 0)
-    {
-      if (!HumaxSource && !EycosSource)
+      if (Durchlauf == 0)
       {
-        //Find a PMT packet to get its PID
-        p = &Buffer[Offset + PACKETOFFSET];
+        // Springe in die Mitte der Aufnahme (für Medion-Analyse mit PAT/PMT nur am Start, die folgenden 13 Zeilen auskommentieren [und die Zeile "fseeko64(fIn, FilePos, SEEK_SET)" auf 0 setzen -> nicht mehr nötig(?)])
+        if (HumaxSource)
+          FilePos = ((RecFileSize/2)/HumaxHeaderIntervall * HumaxHeaderIntervall);
+        else
+          FilePos = ((RecFileSize/2)/PACKETSIZE * PACKETSIZE);
+        fseeko64(fIn, FilePos, SEEK_SET);
+      }
+      else if (Durchlauf == 1)
+      {
+        // Falls in der Mitte nichts gefunden -> Springe nochmal an den Anfang der Aufnahme (gestrippte Aufnahmen mit PMT/EPG nur in den ersten Paketen)
+        FilePos = 0 + Offset;
+        fseeko64(fIn, FilePos, SEEK_SET);
+      }
 
-        while (p <= &Buffer[ReadBytes-188])
+      //Read RECBUFFERENTRIES TS pakets for analysis
+      ReadBytes = (int)fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn) * PACKETSIZE;
+      if(ReadBytes < RECBUFFERENTRIES * PACKETSIZE)
+      {
+        printf("  Failed to read %d TS packets from the middle.\n", RECBUFFERENTRIES);
+        free(Buffer);
+        TRACEEXIT;
+        return FALSE;
+      }
+
+      Offset = FindNextPacketStart(Buffer, ReadBytes);
+      if (Offset >= 0)
+      {
+        if (!HumaxSource && !EycosSource)
         {
-          bool ok = TRUE;
-
-          for (i = 0; i < (int)sizeof(PMTMask); i++)
-            if((p[i] & ANDMask[i]) != PMTMask[i])
-             { ok = FALSE;  break; }
-
-          if (ok)
-           { PMTPID = ((p[1] << 8) | p[2]) & 0x1fff;  break; }
-
-          p += PACKETSIZE;
-        }
-
-        if(PMTPID)
-        {
-          RecInf->ServiceInfo.PMTPID = PMTPID;
-          printf("  TS: PMTPID=%hu", PMTPID);
-
-          //Analyse the PMT
-          PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE);
-
+          //Find a PMT packet to get its PID
           p = &Buffer[Offset + PACKETOFFSET];
+
           while (p <= &Buffer[ReadBytes-188])
           {
-            PSBuffer_ProcessTSPacket(&PMTBuffer, (tTSPacket*)p);
-            if (PMTBuffer.ValidBuffer != LastPMTBuffer)
-            {
-              if(!PMTBuffer.ErrorFlag) break;
-              PMTBuffer.ErrorFlag = FALSE;
-              LastPMTBuffer = PMTBuffer.ValidBuffer;
-            }
+            bool ok = TRUE;
+
+            for (i = 0; i < (int)sizeof(PMTMask); i++)
+              if((p[i] & ANDMask[i]) != PMTMask[i])
+               { ok = FALSE;  break; }
+
+            if (ok)
+             { PMTPID = ((p[1] << 8) | p[2]) & 0x1fff;  break; }
+
             p += PACKETSIZE;
           }
 
-          AnalysePMT(PMTBuffer.Buffer1, /*PMTBuffer.ValidBufLen,*/ RecInf);
-          PSBuffer_Reset(&PMTBuffer);
-        }
-        else
-        {
-          printf("  Failed to locate a PMT packet.\n");
-          ret = FALSE;
+          if(PMTPID)
+          {
+            RecInf->ServiceInfo.PMTPID = PMTPID;
+            printf("  TS: PMTPID=%hu", PMTPID);
+
+            //Analyse the PMT
+            PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE);
+
+            p = &Buffer[Offset + PACKETOFFSET];
+            while (p <= &Buffer[ReadBytes-188])
+            {
+              PSBuffer_ProcessTSPacket(&PMTBuffer, (tTSPacket*)p);
+              if (PMTBuffer.ValidBuffer != LastPMTBuffer)
+              {
+                if(!PMTBuffer.ErrorFlag) break;
+                PMTBuffer.ErrorFlag = FALSE;
+                LastPMTBuffer = PMTBuffer.ValidBuffer;
+              }
+              p += PACKETSIZE;
+            }
+
+            AnalysePMT(PMTBuffer.Buffer1, /*PMTBuffer.ValidBufLen,*/ RecInf);
+            PSBuffer_Reset(&PMTBuffer);
+            break;
+          }
+          else
+          {
+            printf("  Failed to locate a PMT packet (%d/2).\n", Durchlauf + 1);
+            ret = FALSE;
+          }
         }
       }
 
