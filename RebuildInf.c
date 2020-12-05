@@ -393,18 +393,26 @@ static bool AnalyseEIT(byte *Buffer, word ServiceID, TYPE_RecHeader_TMSS *RecInf
   tTSDesc              *Desc = NULL;
   tShortEvtDesc        *ShortDesc = NULL;
   tExtEvtDesc          *ExtDesc = NULL;
-  char                  ExtEvtText[4097];
-  int                   ExtEvtTextLen = 0, SectionLength, DescriptorLoopLen, p;
+//  char                 *ExtEPGText = NULL;
+  int                   ExtEPGTextLen = 0, SectionLength, DescriptorLoopLen, p;
   word                  EventID;
 
   TRACEENTER;
 
   if ((EIT->TableID == TABLE_EIT) && ((EIT->ServiceID1 * 256 | EIT->ServiceID2) == ServiceID))
   {
+    if (!(ExtEPGText = (char*) malloc(EPGBUFFERSIZE)))
+    {
+      printf("Could not allocate memory for ExtEPGText.\n");
+      TRACEEXIT;
+      return FALSE;
+    }
+
     memset(RecInf->EventInfo.EventNameDescription, 0, sizeof(RecInf->EventInfo.EventNameDescription));
     memset(RecInf->ExtEventInfo.Text, 0, sizeof(RecInf->ExtEventInfo.Text));
+//    memset(ExtEPGText, 0, EPGBUFFERSIZE);
     RecInf->ExtEventInfo.TextLength = 0;
-    ExtEvtText[0] = '\0';
+    ExtEPGText[0] = '\0';
 
     SectionLength = EIT->SectionLen1 * 256 | EIT->SectionLen2;
     SectionLength -= (sizeof(tTSEIT) - 3);
@@ -462,43 +470,42 @@ printf("  TS: EventDesc = %s\n", &RecInf->EventInfo.EventNameDescription[NameLen
 //            RecInf->ExtEventInfo.EventID = EventID;
             if ((RecInf->ExtEventInfo.TextLength > 0) && (ExtDesc->ItemDesc < 0x20))
             {
-              if (ExtEvtTextLen < sizeof(ExtEvtText))
+              if (ExtEPGTextLen < EPGBUFFERSIZE - 1)
               {
-                strncpy(&ExtEvtText[ExtEvtTextLen], (&ExtDesc->ItemDesc) + 1, min(ExtDesc->ItemDescLen - 1, (word)sizeof(ExtEvtText) - ExtEvtTextLen));
-                ExtEvtTextLen = min(ExtEvtTextLen + ExtDesc->ItemDescLen - 1, (word)sizeof(ExtEvtText));
+                strncpy(&ExtEPGText[ExtEPGTextLen], (&ExtDesc->ItemDesc) + 1, min(ExtDesc->ItemDescLen - 1, EPGBUFFERSIZE - ExtEPGTextLen - 1));
+                ExtEPGTextLen = min(ExtEPGTextLen + ExtDesc->ItemDescLen - 1, EPGBUFFERSIZE - 1);
               }
             }
             else
             {
-              strncpy(&ExtEvtText[ExtEvtTextLen], &ExtDesc->ItemDesc, min(ExtDesc->ItemDescLen, (word)sizeof(ExtEvtText) - ExtEvtTextLen));
-              ExtEvtTextLen = min(ExtEvtTextLen + ExtDesc->ItemDescLen, (word)sizeof(ExtEvtText));
+              strncpy(&ExtEPGText[ExtEPGTextLen], &ExtDesc->ItemDesc, min(ExtDesc->ItemDescLen, EPGBUFFERSIZE - ExtEPGTextLen - 1));
+              ExtEPGTextLen = min(ExtEPGTextLen + ExtDesc->ItemDescLen, EPGBUFFERSIZE - 1);
             }
+            ExtEPGText[ExtEPGTextLen] = '\0';
           }
 
           SectionLength -= (Desc->DescrLength + sizeof(tTSDesc));
           DescriptorLoopLen -= (Desc->DescrLength + sizeof(tTSDesc));
           p += (Desc->DescrLength + sizeof(tTSDesc));
         }
-        strncpy(RecInf->ExtEventInfo.Text, ExtEvtText, min(ExtEvtTextLen, sizeof(RecInf->ExtEventInfo.Text)));
-        RecInf->ExtEventInfo.TextLength = ExtEvtTextLen;
-printf("\n  TS: EPGExtEvent  = %s\n", ExtEvtText);
+        strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, min(ExtEPGTextLen, sizeof(RecInf->ExtEventInfo.Text)));
+        RecInf->ExtEventInfo.TextLength = ExtEPGTextLen;
+printf("\n  TS: EPGExtEvent  = %s\n", ExtEPGText);
 
         if (DoInfoOnly)
         {
-          if ((ExtEPGText = (char*) malloc(4097)))
-          {
-            char *c;
-            strncpy(ExtEPGText, ExtEvtText, 4096);
-            ExtEPGText[4096] = '\0';
+          char *c;
 
-            // Ersetze eventuelles '\n', '\t' im Output
-            for (c = ExtEPGText; *c != '\0'; c++)
-            {
-              if (*c == '\n') *c = 0x8A;
-              if (*c == '\t') *c = ' ';
-            }
+          // Ersetze eventuelles '\n', '\t' im Output
+          for (c = ExtEPGText; *c != '\0'; c++)
+          {
+            if (*c == '\n') *c = 0x8A;
+            if (*c == '\t') *c = ' ';
           }
         }
+        else
+          free(ExtEPGText);
+
         TRACEEXIT;
         return TRUE;
       }
@@ -919,7 +926,6 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 
             AnalysePMT(PMTBuffer.Buffer1, /*PMTBuffer.ValidBufLen,*/ RecInf);
             PSBuffer_Reset(&PMTBuffer);
-            break;
           }
           else
           {
@@ -1005,6 +1011,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         if(TeletextPID != 0xffff)
           PSBuffer_Reset(&TtxBuffer);
       }
+
+      if(PMTPID || (EITOK && SDTOK && (TtxOK || TeletextPID == 0xffff))) break;
     }
 
 

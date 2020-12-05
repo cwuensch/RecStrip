@@ -194,7 +194,7 @@ bool LoadInfFromRec(char *AbsRecFileName)
   return Result;
 }
 
-static char* RemoveItemizedText(TYPE_RecHeader_TMSS *RecHeader, char *const NewEventText, int NewTextLen)
+static void RemoveItemizedText(TYPE_RecHeader_TMSS *RecHeader, char *const NewEventText, int NewTextLen)
 {
   TRACEENTER;
   {

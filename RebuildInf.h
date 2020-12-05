@@ -184,6 +184,8 @@ typedef struct
 } tTSDesc;
 
 
+#define                 EPGBUFFERSIZE 4097
+
 //extern FILE            *fIn;  // dirty Hack
 extern long long        FirstFilePCR, LastFilePCR;
 
