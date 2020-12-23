@@ -191,7 +191,6 @@ bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
   dword                 ElemPt;
   int                   SectionLength, ProgramInfoLength, ElemLength;
   word                  PID;
-  char                  Log[512];
   bool                  VideoFound = FALSE;
 
   if(PMT->TableID != TABLE_PMT) return FALSE;
@@ -203,7 +202,7 @@ bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
 
   RecInf->ServiceInfo.ServiceID = PMT->ProgramNr1 * 256 | PMT->ProgramNr2;
   RecInf->ServiceInfo.PCRPID = PMT->PCRPID1 * 256 | PMT->PCRPID2;
-  snprintf(Log, sizeof(Log), ", SID=%hu, PCRPID=%hu", RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID);
+  printf(", SID=%hu, PCRPID=%hu", RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID);
 
   ProgramInfoLength = PMT->ProgInfoLen1 * 256 | PMT->ProgInfoLen2;
 
@@ -254,7 +253,7 @@ bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
             RecInf->ServiceInfo.VideoPID = PID;
             RecInf->ServiceInfo.VideoStreamType = Elem->stream_type;
             ContinuityPIDs[0] = PID;
-            snprintf(&Log[strlen(Log)], sizeof(Log)-strlen(Log), ", Stream=0x%hhx, VPID=%hu, HD=%d", RecInf->ServiceInfo.VideoStreamType, VideoPID, isHDVideo);
+            printf(", Stream=0x%hhx, VPID=%hu, HD=%d", RecInf->ServiceInfo.VideoStreamType, VideoPID, isHDVideo);
           }
           break;
         }
@@ -272,13 +271,13 @@ bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
             {
               TeletextPID = PID;
               PID = 0;
-              snprintf(&Log[strlen(Log)], sizeof(Log)-strlen(Log), "\n  TS: TeletxtPID=%hu", TeletextPID);
+              printf("\n  TS: TeletxtPID=%hu", TeletextPID);
               break;
             }
             else if (Desc->DescrTag == DESC_Subtitle)
             {
               // DVB-Subtitles
-              snprintf(&Log[strlen(Log)], sizeof(Log)-strlen(Log), "\n  TS: SubtitlesPID=%hu", PID);
+              printf("\n  TS: SubtitlesPID=%hu", PID);
               PID = 0;
               break;
             }
@@ -341,7 +340,7 @@ bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
 
   if(NrContinuityPIDs < MAXCONTINUITYPIDS && TeletextPID != 0xffff)  ContinuityPIDs[NrContinuityPIDs++] = TeletextPID;
   if(NrContinuityPIDs < MAXCONTINUITYPIDS)                           ContinuityPIDs[NrContinuityPIDs++] = 0x12;
-  printf("%s\n", Log);
+  printf("\n");
 
 //  isHDVideo = HDFound;
 
@@ -468,7 +467,7 @@ printf("  TS: EventDesc = %s\n", &RecInf->EventInfo.EventNameDescription[NameLen
             ExtDesc = (tExtEvtDesc*) Desc;
             RecInf->ExtEventInfo.ServiceID = ServiceID;
 //            RecInf->ExtEventInfo.EventID = EventID;
-            if ((RecInf->ExtEventInfo.TextLength > 0) && (ExtDesc->ItemDesc < 0x20))
+            if ((ExtEPGTextLen > 0) && (ExtDesc->ItemDesc < 0x20))
             {
               if (ExtEPGTextLen < EPGBUFFERSIZE - 1)
               {

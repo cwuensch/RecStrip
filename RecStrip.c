@@ -1591,14 +1591,15 @@ int main(int argc, const char* argv[])
     memset(EventName, 0, sizeof(EventName));
     strncpy(EventName, Inf_TMSS->EventInfo.EventNameDescription, min(Inf_TMSS->EventInfo.EventNameLength, sizeof(Inf_TMSS->EventInfo.EventNameDescription)));
 
-    // REC:    RecFileIn;  RecSize;  StartTime (DateTime);  Duration (hh:mm:ss);  FirstPCR;  LastPCR
-    fprintf(stderr, "%s\t%llu\t%s\t%02hu:%02hu:%02hu\t%lld\t%lld\t",  RecFileIn,  RecFileSize,  TimeStr(&StartTimeUnix),  Inf_TMSS->RecHeaderInfo.DurationMin/60,  Inf_TMSS->RecHeaderInfo.DurationMin%60,  Inf_TMSS->RecHeaderInfo.DurationSec),  FirstFilePCR,  LastFilePCR;
+    // REC:    RecFileIn;  RecSize;  StartTime (DateTime);  Duration (hh:mm:ss);  FirstPCR;  LastPCR;  isStripped
+    fprintf(stderr, "%s\t%llu\t%s\t%02hu:%02hu:%02hu\t%lld\t%lld\t%s\t",  RecFileIn,  RecFileSize,  TimeStr_DB(&StartTimeUnix),  Inf_TMSS->RecHeaderInfo.DurationMin/60,  Inf_TMSS->RecHeaderInfo.DurationMin%60,  Inf_TMSS->RecHeaderInfo.DurationSec,  FirstFilePCR,  LastFilePCR,  (Inf_TMSS->RecHeaderInfo.rs_HasBeenStripped ? "yes" : "no"));
 
-    // SERVICE:  InfType;   Sender;   ServiceID;  PMTPid;  VideoPid;  AudioPid;  VideoType;  AudioType
-    fprintf(stderr, "ST_TMS%c\t%s\t%hu\t%hu\t%hu\t%hu\t0x%hx\t0x%hx\t",  (SystemType==ST_TMSS ? 's' : ((SystemType==ST_TMSC) ? 'c' : ((SystemType==ST_TMST) ? 't' : '?'))),  Inf_TMSS->ServiceInfo.ServiceName,  Inf_TMSS->ServiceInfo.ServiceID,  Inf_TMSS->ServiceInfo.PMTPID,  Inf_TMSS->ServiceInfo.VideoPID,  Inf_TMSS->ServiceInfo.AudioPID,  Inf_TMSS->ServiceInfo.VideoStreamType,  Inf_TMSS->ServiceInfo.AudioStreamType);
+    // SERVICE:  InfType;   Sender;   ServiceID;  PMTPid;  VideoPid;  AudioPid;  VideoType;  AudioType;  HD
+    fprintf(stderr, "ST_TMS%c\t%s\t%hu\t%hu\t%hu\t%hu\t0x%hx\t0x%hx\t%s\t",  (SystemType==ST_TMSS ? 's' : ((SystemType==ST_TMSC) ? 'c' : ((SystemType==ST_TMST) ? 't' : '?'))),  Inf_TMSS->ServiceInfo.ServiceName,  Inf_TMSS->ServiceInfo.ServiceID,  Inf_TMSS->ServiceInfo.PMTPID,  Inf_TMSS->ServiceInfo.VideoPID,  Inf_TMSS->ServiceInfo.AudioPID,  Inf_TMSS->ServiceInfo.VideoStreamType,  Inf_TMSS->ServiceInfo.AudioStreamType,  (isHDVideo ? "yes" : "no"));
 
     // EPG:    EventName;  EventDesc;  EventStart (DateTime);  EventEnd (DateTime);  EventDuration (hh:mm);  ExtEventText (inkl. ItemizedItems, ohne '\n', '\t')
-    fprintf(stderr, "%s\t%s\t%s\t%s\t%02hhu:%02hhu\t%s\n",  EventName,  &Inf_TMSS->EventInfo.EventNameDescription[Inf_TMSS->EventInfo.EventNameLength],  TimeStr(&EvtStartUnix),  TimeStr(&EvtEndUnix),  Inf_TMSS->EventInfo.DurationHour,  Inf_TMSS->EventInfo.DurationMin,  (ExtEPGText ? ExtEPGText : ""));
+    fprintf(stderr, "%s\t%s\t%s\t", EventName,  &Inf_TMSS->EventInfo.EventNameDescription[Inf_TMSS->EventInfo.EventNameLength],  TimeStr_DB(&EvtStartUnix));
+    fprintf(stderr, "%s\t%02hhu:%02hhu\t%s\n", TimeStr_DB(&EvtEndUnix),  Inf_TMSS->EventInfo.DurationHour,  Inf_TMSS->EventInfo.DurationMin,  (ExtEPGText ? ExtEPGText : ""));
     if(ExtEPGText) free(ExtEPGText);
 
     fclose(fIn); fIn = NULL;
