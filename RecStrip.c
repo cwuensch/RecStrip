@@ -1589,8 +1589,8 @@ int main(int argc, const char* argv[])
 
     // Print out details to STDERR
     memset(EventName, 0, sizeof(EventName));
-    strncpy(EventName, Inf_TMSS->EventInfo.EventNameDescription, min(Inf_TMSS->EventInfo.EventNameLength, sizeof(Inf_TMSS->EventInfo.EventNameDescription)));
-
+    strncpy(EventName, Inf_TMSS->EventInfo.EventNameDescription, Inf_TMSS->EventInfo.EventNameLength);
+    
     // REC:    RecFileIn;  RecSize;  StartTime (DateTime);  Duration (hh:mm:ss);  FirstPCR;  LastPCR;  isStripped
     fprintf(stderr, "%s\t%llu\t%s\t%02hu:%02hu:%02hu\t%lld\t%lld\t%s\t",  RecFileIn,  RecFileSize,  TimeStr_DB(&StartTimeUnix),  Inf_TMSS->RecHeaderInfo.DurationMin/60,  Inf_TMSS->RecHeaderInfo.DurationMin%60,  Inf_TMSS->RecHeaderInfo.DurationSec,  FirstFilePCR,  LastFilePCR,  (Inf_TMSS->RecHeaderInfo.rs_HasBeenStripped ? "yes" : "no"));
 

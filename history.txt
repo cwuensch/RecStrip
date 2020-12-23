@@ -6,6 +6,15 @@ RecStrip 3.0:  NEU:
 
 RecStrip 2.7:  NEU:
                  - Support zum Import von Aufnahmen aus Eycos S80.12HD
+                 - Bei bereits gestrippten Aufnahmen (PMT und EPG nur am Anfang vorhanden) wird nicht nur in der Mitte, sondern auch am Anfang nach der PMT gesucht
+                 - EPG ExtEventText wird nun nur noch einmal und vollständig ausgegeben
+                 - TS Check: verbesserte Continuity-Error-Auswertung (verschiedene PIDs an gleicher Position werden zusammengefasst, Ausgabe der Einzel-Fehler erfolgt nur noch auf stderr)
+                 - ShowInfos: Details zur Aufnahme werden als tsv auf stderr ausgegeben (ermöglicht automatisierte Auswertung)
+
+               BUGFIXES:
+                 - EPG-Event wird in UTC statt lokaler Zeitzone in der inf gespeichert
+                 - RebuildInf: falsche Ermittlung der Länge von EventNameDescription
+                 - RebuildInf: möglicher Speicherüberlauf beim Schreiben von EPG ExtEventText in die inf(!)
 
 RecStrip 2.6:  NEU:
                  - Vertauschung der Ausgabe-Paketgröße (o1 = 188 Bytes, o2 = 192 Bytes)

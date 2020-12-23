@@ -487,7 +487,7 @@ printf("  TS: EventDesc = %s\n", &RecInf->EventInfo.EventNameDescription[NameLen
           DescriptorLoopLen -= (Desc->DescrLength + sizeof(tTSDesc));
           p += (Desc->DescrLength + sizeof(tTSDesc));
         }
-        strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, min(ExtEPGTextLen, sizeof(RecInf->ExtEventInfo.Text)));
+        strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, min(ExtEPGTextLen, (int)sizeof(RecInf->ExtEventInfo.Text)));
         RecInf->ExtEventInfo.TextLength = ExtEPGTextLen;
 printf("\n  TS: EPGExtEvent  = %s\n", ExtEPGText);
 
