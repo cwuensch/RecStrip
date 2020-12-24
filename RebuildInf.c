@@ -30,31 +30,39 @@
   extern long timezone;
 #endif*/
 
+long long               FirstFilePCR = 0, LastFilePCR = 0;
+
 
 static inline byte BCD2BIN(byte BCD)
 {
   return (BCD >> 4) * 10 + (BCD & 0x0f);
 }
 
-static inline tPVRTime Unix2TFTime(time_t UnixTimeStamp, byte *const outSec)
+tPVRTime Unix2TFTime(time_t UnixTimeStamp, byte *const outSec, bool toUTC)
 {
 #ifndef LINUX
-  UnixTimeStamp -= timezone;
-  if (localtime(&UnixTimeStamp)->tm_isdst)
-    UnixTimeStamp += 3600;
+  if (!toUTC)
+  {
+    UnixTimeStamp -= timezone;
+    if (localtime(&UnixTimeStamp)->tm_isdst)
+      UnixTimeStamp += 3600;
+  }
 #endif
   if (outSec)
     *outSec = UnixTimeStamp % 60;
   return (DATE ( (UnixTimeStamp / 86400) + 0x9e8b, (UnixTimeStamp / 3600) % 24, (UnixTimeStamp / 60) % 60 ));
 }
 
-time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec)
+time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec, bool isUTC)
 {
   time_t Result = (MJD(TFTimeStamp) - 0x9e8b) * 86400 + HOUR(TFTimeStamp) * 3600 + MINUTE(TFTimeStamp) * 60 + TFTimeSec;
 #ifndef LINUX
-  Result += timezone;
-  if (localtime(&Result)->tm_isdst)
-    Result -= 3600;
+  if (!isUTC)
+  {
+    Result += timezone;
+    if (localtime(&Result)->tm_isdst)
+      Result -= 3600;
+  }
 #endif
   return Result;
 }
@@ -172,7 +180,7 @@ void InitInfStruct(TYPE_RecHeader_TMSS *RecInf)
   RecInf->ServiceInfo.AudioStreamType = 0xff;
   RecInf->ServiceInfo.AudioPID        = 0xfff;
   RecInf->ServiceInfo.AudioTypeFlag   = 3;  // unknown
-  strcpy(RecInf->ServiceInfo.ServiceName, "RecStrip");
+  strcpy(RecInf->ServiceInfo.ServiceName, "");  // "RecStrip"
   TRACEEXIT;
 }
 
@@ -182,7 +190,6 @@ bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
   dword                 ElemPt;
   int                   SectionLength, ProgramInfoLength, ElemLength;
   word                  PID;
-  char                  Log[512];
   bool                  VideoFound = FALSE;
 
   if(PMT->TableID != TABLE_PMT) return FALSE;
@@ -194,7 +201,7 @@ bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
 
   RecInf->ServiceInfo.ServiceID = PMT->ProgramNr1 * 256 | PMT->ProgramNr2;
   RecInf->ServiceInfo.PCRPID = PMT->PCRPID1 * 256 | PMT->PCRPID2;
-  snprintf(Log, sizeof(Log), ", SID=%hu, PCRPID=%hu", RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID);
+  printf(", SID=%hu, PCRPID=%hu", RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID);
 
   ProgramInfoLength = PMT->ProgInfoLen1 * 256 | PMT->ProgInfoLen2;
 
@@ -245,7 +252,7 @@ bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
             RecInf->ServiceInfo.VideoPID = PID;
             RecInf->ServiceInfo.VideoStreamType = Elem->stream_type;
             ContinuityPIDs[0] = PID;
-            snprintf(&Log[strlen(Log)], sizeof(Log)-strlen(Log), ", Stream=0x%hhx, VPID=%hu, HD=%d", RecInf->ServiceInfo.VideoStreamType, VideoPID, isHDVideo);
+            printf(", Stream=0x%hhx, VPID=%hu, HD=%d", RecInf->ServiceInfo.VideoStreamType, VideoPID, isHDVideo);
           }
           break;
         }
@@ -263,13 +270,13 @@ bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
             {
               TeletextPID = PID;
               PID = 0;
-              snprintf(&Log[strlen(Log)], sizeof(Log)-strlen(Log), "\n  TS: TeletxtPID=%hu", TeletextPID);
+              printf("\n  TS: TeletxtPID=%hu", TeletextPID);
               break;
             }
             else if (Desc->DescrTag == DESC_Subtitle)
             {
               // DVB-Subtitles
-              snprintf(&Log[strlen(Log)], sizeof(Log)-strlen(Log), "\n  TS: SubtitlesPID=%hu", PID);
+              printf("\n  TS: SubtitlesPID=%hu", PID);
               PID = 0;
               break;
             }
@@ -332,7 +339,7 @@ bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
 
   if(NrContinuityPIDs < MAXCONTINUITYPIDS && TeletextPID != 0xffff)  ContinuityPIDs[NrContinuityPIDs++] = TeletextPID;
   if(NrContinuityPIDs < MAXCONTINUITYPIDS)                           ContinuityPIDs[NrContinuityPIDs++] = 0x12;
-  printf("%s\n", Log);
+  printf("\n");
 
 //  isHDVideo = HDFound;
 
@@ -384,16 +391,26 @@ static bool AnalyseEIT(byte *Buffer, word ServiceID, TYPE_RecHeader_TMSS *RecInf
   tTSDesc              *Desc = NULL;
   tShortEvtDesc        *ShortDesc = NULL;
   tExtEvtDesc          *ExtDesc = NULL;
-  int                   SectionLength, DescriptorLoopLen, p;
+//  char                 *ExtEPGText = NULL;
+  int                   ExtEPGTextLen = 0, SectionLength, DescriptorLoopLen, p;
   word                  EventID;
 
   TRACEENTER;
 
   if ((EIT->TableID == TABLE_EIT) && ((EIT->ServiceID1 * 256 | EIT->ServiceID2) == ServiceID))
   {
+    if (!(ExtEPGText = (char*) malloc(EPGBUFFERSIZE)))
+    {
+      printf("Could not allocate memory for ExtEPGText.\n");
+      TRACEEXIT;
+      return FALSE;
+    }
+
     memset(RecInf->EventInfo.EventNameDescription, 0, sizeof(RecInf->EventInfo.EventNameDescription));
     memset(RecInf->ExtEventInfo.Text, 0, sizeof(RecInf->ExtEventInfo.Text));
+//    memset(ExtEPGText, 0, EPGBUFFERSIZE);
     RecInf->ExtEventInfo.TextLength = 0;
+    ExtEPGText[0] = '\0';
 
     SectionLength = EIT->SectionLen1 * 256 | EIT->SectionLen2;
     SectionLength -= (sizeof(tTSEIT) - 3);
@@ -428,11 +445,11 @@ static bool AnalyseEIT(byte *Buffer, word ServiceID, TYPE_RecHeader_TMSS *RecInf
             RecInf->EventInfo.DurationMin = BCD2BIN(Event->DurationSec[1]);
             RecInf->EventInfo.EndTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, RecInf->EventInfo.DurationHour * 3600 + RecInf->EventInfo.DurationMin * 60);
 //            StartTimeUnix = 86400*((RecInf->EventInfo.StartTime>>16) - 40587) + 3600*BCD2BIN(Event->StartTime[2]) + 60*BCD2BIN(Event->StartTime[3]);
-            StartTimeUnix = TF2UnixTime(RecInf->EventInfo.StartTime, 0);
-printf("  TS: EvtStart  = %s (UTC)\n", TimeStr(&StartTimeUnix));
+            StartTimeUnix = TF2UnixTime(RecInf->EventInfo.StartTime, 0, TRUE);
+printf("  TS: EvtStart  = %s (UTC)\n", TimeStr_UTC(&StartTimeUnix));
 
             NameLen = ShortDesc->EvtNameLen;
-            TextLen = min(Buffer[p + sizeof(tShortEvtDesc) + NameLen], (byte)sizeof(RecInf->EventInfo.EventNameDescription) - NameLen - 1);
+            TextLen = min(Buffer[p + sizeof(tShortEvtDesc) + NameLen], (byte)(sizeof(RecInf->EventInfo.EventNameDescription) - NameLen - 1));
             RecInf->EventInfo.EventNameLength = NameLen;
             strncpy(RecInf->EventInfo.EventNameDescription, (char*)&Buffer[p + sizeof(tShortEvtDesc)], NameLen);
 printf("  TS: EventName = %s\n", RecInf->EventInfo.EventNameDescription);
@@ -449,23 +466,43 @@ printf("  TS: EventDesc = %s\n", &RecInf->EventInfo.EventNameDescription[NameLen
             ExtDesc = (tExtEvtDesc*) Desc;
             RecInf->ExtEventInfo.ServiceID = ServiceID;
 //            RecInf->ExtEventInfo.EventID = EventID;
-            if ((RecInf->ExtEventInfo.TextLength > 0) && (ExtDesc->ItemDesc < 0x20))
+            if ((ExtEPGTextLen > 0) && (ExtDesc->ItemDesc < 0x20))
             {
-              strncpy(&RecInf->ExtEventInfo.Text[RecInf->ExtEventInfo.TextLength], (&ExtDesc->ItemDesc) + 1, ExtDesc->ItemDescLen - 1);
-              RecInf->ExtEventInfo.TextLength += ExtDesc->ItemDescLen - 1;
+              if (ExtEPGTextLen < EPGBUFFERSIZE - 1)
+              {
+                strncpy(&ExtEPGText[ExtEPGTextLen], (&ExtDesc->ItemDesc) + 1, min(ExtDesc->ItemDescLen - 1, EPGBUFFERSIZE - ExtEPGTextLen - 1));
+                ExtEPGTextLen = min(ExtEPGTextLen + ExtDesc->ItemDescLen - 1, EPGBUFFERSIZE - 1);
+              }
             }
             else
             {
-              strncpy(&RecInf->ExtEventInfo.Text[RecInf->ExtEventInfo.TextLength], &ExtDesc->ItemDesc, ExtDesc->ItemDescLen);
-              RecInf->ExtEventInfo.TextLength += ExtDesc->ItemDescLen;
+              strncpy(&ExtEPGText[ExtEPGTextLen], &ExtDesc->ItemDesc, min(ExtDesc->ItemDescLen, EPGBUFFERSIZE - ExtEPGTextLen - 1));
+              ExtEPGTextLen = min(ExtEPGTextLen + ExtDesc->ItemDescLen, EPGBUFFERSIZE - 1);
             }
-printf("  TS: ExtEvent  = %s\n", RecInf->ExtEventInfo.Text);
+            ExtEPGText[ExtEPGTextLen] = '\0';
           }
 
           SectionLength -= (Desc->DescrLength + sizeof(tTSDesc));
           DescriptorLoopLen -= (Desc->DescrLength + sizeof(tTSDesc));
           p += (Desc->DescrLength + sizeof(tTSDesc));
         }
+        strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, min(ExtEPGTextLen, (int)sizeof(RecInf->ExtEventInfo.Text)));
+        RecInf->ExtEventInfo.TextLength = ExtEPGTextLen;
+printf("\n  TS: EPGExtEvent  = %s\n", ExtEPGText);
+
+        if (DoInfoOnly)
+        {
+          char *c;
+
+          // Ersetze eventuelles '\n', '\t' im Output
+          for (c = ExtEPGText; *c != '\0'; c++)
+          {
+            if (*c == '\n') *c = 0x8A;
+            if (*c == '\t') *c = ' ';
+          }
+        }
+        else
+          free(ExtEPGText);
 
         TRACEEXIT;
         return TRUE;
@@ -603,8 +640,8 @@ static bool AnalyseTtx(byte *PSBuffer, tPVRTime *const TtxTime, byte *const TtxT
             }
 
 printf("  TS: Teletext Programme Identification Data: '%s'\n", programme);
-DisplayTime = TF2UnixTime(*TtxTime, *TtxTimeSec);
-printf("  TS: Teletext date: %s (GMT%+d)\n", TimeStr(&DisplayTime), -*TtxTimeZone/3600);
+DisplayTime = TF2UnixTime(*TtxTime, *TtxTimeSec, TRUE);
+printf("  TS: Teletext date: %s (GMT%+d)\n", TimeStr_UTC(&DisplayTime), -*TtxTimeZone/3600);
 //printf("  TS: Teletext date: mjd=%u, %02hhu:%02hhu:%02hhu\n", mjd, localH, localM, localS);
             TRACEEXIT;
             return TRUE;
@@ -628,9 +665,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   tPVRTime              FileTimeStamp, TtxTime = 0;
   byte                  FileTimeSec, TtxTimeSec = 0;
   int                   TtxTimeZone = 0;
-  long long             FirstPCR = 0, LastPCR = 0;
   dword                 FirstPCRms = 0, LastPCRms = 0, TtxPCR = 0, dPCR = 0;
-  int                   Offset, ReadBytes, i;
+  int                   Offset, ReadBytes, Durchlauf, i;
   bool                  EITOK = FALSE, SDTOK = FALSE, TtxFound = FALSE, TtxOK = FALSE;
   time_t                StartTimeUnix;
   byte                 *p;
@@ -657,7 +693,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   {
     struct stat64 statbuf;
     fstat64(fileno(fIn), &statbuf);
-    FileTimeStamp = Unix2TFTime(statbuf.st_mtime, &FileTimeSec);
+    FileTimeStamp = Unix2TFTime(statbuf.st_mtime, &FileTimeSec, FALSE);
   }
 
   //Spezial-Anpassung, um Medion-PES (EPG und Teletext) auszulesen
@@ -677,7 +713,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             p++;
           if (GetPTS(&Buffer[p], NULL, &FirstPCRms) && (FirstPCRms != 0))
           {
-            FirstPCR = (long long)FirstPCRms * 600;
+            FirstFilePCR = (long long)FirstPCRms * 600;
             break;
           }
           p++;
@@ -701,7 +737,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           while ((p < RECBUFFERENTRIES*100) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1))
             p++;
           if (GetPTS(&Buffer[p], NULL, &LastPCRms) && (LastPCRms != 0))
-            LastPCR = (long long)LastPCRms * 600;
+            LastFilePCR = (long long)LastPCRms * 600;
           p++;
         }
       }
@@ -747,7 +783,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       if (fread(Buffer, 1, 16384, fMDIn) > 0)
       {
         byte *p = Buffer;
-        dword PCRDuration = DeltaPCR((dword)(FirstPCR / 27000), (dword)(LastPCR / 27000)) / 1000;
+        dword PCRDuration = DeltaPCR((dword)(FirstFilePCR / 27000), (dword)(LastFilePCR / 27000)) / 1000;
         dword MidTimeUTC = AddTimeSec(TtxTime, TtxTimeSec, NULL, TtxTimeZone + PCRDuration/2);
 
         while ((p - Buffer < 16380) && (*(int*)p == 0x12345678))
@@ -807,80 +843,92 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           else break;
         }
         //Find the first PCR (for duration calculation)
-        if (GetPCR(&p[PACKETOFFSET], &FirstPCR) && FirstPCR != 0)
+        if (GetPCR(&p[PACKETOFFSET], &FirstFilePCR) && FirstFilePCR != 0)
           break;
         p += PACKETSIZE;
       }
     }
 
 
-    // Springe in die Mitte der Aufnahme (für Medion-Analyse mit PAT/PMT nur am Start, die folgenden 13 Zeilen auskommentieren [und Z.886 auf 0 setzen -> nicht mehr nötig(?)]
-    if (HumaxSource)
-      FilePos = ((RecFileSize/2)/HumaxHeaderIntervall * HumaxHeaderIntervall);
-    else
-      FilePos = ((RecFileSize/2)/PACKETSIZE * PACKETSIZE);
-    fseeko64(fIn, FilePos, SEEK_SET);
-
-    //Read RECBUFFERENTRIES TS pakets for analysis
-    ReadBytes = (int)fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn) * PACKETSIZE;
-    if(ReadBytes < RECBUFFERENTRIES * PACKETSIZE)
+    for (Durchlauf = 0; Durchlauf <= 1; Durchlauf++)
     {
-      printf("  Failed to read %d TS packets from the middle.\n", RECBUFFERENTRIES);
-      free(Buffer);
-      TRACEEXIT;
-      return FALSE;
-    }
-
-    Offset = FindNextPacketStart(Buffer, ReadBytes);
-    if (Offset >= 0)
-    {
-      if (!HumaxSource)
+      if (Durchlauf == 0)
       {
-        //Find a PMT packet to get its PID
-        p = &Buffer[Offset + PACKETOFFSET];
+        // Springe in die Mitte der Aufnahme (für Medion-Analyse mit PAT/PMT nur am Start, die folgenden 13 Zeilen auskommentieren [und die Zeile "fseeko64(fIn, FilePos, SEEK_SET)" auf 0 setzen -> nicht mehr nötig(?)])
+        if (HumaxSource)
+          FilePos = ((RecFileSize/2)/HumaxHeaderIntervall * HumaxHeaderIntervall);
+        else
+          FilePos = ((RecFileSize/2)/PACKETSIZE * PACKETSIZE);
+        fseeko64(fIn, FilePos, SEEK_SET);
+      }
+      else if (Durchlauf == 1)
+      {
+        // Falls in der Mitte nichts gefunden -> Springe nochmal an den Anfang der Aufnahme (gestrippte Aufnahmen mit PMT/EPG nur in den ersten Paketen)
+        FilePos = 0 + Offset;
+        fseeko64(fIn, FilePos, SEEK_SET);
+      }
 
-        while (p <= &Buffer[ReadBytes-188])
+      //Read RECBUFFERENTRIES TS pakets for analysis
+      ReadBytes = (int)fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn) * PACKETSIZE;
+      if(ReadBytes < RECBUFFERENTRIES * PACKETSIZE)
+      {
+        printf("  Failed to read %d TS packets from the middle.\n", RECBUFFERENTRIES);
+        free(Buffer);
+        TRACEEXIT;
+        return FALSE;
+      }
+
+      Offset = FindNextPacketStart(Buffer, ReadBytes);
+      if (Offset >= 0)
+      {
+        if (!HumaxSource)
         {
-          bool ok = TRUE;
-
-          for (i = 0; i < (int)sizeof(PMTMask); i++)
-            if((p[i] & ANDMask[i]) != PMTMask[i])
-             { ok = FALSE;  break; }
-
-          if (ok)
-           { PMTPID = ((p[1] << 8) | p[2]) & 0x1fff;  break; }
-
-          p += PACKETSIZE;
-        }
-
-        if(PMTPID)
-        {
-          RecInf->ServiceInfo.PMTPID = PMTPID;
-          printf("  TS: PMTPID=%hu", PMTPID);
-
-          //Analyse the PMT
-          PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE);
-
+          //Find a PMT packet to get its PID
           p = &Buffer[Offset + PACKETOFFSET];
+
           while (p <= &Buffer[ReadBytes-188])
           {
-            PSBuffer_ProcessTSPacket(&PMTBuffer, (tTSPacket*)p);
-            if (PMTBuffer.ValidBuffer != LastPMTBuffer)
-            {
-              if(!PMTBuffer.ErrorFlag) break;
-              PMTBuffer.ErrorFlag = FALSE;
-              LastPMTBuffer = PMTBuffer.ValidBuffer;
-            }
+            bool ok = TRUE;
+
+            for (i = 0; i < (int)sizeof(PMTMask); i++)
+              if((p[i] & ANDMask[i]) != PMTMask[i])
+               { ok = FALSE;  break; }
+
+            if (ok)
+             { PMTPID = ((p[1] << 8) | p[2]) & 0x1fff;  break; }
+
             p += PACKETSIZE;
           }
 
-          AnalysePMT(PMTBuffer.Buffer1, /*PMTBuffer.ValidBufLen,*/ RecInf);
-          PSBuffer_Reset(&PMTBuffer);
-        }
-        else
-        {
-          printf("  Failed to locate a PMT packet.\n");
-          ret = FALSE;
+          if(PMTPID)
+          {
+            RecInf->ServiceInfo.PMTPID = PMTPID;
+            printf("  TS: PMTPID=%hu", PMTPID);
+
+            //Analyse the PMT
+            PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE);
+
+            p = &Buffer[Offset + PACKETOFFSET];
+            while (p <= &Buffer[ReadBytes-188])
+            {
+              PSBuffer_ProcessTSPacket(&PMTBuffer, (tTSPacket*)p);
+              if (PMTBuffer.ValidBuffer != LastPMTBuffer)
+              {
+                if(!PMTBuffer.ErrorFlag) break;
+                PMTBuffer.ErrorFlag = FALSE;
+                LastPMTBuffer = PMTBuffer.ValidBuffer;
+              }
+              p += PACKETSIZE;
+            }
+
+            AnalysePMT(PMTBuffer.Buffer1, /*PMTBuffer.ValidBufLen,*/ RecInf);
+            PSBuffer_Reset(&PMTBuffer);
+          }
+          else
+          {
+            printf("  Failed to locate a PMT packet (%d/2).\n", Durchlauf + 1);
+            ret = FALSE;
+          }
         }
       }
 
@@ -932,7 +980,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                 if(TtxBuffer.ValidBuffer != LastTtxBuffer)
                 {
                   byte *pBuffer = (TtxBuffer.ValidBuffer==1) ? TtxBuffer.Buffer1 : TtxBuffer.Buffer2;
-                  TtxFound = !TtxBuffer.ErrorFlag && AnalyseTtx(pBuffer, &TtxTime, &TtxTimeSec, &TtxTimeZone, (SDTOK ? NULL : RecInf->ServiceInfo.ServiceName), sizeof(RecInf->ServiceInfo.ServiceName));
+// IDEE: Hier vielleicht den Teletext-String in EventNameDescription schreiben, FALLS Länge größer ist als EventNameLength und !EITOK
+                  TtxFound = !TtxBuffer.ErrorFlag && AnalyseTtx(pBuffer, &TtxTime, &TtxTimeSec, &TtxTimeZone, ((SDTOK || (HumaxSource && *RecInf->ServiceInfo.ServiceName)) ? NULL : RecInf->ServiceInfo.ServiceName), sizeof(RecInf->ServiceInfo.ServiceName));
                   TtxBuffer.ErrorFlag = FALSE;
                   LastTtxBuffer = TtxBuffer.ValidBuffer;
                 }
@@ -959,6 +1008,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         if(TeletextPID != 0xffff)
           PSBuffer_Reset(&TtxBuffer);
       }
+
+      if(PMTPID || (EITOK && SDTOK && (TtxOK || TeletextPID == 0xffff))) break;
     }
 
 
@@ -987,7 +1038,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           else break;
         }
         //Find the last PCR
-        GetPCR(&p[PACKETOFFSET], &LastPCR);
+        GetPCR(&p[PACKETOFFSET], &LastFilePCR);
         p += PACKETSIZE;
       }
     }
@@ -996,9 +1047,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   if (EITOK)
   {
     int time_offset = 0;
-    struct tm *timeinfo; bool isdst;
-
-    StartTimeUnix = TF2UnixTime(RecInf->EventInfo.StartTime, 0);
+    StartTimeUnix = TF2UnixTime(RecInf->EventInfo.StartTime, 0, TRUE);
 #ifndef LINUX
     {
       struct tm *timeinfo;
@@ -1006,13 +1055,14 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       time_offset = -1*timezone + 3600*timeinfo->tm_isdst;
     }
 #endif
-    RecInf->EventInfo.StartTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, (TtxOK ? -1*TtxTimeZone : time_offset));  // GMT+1
-    RecInf->EventInfo.EndTime   = AddTimeSec(RecInf->EventInfo.EndTime,   0, NULL, (TtxOK ? -1*TtxTimeZone : time_offset));
-    StartTimeUnix = TF2UnixTime(RecInf->EventInfo.StartTime, 0);
-printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStr(&StartTimeUnix), (TtxOK ? -1*TtxTimeZone : time_offset));
+    // EPG Event Start- und EndTime an lokale Zeitzone anpassen (-> nicht nötig! EPG wird immer in UTC gespeichert!)
+//    RecInf->EventInfo.StartTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, (TtxOK ? -1*TtxTimeZone : time_offset));  // GMT+1
+//    RecInf->EventInfo.EndTime   = AddTimeSec(RecInf->EventInfo.EndTime,   0, NULL, (TtxOK ? -1*TtxTimeZone : time_offset));
+    StartTimeUnix = TF2UnixTime(RecInf->EventInfo.StartTime, 0, TRUE);
+printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStr(&StartTimeUnix), (TtxOK ? -1*TtxTimeZone : time_offset) / 3600);
   }
 
-  if(!FirstPCR || !LastPCR)
+  if(!FirstFilePCR || !LastFilePCR)
   {
     printf("  Duration calculation failed (missing PCR). Using 120 minutes.\n");
     RecInf->RecHeaderInfo.DurationMin = 120;
@@ -1020,13 +1070,13 @@ printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStr(&StartTimeUnix), (TtxOK ? -1*T
   }
   else
   {
-    FirstPCRms = (dword)(FirstPCR / 27000);
-    LastPCRms = (dword)(LastPCR / 27000);
+    FirstPCRms = (dword)(FirstFilePCR / 27000);
+    LastPCRms = (dword)(LastFilePCR / 27000);
     dPCR = DeltaPCR(FirstPCRms, LastPCRms);
     RecInf->RecHeaderInfo.DurationMin = (int)(dPCR / 60000);
     RecInf->RecHeaderInfo.DurationSec = (dPCR / 1000) % 60;
   }
-printf("  TS: FirstPCR  = %lld (%1.1u:%2.2u:%2.2u,%3.3u), Last: %lld (%1.1u:%2.2u:%2.2u,%3.3u)\n", FirstPCR, (FirstPCRms/3600000), (FirstPCRms/60000 % 60), (FirstPCRms/1000 % 60), (FirstPCRms % 1000), LastPCR, (LastPCRms/3600000), (LastPCRms/60000 % 60), (LastPCRms/1000 % 60), (LastPCRms % 1000));
+printf("  TS: FirstPCR  = %lld (%1.1u:%2.2u:%2.2u,%3.3u), Last: %lld (%1.1u:%2.2u:%2.2u,%3.3u)\n", FirstFilePCR, (FirstPCRms/3600000), (FirstPCRms/60000 % 60), (FirstPCRms/1000 % 60), (FirstPCRms % 1000), LastFilePCR, (LastPCRms/3600000), (LastPCRms/60000 % 60), (LastPCRms/1000 % 60), (LastPCRms % 1000));
 printf("  TS: Duration  = %2.2d min %2.2d sec\n", RecInf->RecHeaderInfo.DurationMin, RecInf->RecHeaderInfo.DurationSec);
 
   if(TtxTime && TtxPCR)
@@ -1043,7 +1093,7 @@ printf("  TS: Duration  = %2.2d min %2.2d sec\n", RecInf->RecHeaderInfo.Duration
       RecInf->RecHeaderInfo.StartTimeSec = FileTimeSec;
     }
   }
-  StartTimeUnix = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec);
+  StartTimeUnix = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec, FALSE);
 printf("  TS: StartTime = %s\n", (TimeStr(&StartTimeUnix)));
 
   free(Buffer);

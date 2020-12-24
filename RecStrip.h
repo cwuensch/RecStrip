@@ -13,6 +13,7 @@
 #define RECBUFFERENTRIES          5000
 #define PENDINGBUFSIZE           65536
 #define VIDEOBUFSIZE           2097152
+#define CONT_MAXDIST             38400
 
 //audio & video format
 typedef enum
@@ -64,7 +65,6 @@ typedef enum
 #define TRACEENTER // printf("Start %s \n", (char*)__FUNCTION__)
 #define TRACEEXIT  // printf("End %s \n", (char*)__FUNCTION__)
 
-
 typedef enum
 {
   ST_UNKNOWN,
@@ -110,6 +110,14 @@ typedef struct
   char                 *pCaption;
 } tSegmentMarker2;
 
+typedef struct
+{
+  word PID;
+  long long int Position;
+  byte CountIs;
+  byte CountShould;
+} tContinuityError;
+
 
 // Globale Variablen
 extern char             RecFileIn[], RecFileOut[], MDEpgName[], MDTtxName[];
@@ -132,9 +140,11 @@ extern int              ActiveSegment;
 extern dword            InfDuration, NewDurationMS;
 extern int              NewStartTimeOffset;
 extern long long        CurrentPosition;
+extern char            *ExtEPGText;
 
 
 bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize);
+void AddContinuityError(word CurPID, long long CurrentPosition, byte CountShould, byte CountIs);
 bool isPacketStart(const byte PacketArray[], int ArrayLen);        // braucht 9*192+5 = 1733 / 3*192+5 = 581
 int  FindNextPacketStart(const byte PacketArray[], int ArrayLen);  // braucht 20*192+1733 = 5573 / 1185+1733 = 2981
 //int  GetPacketSize(FILE *RecFile, int *OutOffset);

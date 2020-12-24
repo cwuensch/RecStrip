@@ -322,7 +322,8 @@ int ProcessTSPacket(unsigned char *Packet, long long FilePosition)
     {
 //      if (!NoContinuityCheck)
       {
-        printf("cNaluDumper: TS continuity mismatch (PID=%hu, pos=%lld, expect=%hhu, found=%hhu, Offset=%d)\n", VideoPID, FilePosition, NewContinuityInput, ContinuityInput, ContinuityOffset);
+        fprintf(stderr, "cNaluDumper: TS continuity mismatch (PID=%hu, pos=%lld, expect=%hhu, found=%hhu, Offset=%d)\n", VideoPID, FilePosition, NewContinuityInput, ContinuityInput, ContinuityOffset);
+        AddContinuityError(VideoPID, FilePosition, NewContinuityInput, ContinuityInput);
         NaluFillState = NALU_INIT;  // experimentell! -> sollte dann auch nach Cut gesetzt werden?
         DropAllPayload = TRUE;
         SetFirstPacketAfterBreak();

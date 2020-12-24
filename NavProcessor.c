@@ -691,12 +691,14 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
                   // sicherstellen, dass Timems monoton ansteigt
                   if( ((int)(navHD.Timems - LastTimems)) >= 0)  LastTimems = navHD.Timems;
                   else  navHD.Timems = LastTimems;
+#ifdef _DEBUG
 {
   long long RefPictureHeaderOffset = dbg_NavPictureHeaderOffset - dbg_SEIPositionOffset;
   if (fNavIn && (long long)SEI != RefPictureHeaderOffset && dbg_CurrentPosition/PACKETSIZE != dbg_SEIFound)
-    printf("DEBUG: Problem! pos=%lld, offset=%lld, Orig-Nav-PHOffset=%lld, Rebuilt-Nav-PHOffset=%lld, Differenz= %lld * %hhu + %lld\n", dbg_CurrentPosition, dbg_SEIPositionOffset, dbg_NavPictureHeaderOffset, SEI, ((long long int)(SEI-RefPictureHeaderOffset))/PACKETSIZE, PACKETSIZE, ((long long int)(SEI-RefPictureHeaderOffset))%PACKETSIZE);
+    fprintf(stderr, "DEBUG: Problem! pos=%lld, offset=%lld, Orig-Nav-PHOffset=%lld, Rebuilt-Nav-PHOffset=%lld, Differenz= %lld * %hhu + %lld\n", dbg_CurrentPosition, dbg_SEIPositionOffset, dbg_NavPictureHeaderOffset, SEI, ((long long int)(SEI-RefPictureHeaderOffset))/PACKETSIZE, PACKETSIZE, ((long long int)(SEI-RefPictureHeaderOffset))%PACKETSIZE);
 //printf("%lld: fwrite: SEI=%lld, nav=%lld\n", dbg_CurrentPosition/PACKETSIZE, SEI, NavPictureHeaderOffset);
 }
+#endif
                   // Write the nav record
                   if (fNavOut && !fwrite(&navHD, sizeof(tnavHD), 1, fNavOut))
                   {
@@ -878,11 +880,13 @@ static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
         // sicherstellen, dass Timems monoton ansteigt
         if( ((int)(navSD.Timems - LastTimems)) >= 0)  LastTimems = navSD.Timems;
         else  navSD.Timems = LastTimems;
+#ifdef _DEBUG
 {
   unsigned long long RefPictureHeaderOffset = dbg_NavPictureHeaderOffset - dbg_HeaderPosOffset;
   if (fNavIn && LastPictureHeader != RefPictureHeaderOffset)
-    printf("DEBUG: Problem! pos=%lld, offset=%lld, Orig-Nav-PHOffset=%lld, Rebuilt-Nav-PHOffset=%lld, Differenz= %lld * %hhu + %lld\n", dbg_CurrentPosition, dbg_HeaderPosOffset, dbg_NavPictureHeaderOffset, LastPictureHeader, ((long long int)(LastPictureHeader-RefPictureHeaderOffset))/PACKETSIZE, PACKETSIZE, ((long long int)(LastPictureHeader-RefPictureHeaderOffset))%PACKETSIZE);
+    fprintf(stderr, "DEBUG: Problem! pos=%lld, offset=%lld, Orig-Nav-PHOffset=%lld, Rebuilt-Nav-PHOffset=%lld, Differenz= %lld * %hhu + %lld\n", dbg_CurrentPosition, dbg_HeaderPosOffset, dbg_NavPictureHeaderOffset, LastPictureHeader, ((long long int)(LastPictureHeader-RefPictureHeaderOffset))/PACKETSIZE, PACKETSIZE, ((long long int)(LastPictureHeader-RefPictureHeaderOffset))%PACKETSIZE);
 }
+#endif
         // Write the nav record
         if (fNavOut && !fwrite(&navSD, sizeof(tnavSD), 1, fNavOut))
         {

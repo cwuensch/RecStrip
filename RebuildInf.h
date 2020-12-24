@@ -184,9 +184,13 @@ typedef struct
 } tTSDesc;
 
 
-//extern FILE            *fIn;  // dirty Hack
+#define                 EPGBUFFERSIZE 4097
 
-time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec);
+//extern FILE            *fIn;  // dirty Hack
+extern long long        FirstFilePCR, LastFilePCR;
+
+time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec, bool isUTC);
+tPVRTime Unix2TFTime(time_t UnixTimeStamp, byte *const outSec, bool toUTC);
 tPVRTime AddTimeSec(tPVRTime pvrTime, byte pvrTimeSec, byte *const outSec, int addSeconds);
 void InitInfStruct(TYPE_RecHeader_TMSS *RecInf);
 bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf);
