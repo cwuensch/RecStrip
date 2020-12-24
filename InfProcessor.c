@@ -256,6 +256,7 @@ bool LoadInfFile(char *AbsInfName, bool FirstTime)
     if(!RebuildInf) printf("  Cannot open inf file %s.\n", AbsInfName);
     if (AbsInfName) AbsInfName[0] = '\0';
     SystemType = ST_TMSS;
+//    BookmarkInfo = &(((TYPE_RecHeader_TMSS*)InfBuffer)->BookmarkInfo);
   }
 
   //Check for correct inf file header
@@ -311,10 +312,6 @@ bool LoadInfFile(char *AbsInfName, bool FirstTime)
     p = RecHeader->ExtEventInfo.TextLength;
     if (p < sizeof(RecHeader->ExtEventInfo.Text))
       memset(&RecHeader->ExtEventInfo.Text[p], 0, sizeof(RecHeader->ExtEventInfo.Text) - p);
-
-    // ggf. Itemized Items in ExtEventText entfernen
-    memset(OldEventText, 0, sizeof(OldEventText));
-    RemoveItemizedText(RecHeader, OldEventText, sizeof(OldEventText));
 
     // Prüfe auf verschlüsselte Aufnahme
     if (((RecHeaderInfo->CryptFlag & 1) != 0) && !*RecFileOut)
@@ -384,6 +381,10 @@ if (RecHeaderInfo->Reserved != 0)
 
 //  if (Result)
   {
+    // ggf. Itemized Items in ExtEventText entfernen
+    memset(OldEventText, 0, sizeof(OldEventText));
+    RemoveItemizedText(RecHeader, OldEventText, sizeof(OldEventText));
+
     if(FirstTime)
     {
       if (abs(RecHeaderInfo->StartTime - OrigStartTime) > 1)

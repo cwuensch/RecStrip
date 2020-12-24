@@ -13,6 +13,7 @@ RecStrip 2.7:  NEU:
 
                BUGFIXES:
                  - EPG-Event wird in UTC statt lokaler Zeitzone in der inf gespeichert
+                 - Bei Szenen kopieren, RebuildInf und vorhandenem Szenen-Text wurde ExtEventText nicht geschrieben
                  - RebuildInf: falsche Ermittlung der Länge von EventNameDescription
                  - RebuildInf: möglicher Speicherüberlauf beim Schreiben von EPG ExtEventText in die inf(!)
 
