@@ -4,7 +4,7 @@
 source /pkgscripts/include/pkg_util.sh
 
 package="RecStrip"
-version="3.0"
+version="3.0a"
 displayname="RecStrip package"
 maintainer="Christian Wünsch"
 arch="$(pkg_get_unified_platform)"

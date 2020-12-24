@@ -1193,7 +1193,7 @@ bool CloseNavFileOut(void)
 }
 
 
-tTimeStamp2* NavLoad(const char *AbsInRec, int *const OutNrTimeStamps)
+tTimeStamp2* NavLoad(const char *AbsInRec, int *const OutNrTimeStamps, byte PacketSize)
 {
   char                  AbsFileName[FBLIB_DIR_SIZE];
   FILE                 *fNav = NULL;
@@ -1252,7 +1252,7 @@ tTimeStamp2* NavLoad(const char *AbsInRec, int *const OutNrTimeStamps)
       {
 TAP_PrintNet("Achtung! I-Frame an %llu hat denselben Timestamp wie sein Vorgänger!\n", AbsPos);
       } */
-      TimeStampBuffer[NrTimeStamps].Position  = (AbsPos / PACKETSIZE) * PACKETSIZE;
+      TimeStampBuffer[NrTimeStamps].Position  = (AbsPos / PacketSize) * PacketSize;
       TimeStampBuffer[NrTimeStamps].Timems    = CurNavRec->Timems;
 
 /*        if (CurNavRec->Timems >= FirstTime)

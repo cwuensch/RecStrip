@@ -1,6 +1,6 @@
 ### Needed key ###
 package="RecStrip"
-version="3.0"
+version="3.0a"
 description="RecStrip enables conversion, examination and size reduction of Topfield TMS recordings."
 maintainer="Christian Wünsch"
 arch="rtd1296"

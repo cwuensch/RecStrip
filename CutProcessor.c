@@ -66,7 +66,7 @@ static dword TimeStringToMSec(char *const TimeString)
   return ret;
 }
 
-static void ResetSegmentMarkers()
+void ResetSegmentMarkers(void)
 {
   int i;
   TRACEENTER;
@@ -321,7 +321,7 @@ static bool CutDecodeFromBM(dword Bookmarks[])
   if(End)
   {
     int NrTimeStamps;
-    tTimeStamp2 *TimeStamps = NavLoad(RecFileIn, &NrTimeStamps);
+    tTimeStamp2 *TimeStamps = NavLoad(RecFileIn, &NrTimeStamps, PACKETSIZE);
 
     ret = TRUE;
     NrSegmentMarker = Bookmarks[End - 1];
@@ -356,7 +356,7 @@ void CutImportFromBM(const char *RecFile, dword Bookmarks[], dword NrBookmarks)
   if(NrBookmarks > 0)
   {
     int NrTimeStamps;
-    tTimeStamp2 *TimeStamps = NavLoad(RecFile, &NrTimeStamps);
+    tTimeStamp2 *TimeStamps = NavLoad(RecFile, &NrTimeStamps, PACKETSIZE);
 
     NrSegmentMarker = NrBookmarks + 2;
     if (NrSegmentMarker > NRSEGMENTMARKER) NrSegmentMarker = NRSEGMENTMARKER;
@@ -375,6 +375,107 @@ void CutImportFromBM(const char *RecFile, dword Bookmarks[], dword NrBookmarks)
     if(TimeStamps) free(TimeStamps);
   }
   TRACEEXIT;
+}
+
+/*void CutExportToBM(TYPE_Bookmark_Info *BookmarkInfo)
+{
+  int                   i;
+  TRACEENTER;
+
+  if (BookmarkInfo && NrSegmentMarker > 2)
+  {
+    // first, delete all present bookmarks
+    while (BookmarkInfo->NrBookmarks > 0)
+      BookmarkInfo->Bookmarks[--BookmarkInfo->NrBookmarks] = 0;
+
+    // second, add a bookmark for each SegmentMarker
+    for(i = 1; i <= min(NrSegmentMarker-2, 48); i++)
+      BookmarkInfo->Bookmarks[BookmarkInfo->NrBookmarks++] = CalcBlockSize(SegmentMarker[i].Position);
+  }
+  TRACEEXIT;
+}*/
+
+static bool CutImportFromTimeStamps(int Version, byte PacketSize)
+{
+  tTimeStamp2      *TimeStamps = NULL;
+  int               NrTimeStamps, i;
+  bool              ret = FALSE;
+
+  TRACEENTER;
+
+  // Sonderfunktion: Import von Cut-Files mit unpassender Aufnahme-Größe
+  if (NrSegmentMarker > 2)
+    TimeStamps = NavLoad(RecFileOut, &NrTimeStamps, PacketSize);
+
+  if (TimeStamps != NULL)
+  {
+    char            curTimeStr[16];
+    dword           Offsetms;
+    tTimeStamp2    *CurTimeStamp;
+
+    printf("  CutFileLoad: Importing timestamps only, recalculating block numbers...\n");
+    SegmentMarker[0].Position = 0;
+    SegmentMarker[0].Timems = 0;  // NavGetBlockTimeStamp(0);
+//        SegmentMarker[0].Selected = FALSE;
+    if (SegmentMarker[NrSegmentMarker-1].Position == (long long)RecFileSize)
+      SegmentMarker[NrSegmentMarker - 1].Position = 0;
+
+    Offsetms = 0;
+    CurTimeStamp = TimeStamps;
+    for (i = 1; i <= NrSegmentMarker-2; i++)
+    {
+      if (Version == 1)
+        SegmentMarker[i].Timems = SegmentMarker[i].Timems * 1000;
+
+      // Wenn ein Bookmark gesetzt ist, dann verschiebe die SegmentMarker so, dass der erste auf dem Bookmark steht
+      if (i == 1 && BookmarkInfo && BookmarkInfo->NrBookmarks > 0)
+      {
+        Offsetms = NavGetPosTimeStamp(TimeStamps, NrTimeStamps, BookmarkInfo->Bookmarks[0] * 9024LL) - SegmentMarker[1].Timems;
+        MSecToTimeString(SegmentMarker[i].Timems + Offsetms, curTimeStr);
+        printf("  Bookmark found! - First segment marker will be moved to time %s. (Offset=%d ms)\n", curTimeStr, (int)Offsetms);
+      }
+
+      MSecToTimeString(SegmentMarker[i].Timems, curTimeStr);
+      printf("  %2u.)  oldTimeStamp=%s   oldPos=%lld", i, curTimeStr, SegmentMarker[i].Position);
+      if (Offsetms > 0)
+      {
+        SegmentMarker[i].Timems += Offsetms;
+        MSecToTimeString(SegmentMarker[i].Timems, curTimeStr);
+        printf("  -  movedTimeStamp=%s\n", curTimeStr);
+      }
+
+      if ((SegmentMarker[i].Timems <= CurTimeStamp->Timems) || (CurTimeStamp >= TimeStamps + NrTimeStamps-1))
+      {
+        DeleteSegmentMarker(i--, TRUE);
+        printf("  -->  Smaller than previous TimeStamp or end of nav reached. Deleted!\n");
+      }
+      else
+      {
+        while ((CurTimeStamp->Timems < SegmentMarker[i].Timems) && (CurTimeStamp < TimeStamps + NrTimeStamps-1))
+          CurTimeStamp++;
+        if (CurTimeStamp->Timems > SegmentMarker[i].Timems)
+          CurTimeStamp--;
+        
+        if (CurTimeStamp->Position < (long long)RecFileSize)
+        {
+          SegmentMarker[i].Position = CurTimeStamp->Position;
+          SegmentMarker[i].Timems = CurTimeStamp->Timems;  // NavGetPosTimeStamp(TimeStamps, NrTimeStamps, SegmentMarker[i].Position);
+//              SegmentMarker[i].Selected = FALSE;
+          MSecToTimeString(SegmentMarker[i].Timems, curTimeStr);
+          printf("  -->  newPos=%lld   newTimeStamp=%s\n", SegmentMarker[i].Position, curTimeStr);
+        }
+        else
+        {
+          DeleteSegmentMarker(i--, TRUE);
+          printf("  -->  TotalBlocks exceeded. Deleted!\n");
+        }
+      }
+    }
+    free(TimeStamps);
+    ret = TRUE;
+  }
+  TRACEEXIT;
+  return ret;
 }
 
 bool CutProcessor_Init(void)
@@ -451,82 +552,10 @@ bool CutFileLoad(const char *AbsCutName)
     // Check, if size of rec-File has been changed
     if (ret && (RecFileSize != SavedSize))
     {
-      tTimeStamp2      *TimeStamps = NULL;
-      int               NrTimeStamps;
-
       printf("  CutFileLoad: .cut file size mismatch!\n");
 
       // Sonderfunktion: Import von Cut-Files mit unpassender Aufnahme-Größe
-      if (NrSegmentMarker > 2)
-        TimeStamps = NavLoad(RecFileIn, &NrTimeStamps);
-
-      if (TimeStamps != NULL)
-      {
-        char            curTimeStr[16];
-        dword           Offsetms;
-        tTimeStamp2    *CurTimeStamp;
-
-        printf("  CutFileLoad: Importing timestamps only, recalculating block numbers...\n");
-        SegmentMarker[0].Position = 0;
-        SegmentMarker[0].Timems = 0;  // NavGetBlockTimeStamp(0);
-//        SegmentMarker[0].Selected = FALSE;
-        if (SegmentMarker[NrSegmentMarker-1].Position == (long long)RecFileSize)
-          SegmentMarker[NrSegmentMarker - 1].Position = 0;
-
-        Offsetms = 0;
-        CurTimeStamp = TimeStamps;
-        for (i = 1; i <= NrSegmentMarker-2; i++)
-        {
-          if (Version == 1)
-            SegmentMarker[i].Timems = SegmentMarker[i].Timems * 1000;
-
-          // Wenn ein Bookmark gesetzt ist, dann verschiebe die SegmentMarker so, dass der erste auf dem Bookmark steht
-          if (i == 1 && BookmarkInfo && BookmarkInfo->NrBookmarks > 0)
-          {
-            Offsetms = NavGetPosTimeStamp(TimeStamps, NrTimeStamps, BookmarkInfo->Bookmarks[0] * 9024LL) - SegmentMarker[1].Timems;
-            MSecToTimeString(SegmentMarker[i].Timems + Offsetms, curTimeStr);
-            printf("  Bookmark found! - First segment marker will be moved to time %s. (Offset=%d ms)\n", curTimeStr, (int)Offsetms);
-          }
-
-          MSecToTimeString(SegmentMarker[i].Timems, curTimeStr);
-          printf("  %2u.)  oldTimeStamp=%s   oldPos=%lld", i, curTimeStr, SegmentMarker[i].Position);
-          if (Offsetms > 0)
-          {
-            SegmentMarker[i].Timems += Offsetms;
-            MSecToTimeString(SegmentMarker[i].Timems, curTimeStr);
-            printf("  -  movedTimeStamp=%s\n", curTimeStr);
-          }
-
-          if ((SegmentMarker[i].Timems <= CurTimeStamp->Timems) || (CurTimeStamp >= TimeStamps + NrTimeStamps-1))
-          {
-            DeleteSegmentMarker(i--, TRUE);
-            printf("  -->  Smaller than previous TimeStamp or end of nav reached. Deleted!\n");
-          }
-          else
-          {
-            while ((CurTimeStamp->Timems < SegmentMarker[i].Timems) && (CurTimeStamp < TimeStamps + NrTimeStamps-1))
-              CurTimeStamp++;
-            if (CurTimeStamp->Timems > SegmentMarker[i].Timems)
-              CurTimeStamp--;
-        
-            if (CurTimeStamp->Position < (long long)RecFileSize)
-            {
-              SegmentMarker[i].Position = CurTimeStamp->Position;
-              SegmentMarker[i].Timems = CurTimeStamp->Timems;  // NavGetPosTimeStamp(TimeStamps, NrTimeStamps, SegmentMarker[i].Position);
-//              SegmentMarker[i].Selected = FALSE;
-              MSecToTimeString(SegmentMarker[i].Timems, curTimeStr);
-              printf("  -->  newPos=%lld   newTimeStamp=%s\n", SegmentMarker[i].Position, curTimeStr);
-            }
-            else
-            {
-              DeleteSegmentMarker(i--, TRUE);
-              printf("  -->  TotalBlocks exceeded. Deleted!\n");
-            }
-          }
-        }
-        free(TimeStamps);
-      }
-      else
+      if (!CutImportFromTimeStamps(Version, PACKETSIZE))
         ResetSegmentMarkers();
     }
   }

@@ -23,6 +23,7 @@
 #include "NavProcessor.h"
 #include "TtxProcessor.h"
 #include "HumaxHeader.h"
+#include "EycosHeader.h"
 
 /*#ifdef _WIN32
   #define timezone _timezone
@@ -658,6 +659,7 @@ printf("  TS: Teletext date: %s (GMT%+d)\n", TimeStr_UTC(&DisplayTime), -*TtxTim
 
 bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 {
+  FILE                 *fIn2 = fIn;
   tPSBuffer             PMTBuffer, EITBuffer, TtxBuffer;
   byte                 *Buffer = NULL;
   int                   LastPMTBuffer = 0, LastEITBuffer = 0, LastTtxBuffer = 0;
@@ -686,7 +688,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   }
 
   rewind(fIn);
-  if (!HumaxSource)
+  if (!HumaxSource && !EycosSource)
     InitInfStruct(RecInf);
 
   //Get the time stamp of the .rec. We assume that this is the time when the recording has finished
@@ -881,7 +883,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       Offset = FindNextPacketStart(Buffer, ReadBytes);
       if (Offset >= 0)
       {
-        if (!HumaxSource)
+        if (!HumaxSource && !EycosSource)
         {
           //Find a PMT packet to get its PID
           p = &Buffer[Offset + PACKETOFFSET];
@@ -1015,8 +1017,16 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 
     //Read the last RECBUFFERENTRIES TS pakets
 //    FilePos = FilePos + ((((RecFileSize-FilePos)/PACKETSIZE) - RECBUFFERENTRIES) * PACKETSIZE);
-    fseeko64(fIn, -RECBUFFERENTRIES * PACKETSIZE, SEEK_END);
-    ReadBytes = (int)fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn) * PACKETSIZE;
+    if (EycosSource)
+    {
+      char LastEycosPart[FBLIB_DIR_SIZE];
+      int EycosNrParts = EycosGetNrParts(RecFileIn);
+      if (EycosNrParts > 1)
+        fIn2 = fopen(EycosGetPart(LastEycosPart, RecFileIn, EycosNrParts-1), "rb");
+    }
+
+    fseeko64(fIn2, -RECBUFFERENTRIES * PACKETSIZE, SEEK_END);
+    ReadBytes = (int)fread(Buffer, PACKETSIZE, RECBUFFERENTRIES, fIn2) * PACKETSIZE;
     if(ReadBytes != RECBUFFERENTRIES * PACKETSIZE)
     {
       printf ("  Failed to read the last %d TS packets.\n", RECBUFFERENTRIES);
@@ -1042,6 +1052,9 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         p += PACKETSIZE;
       }
     }
+    
+    if (EycosSource && (fIn2 != fIn))
+      fclose(fIn2);
   }
 
   if (EITOK)
@@ -1084,7 +1097,7 @@ printf("  TS: Duration  = %2.2d min %2.2d sec\n", RecInf->RecHeaderInfo.Duration
     dPCR = DeltaPCR(FirstPCRms, TtxPCR);
     RecInf->RecHeaderInfo.StartTime = AddTimeSec(TtxTime, TtxTimeSec, &RecInf->RecHeaderInfo.StartTimeSec, -1 * (int)(dPCR/1000));
   }
-  else if (!HumaxSource)
+  else if (!HumaxSource && !EycosSource)
   {
     RecInf->RecHeaderInfo.StartTime = RecInf->EventInfo.StartTime;
     if (!RecInf->EventInfo.StartTime || (MJD(FileTimeStamp) - MJD(RecInf->RecHeaderInfo.StartTime) <= 1))
