@@ -412,7 +412,7 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPID, word Vid
 // Simple Muxer
 bool SimpleMuxer_Open(FILE *fIn, char const* PESAudName, char const* PESTtxName, char const* EITName)  // fIn ist ein PES Video Stream
 {
-  FILE *aud = NULL, *ttx = NULL, *eit = NULL;
+  FILE *aud = NULL, *ttx = NULL;  //, *eit = NULL;
   TRACEENTER;
 
   FirstRun = 2;

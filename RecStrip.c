@@ -130,6 +130,12 @@ static dword            LastPCR = 0, LastTimeStamp = 0, CurTimeStep = 1200;
 static signed char      ContinuityCtrs[MAXCONTINUITYPIDS];
 static bool             ResumeSet = FALSE;
 
+// Continuity Statistik
+static tContinuityError FileDefect[MAXCONTINUITYPIDS];
+static long long        LastContErrPos = 0;
+static int              NrContErrsInFile = 0;
+char                   *ExtEPGText = NULL;
+
 
 static bool HDD_FileExist(const char *AbsFileName)
 {
@@ -224,6 +230,68 @@ static void GetNextFreeCutName(const char *SourceFileName, char *const OutCutFil
 
 
 // ----------------------------------------------
+// *****  Statistik Continuity Errors  *****
+// ----------------------------------------------
+
+static int GetPidId(word PID)
+{
+  int i;
+  TRACEENTER;
+  for (i = 0; i < NrContinuityPIDs; i++)
+  {
+    if (ContinuityPIDs[i] == PID)
+    {
+      TRACEEXIT;
+      return i;
+    }
+  }
+  TRACEEXIT;
+  return -1;
+}
+
+static void PrintFileDefect()
+{
+  int i;
+  TRACEENTER;
+  if (FileDefect[0].PID != 0)
+  {
+    // CONTINUITY ERROR:  Nr.  Position(Prozent)  { PID;  Position }
+    printf("TS Check: Continuity Error:\t%d.\t%.2f%%", NrContErrsInFile, (double)FileDefect[0].Position*100/RecFileSize);
+    for (i = 0; i < NrContinuityPIDs; i++)
+      printf("\t%hu\t%lld", FileDefect[i].PID, FileDefect[i].Position);
+    printf("\n");
+  }
+  TRACEEXIT;
+}
+
+void AddContinuityError(word CurPID, long long CurrentPosition, byte CountShould, byte CountIs)
+{
+  int PidID;
+  TRACEENTER;
+
+  // add error to array
+  if ((PidID = GetPidId(CurPID)) >= 0)
+  {
+    if (FileDefect[PidID].PID || (LastContErrPos == 0) || (CurrentPosition - LastContErrPos > CONT_MAXDIST))
+    {
+      // neuer Fehler
+      PrintFileDefect();
+      NrContErrsInFile++;
+      memset(FileDefect, 0, MAXCONTINUITYPIDS * sizeof(tContinuityError));
+    }
+    FileDefect[PidID].PID         = CurPID;
+    FileDefect[PidID].Position    = CurrentPosition;
+    FileDefect[PidID].CountIs     = (byte) CountIs;
+    FileDefect[PidID].CountShould = (byte) CountShould;
+    LastContErrPos = CurrentPosition;
+  }
+  else
+    printf("ERROR: Too many PIDs! (cannot happen)\n");
+  TRACEEXIT;
+}
+
+
+// ----------------------------------------------
 // *****  Analyse von REC-Files  *****
 // ----------------------------------------------
 
@@ -258,6 +326,8 @@ static int GetPacketSize(FILE *RecFile, int *OutOffset)
       char *p = strrchr(RecFileIn, '.');
       if (p && strcmp(p, ".vid") == 0)
         HumaxSource = TRUE;
+      else if (p && strcmp(p, ".TS4") == 0)
+        isHDVideo = TRUE;
 
       PACKETSIZE = 188;
       PACKETOFFSET = 0;
@@ -459,6 +529,9 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     ContinuityCtrs[k] = -1;
   }
   NrContinuityPIDs = 1;
+  memset(FileDefect, 0, MAXCONTINUITYPIDS * sizeof(tContinuityError));
+  NrContErrsInFile = 0;
+  LastContErrPos = 0;
 
   // Spezialanpassung Medion
   if (MedionMode)
@@ -774,6 +847,9 @@ static void CloseInputFiles(bool SetStripFlags, bool SetStartTime)
 {
   TRACEENTER;
 
+  PrintFileDefect();
+  printf("\nTSCheck: %d continuity errors found.\n", NrContErrsInFile);
+
   if (fIn)
   {
     fclose(fIn); fIn = NULL;
@@ -847,13 +923,13 @@ static bool CloseOutputFiles(void)
 
 
   if (*RecFileOut)
-    HDD_SetFileDateTime(RecFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
+    HDD_SetFileDateTime(RecFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, FALSE));
   if (*InfFileOut)
-    HDD_SetFileDateTime(InfFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
+    HDD_SetFileDateTime(InfFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, FALSE));
   if (*NavFileOut)
-    HDD_SetFileDateTime(NavFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
+    HDD_SetFileDateTime(NavFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, FALSE));
 //  if (*CutFileOut)
-//    HDD_SetFileDateTime(CutFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
+//    HDD_SetFileDateTime(CutFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, FALSE));
 
 
   if (HasNavOld)
@@ -910,8 +986,12 @@ FILE *fDbg;
   printf("(int: %d, long: %d, dword: %d, word: %d, short: %d, byte: %d, char: %d)\n", sizeof(int), sizeof(long), sizeof(dword), sizeof(word), sizeof(short), sizeof(byte), sizeof(char));
 #endif
 #ifndef LINUX
-  tzset();
-  printf("\nLocal timezone: %s (GMT%+ld)\n", tzname[0], -timezone/3600);
+  {
+    time_t curTime = time(NULL);
+    struct tm *timeInfo = localtime (&curTime);
+    tzset();
+    printf("\nLocal timezone: %s%s (GMT%+ld)\n", tzname[0], (timeInfo->tm_isdst ? " + DST" : ""), -timezone/3600 + timeInfo->tm_isdst);
+  }
 #endif
 
 /*{
@@ -1040,6 +1120,187 @@ FILE *fDbg;
   fclose(in);
   exit(ret);
 }*/
+
+/* // Humax-Fix (falsche PMT-Pid und ServiceInfo in inf-Datei und Timestamps)
+{
+  const char           *RecFile = argv[1];
+  FILE                 *fInf, *fRec, *fHumax;
+  byte                  Buffer1[192], *Buffer2 = NULL;
+  tTSPacket            *Packet = NULL;
+  tTSPAT               *PAT = NULL;
+  TYPE_RecHeader_TMSS  *RecInf = NULL;
+  struct stat64         statbuf;
+  word                  PMTPid = 0;
+  int                   InfSize = 0;
+  time_t                RecDate = 0;
+  char                  InfFile[FBLIB_DIR_SIZE], NavFile[FBLIB_DIR_SIZE], SrtFile[FBLIB_DIR_SIZE], CutFile[FBLIB_DIR_SIZE], HumaxFile[FBLIB_DIR_SIZE];
+  char                  ServiceName[32], ServiceNameF[32], *p;
+  bool                  ChangedInf = FALSE;
+  bool                  ret = FALSE;
+
+  Buffer2 = (byte*)malloc(1048576);
+  memset(Buffer1, 0, sizeof(Buffer1));
+  memset(Buffer2, 0x77, 1048576);
+  memset(ServiceName, 0, sizeof(ServiceName));
+
+  printf("\n- Time- & Humax-Fix -\n");
+  if (argc <= 1)
+  {
+    printf("\nUsage: TimeFix <Input.ts>\n");
+    exit(1);
+  }
+  printf("\nInput File: %s\n", RecFile);
+
+  strcpy(InfFile, RecFile); strcpy(NavFile, RecFile); strcpy(CutFile, RecFile); strcpy(SrtFile, RecFile); strcpy(HumaxFile, RecFile);
+  if ((p = strrchr(CutFile, '.')))  p[0] = '\0';
+  if ((p = strrchr(SrtFile, '.')))  p[0] = '\0';
+  if ((p = strrchr(HumaxFile, '.')))  p[0] = '\0';
+  strcat(InfFile, ".inf"); strcat(NavFile, ".nav"); strcat(CutFile, ".cut"); strcat(SrtFile, ".srt"); strcat(HumaxFile, ".humax"); 
+
+  if ((fInf = fopen(InfFile, "rb")))
+  {
+    if ((InfSize = fread(Buffer2, 1, 1048576, fInf)))
+      RecInf = (TYPE_RecHeader_TMSS*) Buffer2;
+    fclose(fInf);
+  }
+  else
+    printf("ERROR reading inf file!\n");
+
+  if (RecInf)
+  {
+/*    if(stat64(RecFile, &statbuf) == 0)
+    {
+      if(statbuf.st_ctime > 1598961600)  // 01.09.2020 12:00 GMT
+      {
+        if ((fRec = fopen(RecFile, "rb")))
+        {
+          if (fread(Buffer1, sizeof(tTSPAT) + 9, 1, fRec))
+          {
+            Packet = (tTSPacket*) &Buffer1[4];
+            PAT = (tTSPAT*) &Packet->Data[1];
+            PMTPid = 256 * PAT->PMTPID1 + PAT->PMTPID2;
+          }
+          fclose(fRec);
+        }
+        else
+          printf("ERROR reading rec file!\n");
+      }
+    } *//*
+
+    if ((fHumax = fopen(HumaxFile, "rb")))
+    {
+      fseek(fHumax, 96, SEEK_SET);
+      if (fread(ServiceNameF, 1, sizeof(ServiceName), fHumax))
+      {
+        p = strrchr(ServiceNameF, '_');
+        if(p) *p = '\0';
+      }
+      fseek(fHumax, HumaxHeaderLaenge + 96, SEEK_SET);
+      if (fread(ServiceName, 1, sizeof(ServiceName), fHumax))
+      {
+        p = strrchr(ServiceName, '_');
+        if(p) *p = '\0';
+      }
+      if (strcmp(ServiceName, ServiceNameF) == 0)
+        ServiceName[0] = '\0';
+      fclose(fHumax);
+    }
+
+    if (PAT)
+    {
+      if (RecInf->ServiceInfo.PMTPID == 256 && PMTPid == 64)
+      {
+        printf("  Change PMTPid in inf: %hu to %hu", RecInf->ServiceInfo.PMTPID, PMTPid);
+        RecInf->ServiceInfo.PMTPID = PMTPid;
+        ChangedInf = TRUE;
+      }
+    }
+    if (*ServiceName)
+    {
+      if (*ServiceName && strcmp(RecInf->ServiceInfo.ServiceName, ServiceName) != 0)
+      {
+        printf("  Change ServiceName in inf: '%s' to '%s'", RecInf->ServiceInfo.ServiceName, ServiceName);
+        strncpy(RecInf->ServiceInfo.ServiceName, ServiceName, sizeof(RecInf->ServiceInfo.ServiceName));
+        RecInf->ServiceInfo.ServiceName[sizeof(RecInf->ServiceInfo.ServiceName)-1] = '\0';
+        ChangedInf = TRUE;
+      }
+/*      if (*ServiceNameF && !*RecInf->EventInfo.EventNameDescription)
+      {
+        printf("  Change EventName in inf to: '%s'", ServiceNameF);
+        strncpy(RecInf->EventInfo.EventNameDescription, ServiceNameF, sizeof(RecInf->EventInfo.EventNameDescription) - 1);
+        RecInf->EventInfo.EventNameLength = strlen(RecInf->EventInfo.EventNameDescription);
+        ChangedInf = TRUE;
+      } *//*
+    }
+    if (RecInf->ExtEventInfo.TextLength > 1024)
+    {
+      printf("  Change ExtEventText length in inf: %hu to %hu", RecInf->ExtEventInfo.TextLength, 1024);
+      memset(&Buffer2[0x570], 0, InfSize - 0x570);
+      RecInf->ExtEventInfo.TextLength = 1024;
+      ChangedInf = TRUE;
+    }
+
+/*    // Convert EPG Event to UTC
+    {
+      tPVRTime EvtStart = RecInf->EventInfo.StartTime;
+      tPVRTime EvtEnd   = RecInf->EventInfo.EndTime;
+      time_t DisplayTime1, DisplayTime2;
+      char DisplayString1[26], DisplayString2[26];
+      
+      if (EvtStart != 0 && EvtEnd != 0)
+      {
+        DisplayTime1 = TF2UnixTime(EvtStart, 0, FALSE);
+        EvtStart = Unix2TFTime(TF2UnixTime(EvtStart, 0, FALSE), 0, TRUE);
+        EvtEnd   = Unix2TFTime(TF2UnixTime(EvtEnd, 0, FALSE), 0, TRUE);
+
+        DisplayTime2 = TF2UnixTime(EvtStart, 0, FALSE);
+        strcpy(DisplayString1, TimeStr(&DisplayTime1));
+        strcpy(DisplayString2, TimeStr(&DisplayTime2));
+        printf("  Change EvtStart from %s to %s\n", DisplayString1, DisplayString2);
+
+        RecInf->EventInfo.StartTime = EvtStart;
+        RecInf->EventInfo.EndTime = EvtEnd;
+        ChangedInf = TRUE;
+      }
+    } *//*
+
+    if (ChangedInf)
+    {
+      remove(InfFile);
+      if ((fInf = fopen(InfFile, "wb")))
+      {
+        if (fwrite(Buffer2, 1, InfSize, fInf) == InfSize)
+          printf(" -> SUCCESS\n");
+        else
+          printf(" -> ERROR\n");
+        fclose(fInf);
+        ChangedInf = TRUE;
+      }
+      else
+      {
+        ChangedInf = FALSE;
+        printf(" -> ERROR\n");
+      }
+    }
+
+    RecDate = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec, FALSE);
+    if (stat64(RecFile, &statbuf) == 0)
+    {
+      if (ChangedInf || statbuf.st_mtime != RecDate)
+      {
+        printf("  Change file timestamp to: %s\n", TimeStr(&RecDate));
+//        HDD_SetFileDateTime(RecFile, RecDate);
+        HDD_SetFileDateTime(InfFile, RecDate);
+//        HDD_SetFileDateTime(NavFile, RecDate);
+//        HDD_SetFileDateTime(SrtFile, RecDate);
+      }
+    }
+    ret = TRUE;
+  }
+  printf("Finished.\n");
+  free(Buffer2);
+  exit(0);
+} */
 
   // Eingabe-Parameter prüfen
   if (argc <= 1)  AbortProcess = TRUE;
@@ -1298,6 +1559,28 @@ FILE *fDbg;
   // Hier beenden, wenn View Info Only
   if (DoInfoOnly)
   {
+    TYPE_RecHeader_TMSS *Inf_TMSS = (TYPE_RecHeader_TMSS*)InfBuffer;
+    char                EventName[257];
+
+    time_t              StartTimeUnix = TF2UnixTime(Inf_TMSS->RecHeaderInfo.StartTime, Inf_TMSS->RecHeaderInfo.StartTimeSec, FALSE);
+    time_t              EvtStartUnix = TF2UnixTime(Inf_TMSS->EventInfo.StartTime, 0, TRUE);
+    time_t              EvtEndUnix = TF2UnixTime(Inf_TMSS->EventInfo.EndTime, 0, TRUE);
+
+    // Print out details to STDERR
+    memset(EventName, 0, sizeof(EventName));
+    strncpy(EventName, Inf_TMSS->EventInfo.EventNameDescription, Inf_TMSS->EventInfo.EventNameLength);
+    
+    // REC:    RecFileIn;  RecSize;  StartTime (DateTime);  Duration (hh:mm:ss);  FirstPCR;  LastPCR;  isStripped
+    fprintf(stderr, "%s\t%llu\t%s\t%02hu:%02hu:%02hu\t%lld\t%lld\t%s\t",  RecFileIn,  RecFileSize,  TimeStr_DB(&StartTimeUnix),  Inf_TMSS->RecHeaderInfo.DurationMin/60,  Inf_TMSS->RecHeaderInfo.DurationMin%60,  Inf_TMSS->RecHeaderInfo.DurationSec,  FirstFilePCR,  LastFilePCR,  (Inf_TMSS->RecHeaderInfo.rs_HasBeenStripped ? "yes" : "no"));
+
+    // SERVICE:  InfType;   Sender;   ServiceID;  PMTPid;  VideoPid;  AudioPid;  VideoType;  AudioType;  HD
+    fprintf(stderr, "ST_TMS%c\t%s\t%hu\t%hu\t%hu\t%hu\t0x%hx\t0x%hx\t%s\t",  (SystemType==ST_TMSS ? 's' : ((SystemType==ST_TMSC) ? 'c' : ((SystemType==ST_TMST) ? 't' : '?'))),  Inf_TMSS->ServiceInfo.ServiceName,  Inf_TMSS->ServiceInfo.ServiceID,  Inf_TMSS->ServiceInfo.PMTPID,  Inf_TMSS->ServiceInfo.VideoPID,  Inf_TMSS->ServiceInfo.AudioPID,  Inf_TMSS->ServiceInfo.VideoStreamType,  Inf_TMSS->ServiceInfo.AudioStreamType,  (isHDVideo ? "yes" : "no"));
+
+    // EPG:    EventName;  EventDesc;  EventStart (DateTime);  EventEnd (DateTime);  EventDuration (hh:mm);  ExtEventText (inkl. ItemizedItems, ohne '\n', '\t')
+    fprintf(stderr, "%s\t%s\t%s\t", EventName,  &Inf_TMSS->EventInfo.EventNameDescription[Inf_TMSS->EventInfo.EventNameLength],  TimeStr_DB(&EvtStartUnix));
+    fprintf(stderr, "%s\t%02hhu:%02hhu\t%s\n", TimeStr_DB(&EvtEndUnix),  Inf_TMSS->EventInfo.DurationHour,  Inf_TMSS->EventInfo.DurationMin,  (ExtEPGText ? ExtEPGText : ""));
+    if(ExtEPGText) free(ExtEPGText);
+
     fclose(fIn); fIn = NULL;
     CloseNavFileIn();
     if(MedionMode == 1) SimpleMuxer_Close();
@@ -1763,7 +2046,10 @@ FILE *fDbg;
               if (((tTSPacket*) &Buffer[4])->ContinuityCount != *CurCtr)
               {
 //              if (!DoCut || (i < NrSegmentMarker && CurrentPosition != SegmentMarker[i].Position))
-                  printf("TS check: TS continuity mismatch (PID=%hu, pos=%lld, expect=%hhu, found=%hhu, missing=%hhd)\n", CurPID, CurrentPosition, *CurCtr, ((tTSPacket*) &Buffer[4])->ContinuityCount, (((tTSPacket*) &Buffer[4])->ContinuityCount + 16 - *CurCtr) % 16);
+                {
+                  fprintf(stderr, "PID check: TS continuity mismatch (PID=%hu, pos=%lld, expect=%hhu, found=%hhu, missing=%hhd)\n", CurPID, CurrentPosition, *CurCtr, ((tTSPacket*) &Buffer[4])->ContinuityCount, (((tTSPacket*) &Buffer[4])->ContinuityCount + 16 - *CurCtr) % 16);
+                  AddContinuityError(CurPID, CurrentPosition, *CurCtr, ((tTSPacket*) &Buffer[4])->ContinuityCount);
+                }
                 if (CurPID == VideoPID)
                 {
                   SetFirstPacketAfterBreak();

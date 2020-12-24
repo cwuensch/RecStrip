@@ -112,6 +112,7 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
   tTSPAT               *PAT = NULL;
   tTSPMT               *PMT = NULL;
   tElemStream          *Elem = NULL;
+  char                  FirstSvcName[32];
   dword                *CRC = NULL;
   int                   Offset = 0;
 //  long long             FilePos = ftello64(fIn);
@@ -199,6 +200,8 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
 
       if (ret)
       {
+        char *p = strrchr(HumaxHeader.Allgemein.Dateiname, '_');
+
         if (i == 1)  // Header 1: Programm-Information
         {
           time_t DisplayTime;
@@ -219,15 +222,22 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
           ContinuityPIDs[0] = VideoPID;
           printf("    PMTPID=%hu, SID=%hu, PCRPID=%hu, Stream=0x%hhx, VPID=%hu, TtxPID=%hu\n", RecInf->ServiceInfo.PMTPID, RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID, RecInf->ServiceInfo.VideoStreamType, VideoPID, TeletextPID);
 
-          DisplayTime = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, 0);
+          DisplayTime = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, 0, FALSE);
           printf("    Start Time: %s\n", TimeStr(&DisplayTime));
+
+          if(p) *p = '\0';
+          strncpy(FirstSvcName, HumaxHeader.Allgemein.Dateiname, sizeof(FirstSvcName));
+          FirstSvcName[sizeof(FirstSvcName)-1] = '\0';
         }
         else if (i == 2)  // Header 2: Original-Dateiname
         {
-          char *p = strrchr(HumaxHeader.Allgemein.Dateiname, '_');
           printf("    Orig Rec Name: %s\n", HumaxHeader.Allgemein.Dateiname);
           if(p) *p = '\0';
-          strncpy(RecInf->ServiceInfo.ServiceName, HumaxHeader.Allgemein.Dateiname, sizeof(RecInf->ServiceInfo.ServiceName));
+          if (strcmp(HumaxHeader.Allgemein.Dateiname, FirstSvcName) != 0)
+          {
+            strncpy(RecInf->ServiceInfo.ServiceName, HumaxHeader.Allgemein.Dateiname, sizeof(RecInf->ServiceInfo.ServiceName));
+            RecInf->ServiceInfo.ServiceName[sizeof(RecInf->ServiceInfo.ServiceName)-1] = '\0';
+          }
         }
         if (HumaxHeader.ZusInfoID == HumaxBookmarksID)  // Header 3: Bookmarks
         {

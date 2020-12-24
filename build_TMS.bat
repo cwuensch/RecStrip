@@ -1,7 +1,7 @@
 @echo off
 cd /d %~dp0
 if "%TFROOT%"=="" set TFROOT=C:\sw\prgm\Topfield
-set PATH=%TFROOT%\gccForTMS\crosstool\bin;%TFROOT%\Cygwin_mini\bin;C:\sw\OS\cygwin\bin;%PATH%
+set PATH=%TFROOT%\gccForTMS\crosstool\bin;%TFROOT%\Cygwin\bin;C:\sw\OS\cygwin\bin;%PATH%
 rem del /Q bin obj 2> nul
 rem bash -i -c make
 
