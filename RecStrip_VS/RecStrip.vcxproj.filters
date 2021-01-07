@@ -57,6 +57,9 @@
     <ClInclude Include="..\EycosHeader.h">
       <Filter>Header</Filter>
     </ClInclude>
+    <ClInclude Include="..\H264.h">
+      <Filter>Header</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\RecStrip.c">
@@ -93,6 +96,9 @@
       <Filter>source</Filter>
     </ClCompile>
     <ClCompile Include="..\EycosImport.c">
+      <Filter>source</Filter>
+    </ClCompile>
+    <ClCompile Include="..\H264.c">
       <Filter>source</Filter>
     </ClCompile>
   </ItemGroup>
