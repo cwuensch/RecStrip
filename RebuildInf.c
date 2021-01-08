@@ -670,7 +670,7 @@ static bool AnalyseVideo(byte *PSBuffer, int BufSize, int *const VidHeight, int 
 {
   int                   p = 0;
   dword                 History = 0xffffffff;
-  bool                  PESHeaderFound = FALSE, SeqHeaderFound = FALSE, ret = FALSE;
+  bool                  PESHeaderFound = FALSE;
   TRACEENTER;
 
   while (p + 10 < BufSize)
@@ -692,15 +692,15 @@ static bool AnalyseVideo(byte *PSBuffer, int BufSize, int *const VidHeight, int 
 
       if (VidWidth)  *VidWidth  = (SeqHeader->Width1 << 4) + SeqHeader->Width2;
       if (VidHeight) *VidHeight = (SeqHeader->Height1 << 8) + SeqHeader->Height2;
-      if (VidDAR && (SeqHeader->AspectRatio >= 0) && (SeqHeader->AspectRatio < sizeof(AspectRatioValues)))
+      if (VidDAR && (SeqHeader->AspectRatio > 0) && (SeqHeader->AspectRatio < sizeof(AspectRatioValues)))
         *VidDAR = AspectRatioValues[SeqHeader->AspectRatio];
-      if (VidFPS && (SeqHeader->FrameRate >= 0) && (SeqHeader->FrameRate < sizeof(FrameRateValues)))
+      if (VidFPS && (SeqHeader->FrameRate > 0) && (SeqHeader->FrameRate < sizeof(FrameRateValues)))
         *VidFPS = FrameRateValues[SeqHeader->FrameRate];
 //      Bitrate = (((SeqHeader->Bitrate1 << 8) + SeqHeader->Bitrate2) << 3) + SeqHeader->Bitrate3;
 
       printf("  TS: VideoType = MPEG2, %dx%d @ %.3f fps, AspectRatio=%s (%.3f)\n", VideoWidth, VideoHeight, VideoFPS, AspectRatioTexts[SeqHeader->AspectRatio], VideoDAR);
       TRACEEXIT;
-      return TRUE;
+      return (SeqHeader->AspectRatio > 0) && (SeqHeader->FrameRate > 0);
     }
 
     // SPS NALU frame (H.264)
@@ -728,7 +728,7 @@ static bool AnalyseVideo(byte *PSBuffer, int BufSize, int *const VidHeight, int 
 
       printf("  TS: VideoType = H.264, %dx%d @ %.3f fps, AspectRatio=%s (%.3f)\n", VideoWidth, VideoHeight, VideoFPS, AspectString, VideoDAR);
       TRACEEXIT;
-      return TRUE;
+      return (*VidFPS > 0) && (*VidDAR > 0);
     }
 
     History = (History << 8) | PSBuffer[p++];
@@ -1079,10 +1079,12 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             {
               tTSPacket *curPacket = (tTSPacket*)p;
               if (((curPacket->PID1 * 256 | curPacket->PID2) == VideoPID) && curPacket->Payload_Unit_Start)
+              {
                 if (curPacket->Adapt_Field_Exists)
                   VidOK = AnalyseVideo((byte*)&curPacket->Data + curPacket->Data[0] + 1, sizeof(curPacket->Data) - curPacket->Data[0] - 1, &VideoHeight, &VideoWidth, &VideoFPS, &VideoDAR);
                 else
                   VidOK = AnalyseVideo((byte*)&curPacket->Data, sizeof(curPacket->Data), &VideoHeight, &VideoWidth, &VideoFPS, &VideoDAR);
+              }
             }
 
             if(EITOK && SDTOK && (TtxOK || TeletextPID == 0xffff) && (!DoInfoOnly || VidOK)) break;

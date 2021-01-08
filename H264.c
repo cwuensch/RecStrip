@@ -75,7 +75,7 @@ static unsigned int ReadSE()
   return r;
 }
 
-static void ReadHRD(hrd_t *hrd)
+/*static void ReadHRD(hrd_t *hrd)
 {
   int i;
   hrd->cpb_cnt_minus1 = ReadExponentialGolombCode();
@@ -91,9 +91,7 @@ static void ReadHRD(hrd_t *hrd)
   hrd->cpb_removal_delay_length_minus1 = ReadBits(5);
   hrd->dpb_output_delay_length_minus1 = ReadBits(5);
   hrd->time_offset_length = ReadBits(5);
-}
-
-
+} */
 
 
 int EBSPtoRBSP(byte *streamBuffer, int maxLen)
@@ -326,7 +324,7 @@ bool ParseSPS(const unsigned char *pStart, unsigned short nLen, int *const VidHe
     cropUnitX = 1;
     cropUnitY = 2 - sps.frame_mbs_only_flag;
   }
-  else if (sps.chroma_format_idc <= 3)
+  else /*if (sps.chroma_format_idc <= 3)*/
   {
     cropUnitX = 2;
     cropUnitY = 2 * ( 2 - sps.frame_mbs_only_flag );
@@ -337,10 +335,12 @@ bool ParseSPS(const unsigned char *pStart, unsigned short nLen, int *const VidHe
   if (VidHeight)
     *VidHeight = ((2 - sps.frame_mbs_only_flag) * (sps.pic_height_in_map_units_minus1 +1) * 16) - (sps.frame_crop_bottom_offset * cropUnitY) - (sps.frame_crop_top_offset * cropUnitY);
   if (VidDAR && sps.vui.aspect_ratio_info_present_flag)
+  {
     if (sps.vui.aspect_ratio_idc == 255)
       *VidDAR = ((double)*VidWidth / *VidHeight) * ((double)sps.vui.sar_width / sps.vui.sar_height);
     else
       *VidDAR = ((double)*VidWidth / *VidHeight) * ((double)sar_idc[sps.vui.aspect_ratio_idc].zaehler / sar_idc[sps.vui.aspect_ratio_idc].nenner);
+  }
   if (VidFPS && sps.vui.timing_info_present_flag && sps.vui.fixed_frame_rate_flag)
   {
     *VidFPS = (double)sps.vui.time_scale / sps.vui.num_units_in_tick;  //  : (1 + SEI->nuit_field_based_flag);  // Frame-Rate or Field-Rate(!)
