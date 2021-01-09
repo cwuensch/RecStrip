@@ -375,31 +375,23 @@ if (RecHeaderInfo->Reserved != 0)
       ContinuityPIDs[1] = ServiceInfo->AudioPID;
     }
 
-    if (FirstTime && RecHeaderInfo->rs_HasBeenStripped)
-      AlreadyStripped = TRUE;
-  }
-
-//  if (Result)
-  {
-    // ggf. Itemized Items in ExtEventText entfernen
-    memset(OldEventText, 0, sizeof(OldEventText));
-    RemoveItemizedText(RecHeader, OldEventText, sizeof(OldEventText));
-
     if(FirstTime)
     {
+      if(RecHeaderInfo->rs_HasBeenStripped)  AlreadyStripped = TRUE;
+
       if (abs(RecHeaderInfo->StartTime - OrigStartTime) > 1)
       {
         time_t StartTimeUnix = TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, FALSE);
-        printf("  INF: StartTime (%s) differs from TS start! Taking %s.\n", TimeStr(&StartTimeUnix), (RecHeaderInfo->StartTimeSec ? "inf" : "TS"));
+        printf("  INF: StartTime (%s) differs from TS start! Taking %s.\n", TimeStr(&StartTimeUnix), ((RecHeaderInfo->StartTimeSec != 0 || OrigStartSec == 0) ? "inf" : "TS"));
       }
-      if (RecHeaderInfo->StartTimeSec)
+      if (RecHeaderInfo->StartTimeSec != 0 || OrigStartSec == 0)
       {
         OrigStartTime = RecHeaderInfo->StartTime;
         OrigStartSec  = RecHeaderInfo->StartTimeSec;
       }
       else
       {
-        RecHeaderInfo->StartTime   = OrigStartTime;
+        RecHeaderInfo->StartTime    = OrigStartTime;
         RecHeaderInfo->StartTimeSec = OrigStartSec;
       }
     }
@@ -411,6 +403,10 @@ if (RecHeaderInfo->Reserved != 0)
 
     InfDuration = 60*RecHeaderInfo->DurationMin + RecHeaderInfo->DurationSec;
   }
+
+  // ggf. Itemized Items in ExtEventText entfernen
+  memset(OldEventText, 0, sizeof(OldEventText));
+  RemoveItemizedText(RecHeader, OldEventText, sizeof(OldEventText));
 
   TRACEEXIT;
   return TRUE;
