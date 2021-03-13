@@ -119,8 +119,6 @@ int EBSPtoRBSP(byte *streamBuffer, int maxLen)
 }
 
 
-
-
 // Rec. ITU-T H.264 (https://www.itu.int/rec/T-REC-H.264-201402-S/en)
 // 7.3.2.1.1 Sequence parameter set data syntax
 bool ParseSPS(const unsigned char *pStart, unsigned short nLen, int *const VidHeight, int *const VidWidth, double *const VidFPS, double *const VidDAR)

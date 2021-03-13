@@ -7,8 +7,8 @@ include ${BASE}/include/tool.mk
 # output object directory
 SRC_DIR = ${CUR_DIR}
 
-CFLAGS   ?= -g -O2 -MD -W -Wall -DLINUX -D_REENTRANT -mips32 -std=c99 -static -fno-strict-aliasing -ffunction-sections -fdata-sections
-CXXFLAGS ?= -s -O2 -MD -W -Wall -DLINUX -D_REENTRANT -mips32 -static -Woverloaded-virtual -Wno-parentheses
+CFLAGS   ?= -g -O2 -MD -W -Wall -DLINUX -D_REENTRANT -std=c99 -static -fno-strict-aliasing -ffunction-sections -fdata-sections
+CXXFLAGS ?= -s -O2 -MD -W -Wall -DLINUX -D_REENTRANT -static -Woverloaded-virtual -Wno-parentheses
 
 OBJS = RecStrip.o InfProcessor.o NavProcessor.o CutProcessor.o NALUDump.o RebuildInf.o TtxProcessor.o PESProcessor.o PESFileLoader.o HumaxImport.o EycosImport.o H264.o StrToUTF8.o
 
