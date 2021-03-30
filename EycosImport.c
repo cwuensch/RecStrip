@@ -367,7 +367,7 @@ bool LoadEycosHeader(char *AbsTrpFileName, byte *const PATPMTBuf, TYPE_RecHeader
       TextLen = 0;
       for (k = 0; k < 5; k++)
       {
-        char *pCurDesc = ((k > 0) && (EycosEvent.LongDesc[k].DescBlock[0] < 0x20)) ? &EycosEvent.LongDesc[k].DescBlock[1] : EycosEvent.LongDesc[k].DescBlock;
+        char *pCurDesc = ((k > 0) && ((byte)(EycosEvent.LongDesc[k].DescBlock[0]) < 0x20)) ? &EycosEvent.LongDesc[k].DescBlock[1] : EycosEvent.LongDesc[k].DescBlock;
         NameLen = (int) min(strlen(pCurDesc), sizeof(RecInf->ExtEventInfo.Text) - TextLen - 1);
         strncpy(&RecInf->ExtEventInfo.Text[TextLen], pCurDesc, sizeof(RecInf->ExtEventInfo.Text) - TextLen - 1);
         TextLen += NameLen;

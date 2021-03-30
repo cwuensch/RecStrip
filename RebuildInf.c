@@ -476,7 +476,7 @@ printf("  TS: EventDesc = %s\n", &RecInf->EventInfo.EventNameDescription[NameLen
             ExtDesc = (tExtEvtDesc*) Desc;
             RecInf->ExtEventInfo.ServiceID = ServiceID;
 //            RecInf->ExtEventInfo.EventID = EventID;
-            if ((ExtEPGTextLen > 0) && (ExtDesc->ItemDesc < 0x20))
+            if ((ExtEPGTextLen > 0) && ((byte)ExtDesc->ItemDesc < 0x20))
             {
               if (ExtEPGTextLen < EPGBUFFERSIZE - 1)
               {

@@ -214,8 +214,8 @@ static void RemoveItemizedText(TYPE_RecHeader_TMSS *RecHeader, char *const NewEv
       p = 0;
       for (k = 0; k < j; k++)
       {
-        if(RecHeader->ExtEventInfo.Text[p] < 0x20)  p++;
-        snprintf(&NewEventText[strlen(NewEventText)], NewTextLen-strlen(NewEventText), ((k % 2 == 0) ? ((NewEventText[0]>=0x15) ? "\xC2\x8A%s: " : "\x8A%s: ") : "%s"), &RecHeader->ExtEventInfo.Text[p]);
+        if((byte)RecHeader->ExtEventInfo.Text[p] < 0x20)  p++;
+        snprintf(&NewEventText[strlen(NewEventText)], NewTextLen-strlen(NewEventText), ((k % 2 == 0) ? (((byte)NewEventText[0] >= 0x15) ? "\xC2\x8A%s: " : "\x8A%s: ") : "%s"), &RecHeader->ExtEventInfo.Text[p]);
         p += (int)strlen(&RecHeader->ExtEventInfo.Text[p]) + 1;
       }
     }
@@ -429,7 +429,7 @@ void SetInfEventText(const char *pCaption)
   {
 /*    if ((NewEventText = (char*)malloc(2 * strlen(pCaption))))
     {
-      if (OldEventText[0]>=0x15)
+      if ((byte)OldEventText[0] >= 0x15)
       {
         StrToUTF8(pCaption, NewEventText, 9);
         p = strlen(NewEventText);
@@ -448,7 +448,7 @@ void SetInfEventText(const char *pCaption)
           NewEventText[p++] = '\x8A'; NewEventText[p++] = '\x8A';
         }
       }
-      strncpy(&NewEventText[p], &OldEventText[(OldEventText[0]<0x20) ? 1 : 0], sizeof(RecHeader->ExtEventInfo.Text) - p - 1);
+      strncpy(&NewEventText[p], &OldEventText[((byte)OldEventText[0] < 0x20) ? 1 : 0], sizeof(RecHeader->ExtEventInfo.Text) - p - 1);
       if (RecHeader->ExtEventInfo.Text[sizeof(RecHeader->ExtEventInfo.Text) - 2] != 0)
         snprintf(&RecHeader->ExtEventInfo.Text[sizeof(RecHeader->ExtEventInfo.Text) - 4], 4, "...");
       free(NewEventText);
@@ -456,13 +456,13 @@ void SetInfEventText(const char *pCaption)
 
     if ((NewEventText = (char*)malloc(2 * strlen(pCaption) + strlen(OldEventText) + 5)))
     {
-      if (OldEventText[0]>=0x15)
+      if ((byte)OldEventText[0] >= 0x15)
       {
         StrToUTF8(pCaption, NewEventText, 9);
-        sprintf(&NewEventText[strlen(NewEventText)], "\xC2\x8A\xC2\x8A%s", &OldEventText[(OldEventText[0]<0x20) ? 1 : 0]);
+        sprintf(&NewEventText[strlen(NewEventText)], "\xC2\x8A\xC2\x8A%s", &OldEventText[((byte)OldEventText[0] < 0x20) ? 1 : 0]);
       }
       else
-        sprintf(NewEventText, "\5%s\x8A\x8A%s", pCaption, &OldEventText[(OldEventText[0]<0x20) ? 1 : 0]);
+        sprintf(NewEventText, "\5%s\x8A\x8A%s", pCaption, &OldEventText[((byte)OldEventText[0] < 0x20) ? 1 : 0]);
       strncpy(RecHeader->ExtEventInfo.Text, NewEventText, sizeof(RecHeader->ExtEventInfo.Text) - 1);
       if (RecHeader->ExtEventInfo.Text[sizeof(RecHeader->ExtEventInfo.Text) - 2] != 0)
         snprintf(&RecHeader->ExtEventInfo.Text[sizeof(RecHeader->ExtEventInfo.Text) - 4], 4, "...");
