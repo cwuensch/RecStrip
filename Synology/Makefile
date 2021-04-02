@@ -4,7 +4,8 @@ include /env.mak
 EXEC = RecStrip
 OBJS = RecStrip.o InfProcessor.o NavProcessor.o CutProcessor.o NALUDump.o RebuildInf.o TtxProcessor.o PESProcessor.o PESFileLoader.o HumaxImport.o EycosImport.o H264.o StrToUTF8.o
 
-CFLAGS2   ?= -g -O2 -MD -W -Wall -std=c99 -static -fno-strict-aliasing -ffunction-sections -fdata-sections
+CFLAGS2   ?= -g -O2 -MD -W -Wall -std=c99 -static -fno-strict-aliasing -funsigned-char -ffunction-sections -fdata-sections -D_FORTIFY_SOURCE=1
+LDFLAGS   += -Wl,--gc-sections
 
 #DEFINES += -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE
 
@@ -13,7 +14,7 @@ all: $(EXEC)
 # Implicit rules:
 
 %.o: %.c
-	$(CC) $(CFLAGS) $(CFLAGS2) -c $(DEFINES) $(INCLUDES) $< -o $@ $(LDFLAGS)
+	$(CC) $(CFLAGS) $(CFLAGS2) -c $(DEFINES) $(INCLUDES) $< -o $@
 
 # Dependencies:
 
@@ -27,7 +28,7 @@ $(DEPFILE): Makefile
 # The main program:
 
 $(EXEC): $(OBJS)
-	$(CC) $(CFLAGS) -rdynamic $(OBJS) -o RecStrip
+	$(CC) $(CFLAGS) -rdynamic $(OBJS) -o RecStrip $(LDFLAGS)
 
 install: $(EXEC)
 	mkdir -p $(DESTDIR)/usr/bin/
@@ -38,4 +39,3 @@ install: $(EXEC)
 clean:
 	-rm -f $(OBJS) $(DEPFILE) $(EXEC) core* *~
 CLEAN: clean
-
