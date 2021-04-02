@@ -1014,11 +1014,12 @@ int main(int argc, const char* argv[])
     #ifdef _WIN32
       localtime_s(&timeinfo, &curTime);
       _tzset();
+      printf("\nLocal timezone: %s%s (GMT%+ld)\n", _tzname[0], (timeinfo.tm_isdst ? " + DST" : ""), -_timezone/3600 + timeinfo.tm_isdst);
     #else
       localtime_r(&curTime, &timeinfo);
       tzset();
+      printf("\nLocal timezone: %s%s (GMT%+ld)\n", tzname[0], (timeinfo.tm_isdst ? " + DST" : ""), -timezone/3600 + timeinfo.tm_isdst);
     #endif
-    printf("\nLocal timezone: %s%s (GMT%+ld)\n", tzname[0], (timeinfo.tm_isdst ? " + DST" : ""), -timezone/3600 + timeinfo.tm_isdst);
   }
 #endif
 

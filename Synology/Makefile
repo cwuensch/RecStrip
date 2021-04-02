@@ -4,7 +4,7 @@ include /env.mak
 EXEC = RecStrip
 OBJS = RecStrip.o InfProcessor.o NavProcessor.o CutProcessor.o NALUDump.o RebuildInf.o TtxProcessor.o PESProcessor.o PESFileLoader.o HumaxImport.o EycosImport.o H264.o StrToUTF8.o
 
-CFLAGS2   ?= -g -O2 -MD -W -Wall -std=c99 -static -fno-strict-aliasing -funsigned-char -ffunction-sections -fdata-sections -D_FORTIFY_SOURCE=1
+CFLAGS2   ?= -O2 -MD -W -Wall -static -std=c99 -fno-strict-aliasing -funsigned-char -D_FORTIFY_SOURCE=1 -Wstack-protector
 LDFLAGS   += -Wl,--gc-sections
 
 #DEFINES += -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE
@@ -15,15 +15,6 @@ all: $(EXEC)
 
 %.o: %.c
 	$(CC) $(CFLAGS) $(CFLAGS2) -c $(DEFINES) $(INCLUDES) $< -o $@
-
-# Dependencies:
-
-MAKEDEP = $(CC) -MM -MG
-DEPFILE = .dependencies
-$(DEPFILE): Makefile
-	@$(MAKEDEP) $(DEFINES) $(INCLUDES) $(OBJS:%.o=%.c) > $@
-
--include $(DEPFILE)
 
 # The main program:
 

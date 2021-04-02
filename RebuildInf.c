@@ -53,11 +53,12 @@ tPVRTime Unix2TFTime(time_t UnixTimeStamp, byte *const outSec, bool toUTC)
   if (!toUTC)
   {
     struct tm timeinfo;
-    UnixTimeStamp -= timezone;
 
     #ifdef _WIN32
+      UnixTimeStamp -= _timezone;
       localtime_s(&timeinfo, &UnixTimeStamp);
     #else
+      UnixTimeStamp -= timezone;
       localtime_r(&UnixTimeStamp, &timeinfo);
     #endif
     if (timeinfo.tm_isdst)
@@ -77,11 +78,12 @@ time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec, bool isUTC)
   if (!isUTC)
   {
     struct tm timeinfo;
-    Result += timezone;
 
     #ifdef _WIN32
+      Result += _timezone;
       localtime_s(&timeinfo, &Result);
     #else
+      Result += timezone;
       localtime_r(&Result, &timeinfo);
     #endif
     if (timeinfo.tm_isdst)
@@ -1179,10 +1181,11 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       struct tm timeinfo;
       #ifdef _WIN32
         localtime_s(&timeinfo, &StartTimeUnix);
+        time_offset = -1*_timezone + 3600*timeinfo.tm_isdst;
       #else
         localtime_r(&StartTimeUnix, &timeinfo);
+        time_offset = -1*timezone + 3600*timeinfo.tm_isdst;
       #endif
-      time_offset = -1*timezone + 3600*timeinfo.tm_isdst;
     }
 #endif
     // EPG Event Start- und EndTime an lokale Zeitzone anpassen (-> nicht nötig! EPG wird immer in UTC gespeichert!)
