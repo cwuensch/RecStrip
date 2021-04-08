@@ -52,8 +52,15 @@ tPVRTime Unix2TFTime(time_t UnixTimeStamp, byte *const outSec, bool toUTC)
 #ifndef LINUX
   if (!toUTC)
   {
+    struct tm timeinfo;
     UnixTimeStamp -= timezone;
-    if (localtime(&UnixTimeStamp)->tm_isdst)
+
+    #ifdef _WIN32
+      localtime_s(&timeinfo, &UnixTimeStamp);
+    #else
+      localtime_r(&UnixTimeStamp, &timeinfo);
+    #endif
+    if (timeinfo.tm_isdst)
       UnixTimeStamp += 3600;
   }
 #endif
@@ -69,8 +76,15 @@ time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec, bool isUTC)
 #ifndef LINUX
   if (!isUTC)
   {
+    struct tm timeinfo;
     Result += timezone;
-    if (localtime(&Result)->tm_isdst)
+
+    #ifdef _WIN32
+      localtime_s(&timeinfo, &Result);
+    #else
+      localtime_r(&Result, &timeinfo);
+    #endif
+    if (timeinfo.tm_isdst)
       Result -= 3600;
   }
 #endif
@@ -775,7 +789,11 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   //Get the time stamp of the .rec. We assume that this is the time when the recording has finished
   {
     struct stat64 statbuf;
-    fstat64(fileno(fIn), &statbuf);
+    #ifdef WIN32
+      fstat64(_fileno(fIn), &statbuf);
+    #else
+      fstat64(fileno(fIn), &statbuf);
+    #endif
     FileTimeStamp = Unix2TFTime(statbuf.st_mtime, &FileTimeSec, FALSE);
   }
 
@@ -1158,9 +1176,13 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     StartTimeUnix = TF2UnixTime(RecInf->EventInfo.StartTime, 0, TRUE);
 #ifndef LINUX
     {
-      struct tm *timeinfo;
-      timeinfo = localtime(&StartTimeUnix);
-      time_offset = -1*timezone + 3600*timeinfo->tm_isdst;
+      struct tm timeinfo;
+      #ifdef _WIN32
+        localtime_s(&timeinfo, &StartTimeUnix);
+      #else
+        localtime_r(&StartTimeUnix, &timeinfo);
+      #endif
+      time_offset = -1*timezone + 3600*timeinfo.tm_isdst;
     }
 #endif
     // EPG Event Start- und EndTime an lokale Zeitzone anpassen (-> nicht nötig! EPG wird immer in UTC gespeichert!)

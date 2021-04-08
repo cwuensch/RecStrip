@@ -541,7 +541,7 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
 
           case NAL_AU_DELIMITER:
           {
-            byte    k;
+            int k;
 
             #if DEBUGLOG != 0
               if (NALType == NAL_AU_DELIMITER)
@@ -666,7 +666,7 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
                   navHD.Timems -= TimeOffset;
                   FirstRecordAfterCut = FALSE;
                 }
-                else if (abs(navHD.Timems - LastTimems) >= 3000)
+                else if (abs((int)(navHD.Timems - LastTimems)) >= 3000)
                 {
                   navHD.Timems += TimeOffset;
                   TimeOffset = navHD.Timems - LastTimems;
@@ -855,7 +855,7 @@ static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
         navSD.Timems -= TimeOffset;
         FirstRecordAfterCut = FALSE;
       }
-      else if (abs(navSD.Timems - LastTimems) >= 3000)
+      else if (abs((int)(navSD.Timems - LastTimems)) >= 3000)
       {
         navSD.Timems += TimeOffset;
         TimeOffset = navSD.Timems - LastTimems;
@@ -1096,8 +1096,8 @@ bool LoadNavFileIn(const char* AbsInNav)
 
     // Versuche, nav-Dateien aus Timeshift-Aufnahmen zu unterstützen ***experimentell***
     dword FirstDword = 0;
-    fread(&FirstDword, 4, 1, fNavIn);
-    if(FirstDword == 0x72767062)  // 'bpvr'
+    if (fread(&FirstDword, 4, 1, fNavIn)
+      && (FirstDword == 0x72767062))  // 'bpvr'
       fseek(fNavIn, 1056, SEEK_SET);
     else
       rewind(fNavIn);
@@ -1229,8 +1229,8 @@ tTimeStamp2* NavLoad(const char *AbsInRec, int *const OutNrTimeStamps, byte Pack
   }
 
   // Versuche, nav-Dateien aus Timeshift-Aufnahmen zu unterstützen ***experimentell***
-  fread(&FirstDword, 4, 1, fNav);
-  if(FirstDword == 0x72767062)  // 'bpvr'
+  if (fread(&FirstDword, 4, 1, fNav)
+    && (FirstDword == 0x72767062))  // 'bpvr'
     fseek(fNav, 1056, SEEK_SET);
   else
     rewind(fNav);

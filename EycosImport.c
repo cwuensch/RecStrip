@@ -46,7 +46,7 @@ char* EycosGetPart(char *const OutEycosPart, const char* AbsTrpName, int NrPart)
   {
     strcpy(OutEycosPart, AbsTrpName);
     if (NrPart > 0)
-      snprintf(&OutEycosPart[strlen(OutEycosPart)-4], 5, ".%03u", NrPart);
+      snprintf(&OutEycosPart[strlen(OutEycosPart)-4], 5, ".%03u", NrPart % 1000);
   }
   return OutEycosPart;
   TRACEEXIT;
