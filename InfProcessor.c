@@ -117,7 +117,7 @@ bool InfProcessor_Init()
   TRACEENTER;
 
   //Allocate and clear the buffer
-//  memset(OldEventText, 0, sizeof(OldEventText));
+  memset(OldEventText, 0, sizeof(OldEventText));
   OrigStartTime = 0;  // CurrentStartTime = 0;
   OrigStartSec = 0;   // CurrentStartSec = 0;
   RecHeaderInfo = NULL;
@@ -189,6 +189,11 @@ bool LoadInfFromRec(char *AbsRecFileName)
     OrigStartTime = ((TYPE_RecHeader_Info*)InfBuffer)->StartTime;
     OrigStartSec  = ((TYPE_RecHeader_Info*)InfBuffer)->StartTimeSec;
   }
+
+  // OldEventText setzen
+//  memset(OldEventText, 0, sizeof(OldEventText));
+//  strncpy(OldEventText, ((TYPE_RecHeader_TMSS*)InfBuffer)->ExtEventInfo.Text, min(((TYPE_RecHeader_TMSS*)InfBuffer)->ExtEventInfo.TextLength, sizeof(OldEventText)-1));
+
   fclose(fIn);
   TRACEEXIT;
   return Result;
@@ -375,31 +380,23 @@ if (RecHeaderInfo->Reserved != 0)
       ContinuityPIDs[1] = ServiceInfo->AudioPID;
     }
 
-    if (FirstTime && RecHeaderInfo->rs_HasBeenStripped)
-      AlreadyStripped = TRUE;
-  }
-
-//  if (Result)
-  {
-    // ggf. Itemized Items in ExtEventText entfernen
-    memset(OldEventText, 0, sizeof(OldEventText));
-    RemoveItemizedText(RecHeader, OldEventText, sizeof(OldEventText));
-
     if(FirstTime)
     {
+      if(RecHeaderInfo->rs_HasBeenStripped)  AlreadyStripped = TRUE;
+
       if (abs(RecHeaderInfo->StartTime - OrigStartTime) > 1)
       {
         time_t StartTimeUnix = TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, FALSE);
-        printf("  INF: StartTime (%s) differs from TS start! Taking %s.\n", TimeStr(&StartTimeUnix), (RecHeaderInfo->StartTimeSec ? "inf" : "TS"));
+        printf("  INF: StartTime (%s) differs from TS start! Taking %s.\n", TimeStr(&StartTimeUnix), ((RecHeaderInfo->StartTimeSec != 0 || OrigStartSec == 0) ? "inf" : "TS"));
       }
-      if (RecHeaderInfo->StartTimeSec)
+      if (RecHeaderInfo->StartTimeSec != 0 || OrigStartSec == 0)
       {
         OrigStartTime = RecHeaderInfo->StartTime;
         OrigStartSec  = RecHeaderInfo->StartTimeSec;
       }
       else
       {
-        RecHeaderInfo->StartTime   = OrigStartTime;
+        RecHeaderInfo->StartTime    = OrigStartTime;
         RecHeaderInfo->StartTimeSec = OrigStartSec;
       }
     }
@@ -411,6 +408,10 @@ if (RecHeaderInfo->Reserved != 0)
 
     InfDuration = 60*RecHeaderInfo->DurationMin + RecHeaderInfo->DurationSec;
   }
+
+  // OldEventText setzen + ggf. Itemized Items in ExtEventText entfernen
+  memset(OldEventText, 0, sizeof(OldEventText));
+  RemoveItemizedText(RecHeader, OldEventText, sizeof(OldEventText));
 
   TRACEEXIT;
   return TRUE;
@@ -458,8 +459,7 @@ void SetInfEventText(const char *pCaption)
       if (OldEventText[0]>=0x15)
       {
         StrToUTF8(pCaption, NewEventText, 9);
-        if (*OldEventText)
-          sprintf(&NewEventText[strlen(NewEventText)], "\xC2\x8A\xC2\x8A%s", &OldEventText[(OldEventText[0]<0x20) ? 1 : 0]);
+        sprintf(&NewEventText[strlen(NewEventText)], "\xC2\x8A\xC2\x8A%s", &OldEventText[(OldEventText[0]<0x20) ? 1 : 0]);
       }
       else
         sprintf(NewEventText, "\5%s\x8A\x8A%s", pCaption, &OldEventText[(OldEventText[0]<0x20) ? 1 : 0]);

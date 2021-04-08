@@ -10,6 +10,8 @@ RecStrip 2.7:  NEU:
                  - EPG ExtEventText wird nun nur noch einmal und vollständig ausgegeben
                  - TS Check: verbesserte Continuity-Error-Auswertung (verschiedene PIDs an gleicher Position werden zusammengefasst, Ausgabe der Einzel-Fehler erfolgt nur noch auf stderr)
                  - ShowInfos: Details zur Aufnahme werden als tsv auf stderr ausgegeben (ermöglicht automatisierte Auswertung)
+                 - ShowInfos: Ermittlung der Videoparameter (Auflösung, FrameRate, AspectRatio)
+                 - InfProcessor: StartTime aus inf wird beibehalten, wenn nicht -i und TS keine Sekundenangabe aufweist
 
                BUGFIXES:
                  - EPG-Event wird in UTC statt lokaler Zeitzone in der inf gespeichert

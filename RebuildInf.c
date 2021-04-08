@@ -24,6 +24,7 @@
 #include "TtxProcessor.h"
 #include "HumaxHeader.h"
 #include "EycosHeader.h"
+#include "H264.h"
 
 /*#ifdef _WIN32
   #define timezone _timezone
@@ -32,6 +33,12 @@
 #endif*/
 
 long long               FirstFilePCR = 0, LastFilePCR = 0;
+int                     VideoHeight = 0, VideoWidth = 0;
+double                  VideoFPS = 0, VideoDAR = 0;
+
+static const double FrameRateValues[10]  = {0, 24000/1001.0, 24.0, 25.0, 30000/1001.0, 30.0, 50.0, 60000/1001.0, 60.0, 0};
+static const double AspectRatioValues[6] = {0, 1.0, 4/3.0, 16/9.0, 2.21, 0}; 
+static const char* AspectRatioTexts[6]   = {"forbidden", "1:1", "4:3", "16:9", "2.21:1", "unknown"}; 
 
 
 static inline byte BCD2BIN(byte BCD)
@@ -41,6 +48,7 @@ static inline byte BCD2BIN(byte BCD)
 
 tPVRTime Unix2TFTime(time_t UnixTimeStamp, byte *const outSec, bool toUTC)
 {
+  if(!UnixTimeStamp) return 0;
 #ifndef LINUX
   if (!toUTC)
   {
@@ -57,6 +65,7 @@ tPVRTime Unix2TFTime(time_t UnixTimeStamp, byte *const outSec, bool toUTC)
 time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec, bool isUTC)
 {
   time_t Result = (MJD(TFTimeStamp) - 0x9e8b) * 86400 + HOUR(TFTimeStamp) * 3600 + MINUTE(TFTimeStamp) * 60 + TFTimeSec;
+  if(!TFTimeStamp) return 0;
 #ifndef LINUX
   if (!isUTC)
   {
@@ -489,7 +498,7 @@ printf("  TS: EventDesc = %s\n", &RecInf->EventInfo.EventNameDescription[NameLen
         }
         strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, min(ExtEPGTextLen, (int)sizeof(RecInf->ExtEventInfo.Text)));
         RecInf->ExtEventInfo.TextLength = ExtEPGTextLen;
-printf("\n  TS: EPGExtEvent  = %s\n", ExtEPGText);
+printf("  TS: EPGExtEvent = %s\n", ExtEPGText);
 
         if (DoInfoOnly)
         {
@@ -657,6 +666,78 @@ printf("  TS: Teletext date: %s (GMT%+d)\n", TimeStr_UTC(&DisplayTime), -*TtxTim
   return FALSE;
 }
 
+static bool AnalyseVideo(byte *PSBuffer, int BufSize, int *const VidHeight, int *const VidWidth, double *const VidFPS, double *const VidDAR)
+{
+  int                   p = 0;
+  dword                 History = 0xffffffff;
+  bool                  PESHeaderFound = FALSE;
+  TRACEENTER;
+
+  while (p + 10 < BufSize)
+  {
+    // PES-Header (MPEG2 Video, bei Medion ggf. abweichend?)
+    // http://www.fr-an.de/projects/mpeg/k030304.htm
+    if ((History & 0xFFFFFFF0) == 0x000001E0)
+    {
+      tPESHeader *PESHeader = (tPESHeader*) &PSBuffer[p-4];
+      PESHeaderFound = TRUE;
+      p = p-4 + sizeof(tPESHeader) + PESHeader->PESHeaderLen;
+    }
+
+    // Video Sequence Header (MPEG2)
+    // http://www.fr-an.de/projects/mpeg/k010202.htm
+    if (PESHeaderFound && (History & 0xFFFFFFFF) == 0x000001B3)
+    {
+      tSequenceHeader *SeqHeader = (tSequenceHeader*) &PSBuffer[p-4];
+
+      if (VidWidth)  *VidWidth  = (SeqHeader->Width1 << 4) + SeqHeader->Width2;
+      if (VidHeight) *VidHeight = (SeqHeader->Height1 << 8) + SeqHeader->Height2;
+      if (VidDAR && (SeqHeader->AspectRatio > 0) && (SeqHeader->AspectRatio < sizeof(AspectRatioValues)))
+        *VidDAR = AspectRatioValues[SeqHeader->AspectRatio];
+      if (VidFPS && (SeqHeader->FrameRate > 0) && (SeqHeader->FrameRate < sizeof(FrameRateValues)))
+        *VidFPS = FrameRateValues[SeqHeader->FrameRate];
+//      Bitrate = (((SeqHeader->Bitrate1 << 8) + SeqHeader->Bitrate2) << 3) + SeqHeader->Bitrate3;
+
+      printf("  TS: VideoType = MPEG2, %dx%d @ %.3f fps, AspectRatio=%s (%.3f)\n", VideoWidth, VideoHeight, VideoFPS, AspectRatioTexts[SeqHeader->AspectRatio], VideoDAR);
+      TRACEEXIT;
+      return (SeqHeader->AspectRatio > 0) && (SeqHeader->FrameRate > 0);
+    }
+
+    // SPS NALU frame (H.264)
+    // https://stackoverflow.com/questions/25398584/how-to-find-resolution-and-framerate-values-in-h-264-mpeg-2-ts
+//    if (PESHeaderFound && (History & 0xFFFFFF1F) == 0x00000107)
+    if (PESHeaderFound && ((History & 0xFFFFFFFF) == 0x00000167 || (History & 0xFFFFFFFF) == 0x00000127))
+    {
+      const char *AspectString = "special";
+      int RealLength;
+
+      RealLength = EBSPtoRBSP(&PSBuffer[p], BufSize-p);
+      if ((RealLength < 0) || (p + RealLength >= BufSize))
+      {
+        TRACEEXIT;
+        return FALSE;
+      }
+      ParseSPS(&PSBuffer[p], RealLength, VidHeight, VidWidth, VidFPS, VidDAR);
+
+      if ((VideoDAR - 1.777 <= 0.001) && (VideoDAR - 1.777 >= 0))
+        AspectString = AspectRatioTexts[AR_16to9];
+      else if ((VideoDAR - 1.363 <= 0.001) && (VideoDAR - 1.333 >= 0))
+        AspectString = AspectRatioTexts[AR_4to3];
+      else if ((VideoDAR - 1.0 <= 0.001) && (1.0 - VideoDAR <= 0.001))
+        AspectString = AspectRatioTexts[AR_1to1];
+
+      printf("  TS: VideoType = H.264, %dx%d @ %.3f fps, AspectRatio=%s (%.3f)\n", VideoWidth, VideoHeight, VideoFPS, AspectString, VideoDAR);
+      TRACEEXIT;
+      return (*VidFPS > 0) && (*VidDAR > 0);
+    }
+
+    History = (History << 8) | PSBuffer[p++];
+  }
+
+  TRACEEXIT;
+  return FALSE;
+}
+
 bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 {
   FILE                 *fIn2 = fIn;
@@ -669,7 +750,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   int                   TtxTimeZone = 0;
   dword                 FirstPCRms = 0, LastPCRms = 0, TtxPCR = 0, dPCR = 0;
   int                   Offset, ReadBytes, Durchlauf, i;
-  bool                  EITOK = FALSE, SDTOK = FALSE, TtxFound = FALSE, TtxOK = FALSE;
+  bool                  EITOK = FALSE, SDTOK = FALSE, TtxFound = FALSE, TtxOK = FALSE, VidOK = FALSE;
   time_t                StartTimeUnix;
   byte                 *p;
   long long             FilePos = 0;
@@ -713,11 +794,14 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         {
           while ((p < MEDIONBUFFERBYTES) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1))
             p++;
-          if (GetPTS(&Buffer[p], NULL, &FirstPCRms) && (FirstPCRms != 0))
-          {
-            FirstFilePCR = (long long)FirstPCRms * 600;
-            break;
-          }
+          if (!FirstPCRms && GetPTS(&Buffer[p], NULL, &FirstPCRms))
+            if(FirstPCRms != 0)
+              FirstFilePCR = (long long)FirstPCRms * 600;
+
+          if (DoInfoOnly && !VidOK)
+            VidOK = AnalyseVideo(&Buffer[p], RECBUFFERENTRIES*100 - p, &VideoHeight, &VideoWidth, &VideoFPS, &VideoDAR);
+
+          if(FirstPCRms != 0 && (!DoInfoOnly || VidOK)) break;
           p++;
         }
       }
@@ -991,11 +1075,22 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             }
             if(TtxFound && !TtxOK)
               TtxOK = (GetPCRms(p, &TtxPCR) && TtxPCR != 0);
+            if (DoInfoOnly && !VidOK)
+            {
+              tTSPacket *curPacket = (tTSPacket*)p;
+              if (((curPacket->PID1 * 256 | curPacket->PID2) == VideoPID) && curPacket->Payload_Unit_Start)
+              {
+                if (curPacket->Adapt_Field_Exists)
+                  VidOK = AnalyseVideo((byte*)&curPacket->Data + curPacket->Data[0] + 1, sizeof(curPacket->Data) - curPacket->Data[0] - 1, &VideoHeight, &VideoWidth, &VideoFPS, &VideoDAR);
+                else
+                  VidOK = AnalyseVideo((byte*)&curPacket->Data, sizeof(curPacket->Data), &VideoHeight, &VideoWidth, &VideoFPS, &VideoDAR);
+              }
+            }
 
-            if(EITOK && SDTOK && (TtxOK || TeletextPID == 0xffff)) break;
+            if(EITOK && SDTOK && (TtxOK || TeletextPID == 0xffff) && (!DoInfoOnly || VidOK)) break;
             p += PACKETSIZE;
           }
-          if(EITOK && SDTOK && (TtxOK || TeletextPID == 0xffff)) break;
+          if(EITOK && SDTOK && (TtxOK || TeletextPID == 0xffff) && (!DoInfoOnly || VidOK)) break;
           if(HumaxSource)
             fseeko64(fIn, +HumaxHeaderLaenge, SEEK_CUR);
         }

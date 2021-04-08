@@ -295,7 +295,8 @@ char* TimeStr_DB(time_t *const UnixTimeStamp)
   static char TS[20];
   TS[0] = '\0';
   strftime(TS, sizeof(TS), "%Y-%m-%d %H:%M:%S", localtime(UnixTimeStamp));
-  return TS;
+  if(*UnixTimeStamp) return TS;
+  else return "";
 }
 
 // UCS-2 (16 bits) to UTF-8 (Unicode Normalization Form C (NFC)) conversion

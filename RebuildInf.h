@@ -17,9 +17,32 @@ typedef enum
   DESC_Service           = 'H',  // 0x48
   DESC_Teletext          = 'V',  // 0x56
   DESC_Subtitle          = 'Y',  // 0x59
-  DESC_AC3               = 0x6A,
+  DESC_AC3               = 0x6A
 } DescrTags;
 
+typedef enum
+{
+  AR_FORBIDDEN           = 0,
+  AR_1to1                = 1,  // 1:1
+  AR_4to3                = 2,  // 4:3 = 1.333
+  AR_16to9               = 3,  // 16:9 = 1.778
+  AR_221to100            = 4,  // 2.21:1 = 2.21
+  AR_RESERVED            = 5
+} AspectRatios;
+
+typedef enum
+{
+  FR_FORBIDDEN           = 0,
+  FR_NTSC_23             = 1,  // 23.976 fps
+  FR_CINEMA_24           = 2,  // 24 fps
+  FR_PAL_25              = 3,  // 25 fps
+  FR_NTSC_29             = 4,  // 29.970 fps
+  FR_NTSC_30             = 5,  // 30 fps
+  FR_PAL_50              = 6,  // 50 fps
+  FR_NTSC_59             = 7,  // 59.940 fps
+  FR_NTSC_60             = 8,  // 60 fps
+  FR_RESERVED            = 9
+} FrameRates;
 
 typedef struct
 {
@@ -183,11 +206,45 @@ typedef struct
   // Data of length DescrLength
 } tTSDesc;
 
+typedef struct
+{
+  byte                  StartCode[3];
+  byte                  HeaderID;
+
+  byte                  Width1;
+  byte                  Height1:4;
+  byte                  Width2:4;
+  byte                  Height2;
+
+  byte                  AspectRatio:4;
+  byte                  FrameRate:4;
+
+  byte                  Bitrate1;
+  byte                  Bitrate2;
+
+  byte                  VBV1:5;
+  byte                  Marker:1;
+  byte                  Bitrate3:2;
+
+  byte                  IntraMatrix1:1;
+  byte                  Laden1:1;
+  byte                  CPF:1;
+  byte                  VBV2:5;
+
+  byte                  IntraMatrix2;
+  byte                  IntraMatrix3;
+  byte                  Laden2:1;
+  byte                  IntraMatrix4:7;
+  byte                  NonIntraMatrix:3;
+} tSequenceHeader;
+
 
 #define                 EPGBUFFERSIZE 4097
 
 //extern FILE            *fIn;  // dirty Hack
 extern long long        FirstFilePCR, LastFilePCR;
+extern int              VideoHeight, VideoWidth;
+extern double           VideoFPS, VideoDAR;
 
 time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec, bool isUTC);
 tPVRTime Unix2TFTime(time_t UnixTimeStamp, byte *const outSec, bool toUTC);
