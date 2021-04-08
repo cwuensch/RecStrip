@@ -1871,13 +1871,13 @@ FILE *fDbg;
                   DeleteBookmark(--j);
 
                 // Bookmarks im weggeschnittenen Bereich (bzw. kurz nach Schnittstelle) löschen
-  //              while ((j < BookmarkInfo->NrBookmarks) && (BookmarkInfo->Bookmarks[j] < CalcBlockSize(CurrentPosition) + 3*BlocksOneSecond))
+//                while ((j < BookmarkInfo->NrBookmarks) && (BookmarkInfo->Bookmarks[j] < CalcBlockSize(CurrentPosition) + 3*BlocksOneSecond))
                 while ((j < BookmarkInfo->NrBookmarks) && (BookmarkInfo->Bookmarks[j] < CurPosBlocks + 3*BlocksOneSecond))
                   DeleteBookmark(j);
 
                 // neues Bookmark an Schnittstelle setzen
                 if (DoCut == 1 || (DoMerge && CurrentPosition == 0))
-  //                if ((CurrentPosition-PositionOffset > 0) && (CurrentPosition + 3*9024*BlocksOneSecond < (long long)RecFileSize))
+//                  if ((CurrentPosition-PositionOffset > 0) && (CurrentPosition + 3*9024*BlocksOneSecond < (long long)RecFileSize))
                   if ((CurrentPosition-PositionOffset > 0) && (CurPosBlocks + 3*BlocksOneSecond < RecFileBlocks))
                     AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + 9023));
               }
@@ -1885,8 +1885,8 @@ FILE *fDbg;
               if (DoCut == 1)
               {
                 // SCHNEIDEN: Zeit neu berechnen
-                if (NewStartTimeOffset == 0)
-                  NewStartTimeOffset = max(SegmentMarker[CurSeg].Timems, 1);
+                if (NewStartTimeOffset < 0)
+                  NewStartTimeOffset = SegmentMarker[CurSeg].Timems;
                 NewDurationMS += (SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems);
               }
               else if (DoCut == 2)

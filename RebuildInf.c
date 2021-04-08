@@ -798,10 +798,10 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             if(FirstPCRms != 0)
               FirstFilePCR = (long long)FirstPCRms * 600;
 
-          if (DoInfoOnly && !VidOK)
+          if (!VidOK)
             VidOK = AnalyseVideo(&Buffer[p], RECBUFFERENTRIES*100 - p, &VideoHeight, &VideoWidth, &VideoFPS, &VideoDAR);
 
-          if(FirstPCRms != 0 && (!DoInfoOnly || VidOK)) break;
+          if(FirstPCRms != 0 && VidOK) break;
           p++;
         }
       }
@@ -981,7 +981,12 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                { ok = FALSE;  break; }
 
             if (ok)
-             { PMTPID = ((p[1] << 8) | p[2]) & 0x1fff;  break; }
+            {
+              word NewPMT = ((p[1] << 8) | p[2]) & 0x1fff;
+              if (!PMTPID || NewPMT < PMTPID)   // dirty hack: Falls mehrere PMTs in der Aufnahme vorhanden, nimm die kleinste (kann bei ORF passieren, da auf der höchsten PMT-PID auch die CAT übertragen wird)
+                PMTPID = NewPMT;
+//              break;
+            }
 
             p += PACKETSIZE;
           }
@@ -1075,7 +1080,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             }
             if(TtxFound && !TtxOK)
               TtxOK = (GetPCRms(p, &TtxPCR) && TtxPCR != 0);
-            if (DoInfoOnly && !VidOK)
+            if (!VidOK)
             {
               tTSPacket *curPacket = (tTSPacket*)p;
               if (((curPacket->PID1 * 256 | curPacket->PID2) == VideoPID) && curPacket->Payload_Unit_Start)
@@ -1087,10 +1092,10 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               }
             }
 
-            if(EITOK && SDTOK && (TtxOK || TeletextPID == 0xffff) && (!DoInfoOnly || VidOK)) break;
+            if(EITOK && SDTOK && (TtxOK || TeletextPID == 0xffff) && VidOK) break;
             p += PACKETSIZE;
           }
-          if(EITOK && SDTOK && (TtxOK || TeletextPID == 0xffff) && (!DoInfoOnly || VidOK)) break;
+          if(EITOK && SDTOK && (TtxOK || TeletextPID == 0xffff) && VidOK) break;
           if(HumaxSource)
             fseeko64(fIn, +HumaxHeaderLaenge, SEEK_CUR);
         }

@@ -11,6 +11,7 @@
 #include "PESProcessor.h"
 #include "PESFileLoader.h"
 #include "NavProcessor.h"
+#include "RebuildInf.h"
 #include "NALUDump.h"
 
 
@@ -302,6 +303,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet, long long 
 
 void PESMuxer_Init(byte *PESBuffer, word PID, bool pPayloadStart, bool pDiscontinuity)
 {
+  dword CurTimeStep = TimeStepPerFrame;
   TRACEENTER;
 
   p = PESBuffer;
@@ -321,14 +323,22 @@ void PESMuxer_Init(byte *PESBuffer, word PID, bool pPayloadStart, bool pDisconti
       CurPCR = (long long)LastDTS * 600 - PCRTOPTSOFFSET;
     GetPTS2(&PESBuffer[3], NULL, &LastDTS);
 
-if (!TimeStepPerFrame && CurPCR && LastDTS)
-{
-  TimeStepPerFrame = (dword)((long long)LastDTS * 600 - PCRTOPTSOFFSET - CurPCR);
-  printf("  PESMuxer: Detected frame rate: %g frames per second.\n", (float)1000 / (TimeStepPerFrame/27000));
+if (!TimeStepPerFrame)
+{  
+  if (CurPCR && LastDTS)
+  {
+    TimeStepPerFrame = (dword)((long long)LastDTS * 600 - PCRTOPTSOFFSET - CurPCR);
+    CurTimeStep = TimeStepPerFrame;
+    printf("  PESMuxer: Detected frame rate: %g frames per second.\n", (float)1000 / (TimeStepPerFrame/27000));
+  }
+  else if (VideoFPS != 0)
+    CurTimeStep = (dword)(27000000.0 / VideoFPS);
+  else
+    CurTimeStep = (isHDVideo ? 540000 : 1080000);   // 540000 PCR = 20 ms = 1 Frame bei 50 fps
 }
 
     if (!CurPCR && LastDTS)
-      CurPCR = (long long)LastDTS * 600 - PCRTOPTSOFFSET - (TimeStepPerFrame ? TimeStepPerFrame : (isHDVideo ? 540000 : 1080000));  // 540000 PCR = 20 ms = 1 Frame bei 50 fps
+      CurPCR = (long long)LastDTS * 600 - PCRTOPTSOFFSET - CurTimeStep;
     if(CurPCR < 0) CurPCR += 2576980377600LL;  // falls Überlauf von LastDTS (= 2^32 * 600)
   }
   else
