@@ -1,0 +1,18 @@
+### Needed key ###
+package="LogExtractor"
+version="1.0"
+description="Extracts infos from Topfield inf and continuity errors from a RecStrip logfile."
+maintainer="Christian Wünsch"
+arch="rtd1296 x64"
+
+### Optional key ###
+displayname="LogExtractor"
+firmware="6.0"
+support_url="http://mc.tms-taps.net/RecStripper"
+distributor="Christian Wünsch"
+distributor_url="http://mc.tms-taps.net/RecStripper"
+thirdparty="yes"
+startable="no"
+silent_install="no"
+silent_upgrade="no"
+silent_uninstall="no"

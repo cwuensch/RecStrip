@@ -279,22 +279,43 @@ static void timestamp_to_srttime(uint32_t timestamp, char *buffer) {
 char* TimeStr(time_t *const UnixTimeStamp)
 {
   static char TS[26];
+  struct tm timeinfo;
   TS[0] = '\0';
-  strftime(TS, sizeof(TS), "%a %d %b %Y %H:%M:%S", localtime(UnixTimeStamp));
+
+  #ifdef _WIN32
+    localtime_s(&timeinfo, UnixTimeStamp);
+  #else
+    localtime_r(UnixTimeStamp, &timeinfo);
+  #endif
+  strftime(TS, sizeof(TS), "%a %d %b %Y %H:%M:%S", &timeinfo);
   return TS;
 }
 char* TimeStr_UTC(time_t *const UnixTimeStamp)
 {
   static char TS[26];
+  struct tm timeinfo;
   TS[0] = '\0';
-  strftime(TS, sizeof(TS), "%a %d %b %Y %H:%M:%S", gmtime(UnixTimeStamp));
+
+  #ifdef _WIN32
+    localtime_s(&timeinfo, UnixTimeStamp);
+  #else
+    localtime_r(UnixTimeStamp, &timeinfo);
+  #endif
+  strftime(TS, sizeof(TS), "%a %d %b %Y %H:%M:%S", &timeinfo);
   return TS;
 }
 char* TimeStr_DB(time_t *const UnixTimeStamp)
 {
   static char TS[20];
+  struct tm timeinfo;
   TS[0] = '\0';
-  strftime(TS, sizeof(TS), "%Y-%m-%d %H:%M:%S", localtime(UnixTimeStamp));
+
+  #ifdef _WIN32
+    localtime_s(&timeinfo, UnixTimeStamp);
+  #else
+    localtime_r(UnixTimeStamp, &timeinfo);
+  #endif
+  strftime(TS, sizeof(TS), "%Y-%m-%d %H:%M:%S", &timeinfo);
   if(*UnixTimeStamp) return TS;
   else return "";
 }

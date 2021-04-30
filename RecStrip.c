@@ -1014,9 +1014,16 @@ FILE *fDbg;
 #ifndef LINUX
   {
     time_t curTime = time(NULL);
-    struct tm *timeInfo = localtime (&curTime);
-    tzset();
-    printf("\nLocal timezone: %s%s (GMT%+ld)\n", tzname[0], (timeInfo->tm_isdst ? " + DST" : ""), -timezone/3600 + timeInfo->tm_isdst);
+    struct tm timeinfo;
+    #ifdef _WIN32
+      localtime_s(&timeinfo, &curTime);
+      _tzset();
+      printf("\nLocal timezone: %s%s (GMT%+ld)\n", _tzname[0], (timeinfo.tm_isdst ? " + DST" : ""), -_timezone/3600 + timeinfo.tm_isdst);
+    #else
+      localtime_r(&curTime, &timeinfo);
+      tzset();
+      printf("\nLocal timezone: %s%s (GMT%+ld)\n", tzname[0], (timeinfo.tm_isdst ? " + DST" : ""), -timezone/3600 + timeinfo.tm_isdst);
+    #endif
   }
 #endif
 

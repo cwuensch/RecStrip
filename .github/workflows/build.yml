@@ -1,0 +1,426 @@
+name: Build for all
+
+on:
+  push:
+    branches: [ master, RS3 ]
+  pull_request:
+    branches: [ master, RS3 ]
+  release:
+    types: [ created ]
+
+env:
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+
+jobs:
+  winbuild2017:
+    name: Windows (VS 2017)
+    runs-on: windows-2016
+    env:
+      SOLUTION_FILE_PATH: RecStrip_VS/RecStrip.sln
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Use VS 2017 project
+      run: mv -Force RecStrip_VS/RecStrip_2017.vcxproj RecStrip_VS/RecStrip.vcxproj
+
+    - name: Add MSBuild to PATH
+      uses: microsoft/setup-msbuild@v1
+#      with:
+#        vs-version: '[10.0,10.1)'
+
+    - name: Build x86
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: |
+        msbuild /m /p:Configuration=Release /p:Platform=Win32 ${{env.SOLUTION_FILE_PATH}}
+        move "RecStrip_VS\Release\RecStrip.exe" "RecStrip_VS\RecStrip_Win32.exe"
+
+    - name: Build x64
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      run: |
+        msbuild /m /p:Configuration=Release /p:Platform=x64 ${{env.SOLUTION_FILE_PATH}}
+        move "RecStrip_VS\x64\Release\RecStrip.exe" "RecStrip_VS\RecStrip_x64.exe"
+
+    - name: Copy build artefact
+      uses: actions/upload-artifact@v2
+      with:
+        name: RecStrip_Windows2017
+        path: |
+          ${{ github.workspace }}/RecStrip_VS/RecStrip_Win32.exe
+          ${{ github.workspace }}/RecStrip_VS/RecStrip_x64.exe
+  
+    - name: Create zip archive
+      if: startsWith(github.ref, 'refs/tags/')
+      run: Compress-Archive -Path ${{ github.workspace }}\RecStrip_VS\RecStrip*.exe -DestinationPath RecStrip_Windows2017.zip
+
+    - name: Upload release binaries
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: RecStrip_Windows2017.zip
+
+  winbuild2010:
+    name: Windows (VS 2010)
+    runs-on: windows-2019
+    env:
+      SOLUTION_FILE_PATH: RecStrip_VS/RecStrip.sln
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Compile code in container
+      run: |
+        docker run --rm -v ${{ github.workspace }}:C:/source/ --workdir "C:/source" --entrypoint "cmd" cwuensch/vs2010:minimal2 /c "MSBuild /m /p:Configuration=Release /p:Platform=Win32 ${{env.SOLUTION_FILE_PATH}} && MSBuild /m /p:Configuration=Release /p:Platform=x64 ${{env.SOLUTION_FILE_PATH}}"
+#        docker run --rm -v ${{ github.workspace }}:C:/source/ --workdir "C:/source" --entrypoint "cmd" cwuensch/vs2010:vcexpress /c "MSBuild /m /p:Configuration=Release /p:Platform=Win32 ${{env.SOLUTION_FILE_PATH}} && MSBuild /m /p:Configuration=Release /p:Platform=x64 ${{env.SOLUTION_FILE_PATH}}"
+#      uses: docker://cwuensch/vs2010:vcexpress
+#      with:
+#        entrypoint: cmd
+#        args: /c "C:\Windows\Microsoft.NET\Framework\v4.0.30319\MSBuild.exe /m /p:Configuration=Release /p:Platform=Win32 ${{env.SOLUTION_FILE_PATH}} && C:\Windows\Microsoft.NET\Framework\v4.0.30319\MSBuild.exe /m /p:Configuration=Release /p:Platform=x64 ${{env.SOLUTION_FILE_PATH}}"
+
+    - name: Rename compiled files
+      run: |
+        move "RecStrip_VS\Release\RecStrip.exe" "RecStrip_VS\RecStrip_Win32.exe"
+        move "RecStrip_VS\x64\Release\RecStrip.exe" "RecStrip_VS\RecStrip_x64.exe"
+
+    - name: Copy build artefact
+      uses: actions/upload-artifact@v2
+      with:
+        name: RecStrip_Windows
+        path: |
+          ${{ github.workspace }}/RecStrip_VS/RecStrip_Win32.exe
+          ${{ github.workspace }}/RecStrip_VS/RecStrip_x64.exe
+
+    - name: Create zip archive
+      if: startsWith(github.ref, 'refs/tags/')
+      run: Compress-Archive -Path ${{ github.workspace }}\RecStrip_VS\RecStrip*.exe -DestinationPath RecStrip_Windows.zip
+
+    - name: Upload release binaries
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: RecStrip_Windows.zip
+
+  mingwbuild:
+    name: Build with MinGW
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Install MinGW-w64 GCC
+      run: sudo apt-get install -y gcc-mingw-w64
+
+    - name: Checkout repository and submodules
+      uses: actions/checkout@v2
+#      with:
+#        submodules: recursive
+
+    - name: Adapt Makefile for MinGW
+      run: |
+        rm RecStrip*.exe
+        cp Synology/Makefile .
+        sed -i 's/^include \/env.mak//' Makefile
+        sed -i 's/\$(CC) \$(CFLAGS) -rdynamic/\$(CC) \$(CFLAGS)/' Makefile
+        sed -i 's/CFLAGS2   ?= -O2/CFLAGS2   ?=/' Makefile
+
+    - name: Compile MinGW x86
+      run: |
+        rm -f RecStrip *.o
+        CC=i686-w64-mingw32-gcc make
+        mv RecStrip.exe RecStrip_Win32.exe
+
+    - name: Compile MinGW x64
+      run: |
+        rm -f RecStrip *.o
+        CC=x86_64-w64-mingw32-gcc make
+        mv RecStrip.exe RecStrip_x64.exe
+
+    - name: Copy build artefact
+      uses: actions/upload-artifact@v2
+      with:
+        name: RecStrip_MinGW
+        path: |
+          ${{ github.workspace }}/RecStrip.exe
+          ${{ github.workspace }}/RecStrip_x64.exe
+
+    - name: Create zip archive
+      if: startsWith(github.ref, 'refs/tags/')
+      run: zip -9 -r RecStrip_MinGW.zip RecStrip*.exe
+
+    - name: Upload release binaries
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: RecStrip_MinGW.zip
+
+  
+#  winbuild_old:
+#    name: Windows x86 (VS 2010 install)
+#    runs-on: windows-2016
+#    env:
+#      SOLUTION_FILE_PATH: RecStrip_VS/RecStrip.sln
+#
+#    steps:
+#    - name: Checkout repository
+#      uses: actions/checkout@v2
+#
+#    - name: Add MSBuild to PATH
+#      uses: microsoft/setup-msbuild@v1
+##      with:
+##        vs-version: '[10.0,10.1)'
+#      
+#    - name: Install vcexpress2010
+#      run: choco install vcexpress2010
+#
+#    - name: Install Visual C++ 2010 Service Pack 1 Compiler Update
+#      run: choco install kb2519277
+#
+#    - name: Setup Environment x86
+#      run: |
+#        echo "{C:\Program Files (x86)\Microsoft Visual Studio 10.0\Common7\IDE}" >> $GITHUB_PATH
+#        echo "{C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\BIN}" >> $GITHUB_PATH
+#        echo "{C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A\bin}" >> $GITHUB_PATH
+#        echo "{C:\Windows\Microsoft.NET\Framework\v4.0.30319}" >> $GITHUB_PATH
+#        echo "{LIB}={C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\lib}" >> $LIB
+#        echo "{LIB}={%LIB%;C:\Program Files (x86)\Microsoft SDKs\Windows\v7.1\Lib}" >> $LIB
+#        echo "{LIB}={%LIB%;C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A\Lib}" >> $LIB
+#        echo "{INCLUDE}={C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\include}" >> $INCLUDE
+#        echo "{INCLUDE}={%INCLUDE%;C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A\include}" >> $INCLUDE
+##VSINSTALLDIR="C:\Program Files (x86)\Microsoft Visual Studio 10.0\"
+##VCINSTALLDIR="%VSINSTALLDIR%VC\"
+##VS100COMNTOOLS="%VSINSTALLDIR%Common7\Tools\"
+##WindowsSdkDir="C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A\"
+#          
+#    - name: Initialize VCTools x86
+#      run: call "C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\vcvarsall.bat" x86
+#      shell: cmd
+#
+#    - name: Build x86
+#      working-directory: ${{env.GITHUB_WORKSPACE}}
+#      run: |
+#        msbuild /m /p:Configuration=Release /p:Platform=Win32 ${{env.SOLUTION_FILE_PATH}}
+#        mv RecStrip_VS/Release/RecStrip.exe RecStrip_VS/Release/RecStrip_Win32.exe
+#
+#    - name: Setup Environment x64
+#      run: |
+#        echo "{C:\Program Files (x86)\Microsoft Visual Studio 10.0\Common7\IDE}" >> $GITHUB_PATH
+#        echo "{C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\BIN}" >> $GITHUB_PATH
+#        echo "{C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A\bin}" >> $GITHUB_PATH
+#        echo "{C:\Windows\Microsoft.NET\Framework\v4.0.30319}" >> $GITHUB_PATH
+#        echo "{LIB}={C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\lib\amd64}" >> $LIB
+#        echo "{LIB}={%LIB%;C:\Program Files\Microsoft SDKs\Windows\v7.1\Lib\x64}" >> $LIB
+#        echo "{LIB}={%LIB%;C:\Program Files\Microsoft SDKs\Windows\v7.0A\Lib\x64}" >> $LIB
+#        echo "{INCLUDE}={C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\include}" >> $INCLUDE
+#        echo "{INCLUDE}={%INCLUDE%;C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A\include}" >> $INCLUDE
+#
+#    - name: Initialize VCTools x64
+#      run: call "C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\vcvarsall.bat" x86_amd64
+#      shell: cmd
+#    
+##    - name: Build x64
+##      working-directory: ${{env.GITHUB_WORKSPACE}}
+##      run: |
+##        msbuild /m /p:Configuration=Release /p:Platform=x64 ${{env.SOLUTION_FILE_PATH}}
+##        mv RecStrip_VS/x64/Release/RecStrip.exe RecStrip_VS/x64/Release/RecStrip_x64.exe
+#
+#    - name: Copy build artefact
+#      uses: actions/upload-artifact@v2
+#      with:
+#        name: RecStrip_Windows
+#        path: |
+#          ${{ github.workspace }}/RecStrip_VS/Release/RecStrip_Win32.exe
+##          ${{ github.workspace }}/RecStrip_VS/x64/Release/RecStrip_x64.exe
+
+# ----------------------------------------------------
+
+  tmsbuild:
+    name: Topfield TMS
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository and submodules
+      uses: actions/checkout@v2
+#      with:
+#        submodules: recursive
+
+    - name: Compile code in container
+#      run: |
+#        docker run --rm -v ${{ github.workspace }}:/tap --workdir "/tap" --env FBLib="MergeIntoMC" cwuensch/tmsbuild:FBLib "make"
+      uses: docker://cwuensch/tmsbuild:FBLib
+      with:
+        FBLib: MergeIntoMC
+        args: make
+
+    - name: Copy build artefact
+      uses: actions/upload-artifact@v2
+      with:
+        name: RecStrip_TMS
+        path: ${{ github.workspace }}/RecStrip
+
+    - name: Create zip archive
+      if: startsWith(github.ref, 'refs/tags/')
+      run: zip -9 -r RecStrip_TMS.zip RecStrip
+
+    - name: Upload release binaries
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: RecStrip_TMS.zip
+
+# ----------------------------------------------------
+
+  linuxbuild:
+    name: Build for Linux
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout repository and submodules
+      uses: actions/checkout@v2
+#      with:
+#        submodules: recursive
+
+    - name: Adapt Makefile for non-Topfield
+      run: |
+        sed -i 's/-DLINUX -D_REENTRANT -static //' Makefile
+        sed -i '/include \${BASE}\/include\/tool.mk/d' Makefile
+
+    - name: Compile Linux x64
+      run: |
+        rm -f RecStrip *.o
+        make
+        mv RecStrip RecStrip_x64
+
+    - name: Install GCC 32bit libs
+      run: sudo apt-get install -y gcc-multilib
+    
+    - name: Adapt Makefile for x86
+      run: |
+        sed -i 's/CFLAGS   +=/CFLAGS   += -m32/' Makefile
+        sed -i 's/CXXFLAGS +=/CXXFLAGS += -m32/' Makefile
+        sed -i 's/LDFLAGS  +=/LDFLAGS  += -m32/' Makefile
+
+    - name: Compile Linux x86
+      run: |
+        rm -f RecStrip *.o
+        make
+
+    - name: Copy build artefact
+      uses: actions/upload-artifact@v2
+      with:
+        name: RecStrip_Linux
+        path: |
+          ${{ github.workspace }}/RecStrip
+          ${{ github.workspace }}/RecStrip_x64
+
+    - name: Create zip archive
+      if: startsWith(github.ref, 'refs/tags/')
+      run: zip -9 -r RecStrip_Linux.zip RecStrip RecStrip_x64
+
+    - name: Upload release binaries
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: RecStrip_Linux.zip
+
+# ----------------------------------------------------
+
+  striptest:
+    name: Stripping test
+    runs-on: ubuntu-latest
+    needs: linuxbuild   
+    strategy:
+      matrix:
+        test: [SD, HD]
+        platform: [RecStrip]
+    env:
+      RS_VER: 2
+
+    steps:
+
+    - name: Determine RecStrip version
+      run: |
+        echo "Current REF: $GITHUB_REF"
+        if [[ $GITHUB_REF == 'refs/heads/RS3' || $GITHUB_REF == refs/tags/RS_3* ]]; then
+          echo "Detected RecStrip v3"
+          echo "RS_VER=3" >> "$GITHUB_ENV"
+        elif [[ $GITHUB_REF == 'refs/heads/master' || $GITHUB_REF == refs/tags/RS_2* ]]; then
+          echo "Detected RecStrip v2"
+          echo "RS_VER=2" >> "$GITHUB_ENV"
+        fi
+
+    - name: Get compiled binaries
+      uses: actions/download-artifact@master
+      with:
+        name: RecStrip_Linux
+        path: ${{ github.workspace }}
+    
+    - name: Set permissions
+      run: chmod a+x ${{ github.workspace }}/RecStrip*
+    
+    - name: Perform test
+      run: |
+        docker run --rm -v ${{ github.workspace }}:/StripTest/bin --env RS_VER=${{env.RS_VER}} --env RECSTRIP="bin/${{ matrix.platform }}" cwuensch/striptest:${{ matrix.test }}
+        docker run --rm -v ${{ github.workspace }}:/StripTest/bin --env RS_VER=${{env.RS_VER}} --env RECSTRIP="bin/RecStrip_x64" cwuensch/striptest:${{ matrix.test }}
+
+#    - name: Perform test (alternative)
+#      uses: docker://cwuensch/striptest:${{ matrix.test }}
+#      env:
+##        RS_VER: ${{ env.RS_VER }}
+#        RECSTRIP: /github/workspace/${{ matrix.platform }}
+##      with:
+##        args: ${{ env.RS_VER }} /github/workspace/${{ matrix.platform }}
+
+# ----------------------------------------------------
+
+  synobuild:
+    name: Synology (${{ matrix.platform }}-${{ matrix.version }})
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        version: [6.1]
+        platform: [rtd1296, x64]
+
+    steps:
+    - name: Checkout repository and submodules
+      uses: actions/checkout@v2
+#      with:
+#        submodules: recursive
+
+    - name: Prepare code
+      run: |
+        cp -R Synology/* .
+        mkdir -p target
+
+    - name: Compile code in container
+      run: |
+        docker run --privileged --name SynoBuild -v ${{ github.workspace }}/..:/toolkit/source:ro cwuensch/synobuild:${{ matrix.platform }}_${{ matrix.version }} -I RecStrip
+        echo "docker cp SynoBuild:/toolkit/build_env/ds.${{ matrix.platform }}-${{ matrix.version }}/source/RecStrip/RecStrip ${{ github.workspace }}/target/RecStrip_${{ matrix.platform }}"
+        docker cp SynoBuild:/toolkit/build_base/source/RecStrip/RecStrip ${{ github.workspace }}/target/RecStrip_${{ matrix.platform }}
+        
+    - name: Copy build artefact
+      uses: actions/upload-artifact@v2
+      with:
+        name: RecStrip_Synology
+        path: |
+          ${{ github.workspace }}/target/RecStrip_${{ matrix.platform }}
+
+  synoupload:
+    name: Upload Synology release
+    runs-on: ubuntu-latest
+    needs: synobuild
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+    - name: Download artifact
+      uses: actions/download-artifact@v2
+
+    - name: Create zip archive
+      run: |
+        cd ${{ github.workspace }}/RecStrip_Synology
+        zip -9 -r ${{ github.workspace }}/RecStrip_Synology.zip RecStrip*
+
+    - name: Upload release binaries
+      uses: softprops/action-gh-release@v1
+      with:
+        files: ${{ github.workspace }}/RecStrip_Synology.zip
