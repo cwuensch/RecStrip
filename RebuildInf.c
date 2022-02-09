@@ -1107,15 +1107,17 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               }
             }
 
-            if(EITOK && SDTOK && (TtxOK || TeletextPID == 0xffff) && (!DoInfoOnly || VidOK)) break;
+            if((Durchlauf==1 || (EITOK && SDTOK)) && (TtxOK || TeletextPID == 0xffff) && (!DoInfoOnly || VidOK)) break;
             p += PACKETSIZE;
           }
-          if(EITOK && SDTOK && (TtxOK || TeletextPID == 0xffff) && (!DoInfoOnly || VidOK)) break;
+          if((Durchlauf==1 || (EITOK && SDTOK)) && (TtxOK || TeletextPID == 0xffff) && (!DoInfoOnly || VidOK)) break;
           if(HumaxSource)
             fseeko64(fIn, +HumaxHeaderLaenge, SEEK_CUR);
         }
         if(!SDTOK)
           printf ("  Failed to get service name from SDT.\n");
+        if(!EITOK && (Durchlauf == 1) && (EITBuffer.ValidBuffer == 0) && (LastEITBuffer == 0))
+          EITOK = !EITBuffer.ErrorFlag && AnalyseEIT(EITBuffer.Buffer1, RecInf->ServiceInfo.ServiceID, RecInf);  // Versuche EIT trotzdem zu parsen (bei gestrippten Aufnahmen gibt es kein Folge-Paket, das den Payload_Unit_Start auslöst)
         if(!EITOK)
           printf ("  Failed to get the EIT information.\n");
         if(TeletextPID != 0xffff && !TtxOK)
@@ -1209,8 +1211,8 @@ printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStr(&StartTimeUnix), (TtxOK ? -1*T
     RecInf->RecHeaderInfo.DurationMin = (int)(dPCR / 60000);
     RecInf->RecHeaderInfo.DurationSec = (dPCR / 1000) % 60;
   }
-printf("  TS: FirstPCR  = %lld (%1.1u:%2.2u:%2.2u,%3.3u), Last: %lld (%1.1u:%2.2u:%2.2u,%3.3u)\n", FirstFilePCR, (FirstPCRms/3600000), (FirstPCRms/60000 % 60), (FirstPCRms/1000 % 60), (FirstPCRms % 1000), LastFilePCR, (LastPCRms/3600000), (LastPCRms/60000 % 60), (LastPCRms/1000 % 60), (LastPCRms % 1000));
-printf("  TS: Duration  = %2.2d min %2.2d sec\n", RecInf->RecHeaderInfo.DurationMin, RecInf->RecHeaderInfo.DurationSec);
+printf("  TS: FirstPCR  = %lld (%01u:%02u:%02u,%03u), Last: %lld (%01u:%02u:%02u,%03u)\n", FirstFilePCR, (FirstPCRms/3600000), (FirstPCRms/60000 % 60), (FirstPCRms/1000 % 60), (FirstPCRms % 1000), LastFilePCR, (LastPCRms/3600000), (LastPCRms/60000 % 60), (LastPCRms/1000 % 60), (LastPCRms % 1000));
+printf("  TS: Duration  = %01u:%02u:%02u,%03u\n", (RecInf->RecHeaderInfo.DurationMin/60), (RecInf->RecHeaderInfo.DurationMin % 60), RecInf->RecHeaderInfo.DurationSec, (dPCR % 1000));
 
   if(TtxTime && TtxPCR)
   {

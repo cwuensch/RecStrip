@@ -9,7 +9,6 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <string.h>
-#include <sys/stat.h>
 #include <time.h>
 #include "type.h"
 #include "NavProcessor.h"
@@ -1087,6 +1086,9 @@ void QuickNavProcess(const long long CurrentPosition, const long long PositionOf
 
 bool LoadNavFileIn(const char* AbsInNav)
 {
+  unsigned long long    NavSize;
+  dword                 start = 0, TimemsStart = 0;
+  tnavSD                navSD;
   TRACEENTER;
 
   fNavIn = fopen(AbsInNav, "rb");
@@ -1098,9 +1100,28 @@ bool LoadNavFileIn(const char* AbsInNav)
     dword FirstDword = 0;
     if (fread(&FirstDword, 4, 1, fNavIn)
       && (FirstDword == 0x72767062))  // 'bpvr'
-      fseek(fNavIn, 1056, SEEK_SET);
+    {  
+      start = 1056;
+      fseek(fNavIn, start, SEEK_SET);
+    }
     else
       rewind(fNavIn);
+
+    // Länge der nav ermitteln
+    if (fread(&navSD, sizeof(tnavSD), 1, fNavIn))
+      TimemsStart = navSD.Timems;
+    fseek(fNavIn, -(int)(isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD)), SEEK_END);
+    if (fread(&navSD, sizeof(tnavSD), 1, fNavIn))
+      NavDurationMS = navSD.Timems - TimemsStart;
+//    HDD_GetFileSize(AbsInNav, &NavSize);
+    fseek(fNavIn, 0, SEEK_END);
+    NavSize = ftell(fNavIn);
+
+    fseek(fNavIn, start, SEEK_SET);
+
+    NavFrames = (dword)(NavSize / (isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD)));
+printf("  NAV: Duration = %02d:%02d:%02d,%03d\n", NavDurationMS/3600000, NavDurationMS/60000 % 60, NavDurationMS/1000 % 60, NavDurationMS % 1000);
+printf("  NAV: Frames   = %d (%.1f fps)\n", NavFrames, NavFrames / ((double)NavDurationMS / 1000));
   }
 
   NextPictureHeaderOffset = 0;

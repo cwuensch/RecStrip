@@ -206,6 +206,7 @@ typedef struct
   // Data of length DescrLength
 } tTSDesc;
 
+// siehe: http://stnsoft.com/DVD/mpeghdrs.html
 typedef struct
 {
   byte                  StartCode[3];
@@ -216,8 +217,8 @@ typedef struct
   byte                  Width2:4;
   byte                  Height2;
 
-  byte                  AspectRatio:4;
   byte                  FrameRate:4;
+  byte                  AspectRatio:4;
 
   byte                  Bitrate1;
   byte                  Bitrate2;

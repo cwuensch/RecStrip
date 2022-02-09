@@ -407,6 +407,8 @@ if (RecHeaderInfo->Reserved != 0)
     } */
 
     InfDuration = 60*RecHeaderInfo->DurationMin + RecHeaderInfo->DurationSec;
+printf("  INF: Duration = %2.2d min %2.2d sec\n", RecHeaderInfo->DurationMin, RecHeaderInfo->DurationSec);
+printf("  INF: ServiceName = %s\n", ServiceInfo->ServiceName);
   }
 
   // OldEventText setzen + ggf. Itemized Items in ExtEventText entfernen
