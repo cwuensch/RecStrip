@@ -266,7 +266,7 @@ bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
           if(RecInf->ServiceInfo.VideoStreamType == 0xff)
             isHDVideo = TRUE;  // fortsetzen...
           // (fall-through!)
- 
+
         case STREAM_VIDEO_MPEG1:
         case STREAM_VIDEO_MPEG2:
         {
@@ -766,6 +766,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   int                   TtxTimeZone = 0;
   dword                 FirstPCRms = 0, LastPCRms = 0, TtxPCR = 0, dPCR = 0;
   int                   Offset, ReadBytes, Durchlauf, i;
+  int                   time_offset = 0;
   bool                  EITOK = FALSE, SDTOK = FALSE, TtxFound = FALSE, TtxOK = FALSE, VidOK = FALSE;
   time_t                StartTimeUnix;
   byte                 *p;
@@ -1176,7 +1177,6 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 
   if (EITOK)
   {
-    int time_offset = 0;
     StartTimeUnix = TF2UnixTime(RecInf->EventInfo.StartTime, 0, TRUE);
 #ifndef LINUX
     {
@@ -1221,7 +1221,7 @@ printf("  TS: Duration  = %01u:%02u:%02u,%03u\n", (RecInf->RecHeaderInfo.Duratio
   }
   else if (!HumaxSource && !EycosSource)
   {
-    RecInf->RecHeaderInfo.StartTime = RecInf->EventInfo.StartTime;
+	RecInf->RecHeaderInfo.StartTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, (TtxOK ? -1*TtxTimeZone : time_offset));  // GMT+1;
     if (!RecInf->EventInfo.StartTime || (MJD(FileTimeStamp) - MJD(RecInf->RecHeaderInfo.StartTime) <= 1))
     {
       RecInf->RecHeaderInfo.StartTime = FileTimeStamp;
