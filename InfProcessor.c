@@ -122,7 +122,7 @@ bool InfProcessor_Init()
   OrigStartSec = 0;   // CurrentStartSec = 0;
   RecHeaderInfo = NULL;
   BookmarkInfo  = NULL;
-  
+
   InfSize = sizeof(TYPE_RecHeader_TMSS);
   InfBuffer = (byte*) malloc(max(InfSize, 32768));
   if(InfBuffer)
@@ -387,9 +387,9 @@ if (RecHeaderInfo->Reserved != 0)
       if (abs((int)(RecHeaderInfo->StartTime - OrigStartTime)) > 1)
       {
         time_t StartTimeUnix = TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, FALSE);
-        printf("  INF: StartTime (%s) differs from TS start! Taking %s.\n", TimeStr(&StartTimeUnix), ((RecHeaderInfo->StartTimeSec != 0 || OrigStartSec == 0) ? "inf" : "TS"));
+        printf("  INF: StartTime (%s) differs from TS start! Taking %s.\n", TimeStr(&StartTimeUnix), ((RecHeaderInfo->StartTimeSec != 0 || ((OrigStartSec == 0) && ((RecHeaderInfo->StartTimeSec & 0x0f) > 0))) ? "inf" : "TS"));
       }
-      if (RecHeaderInfo->StartTimeSec != 0 || OrigStartSec == 0)
+      if (RecHeaderInfo->StartTimeSec != 0 || ((OrigStartSec == 0) && ((RecHeaderInfo->StartTimeSec & 0x0f) > 0)))
       {
         OrigStartTime = RecHeaderInfo->StartTime;
         OrigStartSec  = RecHeaderInfo->StartTimeSec;
@@ -407,6 +407,8 @@ if (RecHeaderInfo->Reserved != 0)
     } */
 
     InfDuration = 60*RecHeaderInfo->DurationMin + RecHeaderInfo->DurationSec;
+printf("  INF: Duration = %2.2d min %2.2d sec\n", RecHeaderInfo->DurationMin, RecHeaderInfo->DurationSec);
+printf("  INF: ServiceName = %s\n", ServiceInfo->ServiceName);
   }
 
   // OldEventText setzen + ggf. Itemized Items in ExtEventText entfernen

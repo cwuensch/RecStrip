@@ -15,7 +15,7 @@ env:
 jobs:
   winbuild2017:
     name: Windows (VS 2017)
-    runs-on: windows-2016
+    runs-on: windows-2019
     env:
       SOLUTION_FILE_PATH: RecStrip_VS/RecStrip.sln
 
@@ -46,23 +46,23 @@ jobs:
     - name: Copy build artefact
       uses: actions/upload-artifact@v2
       with:
-        name: RecStrip_Windows2017
+        name: RecStrip_VS2017
         path: |
           ${{ github.workspace }}/RecStrip_VS/RecStrip_Win32.exe
           ${{ github.workspace }}/RecStrip_VS/RecStrip_x64.exe
   
     - name: Create zip archive
       if: startsWith(github.ref, 'refs/tags/')
-      run: Compress-Archive -Path ${{ github.workspace }}\RecStrip_VS\RecStrip*.exe -DestinationPath RecStrip_Windows2017.zip
+      run: Compress-Archive -Path ${{ github.workspace }}\RecStrip_VS\RecStrip*.exe -DestinationPath RecStrip_VS2017.zip
 
     - name: Upload release binaries
       uses: softprops/action-gh-release@v1
       if: startsWith(github.ref, 'refs/tags/')
       with:
-        files: RecStrip_Windows2017.zip
+        files: RecStrip_VS2017.zip
 
   winbuild2010:
-    name: Windows (VS 2010)
+    name: Windows (VS 2010 Docker)
     runs-on: windows-2019
     env:
       SOLUTION_FILE_PATH: RecStrip_VS/RecStrip.sln
@@ -154,83 +154,191 @@ jobs:
       with:
         files: RecStrip_MinGW.zip
 
-  
-#  winbuild_old:
-#    name: Windows x86 (VS 2010 install)
-#    runs-on: windows-2016
-#    env:
-#      SOLUTION_FILE_PATH: RecStrip_VS/RecStrip.sln
-#
-#    steps:
-#    - name: Checkout repository
-#      uses: actions/checkout@v2
-#
+
+  winbuild_new:
+    name: Windows (VS 2010 install)
+    runs-on: windows-2019
+    env:
+      SOLUTION_FILE_PATH: RecStrip_VS/RecStrip.sln
+
+    steps:
+    - name: Download VS2010
+      uses: actions/checkout@v2
+      with:
+        repository: cwuensch/VS2010
+        ref: minimal
+        path: VS2010
+
+#    - name: Install Visual Studio Express 2010 (nicht notwendig!)
+#      shell: powershell
+#      run: |
+#        echo "Downloading..."
+#        (New-Object Net.WebClient).DownloadFile('https://github.com/cwuensch/VS2010/raw/vcexpress/VCExpressInstall/VCExpressInstall_1.zip', 'C:\VCExpressInstall_1.zip')
+#        (New-Object Net.WebClient).DownloadFile('https://github.com/cwuensch/VS2010/raw/vcexpress/VCExpressInstall/VCExpressInstall_2.zip', 'C:\VCExpressInstall_2.zip')
+#        (New-Object Net.WebClient).DownloadFile('https://github.com/cwuensch/VS2010/raw/vcexpress/VCExpressInstall/VCExpressInstall_3.zip', 'C:\VCExpressInstall_3.zip')
+#        (New-Object Net.WebClient).DownloadFile('https://github.com/cwuensch/VS2010/raw/vcexpress/VCExpressInstall/VCExpressInstall_dummy.zip', 'C:\VCExpressInstall_dummy.zip')
+#        echo "Extracting..."
+#        Expand-Archive -Force -Path C:\VCExpressInstall_1.zip -DestinationPath C:\VCExpress
+#        Expand-Archive -Force -Path C:\VCExpressInstall_2.zip -DestinationPath C:\VCExpress
+#        Expand-Archive -Force -Path C:\VCExpressInstall_3.zip -DestinationPath C:\VCExpress
+#        Expand-Archive -Force -Path C:\VCExpressInstall_dummy.zip -DestinationPath C:\VCExpress
+#        rm "C:\VCExpressInstall_*"
+#        echo "Installing..."
+#        ( C:\VCExpress\Setup.exe /quiet | Out-Null ) ; ( echo "" )
+#        echo "Deleting..."
+#        rm -r -fo "C:\VCExpress"
+#        echo "Fertig."
+#        exit 0
+
+    - name: Extract Windows SDK 7.1A (ggf. schon vorhanden, muss aber in v7.0A)
+      shell: powershell
+      run: |
+        #echo "Extracting..."
+        #Expand-Archive -Force -Path ${{ github.workspace }}/VS2010/WindowsSDK_7.1A.zip -DestinationPath "C:\Program Files (x86)\Microsoft SDKs\Windows\"
+        echo "Copying..."
+        Rename-Item "C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A" "C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A.bak"
+        New-Item -Path "C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A" -ItemType SymbolicLink -Value "C:\Program Files (x86)\Microsoft SDKs\Windows\v7.1A"
+        echo "Registry import..."
+        reg import "${{ github.workspace }}/VS2010/WinSDK70.reg"
+        reg import "${{ github.workspace }}/VS2010/WinSDK71.reg"
+        echo "Deleting..."
+        rm "${{ github.workspace }}/VS2010/WindowsSDK_7.1A.zip"
+
+    - name: Extract NETFX Tools
+      shell: powershell
+      run: |
+        echo "Extracting..."
+        Expand-Archive -Force -Path ${{ github.workspace }}/VS2010/NETFX_4.0_Tools.zip -DestinationPath "C:\Program Files (x86)\Microsoft SDKs\Windows\v7.1A\Bin\"
+        echo "Deleting..."
+        rm "${{ github.workspace }}/VS2010/NETFX_4.0_Tools.zip"
+
+#    - name: Copy .NET Reference assemblies (ggf. schon vorhanden)
+#      shell: powershell
+#      run: |
+#        echo "Extracting..."
+#        Expand-Archive -Force -Path ${{ github.workspace }}/VS2010/Reference_Assemblies.zip -DestinationPath "C:\Program Files (x86)\Reference Assemblies\"
+#        echo "Deleting..."
+#        rm "${{ github.workspace }}/VS2010/Reference_Assemblies.zip"
+
+    - name: Copy MSBuild Compiler Profiles
+      shell: powershell
+      run: |
+        echo "Extracting..."
+        Expand-Archive -Force -Path ${{ github.workspace }}/VS2010/MSBuild_x86.zip -DestinationPath "C:\Program Files (x86)\MSBuild\"
+        #New-Item -Path "C:\Program Files (x86)\Microsoft Visual Studio\2019\Enterprise\MSBuild\Microsoft\VC\v4.0" -ItemType SymbolicLink -Value "C:\Program Files (x86)\MSBuild\Microsoft.Cpp\v4.0"
+        echo "Registry import..."
+        reg import "${{ github.workspace }}/VS2010/MSBuild.reg"
+        echo "Deleting..."
+        rm "${{ github.workspace }}/VS2010/MSBuild_x86.zip"
+
+#    - name: Import VS2010 registry entries
+#      shell: powershell
+#      run: |
+#        echo "Downloading..."
+#        #(New-Object Net.WebClient).DownloadFile("https://github.com/cwuensch/VS2010/raw/master/VS2010_2.reg", "${{ github.workspace }}\VS2010\VS2010_2.reg")
+#        #(New-Object Net.WebClient).DownloadFile("https://github.com/cwuensch/VS2010/raw/master/VS2010_3.reg", "${{ github.workspace }}\VS2010\VS2010_3.reg")
+#        #reg import "${{ github.workspace }}/VS2010/VS2010_2.reg"
+#        #reg import "${{ github.workspace }}/VS2010/VS2010_3.reg"
+#        reg import "${{ github.workspace }}/VS2010/VS.reg"
+#        reg add HKLM\SOFTWARE\WOW6432Node\Microsoft\VisualStudio\SxS\VS7 /v "10.0" /t REG_SZ /d "C:\Program Files (x86)\Microsoft Visual Studio 10.0\\"
+
+    - name: Set VS variables
+      run: |
+        echo "{VSINSTALLDIR}={C:\Program Files (x86)\Microsoft Visual Studio 10.0\}" >> $GITHUB_ENV
+        echo "{VCINSTALLDIR}={C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\}" >> $GITHUB_ENV
+        echo "{VS100COMNTOOLS}={C:\Program Files (x86)\Microsoft Visual Studio 10.0\Common7\Tools\}" >> $GITHUB_ENV
+        echo "{WindowsSdkDir}={C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A\}" >> $GITHUB_ENV
+
+
+    - name: Install VC 2010 SP1 x86 compilers (incl. cross-compiler for x64)
+      shell: cmd
+      run: |
+        echo Installing...
+        msiexec /i "${{ github.workspace }}\VS2010\Compiler_SDK7\vc_stdx86.msi" /quiet /qn
+        echo Deleting...
+        del "${{ github.workspace }}\VS2010\Compiler_SDK7\vc_stdx86.msi"
+        del "${{ github.workspace }}\VS2010\Compiler_SDK7\vc_stdx86.cab"
+
+#    - name: Install VC 2010 SP1 native x64 compilers (optional)
+#      shell: cmd
+#      run: |
+#        echo Installing...
+#        msiexec /i "${{ github.workspace }}\VS2010\Compiler_SDK7\vc_stdamd64.msi" /quiet /qn
+#        echo Deleting...
+#        del "${{ github.workspace }}\VS2010\Compiler_SDK7\vc_stdamd64.msi"
+#        del "${{ github.workspace }}\VS2010\Compiler_SDK7\vc_stdamd64.cab"
+#        copy "${{ github.workspace }}\VS2010\vcvars64.bat" "C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\bin\amd64\"
+
+
+    - name: Set path (experimental)
+      run: |
+        echo "C:\Program Files (x86)\Microsoft Visual Studio 10.0\Common7\IDE\" >> $GITHUB_PATH
+        echo "C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\BIN" >> $GITHUB_PATH
+        echo "C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A\bin" >> $GITHUB_PATH
+
+    - name: Include MSBuild in path (prefer native x64 compiler)
+      run: |
+        echo "C:\Windows\Microsoft.NET\Framework\v4.0.30319" >> $GITHUB_PATH
+        echo "C:\Windows\Microsoft.NET\Framework64\v4.0.30319" >> $GITHUB_PATH
+
 #    - name: Add MSBuild to PATH
 #      uses: microsoft/setup-msbuild@v1
-##      with:
-##        vs-version: '[10.0,10.1)'
-#      
-#    - name: Install vcexpress2010
-#      run: choco install vcexpress2010
-#
-#    - name: Install Visual C++ 2010 Service Pack 1 Compiler Update
-#      run: choco install kb2519277
-#
-#    - name: Setup Environment x86
-#      run: |
-#        echo "{C:\Program Files (x86)\Microsoft Visual Studio 10.0\Common7\IDE}" >> $GITHUB_PATH
-#        echo "{C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\BIN}" >> $GITHUB_PATH
-#        echo "{C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A\bin}" >> $GITHUB_PATH
-#        echo "{C:\Windows\Microsoft.NET\Framework\v4.0.30319}" >> $GITHUB_PATH
-#        echo "{LIB}={C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\lib}" >> $LIB
-#        echo "{LIB}={%LIB%;C:\Program Files (x86)\Microsoft SDKs\Windows\v7.1\Lib}" >> $LIB
-#        echo "{LIB}={%LIB%;C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A\Lib}" >> $LIB
-#        echo "{INCLUDE}={C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\include}" >> $INCLUDE
-#        echo "{INCLUDE}={%INCLUDE%;C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A\include}" >> $INCLUDE
-##VSINSTALLDIR="C:\Program Files (x86)\Microsoft Visual Studio 10.0\"
-##VCINSTALLDIR="%VSINSTALLDIR%VC\"
-##VS100COMNTOOLS="%VSINSTALLDIR%Common7\Tools\"
-##WindowsSdkDir="C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A\"
-#          
-#    - name: Initialize VCTools x86
-#      run: call "C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\vcvarsall.bat" x86
-#      shell: cmd
-#
-#    - name: Build x86
-#      working-directory: ${{env.GITHUB_WORKSPACE}}
-#      run: |
-#        msbuild /m /p:Configuration=Release /p:Platform=Win32 ${{env.SOLUTION_FILE_PATH}}
-#        mv RecStrip_VS/Release/RecStrip.exe RecStrip_VS/Release/RecStrip_Win32.exe
-#
-#    - name: Setup Environment x64
-#      run: |
-#        echo "{C:\Program Files (x86)\Microsoft Visual Studio 10.0\Common7\IDE}" >> $GITHUB_PATH
-#        echo "{C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\BIN}" >> $GITHUB_PATH
-#        echo "{C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A\bin}" >> $GITHUB_PATH
-#        echo "{C:\Windows\Microsoft.NET\Framework\v4.0.30319}" >> $GITHUB_PATH
-#        echo "{LIB}={C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\lib\amd64}" >> $LIB
-#        echo "{LIB}={%LIB%;C:\Program Files\Microsoft SDKs\Windows\v7.1\Lib\x64}" >> $LIB
-#        echo "{LIB}={%LIB%;C:\Program Files\Microsoft SDKs\Windows\v7.0A\Lib\x64}" >> $LIB
-#        echo "{INCLUDE}={C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\include}" >> $INCLUDE
-#        echo "{INCLUDE}={%INCLUDE%;C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A\include}" >> $INCLUDE
-#
-#    - name: Initialize VCTools x64
-#      run: call "C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\vcvarsall.bat" x86_amd64
-#      shell: cmd
-#    
-##    - name: Build x64
-##      working-directory: ${{env.GITHUB_WORKSPACE}}
-##      run: |
-##        msbuild /m /p:Configuration=Release /p:Platform=x64 ${{env.SOLUTION_FILE_PATH}}
-##        mv RecStrip_VS/x64/Release/RecStrip.exe RecStrip_VS/x64/Release/RecStrip_x64.exe
-#
-#    - name: Copy build artefact
-#      uses: actions/upload-artifact@v2
 #      with:
-#        name: RecStrip_Windows
-#        path: |
-#          ${{ github.workspace }}/RecStrip_VS/Release/RecStrip_Win32.exe
-##          ${{ github.workspace }}/RecStrip_VS/x64/Release/RecStrip_x64.exe
+#        vs-version: '[10.0,10.1)'
+
+
+    - name: Checkout repository
+      uses: actions/checkout@v2
+      
+    - name: Build x86
+      shell: cmd
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      env:
+        VSINSTALLDIR: C:\Program Files (x86)\Microsoft Visual Studio 10.0\
+        VCINSTALLDIR: C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\
+        VS100COMNTOOLS: C:\Program Files (x86)\Microsoft Visual Studio 10.0\Common7\Tools\
+        WindowsSdkDir: C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A\
+        LIB: C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\lib;C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A\Lib
+        INCLUDE: C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\include;C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A\include
+        PATH: C:\Program Files (x86)\Microsoft Visual Studio 10.0\Common7\IDE\;C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\BIN;C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A\bin;C:\Windows\Microsoft.NET\Framework\v4.0.30319;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;${{env.PATH}}
+      run: |
+        rem call "C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\vcvarsall.bat" x86
+        msbuild /m /p:Configuration=Release /p:Platform=Win32 ${{ env.SOLUTION_FILE_PATH }}
+        move "${{ github.workspace }}\RecStrip_VS\Release\RecStrip.exe" "${{ github.workspace }}\RecStrip_VS\RecStrip_Win32.exe"
+
+    - name: Build x64
+      shell: cmd
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      env:
+        VSINSTALLDIR: ${{ env.VSINSTALLDIR }}
+        VCINSTALLDIR: ${{ env.VCINSTALLDIR }}
+        VS100COMNTOOLS: ${{ env.VS100COMNTOOLS }}
+        WindowsSdkDir: ${{ env.WindowsSdkDir }}
+        LIB: C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\lib\amd64;C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A\Lib\x64
+        INCLUDE: C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\include;C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A\include
+        PATH: C:\Program Files (x86)\Microsoft Visual Studio 10.0\Common7\IDE\;C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\BIN;C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A\bin;C:\Windows\Microsoft.NET\Framework\v4.0.30319;C:\Windows\Microsoft.NET\Framework64\v4.0.30319;${{env.PATH}}
+      run: |
+        rem call "C:\Program Files (x86)\Microsoft Visual Studio 10.0\VC\vcvarsall.bat" x86_amd64
+        msbuild /m /p:Configuration=Release /p:Platform=x64 ${{ env.SOLUTION_FILE_PATH }}
+        move "${{ github.workspace }}\RecStrip_VS\x64\Release\RecStrip.exe" "${{ github.workspace }}\RecStrip_VS\RecStrip_x64.exe"
+
+    - name: Copy build artefact
+      uses: actions/upload-artifact@v2
+      with:
+        name: RecStrip_Windows_new
+        path: |
+          ${{ github.workspace }}/RecStrip_VS/RecStrip_Win32.exe
+          ${{ github.workspace }}/RecStrip_VS/RecStrip_x64.exe
+  
+    - name: Create zip archive
+      if: startsWith(github.ref, 'refs/tags/')
+      run: Compress-Archive -Path ${{ github.workspace }}\RecStrip_VS\RecStrip*.exe -DestinationPath RecStrip_Windows_new.zip
+
+    - name: Upload release binaries
+      uses: softprops/action-gh-release@v1
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: RecStrip_Windows_new.zip
 
 # ----------------------------------------------------
 
@@ -292,7 +400,9 @@ jobs:
         mv RecStrip RecStrip_x64
 
     - name: Install GCC 32bit libs
-      run: sudo apt-get install -y gcc-multilib
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gcc-multilib
     
     - name: Adapt Makefile for x86
       run: |

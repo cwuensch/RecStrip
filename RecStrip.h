@@ -3,7 +3,7 @@
 
 #include "RecHeader.h"
 
-#define VERSION                  "v3.0a"
+#define VERSION                  "v3.0b"
 
 #define NRBOOKMARKS                177   // eigentlich werden nur 48 Bookmarks unterstützt!! (SRP2401)
 #define NRSEGMENTMARKER            101
@@ -138,6 +138,7 @@ extern int              NrSegmentMarker, NrSegmentMarker_In;
 extern long long        NrDroppedFillerNALU, NrDroppedZeroStuffing;
 extern int              ActiveSegment;
 extern dword            InfDuration, NewDurationMS;
+extern dword            NavDurationMS, NavFrames;
 extern int              NewStartTimeOffset;
 extern dword            TimeStepPerFrame;
 extern long long        CurrentPosition;
