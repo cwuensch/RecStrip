@@ -550,6 +550,8 @@ bool CutFileLoad(const char *AbsCutName)
 
 
     // Check, if size of rec-File has been changed
+// *** DEBUG ***
+RecFileSize = SavedSize;
     if (ret && (RecFileSize != SavedSize))
     {
       printf("  CutFileLoad: .cut file size mismatch!\n");
@@ -588,7 +590,7 @@ bool CutFileLoad(const char *AbsCutName)
     }
     
     // Wenn letzter Segment-Marker ungleich TotalBlock ist -> anpassen
-    if (SegmentMarker[NrSegmentMarker - 1].Position != (long long)RecFileSize)
+/* *** DEBUG ***    if (SegmentMarker[NrSegmentMarker - 1].Position != (long long)RecFileSize)
     {
       SegmentMarker[NrSegmentMarker - 1].Position = RecFileSize;
       if (!SegmentMarker[NrSegmentMarker - 1].Timems)
@@ -605,7 +607,7 @@ bool CutFileLoad(const char *AbsCutName)
       }
       else
         SegmentMarker[i].Percent = (float)(((float)SegmentMarker[i].Position / RecFileSize) * 100.0);
-    }
+    } */
 
     // Markierungen und ActiveSegment prüfen, ggf. korrigieren
     SegmentMarker[NrSegmentMarker - 1].Selected = FALSE;         // the very last marker (no segment)
@@ -667,7 +669,7 @@ bool CutFileSave(const char* AbsCutName)
 {
   FILE                 *fCut = NULL;
   char                  TimeStamp[16];
-  unsigned long long    RecFileSize;
+//*** DEBUG ***  unsigned long long    RecFileSize;
   int                   i;
   bool                  ret = TRUE;
 
@@ -678,7 +680,7 @@ bool CutFileSave(const char* AbsCutName)
     if (WriteCutFile && AbsCutName && *AbsCutName && (NrSegmentMarker > 2 || SegmentMarker[0].pCaption))
     {
       // neues CutFile speichern
-      if (!HDD_GetFileSize(RecFileOut, &RecFileSize))
+// *** DEBUG ***      if (!HDD_GetFileSize(RecFileOut, &RecFileSize))
         printf("CutFileSave: Could not detect size of recording!\n"); 
 
       fCut = fopen(AbsCutName, "wb");
@@ -692,7 +694,7 @@ bool CutFileSave(const char* AbsCutName)
         ret = (fprintf(fCut, "#Nr ; Sel ; %s ;     StartTime ; Percent ; Caption\r\n", ((OutCutVersion >= 4) ? "StartPosition" : "StartBlock")) > 0) && ret;
         for (i = 0; i < NrSegmentMarker; i++)
         {
-          SegmentMarker[i].Percent = (float)(((float)SegmentMarker[i].Position / RecFileSize) * 100.0);
+// *** DEBUG ***          SegmentMarker[i].Percent = (float)(((float)SegmentMarker[i].Position / RecFileSize) * 100.0);
           MSecToTimeString(SegmentMarker[i].Timems, TimeStamp);
           if (OutCutVersion >= 4)
             ret = (fprintf(fCut, "%3d ;  %c  ; %13lld ;%14s ;  %5.1f%% ; %s\r\n", i, (SegmentMarker[i].Selected ? '*' : '-'), SegmentMarker[i].Position, TimeStamp, SegmentMarker[i].Percent, (SegmentMarker[i].pCaption ? SegmentMarker[i].pCaption : "")) > 0) && ret;

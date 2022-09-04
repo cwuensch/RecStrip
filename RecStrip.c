@@ -1337,6 +1337,40 @@ int main(int argc, const char* argv[])
   exit(0);
 } */
 
+// Convert cut-file from bin to text
+{
+  const char           *CutFile = argv[1];
+  struct stat64         statbuf;
+  time_t                oldtime = 0;
+
+  printf("\n- Cut-file converter (bin-to-text) -\n");
+  if (argc <= 1)
+  {
+    printf("\nUsage: CutConvert <Input.cut>\n");
+    exit(1);
+  }
+  printf("\nInput File: %s\n", CutFile);
+
+  SegmentMarker = (tSegmentMarker2*) malloc(NRSEGMENTMARKER * sizeof(tSegmentMarker2));
+
+  if(stat64(CutFile, &statbuf) == 0)
+    oldtime = statbuf.st_mtime;
+
+  if (CutFileLoad(CutFile))
+  {
+    char CutFileBin[FBLIB_DIR_SIZE];
+    strcpy(CutFileBin, CutFile); strcat(CutFileBin, ".bin");
+    rename(CutFile, CutFileBin);
+
+    CutFileSave(CutFile);
+    HDD_SetFileDateTime(CutFile, oldtime);
+  }
+
+  if(SegmentMarker) free(SegmentMarker);
+  exit(0);
+}
+
+
   // Eingabe-Parameter prüfen
   if (argc <= 1)  AbortProcess = TRUE;
   while ((argc > 1) && (argv && argv[1] && argv[1][0] == '-' && (argv[1][2] == '\0' || argv[1][3] == '\0')))
