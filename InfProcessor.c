@@ -409,6 +409,10 @@ if (RecHeaderInfo->Reserved != 0)
     InfDuration = 60*RecHeaderInfo->DurationMin + RecHeaderInfo->DurationSec;
 printf("  INF: Duration = %2.2d min %2.2d sec\n", RecHeaderInfo->DurationMin, RecHeaderInfo->DurationSec);
 printf("  INF: ServiceName = %s\n", ServiceInfo->ServiceName);
+    printf("  INF: Bookmarks = %s", (BookmarkInfo->NrBookmarks == 0) ? "-" : "");
+    for (k = 0; k < (int)BookmarkInfo->NrBookmarks; k++)
+      printf((k > 0) ? ", %u" : "%u", BookmarkInfo->Bookmarks[k]);
+    printf("\n");
   }
 
   // OldEventText setzen + ggf. Itemized Items in ExtEventText entfernen

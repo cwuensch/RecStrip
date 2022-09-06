@@ -1473,12 +1473,13 @@ int main(int argc, const char* argv[])
       printf("  RecStrip 'RecFile.rec'                     RebuildNav.\n\n");
       printf("  RecStrip -s -e InFile.rec OutFile.rec      Strip recording.\n\n");
       printf("  RecStrip -n -i -o2 InFile.ts OutFile.rec   Convert TS to Topfield rec.\n\n");
-      printf("  RecStrip -r -s -e -o1 InRec.rec OutMpg.ts  Strip & cut rec and convert to TS.\n");
+      printf("  RecStrip -r -s -e -o1 InRec.rec OutMpg.ts  Strip & cut rec and convert to TS.\n\n");
     }
     else if (DoInfoOnly)
     {
       fprintf(stderr, "RecFile\tRecSize\tStartTime\tDuration\tFirstPCR\tLastPCR\tisStripped\t");
       fprintf(stderr, "InfType\tSender\tServiceID\tPMTPid\tVideoPid\tAudioPid\tVideoType\tAudioType\tHD\tResolution\tFPS\tAspectRatio\t");
+      fprintf(stderr, "SegmentMarker\tBookmarks\t");
       fprintf(stderr, "EventName\tEventDesc\tEventStart\tEventEnd\tEventDuration\tExtEventText\n");
     }
     TRACEEXIT;
@@ -1609,7 +1610,7 @@ int main(int argc, const char* argv[])
     // Print out details to STDERR
     memset(EventName, 0, sizeof(EventName));
     if (NavDurationMS)
-      snprintf(DurationStr, sizeof(DurationStr), "%02hu:%02hu:%02hu.%03u", NavDurationMS/3600000, NavDurationMS/60000 % 60, NavDurationMS/1000 % 60, NavDurationMS % 1000);
+      snprintf(DurationStr, sizeof(DurationStr), "%02u:%02u:%02u.%03u", NavDurationMS/3600000, NavDurationMS/60000 % 60, NavDurationMS/1000 % 60, NavDurationMS % 1000);
     else
       snprintf(DurationStr, sizeof(DurationStr), "%02hu:%02hu:%02hu", Inf_TMSS->RecHeaderInfo.DurationMin/60, Inf_TMSS->RecHeaderInfo.DurationMin % 60, Inf_TMSS->RecHeaderInfo.DurationSec);
     strncpy(EventName, Inf_TMSS->EventInfo.EventNameDescription, Inf_TMSS->EventInfo.EventNameLength);
@@ -1619,6 +1620,54 @@ int main(int argc, const char* argv[])
 
     // SERVICE:  InfType;   Sender;   ServiceID;  PMTPid;  VideoPid;  AudioPid;  VideoType;  AudioType;  HD;  VideoWidth x VideoHeight;  VideoFPS;  VideoDAR
     fprintf(stderr, "ST_TMS%c\t%s\t%hu\t%hu\t%hu\t%hu\t0x%hx\t0x%hx\t%s\t%dx%d\t%.1f fps\t%.3f\t",  (SystemType==ST_TMSS ? 's' : ((SystemType==ST_TMSC) ? 'c' : ((SystemType==ST_TMST) ? 't' : '?'))),  Inf_TMSS->ServiceInfo.ServiceName,  Inf_TMSS->ServiceInfo.ServiceID,  Inf_TMSS->ServiceInfo.PMTPID,  Inf_TMSS->ServiceInfo.VideoPID,  Inf_TMSS->ServiceInfo.AudioPID,  Inf_TMSS->ServiceInfo.VideoStreamType,  Inf_TMSS->ServiceInfo.AudioStreamType,  (isHDVideo ? "yes" : "no"),  VideoWidth,  VideoHeight,  (NavFrames ? NavFrames/((double)NavDurationMS/1000) : VideoFPS),  VideoDAR);
+
+    // SEGMENTMARKERS (getrennt durch ; und |)
+    if (NrSegmentMarker > 2)
+    {
+      int p; char *c;
+
+      fprintf(stderr, "{");
+      for (p = 0; p < NrSegmentMarker; p++)
+      {
+        float Percent = (float)(((float)SegmentMarker[p].Position / RecFileSize) * 100.0);
+        snprintf(DurationStr, sizeof(DurationStr), "%u:%02u:%02u,%03u", SegmentMarker[p].Timems/3600000, SegmentMarker[p].Timems/60000 % 60, SegmentMarker[p].Timems/1000 % 60, SegmentMarker[p].Timems % 1000);
+
+        // Ersetze eventuelles '\t', ' | ' in der Caption
+        if (SegmentMarker[p].pCaption)
+          for (c = SegmentMarker[p].pCaption; *c != '\0'; c++)
+          {
+            if (c[0]=='\t' /*&& c[1]=='}'*/) c[0] = ' ';
+            else if (c[0]==' ' && c[1]=='|' && c[2]==' ') c[1] = ',';
+          }
+          fprintf(stderr, "%s%s; %lld; %u; %s; %.1f%%; %s", ((p > 0) ? " | " : ""), (SegmentMarker[p].Selected ? "*" : "-"), ((OutCutVersion>=4) ? SegmentMarker[p].Position : 0), ((OutCutVersion<=3) ? CalcBlockSize(SegmentMarker[p].Position) : 0), DurationStr, Percent, (SegmentMarker[p].pCaption ? SegmentMarker[p].pCaption : ""));
+      }
+      fprintf(stderr, "}");
+    }
+    fprintf(stderr, "\t");
+
+    // BOOKMARKS (TimeStamps berechnen)
+    if (BookmarkInfo->NrBookmarks > 0)
+    {
+      int NrTimeStamps, p;
+      tTimeStamp2 *TimeStamps = NavLoad(RecFileIn, &NrTimeStamps, PACKETSIZE);
+      fprintf(stderr, "{");
+
+      for (p = 0; p < (int)BookmarkInfo->NrBookmarks; p++)
+      {
+        if (TimeStamps)
+        {
+          dword Timems = NavGetPosTimeStamp(TimeStamps, NrTimeStamps, BookmarkInfo->Bookmarks[p] * 9024LL);
+          snprintf(DurationStr, sizeof(DurationStr), "%u:%02u:%02u,%03u", Timems/3600000, Timems/60000 % 60, Timems/1000 % 60, Timems % 1000);
+          fprintf(stderr, ((p > 0) ? " | %u; %s" : "%u; %s"), BookmarkInfo->Bookmarks[p], DurationStr);
+        }
+        else
+          fprintf(stderr, ((p > 0) ? " | %u" : "%u"), BookmarkInfo->Bookmarks[p]);
+      }
+
+      if(TimeStamps) free(TimeStamps);
+      fprintf(stderr, "}");
+    }
+    fprintf(stderr, "\t");
 
     // EPG:    EventName;  EventDesc;  EventStart (DateTime);  EventEnd (DateTime);  EventDuration (hh:mm);  ExtEventText (inkl. ItemizedItems, ohne '\n', '\t')
     fprintf(stderr, "%s\t%s\t%s\t", EventName,  &Inf_TMSS->EventInfo.EventNameDescription[Inf_TMSS->EventInfo.EventNameLength],  TimeStr_DB(&EvtStartUnix));

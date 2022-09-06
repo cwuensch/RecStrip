@@ -3,7 +3,7 @@
 
 #include "RecHeader.h"
 
-#define VERSION                  "v2.7b"
+#define VERSION                  "v2.7c"
 
 #define NRBOOKMARKS                177   // eigentlich werden nur 48 Bookmarks unterstützt!! (SRP2401)
 #define NRSEGMENTMARKER            101
@@ -133,8 +133,8 @@ extern int              DoCut, DoMerge;
 extern int              dbg_DelBytesSinceLastVid;
 
 extern TYPE_Bookmark_Info *BookmarkInfo, BookmarkInfo_In;
-extern tSegmentMarker2 *SegmentMarker,  *SegmentMarker_In;       //[0]=Start of file, [x]=End of file
-extern int              NrSegmentMarker, NrSegmentMarker_In;
+extern tSegmentMarker2 *SegmentMarker;       //[0]=Start of file, [x]=End of file
+extern int              NrSegmentMarker;
 extern long long        NrDroppedZeroStuffing;
 extern int              ActiveSegment;
 extern dword            InfDuration, NewDurationMS;
