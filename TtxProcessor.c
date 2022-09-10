@@ -282,7 +282,9 @@ char* TimeStr(time_t *const UnixTimeStamp)
   struct tm timeinfo;
   TS[0] = '\0';
 
-  #ifdef _WIN32
+  #if defined(LINUX)
+    gmtime_r(UnixTimeStamp, &timeinfo);
+  #elif defined(_WIN32)
     localtime_s(&timeinfo, UnixTimeStamp);
   #else
     localtime_r(UnixTimeStamp, &timeinfo);
@@ -290,6 +292,10 @@ char* TimeStr(time_t *const UnixTimeStamp)
   strftime(TS, sizeof(TS), "%a %d %b %Y %H:%M:%S", &timeinfo);
   return TS;
 }
+
+#ifdef LINUX
+  #define TimeStr_UTC TimeStr
+#else
 char* TimeStr_UTC(time_t *const UnixTimeStamp)
 {
   static char TS[26];
@@ -297,20 +303,24 @@ char* TimeStr_UTC(time_t *const UnixTimeStamp)
   TS[0] = '\0';
 
   #ifdef _WIN32
-    localtime_s(&timeinfo, UnixTimeStamp);
+    gmtime_s(&timeinfo, UnixTimeStamp);
   #else
-    localtime_r(UnixTimeStamp, &timeinfo);
+    gmtime_r(UnixTimeStamp, &timeinfo);
   #endif
   strftime(TS, sizeof(TS), "%a %d %b %Y %H:%M:%S", &timeinfo);
   return TS;
 }
+#endif
+
 char* TimeStr_DB(time_t *const UnixTimeStamp)
 {
   static char TS[20];
   struct tm timeinfo;
   TS[0] = '\0';
 
-  #ifdef _WIN32
+  #if defined(LINUX)
+    gmtime_r(UnixTimeStamp, &timeinfo);
+  #elif defined(_WIN32)
     localtime_s(&timeinfo, UnixTimeStamp);
   #else
     localtime_r(UnixTimeStamp, &timeinfo);
@@ -736,12 +746,12 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
         // 4th step: conversion to time_t
         t0 = (time_t)t;
         // ctime output itself is \n-ended
-        printf("  TTX: Programme Timestamp (UTC) = %s\n", TimeStr(&t0));
+        printf("  TTX: Programme Timestamp (UTC) = %s\n", TimeStr_UTC(&t0));
 
 //        VERBOSE_ONLY printf("  Transmission mode = %s\n", (transmission_mode == TRANSMISSION_MODE_SERIAL ? "serial" : "parallel"));
 
         if (config.se_mode == YES) {
-          printf("  Broadcast Service Data Packet received, resetting UTC referential value to %s\n", TimeStr(&t0));
+          printf("  Broadcast Service Data Packet received, resetting UTC referential value to %s\n", TimeStr_UTC(&t0));
           config.utc_refvalue = t;
           states.pts_initialized = NO;
         }

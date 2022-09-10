@@ -763,10 +763,9 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   word                  PMTPID = 0;
   tPVRTime              FileTimeStamp, TtxTime = 0;
   byte                  FileTimeSec, TtxTimeSec = 0;
-  int                   TtxTimeZone = 0;
+  int                   TtxTimeZone = 0, time_offset = 3600;
   dword                 FirstPCRms = 0, LastPCRms = 0, TtxPCR = 0, dPCR = 0;
   int                   Offset, ReadBytes, Durchlauf, i;
-  int                   time_offset = 0;
   bool                  EITOK = FALSE, SDTOK = FALSE, TtxFound = FALSE, TtxOK = FALSE, VidOK = FALSE;
   time_t                StartTimeUnix;
   byte                 *p;
@@ -797,7 +796,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     #else
       fstat64(fileno(fIn), &statbuf);
     #endif
-    FileTimeStamp = Unix2TFTime(statbuf.st_mtime, &FileTimeSec, TRUE);
+    FileTimeStamp = Unix2TFTime(statbuf.st_mtime, &FileTimeSec, FALSE);  // kein Convert, da FileSystem bereits in local timezone
   }
 
   //Spezial-Anpassung, um Medion-PES (EPG und Teletext) auszulesen
@@ -919,7 +918,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     }
 
     if(!TtxFound)
-      printf ("  Failed to get start time from Teletext.\n");
+      printf ("  Failed to get Teletext information.\n");
     if(!EITOK)
       printf ("  Failed to get the EIT information.\n");
   }
@@ -1193,8 +1192,9 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     // EPG Event Start- und EndTime an lokale Zeitzone anpassen (-> nicht nötig! EPG wird immer in UTC gespeichert!)
 //    RecInf->EventInfo.StartTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, (TtxOK ? -1*TtxTimeZone : time_offset));  // GMT+1
 //    RecInf->EventInfo.EndTime   = AddTimeSec(RecInf->EventInfo.EndTime,   0, NULL, (TtxOK ? -1*TtxTimeZone : time_offset));
-    StartTimeUnix = TF2UnixTime(RecInf->EventInfo.StartTime, 0, FALSE);
-printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStr(&StartTimeUnix), (TtxOK ? -1*TtxTimeZone : time_offset) / 3600);
+    StartTimeUnix = TF2UnixTime(RecInf->EventInfo.StartTime, 0, FALSE);  // kein Convert, da lieber TtxTimeZone nehmen (nächste Zeile)
+    StartTimeUnix = StartTimeUnix + (TtxOK ? -1*TtxTimeZone : time_offset);
+printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStr_UTC(&StartTimeUnix), (TtxOK ? -1*TtxTimeZone : time_offset) / 3600);
   }
 
   if(!FirstFilePCR || !LastFilePCR)
@@ -1221,9 +1221,11 @@ printf("  TS: Duration  = %01u:%02u:%02u,%03u\n", (RecInf->RecHeaderInfo.Duratio
   }
   else if (!HumaxSource && !EycosSource)
   {
-    RecInf->RecHeaderInfo.StartTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, (TtxOK ? -1*TtxTimeZone : time_offset));  // GMT+1;
-    if (!RecInf->EventInfo.StartTime || (MJD(FileTimeStamp) - MJD(RecInf->RecHeaderInfo.StartTime) <= 1))
+  	RecInf->RecHeaderInfo.StartTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, (TtxOK ? -1*TtxTimeZone : time_offset));  // GMT+1;
+    // Wenn rec-Datei am selben oder nächsten Tag geändert wurde, wie das EPG-Event -> nimm Datum der Datei
+    if (!RecInf->EventInfo.StartTime || ((MJD(FileTimeStamp) - MJD(RecInf->RecHeaderInfo.StartTime) <= 1) && (TIME(FileTimeStamp != 0))))
     {
+      FileTimeStamp = AddTimeSec(FileTimeStamp, FileTimeSec, &FileTimeSec, -RecInf->RecHeaderInfo.DurationMin*60 - RecInf->RecHeaderInfo.DurationSec);
       RecInf->RecHeaderInfo.StartTime = FileTimeStamp;
       RecInf->RecHeaderInfo.StartTimeSec = FileTimeSec;
     }
