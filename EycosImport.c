@@ -380,8 +380,8 @@ if (strlen(RecInf->ExtEventInfo.Text) != RecInf->ExtEventInfo.TextLength)
 #endif
       EvtStartUnix = MakeUnixDate(EycosEvent.EvtStartYear, EycosEvent.EvtStartMonth, EycosEvent.EvtStartDay, EycosEvent.EvtStartHour, EycosEvent.EvtStartMin, 0);
       EvtEndUnix = MakeUnixDate(EycosEvent.EvtEndYear, EycosEvent.EvtEndMonth, EycosEvent.EvtEndDay, EycosEvent.EvtEndHour, EycosEvent.EvtEndMin, 0);
-      RecInf->EventInfo.StartTime       = Unix2TFTime(EvtStartUnix, NULL, TRUE);  // DATE(UnixToMJD(EvtStartUnix), EycosEvent.EvtStartHour, EycosEvent.EvtStartMin);
-      RecInf->EventInfo.EndTime         = Unix2TFTime(EvtEndUnix, NULL, TRUE);    // DATE(UnixToMJD(EvtEndUnix), EycosEvent.EvtEndHour, EycosEvent.EvtEndMin);
+      RecInf->EventInfo.StartTime       = Unix2TFTime(EvtStartUnix, NULL, FALSE);  // DATE(UnixToMJD(EvtStartUnix), EycosEvent.EvtStartHour, EycosEvent.EvtStartMin);  // kein Convert, da ins EPG UTC geschrieben wird
+      RecInf->EventInfo.EndTime         = Unix2TFTime(EvtEndUnix, NULL, FALSE);    // DATE(UnixToMJD(EvtEndUnix), EycosEvent.EvtEndHour, EycosEvent.EvtEndMin);        // "
 #ifdef _DEBUG
 if (HOUR(RecInf->EventInfo.StartTime) != EycosEvent.EvtStartHour || MINUTE(RecInf->EventInfo.StartTime) != EycosEvent.EvtStartMin)
   printf("ASSERT: Eycos Header StartTime (%u:%u) differs from converted time (%u:%u)!\n", EycosEvent.EvtStartHour, EycosEvent.EvtStartMin, HOUR(RecInf->EventInfo.StartTime), MINUTE(RecInf->EventInfo.StartTime));
@@ -393,7 +393,7 @@ if (HOUR(RecInf->EventInfo.EndTime) != EycosEvent.EvtEndHour || MINUTE(RecInf->E
       RecInf->EventInfo.DurationHour    = RecInf->RecHeaderInfo.DurationMin / 60;
       RecInf->EventInfo.DurationMin     = RecInf->RecHeaderInfo.DurationMin % 60;
 
-      DisplayTime = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, 0, FALSE);
+      DisplayTime = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, 0, TRUE);
       printf("    Start Time: %s\n", TimeStr(&DisplayTime));
     }
     fclose(fTxt);

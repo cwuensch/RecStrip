@@ -953,13 +953,13 @@ static bool CloseOutputFiles(void)
 
 
   if (*RecFileOut)
-    HDD_SetFileDateTime(RecFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, FALSE));
+    HDD_SetFileDateTime(RecFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE));
   if (*InfFileOut)
-    HDD_SetFileDateTime(InfFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, FALSE));
+    HDD_SetFileDateTime(InfFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE));
   if (*NavFileOut)
-    HDD_SetFileDateTime(NavFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, FALSE));
+    HDD_SetFileDateTime(NavFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE));
 //  if (*CutFileOut)
-//    HDD_SetFileDateTime(CutFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, FALSE));
+//    HDD_SetFileDateTime(CutFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE));
 
 
   if (HasNavOld)
@@ -1284,11 +1284,11 @@ int main(int argc, const char* argv[])
       
       if (EvtStart != 0 && EvtEnd != 0)
       {
-        DisplayTime1 = TF2UnixTime(EvtStart, 0, FALSE);
-        EvtStart = Unix2TFTime(TF2UnixTime(EvtStart, 0, FALSE), 0, TRUE);
-        EvtEnd   = Unix2TFTime(TF2UnixTime(EvtEnd, 0, FALSE), 0, TRUE);
+        DisplayTime1 = TF2UnixTime(EvtStart, 0, TRUE);
+        EvtStart = Unix2TFTime(TF2UnixTime(EvtStart, 0, TRUE), 0, FALSE);
+        EvtEnd   = Unix2TFTime(TF2UnixTime(EvtEnd, 0, TRUE), 0, FALSE);
 
-        DisplayTime2 = TF2UnixTime(EvtStart, 0, FALSE);
+        DisplayTime2 = TF2UnixTime(EvtStart, 0, TRUE);
         strcpy(DisplayString1, TimeStr(&DisplayTime1));
         strcpy(DisplayString2, TimeStr(&DisplayTime2));
         printf("  Change EvtStart from %s to %s\n", DisplayString1, DisplayString2);
@@ -1318,7 +1318,7 @@ int main(int argc, const char* argv[])
       }
     }
 
-    RecDate = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec, FALSE);
+    RecDate = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec, TRUE);
     if (stat64(RecFile, &statbuf) == 0)
     {
       if (ChangedInf || statbuf.st_mtime != RecDate)
@@ -1603,9 +1603,9 @@ int main(int argc, const char* argv[])
     TYPE_RecHeader_TMSS *Inf_TMSS = (TYPE_RecHeader_TMSS*)InfBuffer;
     char                EventName[257], DurationStr[16];
 
-    time_t              StartTimeUnix = TF2UnixTime(Inf_TMSS->RecHeaderInfo.StartTime, Inf_TMSS->RecHeaderInfo.StartTimeSec, FALSE);
-    time_t              EvtStartUnix = TF2UnixTime(Inf_TMSS->EventInfo.StartTime, 0, TRUE);
-    time_t              EvtEndUnix = TF2UnixTime(Inf_TMSS->EventInfo.EndTime, 0, TRUE);
+    time_t              StartTimeUnix = TF2UnixTime(Inf_TMSS->RecHeaderInfo.StartTime, Inf_TMSS->RecHeaderInfo.StartTimeSec, TRUE);
+    time_t              EvtStartUnix = TF2UnixTime(Inf_TMSS->EventInfo.StartTime, 0, FALSE);
+    time_t              EvtEndUnix = TF2UnixTime(Inf_TMSS->EventInfo.EndTime, 0, FALSE);
 
     // Print out details to STDERR
     memset(EventName, 0, sizeof(EventName));

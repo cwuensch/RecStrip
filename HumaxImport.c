@@ -222,7 +222,7 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
           ContinuityPIDs[0] = VideoPID;
           printf("    PMTPID=%hu, SID=%hu, PCRPID=%hu, Stream=0x%hhx, VPID=%hu, TtxPID=%hu\n", RecInf->ServiceInfo.PMTPID, RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID, RecInf->ServiceInfo.VideoStreamType, VideoPID, TeletextPID);
 
-          DisplayTime = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, 0, FALSE);
+          DisplayTime = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, 0, TRUE);
           printf("    Start Time: %s\n", TimeStr(&DisplayTime));
 
           if(p) *p = '\0';
