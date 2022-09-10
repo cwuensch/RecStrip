@@ -1279,19 +1279,13 @@ int main(int argc, const char* argv[])
     {
       tPVRTime EvtStart = RecInf->EventInfo.StartTime;
       tPVRTime EvtEnd   = RecInf->EventInfo.EndTime;
-      time_t DisplayTime1, DisplayTime2;
-      char DisplayString1[26], DisplayString2[26];
       
       if (EvtStart != 0 && EvtEnd != 0)
       {
-        DisplayTime1 = TF2UnixTime(EvtStart, 0, FALSE);  // Convert, und wieder zurück (oder kein Convert)
+        printf("  Change EvtStart from %s", TimeStrTF(EvtStart));
         EvtStart = Unix2TFTime(TF2UnixTime(EvtStart, 0, TRUE), 0, FALSE);
         EvtEnd   = Unix2TFTime(TF2UnixTime(EvtEnd, 0, TRUE), 0, FALSE);
-
-        DisplayTime2 = TF2UnixTime(EvtStart, 0, FALSE);  // Convert, und wieder zurück (oder kein Convert)
-        strcpy(DisplayString1, TimeStr_UTC(&DisplayTime1));
-        strcpy(DisplayString2, TimeStr_UTC(&DisplayTime2));
-        printf("  Change EvtStart from %s to %s\n", DisplayString1, DisplayString2);
+        printf(" to %s\n", TimeStrTF(EvtStart));
 
         RecInf->EventInfo.StartTime = EvtStart;
         RecInf->EventInfo.EndTime = EvtEnd;
@@ -1323,7 +1317,7 @@ int main(int argc, const char* argv[])
     {
       if (ChangedInf || statbuf.st_mtime != RecDate)
       {
-        printf("  Change file timestamp to: %s\n", TimeStr(&RecDate));
+        printf("  Change file timestamp to: %s\n", TimeStrTF(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec));
 //        HDD_SetFileDateTime(RecFile, RecDate);
         HDD_SetFileDateTime(InfFile, RecDate);
 //        HDD_SetFileDateTime(NavFile, RecDate);
@@ -1603,10 +1597,6 @@ int main(int argc, const char* argv[])
     TYPE_RecHeader_TMSS *Inf_TMSS = (TYPE_RecHeader_TMSS*)InfBuffer;
     char                EventName[257], DurationStr[16];
 
-    time_t              StartTimeUnix = TF2UnixTime(Inf_TMSS->RecHeaderInfo.StartTime, Inf_TMSS->RecHeaderInfo.StartTimeSec, TRUE);  // Convert, und wieder zurück (oder kein Convert)
-    time_t              EvtStartUnix = TF2UnixTime(Inf_TMSS->EventInfo.StartTime, 0, FALSE);
-    time_t              EvtEndUnix = TF2UnixTime(Inf_TMSS->EventInfo.EndTime, 0, FALSE);
-
     // Print out details to STDERR
     memset(EventName, 0, sizeof(EventName));
     if (NavDurationMS)
@@ -1616,7 +1606,7 @@ int main(int argc, const char* argv[])
     strncpy(EventName, Inf_TMSS->EventInfo.EventNameDescription, Inf_TMSS->EventInfo.EventNameLength);
 
     // REC:    RecFileIn;  RecSize;  StartTime (DateTime);  Duration (nav=hh:mm:ss.xxx, TS=hh:mm:ss);  FirstPCR;  LastPCR;  isStripped
-    fprintf(stderr, "%s\t%llu\t%s\t%s\t%lld\t%lld\t%s\t",  RecFileIn,  RecFileSize,  TimeStr_DB(&StartTimeUnix),  DurationStr,  FirstFilePCR,  LastFilePCR,  (Inf_TMSS->RecHeaderInfo.rs_HasBeenStripped ? "yes" : "no"));
+    fprintf(stderr, "%s\t%llu\t%s\t%s\t%lld\t%lld\t%s\t",  RecFileIn,  RecFileSize,  TimeStr_DB(Inf_TMSS->RecHeaderInfo.StartTime, Inf_TMSS->RecHeaderInfo.StartTimeSec),  DurationStr,  FirstFilePCR,  LastFilePCR,  (Inf_TMSS->RecHeaderInfo.rs_HasBeenStripped ? "yes" : "no"));
 
     // SERVICE:  InfType;   Sender;   ServiceID;  PMTPid;  VideoPid;  AudioPid;  VideoType;  AudioType;  HD;  VideoWidth x VideoHeight;  VideoFPS;  VideoDAR
     fprintf(stderr, "ST_TMS%c\t%s\t%hu\t%hu\t%hu\t%hu\t0x%hx\t0x%hx\t%s\t%dx%d\t%.1f fps\t%.3f\t",  (SystemType==ST_TMSS ? 's' : ((SystemType==ST_TMSC) ? 'c' : ((SystemType==ST_TMST) ? 't' : '?'))),  Inf_TMSS->ServiceInfo.ServiceName,  Inf_TMSS->ServiceInfo.ServiceID,  Inf_TMSS->ServiceInfo.PMTPID,  Inf_TMSS->ServiceInfo.VideoPID,  Inf_TMSS->ServiceInfo.AudioPID,  Inf_TMSS->ServiceInfo.VideoStreamType,  Inf_TMSS->ServiceInfo.AudioStreamType,  (isHDVideo ? "yes" : "no"),  VideoWidth,  VideoHeight,  (NavFrames ? NavFrames/((double)NavDurationMS/1000) : VideoFPS),  VideoDAR);
@@ -1639,7 +1629,7 @@ int main(int argc, const char* argv[])
             if (c[0]=='\t' /*&& c[1]=='}'*/) c[0] = ' ';
             else if (c[0]==' ' && c[1]=='|' && c[2]==' ') c[1] = ',';
           }
-          fprintf(stderr, "%s%s; %lld; %u; %s; %.1f%%; %s", ((p > 0) ? " | " : ""), (SegmentMarker[p].Selected ? "*" : "-"), ((OutCutVersion>=4) ? SegmentMarker[p].Position : 0), ((OutCutVersion<=3) ? CalcBlockSize(SegmentMarker[p].Position) : 0), DurationStr, Percent, (SegmentMarker[p].pCaption ? SegmentMarker[p].pCaption : ""));
+        fprintf(stderr, "%s%s; %lld; %u; %s; %.1f%%; %s", ((p > 0) ? " | " : ""), (SegmentMarker[p].Selected ? "*" : "-"), ((OutCutVersion>=4) ? SegmentMarker[p].Position : 0), ((OutCutVersion<=3) ? CalcBlockSize(SegmentMarker[p].Position) : 0), DurationStr, Percent, (SegmentMarker[p].pCaption ? SegmentMarker[p].pCaption : ""));
       }
       fprintf(stderr, "}");
     }
@@ -1670,9 +1660,9 @@ int main(int argc, const char* argv[])
     fprintf(stderr, "\t");
 
     // EPG:    EventName;  EventDesc;  EventStart (DateTime);  EventEnd (DateTime);  EventDuration (hh:mm);  ExtEventText (inkl. ItemizedItems, ohne '\n', '\t')
-    fprintf(stderr, "%s\t%s\t%s\t", EventName,  &Inf_TMSS->EventInfo.EventNameDescription[Inf_TMSS->EventInfo.EventNameLength],  TimeStr_DB(&EvtStartUnix));
-    if (EvtEndUnix != 0)
-      fprintf(stderr, "%s\t%02hhu:%02hhu\t%s\n", TimeStr_DB(&EvtEndUnix),  Inf_TMSS->EventInfo.DurationHour,  Inf_TMSS->EventInfo.DurationMin,  (ExtEPGText ? ExtEPGText : ""));
+    fprintf(stderr, "%s\t%s\t%s\t", EventName,  &Inf_TMSS->EventInfo.EventNameDescription[Inf_TMSS->EventInfo.EventNameLength],  TimeStr_DB(EPG2TFTime(Inf_TMSS->EventInfo.StartTime, NULL), 0));
+    if (Inf_TMSS->EventInfo.StartTime != 0)
+      fprintf(stderr, "%s\t%02hhu:%02hhu\t%s\n", TimeStr_DB(EPG2TFTime(Inf_TMSS->EventInfo.EndTime, NULL), 0),  Inf_TMSS->EventInfo.DurationHour,  Inf_TMSS->EventInfo.DurationMin,  (ExtEPGText ? ExtEPGText : ""));
     else
       fprintf(stderr, "\t\t%s\n",  (ExtEPGText ? ExtEPGText : ""));
     if(ExtEPGText) free(ExtEPGText);

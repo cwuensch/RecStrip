@@ -354,7 +354,7 @@ bool LoadEycosHeader(char *AbsTrpFileName, byte *const PATPMTBuf, TYPE_RecHeader
   {
     if ((ret = (ret && fread(&EycosEvent, sizeof(tEycosEvent), 1, fIfo))))
     {
-      time_t EvtStartUnix, EvtEndUnix, DisplayTime;
+      time_t EvtStartUnix, EvtEndUnix;
       int NameLen = (int) min(strlen(EycosEvent.Title), sizeof(RecInf->EventInfo.EventNameDescription) - 1);
       int TextLen = sizeof(RecInf->EventInfo.EventNameDescription) - NameLen - 1;
 
@@ -393,8 +393,7 @@ if (HOUR(RecInf->EventInfo.EndTime) != EycosEvent.EvtEndHour || MINUTE(RecInf->E
       RecInf->EventInfo.DurationHour    = RecInf->RecHeaderInfo.DurationMin / 60;
       RecInf->EventInfo.DurationMin     = RecInf->RecHeaderInfo.DurationMin % 60;
 
-      DisplayTime = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, 0, FALSE);  // Convert, und wieder zurück (oder kein Convert)
-      printf("    Start Time: %s\n", TimeStr_UTC(&DisplayTime));
+      printf("    Start Time: %s\n", TimeStrTF(RecInf->RecHeaderInfo.StartTime, 0));
     }
     fclose(fTxt);
   }

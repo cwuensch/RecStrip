@@ -276,58 +276,86 @@ static void timestamp_to_srttime(uint32_t timestamp, char *buffer) {
   sprintf(buffer, "%02hu:%02hhu:%02hhu,%03hu", h, m, s, u);
 }
 
-char* TimeStr(time_t *const UnixTimeStamp)
+/*char* TimeStr(time_t UnixTimeStamp)
 {
   static char TS[26];
   struct tm timeinfo;
   TS[0] = '\0';
 
-  #if defined(LINUX)
-    gmtime_r(UnixTimeStamp, &timeinfo);
-  #elif defined(_WIN32)
-    localtime_s(&timeinfo, UnixTimeStamp);
-  #else
-    localtime_r(UnixTimeStamp, &timeinfo);
-  #endif
-  strftime(TS, sizeof(TS), "%a %d %b %Y %H:%M:%S", &timeinfo);
+  if (UnixTimeStamp)
+  {
+    #if defined(LINUX)
+      gmtime_r(&UnixTimeStamp, &timeinfo);
+    #elif defined(_WIN32)
+      localtime_s(&timeinfo, &UnixTimeStamp);
+    #else
+      localtime_r(UnixTimeStamp, &timeinfo);
+    #endif
+    strftime(TS, sizeof(TS), "%a %d %b %Y %H:%M:%S", &timeinfo);
+  }
   return TS;
 }
 
 #ifdef LINUX
   #define TimeStr_UTC TimeStr
-#else
-char* TimeStr_UTC(time_t *const UnixTimeStamp)
+#else */
+static char* TimeStr_UTC(time_t UnixTimeStamp)
 {
   static char TS[26];
   struct tm timeinfo;
   TS[0] = '\0';
 
-  #ifdef _WIN32
-    gmtime_s(&timeinfo, UnixTimeStamp);
-  #else
-    gmtime_r(UnixTimeStamp, &timeinfo);
-  #endif
-  strftime(TS, sizeof(TS), "%a %d %b %Y %H:%M:%S", &timeinfo);
+  if (UnixTimeStamp)
+  {
+    #ifdef _WIN32
+      gmtime_s(&timeinfo, &UnixTimeStamp);
+    #else
+      gmtime_r(&UnixTimeStamp, &timeinfo);
+    #endif
+    strftime(TS, sizeof(TS), "%a %d %b %Y %H:%M:%S", &timeinfo);
+  }
   return TS;
 }
-#endif
+//#endif
 
-char* TimeStr_DB(time_t *const UnixTimeStamp)
+char* TimeStrTF(tPVRTime TFTimeStamp, byte TFTimeSec)
+{
+  static char TS[26];
+  struct tm timeinfo;
+  TS[0] = '\0';
+
+  if (TFTimeStamp)
+  {
+    time_t UnixTimeStamp = (MJD(TFTimeStamp) - 0x9e8b) * 86400 + HOUR(TFTimeStamp) * 3600 + MINUTE(TFTimeStamp) * 60 + TFTimeSec;
+
+    #ifdef _WIN32
+      gmtime_s(&timeinfo, &UnixTimeStamp);
+    #else
+      gmtime_r(&UnixTimeStamp, &timeinfo);
+    #endif
+    strftime(TS, sizeof(TS), "%a %d %b %Y %H:%M:%S", &timeinfo);
+  }
+  return TS;
+}
+
+char* TimeStr_DB(tPVRTime TFTimeStamp, byte TFTimeSec)
 {
   static char TS[20];
   struct tm timeinfo;
   TS[0] = '\0';
 
-  #if defined(LINUX)
-    gmtime_r(UnixTimeStamp, &timeinfo);
-  #elif defined(_WIN32)
-    localtime_s(&timeinfo, UnixTimeStamp);
-  #else
-    localtime_r(UnixTimeStamp, &timeinfo);
-  #endif
-  strftime(TS, sizeof(TS), "%Y-%m-%d %H:%M:%S", &timeinfo);
-  if(*UnixTimeStamp) return TS;
-  else return "";
+  if (TFTimeStamp)
+  {
+    time_t UnixTimeStamp = (MJD(TFTimeStamp) - 0x9e8b) * 86400 + HOUR(TFTimeStamp) * 3600 + MINUTE(TFTimeStamp) * 60 + TFTimeSec;
+
+    #ifdef _WIN32
+      gmtime_s(&timeinfo, &UnixTimeStamp);
+    #else
+      gmtime_r(&UnixTimeStamp, &timeinfo);
+    #endif
+    strftime(TS, sizeof(TS), "%Y-%m-%d %H:%M:%S", &timeinfo);
+  }
+  return TS;
 }
 
 // UCS-2 (16 bits) to UTF-8 (Unicode Normalization Form C (NFC)) conversion
@@ -746,12 +774,12 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
         // 4th step: conversion to time_t
         t0 = (time_t)t;
         // ctime output itself is \n-ended
-        printf("  TTX: Programme Timestamp (UTC) = %s\n", TimeStr_UTC(&t0));
+        printf("  TTX: Programme Timestamp (UTC) = %s\n", TimeStr_UTC(t0));
 
 //        VERBOSE_ONLY printf("  Transmission mode = %s\n", (transmission_mode == TRANSMISSION_MODE_SERIAL ? "serial" : "parallel"));
 
         if (config.se_mode == YES) {
-          printf("  Broadcast Service Data Packet received, resetting UTC referential value to %s\n", TimeStr_UTC(&t0));
+          printf("  Broadcast Service Data Packet received, resetting UTC referential value to %s\n", TimeStr_UTC(t0));
           config.utc_refvalue = t;
           states.pts_initialized = NO;
         }

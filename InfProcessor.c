@@ -385,10 +385,8 @@ if (RecHeaderInfo->Reserved != 0)
       if(RecHeaderInfo->rs_HasBeenStripped)  AlreadyStripped = TRUE;
 
       if (abs((int)(RecHeaderInfo->StartTime - OrigStartTime)) > 1)
-      {
-        time_t StartTimeUnix = TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, FALSE);  // Convert, und wieder zurück (oder kein Convert)
-        printf("  INF: StartTime (%s) differs from TS start! Taking %s.\n", TimeStr_UTC(&StartTimeUnix), ((RecHeaderInfo->StartTimeSec != 0 || ((OrigStartSec == 0) && ((RecHeaderInfo->StartTimeSec & 0x0f) > 0))) ? "inf" : "TS"));
-      }
+        printf("  INF: StartTime (%s) differs from TS start! Taking %s.\n", TimeStrTF(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec), ((RecHeaderInfo->StartTimeSec != 0 || ((OrigStartSec == 0) && ((RecHeaderInfo->StartTimeSec & 0x0f) > 0))) ? "inf" : "TS"));
+
       if (RecHeaderInfo->StartTimeSec != 0 || ((OrigStartSec == 0) && ((RecHeaderInfo->StartTimeSec & 0x0f) > 0)))
       {
         OrigStartTime = RecHeaderInfo->StartTime;
