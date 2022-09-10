@@ -393,8 +393,8 @@ if (HOUR(RecInf->EventInfo.EndTime) != EycosEvent.EvtEndHour || MINUTE(RecInf->E
       RecInf->EventInfo.DurationHour    = RecInf->RecHeaderInfo.DurationMin / 60;
       RecInf->EventInfo.DurationMin     = RecInf->RecHeaderInfo.DurationMin % 60;
 
-      DisplayTime = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, 0, TRUE);
-      printf("    Start Time: %s\n", TimeStr(&DisplayTime));
+      DisplayTime = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, 0, FALSE);  // Convert, und wieder zurück (oder kein Convert)
+      printf("    Start Time: %s\n", TimeStr_UTC(&DisplayTime));
     }
     fclose(fTxt);
   }

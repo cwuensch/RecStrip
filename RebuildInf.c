@@ -1221,15 +1221,15 @@ printf("  TS: Duration  = %01u:%02u:%02u,%03u\n", (RecInf->RecHeaderInfo.Duratio
   }
   else if (!HumaxSource && !EycosSource)
   {
-	RecInf->RecHeaderInfo.StartTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, (TtxOK ? -1*TtxTimeZone : time_offset));  // GMT+1;
+    RecInf->RecHeaderInfo.StartTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, (TtxOK ? -1*TtxTimeZone : time_offset));  // GMT+1;
     if (!RecInf->EventInfo.StartTime || (MJD(FileTimeStamp) - MJD(RecInf->RecHeaderInfo.StartTime) <= 1))
     {
       RecInf->RecHeaderInfo.StartTime = FileTimeStamp;
       RecInf->RecHeaderInfo.StartTimeSec = FileTimeSec;
     }
   }
-  StartTimeUnix = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec, TRUE);
-printf("  TS: StartTime = %s\n", (TimeStr(&StartTimeUnix)));
+  StartTimeUnix = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec, FALSE);  // Convert, und wieder zurück (oder kein Convert)
+printf("  TS: StartTime = %s\n", (TimeStr_UTC(&StartTimeUnix)));
 
   free(Buffer);
   TRACEEXIT;

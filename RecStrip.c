@@ -1284,13 +1284,13 @@ int main(int argc, const char* argv[])
       
       if (EvtStart != 0 && EvtEnd != 0)
       {
-        DisplayTime1 = TF2UnixTime(EvtStart, 0, TRUE);
+        DisplayTime1 = TF2UnixTime(EvtStart, 0, FALSE);  // Convert, und wieder zurück (oder kein Convert)
         EvtStart = Unix2TFTime(TF2UnixTime(EvtStart, 0, TRUE), 0, FALSE);
         EvtEnd   = Unix2TFTime(TF2UnixTime(EvtEnd, 0, TRUE), 0, FALSE);
 
-        DisplayTime2 = TF2UnixTime(EvtStart, 0, TRUE);
-        strcpy(DisplayString1, TimeStr(&DisplayTime1));
-        strcpy(DisplayString2, TimeStr(&DisplayTime2));
+        DisplayTime2 = TF2UnixTime(EvtStart, 0, FALSE);  // Convert, und wieder zurück (oder kein Convert)
+        strcpy(DisplayString1, TimeStr_UTC(&DisplayTime1));
+        strcpy(DisplayString2, TimeStr_UTC(&DisplayTime2));
         printf("  Change EvtStart from %s to %s\n", DisplayString1, DisplayString2);
 
         RecInf->EventInfo.StartTime = EvtStart;
@@ -1603,7 +1603,7 @@ int main(int argc, const char* argv[])
     TYPE_RecHeader_TMSS *Inf_TMSS = (TYPE_RecHeader_TMSS*)InfBuffer;
     char                EventName[257], DurationStr[16];
 
-    time_t              StartTimeUnix = TF2UnixTime(Inf_TMSS->RecHeaderInfo.StartTime, Inf_TMSS->RecHeaderInfo.StartTimeSec, TRUE);
+    time_t              StartTimeUnix = TF2UnixTime(Inf_TMSS->RecHeaderInfo.StartTime, Inf_TMSS->RecHeaderInfo.StartTimeSec, TRUE);  // Convert, und wieder zurück (oder kein Convert)
     time_t              EvtStartUnix = TF2UnixTime(Inf_TMSS->EventInfo.StartTime, 0, FALSE);
     time_t              EvtEndUnix = TF2UnixTime(Inf_TMSS->EventInfo.EndTime, 0, FALSE);
 
