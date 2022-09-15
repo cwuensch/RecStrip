@@ -1350,7 +1350,7 @@ int main(int argc, const char* argv[])
                   {
                     int newPage = 0;
                     ExtractTeletext = TRUE;
-                    if ((argc > 2) && (argv[2][0] != '-') && ((newPage = strtol(argv[2], NULL, 16))))
+                    if ((argc > 2) && (argv[2][0] != '-') && (strlen(argv[2]) <= 3) && ((newPage = strtol(argv[2], NULL, 10))))
                     {
                       TeletextPage = (word)newPage;
                       argv[1] = argv[0];

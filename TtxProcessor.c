@@ -13,6 +13,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <time.h>
+#include <stdint.h>
 #include "type.h"
 #include "TtxProcessor.h"
 #include "PESProcessor.h"
@@ -53,6 +54,7 @@ ETSI EN 301 775 V1.2.1 (2003-05), European Standard (Telecommunications series)
   Digital Video Broadcasting (DVB); Specification for the carriage of Vertical Blanking Information (VBI) data in DVB bitstreams
 ETS 300 706 (May 1997)
   Enhanced Teletext Specification
+  https://www.etsi.org/deliver/etsi_i_ets/300700_300799/300706/01_40_57/ets_300706e01o.pdf
 ETS 300 708 (March 1997)
   Television systems; Data transmission within Teletext
 ISO/IEC STANDARD 13818-1 Second edition (2000-12-01)
@@ -63,7 +65,7 @@ Werner Brückner -- Teletext in digital television
 */
 #define TELXCC_VERSION "2.6.0"
 
-#ifdef __MINGW32__
+#ifdef _WIN32
 // switch stdin and all normal files into binary mode -- needed for Windows
   #include <fcntl.h>
   int _CRT_fmode = _O_BINARY;
@@ -72,19 +74,19 @@ Werner Brückner -- Teletext in digital television
   #define _WIN32_IE 0x0400
   #define ICC_STANDARD_CLASSES 0x00004000
   #include <windows.h>
-  #include <shellapi.h>
-  #include <commctrl.h>
+//  #include <shellapi.h>
+//  #include <commctrl.h>
   #include <wchar.h>
 #endif
 
-#define uint8_t byte
+/*#define uint8_t byte
 #define uint16_t word
 #define uint32_t dword
 #define uint64_t unsigned long long int
 #define int8_t char
 #define int16_t short
 #define int32_t int
-#define int64_t long long int
+#define int64_t long long int*/
 
 typedef enum {
   NO = 0x00,

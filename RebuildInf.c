@@ -168,6 +168,7 @@ static char* rtrim(char *s)
 
 
 // from ProjectX
+// Fully Reverses the bit order in a byte: 12345678 -> 87654321
 static byte byte_reverse(byte b)
 {
   b = (((b >> 1) & 0x55) | ((b << 1) & 0xaa));
@@ -176,11 +177,13 @@ static byte byte_reverse(byte b)
   return b;
 }
 
+// Reverts the last nibble in a byte: 00001234 -> 00004321
 static byte nibble_reverse(byte b)
 {
   return byte_reverse(b << 4);
 }
 
+// Decodes Hamming from reversed byte order (like in Teletext), but last nibble of result is still reversed then: 00004321
 static byte hamming_decode(byte b)
 {
   switch (b)
@@ -568,9 +571,6 @@ static bool AnalyseTtx(byte *PSBuffer, tPVRTime *const TtxTime, byte *const TtxT
 {
   char                  programme[50];
   int                   PESLength = 0, p = 0;
-  int                   magazin, row;
-  byte                  b1, b2;
-  byte                 *data_block = NULL;
 
   TRACEENTER;
 
@@ -587,31 +587,21 @@ static bool AnalyseTtx(byte *PSBuffer, tPVRTime *const TtxTime, byte *const TtxT
     p++;
     while (p < PESLength - 46)
     {
-      if (PSBuffer[p] == 0x02 && PSBuffer[p+1] == 44)
+      if ((PSBuffer[p] & 0xfe) == 0x02 && PSBuffer[p+1] == 44)
       {
-        b1 = PSBuffer[p+4];
-        b2 = PSBuffer[p+5];
-        data_block = &PSBuffer[p+6];
+        byte *data_block = &PSBuffer[p+6];
 
-        row = byte_reverse(((hamming_decode(b1) & 0x0f) << 4) | (hamming_decode(b2) & 0x0f));
-        magazin = row & 7;
+        byte row = byte_reverse(((hamming_decode(PSBuffer[p+4]) & 0x0f) << 4) | (hamming_decode(PSBuffer[p+5]) & 0x0f));
+        byte magazin = row & 7;
         if (magazin == 0) magazin = 8;
         row = row >> 3;
 
         if (magazin == 8 && row == 30 && data_block[1] == 0xA8)
         {
-          byte dc, packet_format;
           int i;
-          dc = hamming_decode(data_block[0]);
+          byte packet_format = nibble_reverse(hamming_decode(data_block[0])) & 0x0e;
 
-          switch (dc & 0x0e)
-          {
-            case 0: packet_format = 1; break;
-            case 4: packet_format = 2; break;
-            default: packet_format = 0; break;
-          }
-
-          if (packet_format == 1)
+          if (packet_format <= 2)
           {
             // get initial page
 /*            byte initialPageUnits = nibble_reverse(hamming_decode(data_block[1]));
@@ -622,6 +612,27 @@ static bool AnalyseTtx(byte *PSBuffer, tPVRTime *const TtxTime, byte *const TtxT
             byte initialPageSub4  = nibble_reverse(hamming_decode(data_block[6]));
             dword InitialPage = initialPageUnits + 10 * initialPageTens + 100 * (((initialPageSub2 >> 3) & 1) + ((initialPageSub4 >> 1) & 6));
 */
+            // Programme Identification
+            programme[0] = '\0';
+            for (i = 20; i < 40; i++)
+            {
+              char u[4] = { 0, 0, 0, 0 };
+              word c = telx_to_ucs2(byte_reverse(data_block[i]));
+              // strip any control codes from PID, eg. TVP station
+              if (c < 0x20) continue;
+              ucs2_to_utf8(u, c);
+              strcat(programme, u);
+            }
+            rtrim(programme);
+            if(ServiceName)
+            {
+//              memset(ServiceName, 0, SvcNameLen);
+              strncpy(ServiceName, programme, SvcNameLen-1);
+            }
+          }
+
+          if (packet_format < 2)
+          {
             // offset in half hours
             byte timeOffsetCode   = byte_reverse(data_block[9]);
             byte timeOffsetH2     = ((timeOffsetCode >> 1) & 0x1F);
@@ -663,24 +674,6 @@ static bool AnalyseTtx(byte *PSBuffer, tPVRTime *const TtxTime, byte *const TtxT
             {
               *TtxTime = DATE(mjd, localH, localM);
               if(TtxTimeSec) *TtxTimeSec = localS;
-            }
-
-            // Programme Identification
-            programme[0] = '\0';
-            for (i = 20; i < 40; i++)
-            {
-              char u[4] = { 0, 0, 0, 0 };
-              word c = telx_to_ucs2(byte_reverse(data_block[i]));
-              // strip any control codes from PID, eg. TVP station
-              if (c < 0x20) continue;
-              ucs2_to_utf8(u, c);
-              strcat(programme, u);
-            }
-            rtrim(programme);
-            if(ServiceName)
-            {
-//              memset(ServiceName, 0, SvcNameLen);
-              strncpy(ServiceName, programme, SvcNameLen-1);
             }
 
 printf("  TS: Teletext Programme Identification Data: '%s'\n", programme);
