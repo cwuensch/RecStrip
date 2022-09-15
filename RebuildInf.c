@@ -183,26 +183,26 @@ static byte nibble_reverse(byte b)
   return byte_reverse(b << 4);
 }
 
-// Decodes Hamming from reversed byte order (like in Teletext), but last nibble of result is still reversed then: 00004321
-static byte hamming_decode(byte b)
+// Decodes Hamming from reversed byte order (like in Teletext), returns reverse-corrected nibble: 00001234
+static byte hamming_decode_rev(byte b)
 {
   switch (b)
   {
     case 0xa8: return 0;
-    case 0x0b: return 1;
-    case 0x26: return 2;
-    case 0x85: return 3;
-    case 0x92: return 4;
-    case 0x31: return 5;
+    case 0x0b: return 8;
+    case 0x26: return 4;
+    case 0x85: return 12;
+    case 0x92: return 2;
+    case 0x31: return 10;
     case 0x1c: return 6;
-    case 0xbf: return 7;
-    case 0x40: return 8;
+    case 0xbf: return 14;
+    case 0x40: return 1;
     case 0xe3: return 9;
-    case 0xce: return 10;
-    case 0x6d: return 11;
-    case 0x7a: return 12;
-    case 0xd9: return 13;
-    case 0xf4: return 14;
+    case 0xce: return 5;
+    case 0x6d: return 13;
+    case 0x7a: return 3;
+    case 0xd9: return 11;
+    case 0xf4: return 7;
     case 0x57: return 15;
     default:
       return 0xFF;     // decode error , not yet corrected
@@ -591,7 +591,8 @@ static bool AnalyseTtx(byte *PSBuffer, tPVRTime *const TtxTime, byte *const TtxT
       {
         byte *data_block = &PSBuffer[p+6];
 
-        byte row = byte_reverse(((hamming_decode(PSBuffer[p+4]) & 0x0f) << 4) | (hamming_decode(PSBuffer[p+5]) & 0x0f));
+//        byte address = (UNHAM_8_4[REVERSE_8[PSBuffer[p+5]]] << 4) | UNHAM_8_4[REVERSE_8[PSBuffer[p+4]]];
+        byte row = ((hamming_decode_rev(PSBuffer[p+5]) & 0x0f) << 4) | (hamming_decode_rev(PSBuffer[p+4]) & 0x0f);
         byte magazin = row & 7;
         if (magazin == 0) magazin = 8;
         row = row >> 3;
@@ -599,17 +600,17 @@ static bool AnalyseTtx(byte *PSBuffer, tPVRTime *const TtxTime, byte *const TtxT
         if (magazin == 8 && row == 30 && data_block[1] == 0xA8)
         {
           int i;
-          byte packet_format = nibble_reverse(hamming_decode(data_block[0])) & 0x0e;
+          byte packet_format = hamming_decode_rev(data_block[0]) & 0x0e;
 
           if (packet_format <= 2)
           {
             // get initial page
-/*            byte initialPageUnits = nibble_reverse(hamming_decode(data_block[1]));
-            byte initialPageTens  = nibble_reverse(hamming_decode(data_block[2]));
-            //byte initialPageSub1  = nibble_reverse(hammingDecode(data_block[3]));
-            byte initialPageSub2  = nibble_reverse(hamming_decode(data_block[4]));
-            //byte initialPageSub3  = nibble_reverse(hamming_decode(data_block[5]));
-            byte initialPageSub4  = nibble_reverse(hamming_decode(data_block[6]));
+/*            byte initialPageUnits = hamming_decode_rev(data_block[1]);
+            byte initialPageTens  = hamming_decode_rev(data_block[2]);
+            //byte initialPageSub1  = hammingDecode_rev(data_block[3]);
+            byte initialPageSub2  = hamming_decode_rev(data_block[4]);
+            //byte initialPageSub3  = hamming_decode_rev(data_block[5]);
+            byte initialPageSub4  = hamming_decode_rev(data_block[6]);
             dword InitialPage = initialPageUnits + 10 * initialPageTens + 100 * (((initialPageSub2 >> 3) & 1) + ((initialPageSub4 >> 1) & 6));
 */
             // Programme Identification
