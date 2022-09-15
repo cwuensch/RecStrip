@@ -234,10 +234,10 @@ void InitInfStruct(TYPE_RecHeader_TMSS *RecInf)
   TRACEEXIT;
 }
 
-bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
+bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf)
 {
   tTSPMT               *PMT = (tTSPMT*)PSBuffer;
-  dword                 ElemPt;
+  int                   ElemPt;
   int                   SectionLength, ProgramInfoLength, ElemLength;
   word                  PID;
   bool                  VideoFound = FALSE;
@@ -248,6 +248,7 @@ bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
 
   //The following variables have a constant distance from the packet header
   SectionLength = PMT->SectionLen1 * 256 | PMT->SectionLen2;
+  SectionLength = min(SectionLength + 3, BufSize);    // SectionLength zählt erst ab Byte 3
 
   RecInf->ServiceInfo.ServiceID = PMT->ProgramNr1 * 256 | PMT->ProgramNr2;
   RecInf->ServiceInfo.PCRPID = PMT->PCRPID1 * 256 | PMT->PCRPID2;
@@ -257,7 +258,6 @@ bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
 
   //Program info (-> überspringen)
   ElemPt = sizeof(tTSPMT);
-  SectionLength -= (sizeof(tTSPMT) - 3);  // SectionLength zählt ab Byte 3, bisherige Bytes abziehen
 
 /*  while(ProgramInfoLength > 0)
   {
@@ -269,10 +269,9 @@ bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
 
   // Einfacher:
   ElemPt += ProgramInfoLength;
-  SectionLength -= ProgramInfoLength;
 
   //Loop through all elementary stream descriptors and search for the Audio and Video descriptor
-  while (SectionLength > 4)         // 4 Bytes CRC am Ende
+  while (ElemPt + (int)sizeof(tElemStream) + 4 <= SectionLength)     // 4 Bytes CRC am Ende
   {
     tElemStream* Elem = (tElemStream*) &PSBuffer[ElemPt];
     PID = Elem->ESPID1 * 256 | Elem->ESPID2;
@@ -383,7 +382,6 @@ bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
         }
       }
     }
-    SectionLength -= (ElemLength + sizeof(tElemStream));
     ElemPt += (ElemLength + sizeof(tElemStream));
   }
 
@@ -397,7 +395,7 @@ bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf)
   return VideoFound;
 }
 
-static bool AnalyseSDT(byte *PSBuffer, word ServiceID, TYPE_RecHeader_TMSS *RecInf)
+static bool AnalyseSDT(byte *PSBuffer, int BufSize, word ServiceID, TYPE_RecHeader_TMSS *RecInf)
 {
   tTSSDT               *SDT = (tTSSDT*)PSBuffer;
   tTSService           *pService = NULL;
@@ -409,6 +407,7 @@ static bool AnalyseSDT(byte *PSBuffer, word ServiceID, TYPE_RecHeader_TMSS *RecI
   if (SDT->TableID == TABLE_SDT)
   {
     SectionLength = SDT->SectionLen1 * 256 | SDT->SectionLen2;
+    SectionLength = min(SectionLength + 3, BufSize);    // SectionLength zählt erst ab Byte 3
 
     p = sizeof(tTSSDT);
     while (p + (int)sizeof(tTSService) <= SectionLength)
@@ -434,7 +433,7 @@ printf("  TS: SvcName   = %s\n", RecInf->ServiceInfo.ServiceName);
   return FALSE;
 }
 
-static bool AnalyseEIT(byte *Buffer, word ServiceID, TYPE_RecHeader_TMSS *RecInf)
+static bool AnalyseEIT(byte *Buffer, int BufSize, word ServiceID, TYPE_RecHeader_TMSS *RecInf)
 {
   tTSEIT               *EIT = (tTSEIT*)Buffer;
   tEITEvent            *Event = NULL;
@@ -463,20 +462,19 @@ static bool AnalyseEIT(byte *Buffer, word ServiceID, TYPE_RecHeader_TMSS *RecInf
     ExtEPGText[0] = '\0';
 
     SectionLength = EIT->SectionLen1 * 256 | EIT->SectionLen2;
-    SectionLength -= (sizeof(tTSEIT) - 3);
+    SectionLength = min(SectionLength + 3, BufSize);    // SectionLength zählt erst ab Byte 3
     p = sizeof(tTSEIT);
-    while(SectionLength > 4)
+    while (p + (int)sizeof(tTSEIT) + 4 <= SectionLength)
     {
       Event = (tEITEvent*) &Buffer[p];
       EventID = Event->EventID1 * 256 | Event->EventID2;
       DescriptorLoopLen = Event->DescriptorLoopLen1 * 256 | Event->DescriptorLoopLen2;
 
-      SectionLength -= sizeof(tEITEvent);
       p += sizeof(tEITEvent);
       if(Event->RunningStatus == 4) // *CW-debug* richtig: 4
       {
         //Found the event we were looking for
-        while(DescriptorLoopLen > 0)
+        while ((DescriptorLoopLen > 0) && (p + (int)sizeof(tTSDesc) + 4 <= SectionLength))
         {
           Desc = (tTSDesc*) &Buffer[p];
           
@@ -530,7 +528,6 @@ printf("  TS: EventDesc = %s\n", &RecInf->EventInfo.EventNameDescription[NameLen
             ExtEPGText[ExtEPGTextLen] = '\0';
           }
 
-          SectionLength -= (Desc->DescrLength + sizeof(tTSDesc));
           DescriptorLoopLen -= (Desc->DescrLength + sizeof(tTSDesc));
           p += (Desc->DescrLength + sizeof(tTSDesc));
         }
@@ -558,7 +555,6 @@ printf("  TS: EPGExtEvent = %s\n", ExtEPGText);
       else
       {
         //Not this one
-        SectionLength -= DescriptorLoopLen;
         p += DescriptorLoopLen;
       }
     }
@@ -567,10 +563,10 @@ printf("  TS: EPGExtEvent = %s\n", ExtEPGText);
   return FALSE;
 }
 
-static bool AnalyseTtx(byte *PSBuffer, tPVRTime *const TtxTime, byte *const TtxTimeSec, int *const TtxTimeZone, char *const ServiceName, int SvcNameLen)
+static bool AnalyseTtx(byte *PSBuffer, int BufSize, tPVRTime *const TtxTime, byte *const TtxTimeSec, int *const TtxTimeZone, char *const ServiceName, int SvcNameLen)
 {
   char                  programme[50];
-  int                   PESLength = 0, p = 0;
+  int                   PESLength = BufSize, p = 0;
 
   TRACEENTER;
 
@@ -578,6 +574,7 @@ static bool AnalyseTtx(byte *PSBuffer, tPVRTime *const TtxTime, byte *const TtxT
   {
     p = 6;
     PESLength = PSBuffer[4] * 256 + PSBuffer[5];
+    PESLength = min(PESLength + 6, BufSize);
     if ((PSBuffer[p] & 0xf0) == 0x80)  // Additional header
       p += PSBuffer[8] + 3;
   }
@@ -585,13 +582,12 @@ static bool AnalyseTtx(byte *PSBuffer, tPVRTime *const TtxTime, byte *const TtxT
   if (PSBuffer[p] == 0x10)
   {
     p++;
-    while (p < PESLength - 46)
+    while (p + 46 <= PESLength)
     {
       if ((PSBuffer[p] & 0xfe) == 0x02 && PSBuffer[p+1] == 44)
       {
         byte *data_block = &PSBuffer[p+6];
 
-//        byte address = (UNHAM_8_4[REVERSE_8[PSBuffer[p+5]]] << 4) | UNHAM_8_4[REVERSE_8[PSBuffer[p+4]]];
         byte row = ((hamming_decode_rev(PSBuffer[p+5]) & 0x0f) << 4) | (hamming_decode_rev(PSBuffer[p+4]) & 0x0f);
         byte magazin = row & 7;
         if (magazin == 0) magazin = 8;
@@ -877,7 +873,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         {
           while ((p < 32000) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1 || Buffer[p+3] != 0xBD))
             p++;
-          TtxFound = AnalyseTtx(&Buffer[p], &TtxTime, &TtxTimeSec, &TtxTimeZone, RecInf->ServiceInfo.ServiceName, sizeof(RecInf->ServiceInfo.ServiceName));
+          TtxFound = AnalyseTtx(&Buffer[p], 32768-p, &TtxTime, &TtxTimeSec, &TtxTimeZone, RecInf->ServiceInfo.ServiceName, sizeof(RecInf->ServiceInfo.ServiceName));
           if(TtxFound && !TtxOK)
             TtxOK = GetPTS(&Buffer[p], NULL, &TtxPCR) && (TtxPCR != 0);
           if(TtxOK)
@@ -907,7 +903,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           int EITLen = *(int*)(&p[4]);
           tTSEIT *EIT = (tTSEIT*)(&p[8]);
           RecInf->ServiceInfo.ServiceID = (EIT->ServiceID1 * 256 | EIT->ServiceID2);
-          if ((EITOK = AnalyseEIT(&p[8], RecInf->ServiceInfo.ServiceID, RecInf)))
+          if ((EITOK = AnalyseEIT(&p[8], p-Buffer, RecInf->ServiceInfo.ServiceID, RecInf)))
           {
             EPGLen = 0;
             if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
@@ -1037,7 +1033,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               p += PACKETSIZE;
             }
 
-            AnalysePMT(PMTBuffer.Buffer1, /*PMTBuffer.ValidBufLen,*/ RecInf);
+            AnalysePMT((PMTBuffer.ValidBuffer==2) ? PMTBuffer.Buffer2 : PMTBuffer.Buffer1, (PMTBuffer.ValidBuffer) ? PMTBuffer.ValidBufLen : PMTBuffer.BufferPtr, RecInf);
             PSBuffer_Reset(&PMTBuffer);
           }
           else
@@ -1071,8 +1067,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               PSBuffer_ProcessTSPacket(&PMTBuffer, (tTSPacket*)p);
               if(PMTBuffer.ValidBuffer != LastPMTBuffer)
               {
-                byte* pBuffer = (PMTBuffer.ValidBuffer==1) ? PMTBuffer.Buffer1 : PMTBuffer.Buffer2;
-                SDTOK = !PMTBuffer.ErrorFlag && AnalyseSDT(pBuffer, RecInf->ServiceInfo.ServiceID, RecInf);
+                byte* pBuffer = (PMTBuffer.ValidBuffer==2) ? PMTBuffer.Buffer2 : PMTBuffer.Buffer1;
+                SDTOK = !PMTBuffer.ErrorFlag && AnalyseSDT(pBuffer, PMTBuffer.ValidBufLen, RecInf->ServiceInfo.ServiceID, RecInf);
                 PMTBuffer.ErrorFlag = FALSE;
                 LastPMTBuffer = PMTBuffer.ValidBuffer;
               }
@@ -1082,8 +1078,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               PSBuffer_ProcessTSPacket(&EITBuffer, (tTSPacket*)p);
               if(EITBuffer.ValidBuffer != LastEITBuffer)
               {
-                byte *pBuffer = (EITBuffer.ValidBuffer==1) ? EITBuffer.Buffer1 : EITBuffer.Buffer2;
-                EITOK = !EITBuffer.ErrorFlag && AnalyseEIT(pBuffer, RecInf->ServiceInfo.ServiceID, RecInf);
+                byte *pBuffer = (EITBuffer.ValidBuffer==2) ? EITBuffer.Buffer2 : EITBuffer.Buffer1;
+                EITOK = !EITBuffer.ErrorFlag && AnalyseEIT(pBuffer, EITBuffer.ValidBufLen, RecInf->ServiceInfo.ServiceID, RecInf);
                 EITBuffer.ErrorFlag = FALSE;
                 LastEITBuffer = EITBuffer.ValidBuffer;
               }
@@ -1095,9 +1091,9 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                 PSBuffer_ProcessTSPacket(&TtxBuffer, (tTSPacket*)p);
                 if(TtxBuffer.ValidBuffer != LastTtxBuffer)
                 {
-                  byte *pBuffer = (TtxBuffer.ValidBuffer==1) ? TtxBuffer.Buffer1 : TtxBuffer.Buffer2;
+                  byte *pBuffer = (TtxBuffer.ValidBuffer==2) ? TtxBuffer.Buffer2 : TtxBuffer.Buffer1;
 // IDEE: Hier vielleicht den Teletext-String in EventNameDescription schreiben, FALLS Länge größer ist als EventNameLength und !EITOK
-                  TtxFound = !TtxBuffer.ErrorFlag && AnalyseTtx(pBuffer, &TtxTime, &TtxTimeSec, &TtxTimeZone, ((SDTOK || (HumaxSource && *RecInf->ServiceInfo.ServiceName)) ? NULL : RecInf->ServiceInfo.ServiceName), sizeof(RecInf->ServiceInfo.ServiceName));
+                  TtxFound = !TtxBuffer.ErrorFlag && AnalyseTtx(pBuffer, TtxBuffer.ValidBufLen, &TtxTime, &TtxTimeSec, &TtxTimeZone, ((SDTOK || (HumaxSource && *RecInf->ServiceInfo.ServiceName)) ? NULL : RecInf->ServiceInfo.ServiceName), sizeof(RecInf->ServiceInfo.ServiceName));
                   TtxBuffer.ErrorFlag = FALSE;
                   LastTtxBuffer = TtxBuffer.ValidBuffer;
                 }
@@ -1127,7 +1123,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         if(!SDTOK)
           printf ("  Failed to get service name from SDT.\n");
         if(!EITOK && (Durchlauf == 1) && (EITBuffer.ValidBuffer == 0) && (LastEITBuffer == 0))
-          EITOK = !EITBuffer.ErrorFlag && AnalyseEIT(EITBuffer.Buffer1, RecInf->ServiceInfo.ServiceID, RecInf);  // Versuche EIT trotzdem zu parsen (bei gestrippten Aufnahmen gibt es kein Folge-Paket, das den Payload_Unit_Start auslöst)
+          EITOK = !EITBuffer.ErrorFlag && AnalyseEIT(EITBuffer.Buffer1, EITBuffer.BufferPtr, RecInf->ServiceInfo.ServiceID, RecInf);  // Versuche EIT trotzdem zu parsen (bei gestrippten Aufnahmen gibt es kein Folge-Paket, das den Payload_Unit_Start auslöst)
         if(!EITOK)
           printf ("  Failed to get the EIT information.\n");
         if(TeletextPID != 0xffff && !TtxOK)

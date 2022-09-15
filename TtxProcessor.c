@@ -65,7 +65,7 @@ Werner Brückner -- Teletext in digital television
 */
 #define TELXCC_VERSION "2.6.0"
 
-#ifdef _WIN32
+#ifdef __MINGW32__
 // switch stdin and all normal files into binary mode -- needed for Windows
   #include <fcntl.h>
   int _CRT_fmode = _O_BINARY;
@@ -863,7 +863,7 @@ void process_pes_packet(uint8_t *buffer, uint16_t size) {
   }
 
   if (states.pts_initialized == NO) {
-    delta = t - (config.utc_refvalue * 1000 + config.offset);
+    delta = t - 1000 * (config.utc_refvalue + config.offset);
     states.pts_initialized = YES;
 
     if ((using_pts == NO) && (global_timestamp == 0)) {
@@ -951,7 +951,7 @@ void ProcessTtxPacket(tTSPacket *Packet)
   PSBuffer_ProcessTSPacket(&TtxBuffer, (tTSPacket*)Packet);
   if(TtxBuffer.ValidBuffer != LastBuffer && TtxBuffer.ValidBufLen > 0)
   {
-    byte *pBuffer = (TtxBuffer.ValidBuffer==1) ? TtxBuffer.Buffer1 : TtxBuffer.Buffer2;
+    byte *pBuffer = (TtxBuffer.ValidBuffer==2) ? TtxBuffer.Buffer2 : TtxBuffer.Buffer1;
     process_pes_packet(pBuffer, TtxBuffer.ValidBufLen);
     LastBuffer = TtxBuffer.ValidBuffer;
   }

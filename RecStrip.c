@@ -1711,7 +1711,7 @@ int main(int argc, const char* argv[])
     {
       ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID = 0x100;
       printf("  TS: PMTPID=%hu", 0x100);
-      AnalysePMT(&PATPMTBuf[201], (TYPE_RecHeader_TMSS*)InfBuffer);
+      AnalysePMT(&PATPMTBuf[201], sizeof(PATPMTBuf) - 201, (TYPE_RecHeader_TMSS*)InfBuffer);
       NrContinuityPIDs = 0;
     }
 
