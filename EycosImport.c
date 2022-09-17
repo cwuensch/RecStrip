@@ -71,27 +71,18 @@ int EycosGetNrParts(const char* AbsTrpName)
   TRACEEXIT;
 }
 
-
-bool LoadEycosHeader(char *AbsTrpFileName, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecInf)
+bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
 {
   FILE                 *fIfo, *fTxt, *fIdx;
   char                  IfoFile[FBLIB_DIR_SIZE], TxtFile[FBLIB_DIR_SIZE], IdxFile[FBLIB_DIR_SIZE], *p;
   tEycosHeader          EycosHeader;
   tEycosEvent           EycosEvent;
-  tTSPacket            *Packet = NULL;
-  tTSPAT               *PAT = NULL;
-  tTSPMT               *PMT = NULL;
-  tElemStream          *Elem = NULL;
-  dword                *CRC = NULL;
   word                  AudioPID = (word) -1;
-  int                   Offset = 0;
-//  long long             FilePos = ftello64(fIn);
   int                   j, k;
   bool                  ret = FALSE;
 
   TRACEENTER;
   InitInfStruct(RecInf);
-  memset(PATPMTBuf, 0, 2*192);
 
   // Zusatz-Dateien von Eycos laden
   strcpy(IfoFile, AbsTrpFileName);
@@ -111,82 +102,18 @@ bool LoadEycosHeader(char *AbsTrpFileName, byte *const PATPMTBuf, TYPE_RecHeader
       printf("  Importing Eycos header\n");
       VideoPID              = EycosHeader.VideoPid;
       AudioPID              = EycosHeader.AudioPid;
+      AudioPIDs[0].pid      = AudioPID;
       TeletextPID           = (word) -1;
-
-      // PAT/PMT initialisieren
-      Packet = (tTSPacket*) &PATPMTBuf[4];
-      PAT = (tTSPAT*) &Packet->Data[1 /*+ Packet->Data[0]*/];
-
-      Packet->SyncByte      = 'G';
-      Packet->PID1          = 0;
-      Packet->PID2          = 0;
-      Packet->Payload_Unit_Start = 1;
-      Packet->Payload_Exists = 1;
-
-      PAT->TableID          = TABLE_PAT;
-      PAT->SectionLen1      = 0;
-      PAT->SectionLen2      = sizeof(tTSPAT) - 3;
-      PAT->Reserved1        = 3;
-      PAT->Private          = 0;
-      PAT->SectionSyntax    = 1;
-      PAT->TS_ID1           = 0;
-      PAT->TS_ID2           = 6;  // ??
-      PAT->CurNextInd       = 1;
-      PAT->VersionNr        = 3;
-      PAT->Reserved2        = 3;
-      PAT->SectionNr        = 0;
-      PAT->LastSection      = 0;
-      PAT->ProgramNr1       = 0;
-      PAT->ProgramNr2       = 1;
-      PAT->PMTPID1          = EycosHeader.PMTPid / 256;
-      PAT->PMTPID2          = EycosHeader.PMTPid % 256;
-      PAT->Reserved111      = 7;
-//      PAT->CRC32            = rocksoft_crc((byte*)PAT, sizeof(tTSPAT)-4);    // CRC: 0x786989a2
-//      PAT->CRC32            = crc32m((byte*)PAT, sizeof(tTSPAT)-4);          // CRC: 0x786989a2
-      PAT->CRC32            = crc32m_tab((byte*)PAT, sizeof(tTSPAT)-4);      // CRC: 0x786989a2
-  
-      Offset = 1 + /*Packet->Data[0] +*/ sizeof(tTSPAT);
-      memset(&Packet->Data[Offset], 0xff, 184 - Offset);
-
-      Packet = (tTSPacket*) &PATPMTBuf[196];
-      PMT = (tTSPMT*) &Packet->Data[1 /*+ Packet->Data[0]*/];
-
-      Packet->SyncByte      = 'G';
-      Packet->PID1          = (byte)PAT->PMTPID1;
-      Packet->PID2          = (byte)PAT->PMTPID2;
-      Packet->Payload_Unit_Start = 1;
-      Packet->Payload_Exists = 1;
-
-      PMT->TableID          = TABLE_PMT;
-      PMT->SectionLen1      = 0;
-      PMT->SectionLen2      = sizeof(tTSPMT) - 3 + 4;
-      PMT->Reserved1        = 3;
-      PMT->Private          = 0;
-      PMT->SectionSyntax    = 1;
-      PMT->ProgramNr1       = 0;
-      PMT->ProgramNr2       = 1;
-      PMT->CurNextInd       = 1;
-      PMT->VersionNr        = 0;
-      PMT->Reserved2        = 3;
-      PMT->SectionNr        = 0;
-      PMT->LastSection      = 0;
-
-      PMT->Reserved3        = 7;
-
-      PMT->ProgInfoLen1     = 0;
-      PMT->ProgInfoLen2     = 0;
-      PMT->Reserved4        = 15;
-
-      Offset = 1 + /*Packet->Data[0] +*/ sizeof(tTSPMT);
+      isHDVideo             = FALSE;
 
       RecInf->TransponderInfo.Frequency = EycosHeader.Frequency;
-
       RecInf->ServiceInfo.ServiceType     = 0;  // SVC_TYPE_Tv
       RecInf->ServiceInfo.ServiceID       = EycosHeader.ServiceID;
       RecInf->ServiceInfo.PMTPID          = EycosHeader.PMTPid;
       RecInf->ServiceInfo.VideoPID        = VideoPID;
       RecInf->ServiceInfo.PCRPID          = VideoPID;
       RecInf->ServiceInfo.AudioPID        = AudioPID;
+      RecInf->ServiceInfo.AudioStreamType = STREAM_AUDIO_MPEG2;
       RecInf->RecHeaderInfo.StartTime     = 0;  // TODO
 //      RecInf->RecHeaderInfo.DurationMin   = 0;  // TODO
 //      RecInf->RecHeaderInfo.DurationSec   = 0;  // TODO
@@ -208,42 +135,12 @@ bool LoadEycosHeader(char *AbsTrpFileName, byte *const PATPMTBuf, TYPE_RecHeader
       }
       SegmentMarker[NrSegmentMarker++].Timems = 0;
 
-      // PIDs in PMT eintragen
+      AudioPIDs[0].pid = EycosHeader.AudioPid;
+      AudioPIDs[0].sorted = TRUE;
+
+      // PIDs durchgehen
       for (j = 0; j < (int)EycosHeader.NrPids; j++)
       {
-        tTSAudioDesc *Desc    = NULL;
-
-//        EycosHeader.Pids[j].Type = EycosHeader.Pids[j].Type & 0xff;
-//        EycosHeader.Pids[j].PID = EycosHeader.Pids[j].PID & 0xffff;
-
-        if (EycosHeader.Pids[j].PID == AudioPID)
-        {
-          switch (EycosHeader.Pids[j].Type)
-          {
-            case STREAM_AUDIO_MPEG1:
-            case STREAM_AUDIO_MPEG2:
-            case 0x05:
-              RecInf->ServiceInfo.AudioStreamType = STREAM_AUDIO_MPEG2;
-              RecInf->ServiceInfo.AudioTypeFlag = 0;
-              break;
-            case  0x0a:
-              RecInf->ServiceInfo.AudioStreamType = STREAM_AUDIO_MPEG4_AC3_PLUS;
-              RecInf->ServiceInfo.AudioTypeFlag = 1;
-              break;
-            default:
-              RecInf->ServiceInfo.AudioStreamType = STREAM_AUDIO_MPEG2;
-              RecInf->ServiceInfo.AudioTypeFlag = 3;
-          }
-        }
-
-        Elem = (tElemStream*) &Packet->Data[Offset];
-        Elem->ESPID1          = EycosHeader.Pids[j].PID / 256;
-        Elem->ESPID2          = EycosHeader.Pids[j].PID % 256;
-        Elem->Reserved1       = 7;
-        Elem->Reserved2       = 0xf;
-        Elem->ESInfoLen1      = 0;
-        Elem->ESInfoLen2      = 0;
-
         switch (EycosHeader.Pids[j].Type)
         {
           // Video
@@ -253,17 +150,13 @@ bool LoadEycosHeader(char *AbsTrpFileName, byte *const PATPMTBuf, TYPE_RecHeader
               isHDVideo = TRUE;  // fortsetzen...
               RecInf->ServiceInfo.VideoStreamType = STREAM_VIDEO_MPEG4_H264;
             }
-            Elem->stream_type = STREAM_VIDEO_MPEG4_H264;
             // (fall-through!)
 
           case STREAM_VIDEO_MPEG1:
           case STREAM_VIDEO_MPEG2:
           {
-            Offset              += sizeof(tElemStream);
-            PMT->SectionLen2    += sizeof(tElemStream);
             if (RecInf->ServiceInfo.VideoStreamType == 0xff)
             {
-              Elem->stream_type  = STREAM_VIDEO_MPEG2;
               if (EycosHeader.Pids[j].PID == VideoPID)
                 RecInf->ServiceInfo.VideoStreamType = STREAM_VIDEO_MPEG2;
             }
@@ -279,53 +172,38 @@ bool LoadEycosHeader(char *AbsTrpFileName, byte *const PATPMTBuf, TYPE_RecHeader
           case 0x05:
           case 0x0a:
           {
-            Offset               += sizeof(tElemStream);
-            if (EycosHeader.Pids[j].Type == 0x0a)
-            {
-              tTSAC3Desc *Desc0   = (tTSAC3Desc*) &Packet->Data[Offset];
-              Desc0->DescrTag     = DESC_AC3;
-              Desc0->DescrLength  = 1;
-              Desc                = (tTSAudioDesc*) &Packet->Data[Offset + sizeof(tTSAC3Desc)];
-              Elem->stream_type   = STREAM_AUDIO_MPEG4_AC3_PLUS;
-              Elem->ESInfoLen2    = sizeof(tTSAC3Desc) + sizeof(tTSAudioDesc);
-            }
-            else
-            {
-              Desc = (tTSAudioDesc*) &Packet->Data[Offset];
-              Elem->stream_type   = STREAM_AUDIO_MPEG2;
-              Elem->ESInfoLen2    = sizeof(tTSAudioDesc);
-            }
-            if (Desc)
-            {
-              int NrAudio;
-              Desc->DescrTag      = DESC_Audio;
-              Desc->DescrLength   = 4;
+            int NrAudio = (int) strlen((char*)EycosHeader.AudioNames) / 2;
 
-              NrAudio = (int) strlen((char*)EycosHeader.AudioNames) / 2;
-              for (k = 0; k < NrAudio; k++)
+            if ((EycosHeader.Pids[j].PID == AudioPID) && (EycosHeader.Pids[j].Type == 0x0a))
+            {
+              RecInf->ServiceInfo.AudioStreamType = STREAM_AUDIO_MPEG4_AC3_PLUS;
+              RecInf->ServiceInfo.AudioTypeFlag = 1;
+            }
+
+            for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0); k++);
+            if (k < MAXCONTINUITYPIDS)
+            {
+              AudioPIDs[k].pid = EycosHeader.Pids[j].PID;
+              AudioPIDs[k].type = (EycosHeader.Pids[j].Type == 0x0a) ? STREAM_AUDIO_MPEG4_AC3_PLUS : STREAM_AUDIO_MPEG2;
+              AudioPIDs[k].sorted = TRUE;
+            }
+
+            for (k = 0; k < NrAudio; k++)
+            {
+              if (EycosHeader.AudioNames[k] == EycosHeader.Pids[j].PID)
               {
-                if (EycosHeader.AudioNames[k] == EycosHeader.Pids[j].PID)
-                {
-                  strncpy(Desc->LanguageCode, &((char*)EycosHeader.AudioNames)[NrAudio*2 + 2 + k*4], 3);
-                  break;
-                }
+                strncpy(AudioPIDs[k].desc, &((char*)EycosHeader.AudioNames)[NrAudio*2 + 2 + k*4], 3);
+                break;
               }
             }
-            printf("    Audio Track %d: PID=%d, Type=0x%x (%s) \n", j, EycosHeader.Pids[j].PID, Elem->stream_type, Desc->LanguageCode);
+            printf("    Audio Track %d: PID=%d, Type=0x%x (%s) \n", j, AudioPIDs[k].pid, AudioPIDs[k].type, AudioPIDs[k].desc);
             
             if (NrContinuityPIDs < MAXCONTINUITYPIDS)
             {
-              for (k = 1; k < NrContinuityPIDs; k++)
-              {
-                if (ContinuityPIDs[k] == EycosHeader.Pids[j].PID)
-                  break;
-              }
+              for (k = 1; (k < NrContinuityPIDs) && (ContinuityPIDs[k] != EycosHeader.Pids[j].PID); k++);
               if (k >= NrContinuityPIDs)
                 ContinuityPIDs[NrContinuityPIDs++] = EycosHeader.Pids[j].PID;
             }
-
-            Offset           += Elem->ESInfoLen2;
-            PMT->SectionLen2 += (sizeof(tElemStream) + Elem->ESInfoLen2);
             break;
           }
 
@@ -340,14 +218,6 @@ bool LoadEycosHeader(char *AbsTrpFileName, byte *const PATPMTBuf, TYPE_RecHeader
           }
         }
       }
-      PMT->PCRPID1          = VideoPID / 256;
-      PMT->PCRPID2          = VideoPID % 256;
-      CRC                   = (dword*) &Packet->Data[Offset];
-//     *CRC                  = rocksoft_crc((byte*)PMT, (int)CRC - (int)PMT);        // CRC: 0x0043710d  (0xb3ad75b7?)
-//     *CRC                  = crc32m((byte*)PMT, (int)CRC - (int)PMT);              // CRC: 0x0043710d  (0xb3ad75b7?)
-      *CRC                  = crc32m_tab((byte*)PMT, (byte*)CRC - (byte*)PMT);     // CRC: 0x0043710d  (0xb3ad75b7?)
-      Offset               += 4;
-      memset(&Packet->Data[Offset], 0xff, 184 - Offset);
     }
     fclose(fIfo);
   }

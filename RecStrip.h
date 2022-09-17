@@ -3,7 +3,7 @@
 
 #include "RecHeader.h"
 
-#define VERSION                  "v2.7d"
+#define VERSION                  "v2.8"
 
 #define NRBOOKMARKS                177   // eigentlich werden nur 48 Bookmarks unterstützt!! (SRP2401)
 #define NRSEGMENTMARKER            101
@@ -118,19 +118,33 @@ typedef struct
   byte CountShould;
 } tContinuityError;
 
+typedef struct
+{
+  word pid;
+  byte flags: 2;      // 0=toScan, 1=scanned, 2=noAudio
+  byte sorted: 1;
+  byte reserved: 1;
+  byte type: 4;       // 1=mpeg1, 0=mpeg2
+  byte layer: 2;      // 3=Layer1, 2=Layer2, 1=Layer3
+  byte mode: 2;       // 0=Stereo, 1=Joint stereo, 2=Dual channel, 3=Single channel
+  byte bitrate: 4;
+  char desc[4];
+} tAudioTrack;
+
 
 // Globale Variablen
-extern char             RecFileIn[], RecFileOut[], MDEpgName[], MDTtxName[];
+extern char             RecFileIn[], RecFileOut[], MDEpgName[], MDTtxName[], MDAudName[];
 extern byte             PATPMTBuf[], *EPGPacks;
 extern unsigned long long RecFileSize;
 extern time_t           RecFileTimeStamp;
 extern SYSTEM_TYPE      SystemType;
 extern byte             PACKETSIZE, PACKETOFFSET, OutPacketSize;
 extern word             VideoPID, TeletextPID, TeletextPage;
+extern tAudioTrack      AudioPIDs[];
 extern word             ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs;
 extern bool             isHDVideo, AlreadyStripped, HumaxSource, EycosSource;
-extern bool             DoStrip, DoSkip, RemoveEPGStream, RemoveTeletext, RebuildNav, RebuildInf, DoInfoOnly, MedionMode, MedionStrip, WriteDescPackets;
-extern int              DoCut, DoMerge;
+extern bool             DoStrip, DoSkip, RemoveEPGStream, RemoveTeletext, RebuildNav, RebuildInf, DoInfoOnly, DoFixPMT, MedionMode, MedionStrip, WriteDescPackets;
+extern int              DoCut, DoMerge, DoInfFix;
 extern int              NrEPGPacks;
 extern int              dbg_DelBytesSinceLastVid;
 
@@ -152,6 +166,7 @@ bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize);
 void AddContinuityError(word CurPID, long long CurrentPosition, byte CountShould, byte CountIs);
 bool isPacketStart(const byte PacketArray[], int ArrayLen);        // braucht 9*192+5 = 1733 / 3*192+5 = 581
 int  FindNextPacketStart(const byte PacketArray[], int ArrayLen);  // braucht 20*192+1733 = 5573 / 1185+1733 = 2981
+int  FindPrevPacketStart(const byte PacketArray[], int ArrayLen);  // braucht 20*192+1733 = 5573 / 1185+1733 = 2981
 //int  GetPacketSize(FILE *RecFile, int *OutOffset);
 void DeleteSegmentMarker(int MarkerIndex, bool FreeCaption);
 int  main(int argc, const char* argv[]);

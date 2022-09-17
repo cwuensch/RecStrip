@@ -239,6 +239,29 @@ typedef struct
   byte                  NonIntraMatrix:3;
 } tSequenceHeader;
 
+// siehe: https://en.wikipedia.org/wiki/MPEG_elementary_stream
+typedef struct
+{
+  byte                  StartCode1;       // StartCode: 0xFFF (12 bits)
+
+  byte                  CRCprotection:1;  // 0=CRC-protected, 1=no-protection
+  byte                  Layer:2;          // 3=Layer1, 2=Layer2, 1=Layer3
+  byte                  MpegVersion:1;    // 1=MPEG1, 0=MPEG2
+  byte                  StartCode2:4;
+
+  byte                  Private:1;
+  byte                  Padding:1;
+  byte                  SamplingFreq:2;   // 0=44.1 kHz, 1=48 kHz, 2=32 kHz
+  byte                  BitrateIndex:4;
+
+  byte                  Emphasis:2;
+  byte                  Original:1;       // 0=copy, 1=original
+  byte                  Copyright:1;      // 0=none, 1=yes
+  byte                  ModeExtension:2;
+  byte                  Mode:2;           // 0=Stereo, 1=Joint Stereo, 2=Dual Channel, 3=Single Channel
+} tAudioHeader;
+
+
 
 #define                 EPGBUFFERSIZE 4097
 
@@ -255,5 +278,8 @@ tPVRTime AddTimeSec(tPVRTime pvrTime, byte pvrTimeSec, byte *const outSec, int a
 void InitInfStruct(TYPE_RecHeader_TMSS *RecInf);
 bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf);
 bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf);
+
+bool SortAudioPIDs(tAudioTrack AudioPIDs[]);
+void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPID, word VideoPID, word AudioPID, word TtxPID, tAudioTrack AudioPIDs[]);
 
 #endif

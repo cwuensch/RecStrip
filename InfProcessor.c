@@ -143,8 +143,9 @@ bool InfProcessor_Init()
 
 bool LoadInfFromRec(char *AbsRecFileName)
 {
-  FILE *fIn = NULL;
-  bool Result = FALSE;
+  FILE                 *fIn = NULL;
+  TYPE_RecHeader_TMSS  *RecInf = (TYPE_RecHeader_TMSS*)InfBuffer;
+  bool                  Result = FALSE;
 
   TRACEENTER;
   if(!InfBuffer)
@@ -171,17 +172,23 @@ bool LoadInfFromRec(char *AbsRecFileName)
 
   if (HumaxSource)
   {
-    Result = LoadHumaxHeader(fIn, PATPMTBuf, (TYPE_RecHeader_TMSS*)InfBuffer);
+    Result = LoadHumaxHeader(fIn, PATPMTBuf, RecInf);
     if (!Result) HumaxSource = FALSE;
   }
   else if (EycosSource)
   {
-    Result = LoadEycosHeader(AbsRecFileName, PATPMTBuf, (TYPE_RecHeader_TMSS*)InfBuffer);
+    Result = LoadEycosHeader(AbsRecFileName, PATPMTBuf, RecInf);
     if (!Result) EycosSource = FALSE;
   }
 
-  Result = GenerateInfFile(fIn, (TYPE_RecHeader_TMSS*)InfBuffer);
+  Result = GenerateInfFile(fIn, RecInf);
   
+  if (HumaxSource || EycosSource)
+  {
+    SortAudioPIDs(AudioPIDs);
+    GeneratePatPmt(PATPMTBuf, 1, RecInf->ServiceInfo.PMTPID, VideoPID, RecInf->ServiceInfo.AudioPID, TeletextPID, AudioPIDs);
+  }
+
 //  CurrentStartTime = ((TYPE_RecHeader_Info*)InfBuffer)->StartTime;
 //  CurrentStartSec  = ((TYPE_RecHeader_Info*)InfBuffer)->StartTimeSec;
   if(!OrigStartTime)
@@ -385,9 +392,13 @@ if (RecHeaderInfo->Reserved != 0)
       if(RecHeaderInfo->rs_HasBeenStripped)  AlreadyStripped = TRUE;
 
       if (abs((int)(RecHeaderInfo->StartTime - OrigStartTime)) > 1)
+      {
+        if ((RecHeaderInfo->StartTimeSec == 0) && (OrigStartSec != 0))
+          if(DoInfFix) DoInfFix = 2;
         printf("  INF: StartTime (%s) differs from TS start! Taking %s.\n", TimeStrTF(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec), ((RecHeaderInfo->StartTimeSec != 0 || ((OrigStartSec == 0) && ((RecHeaderInfo->StartTimeSec & 0x0f) > 0))) ? "inf" : "TS"));
+      }
 
-      if (RecHeaderInfo->StartTimeSec != 0 || ((OrigStartSec == 0) && ((RecHeaderInfo->StartTimeSec & 0x0f) > 0)))
+      if ((RecHeaderInfo->StartTimeSec != 0) || (OrigStartSec == 0))
       {
         OrigStartTime = RecHeaderInfo->StartTime;
         OrigStartSec  = RecHeaderInfo->StartTimeSec;

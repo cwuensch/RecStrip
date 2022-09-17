@@ -95,7 +95,7 @@ static int get_ue_golomb32(byte *p, byte *StartBit)
   return (1 << leadingZeroBits) - 1 + d;
 }
 
-bool GetPTS2(byte *Buffer, dword *pPTS, dword *pDTS)
+bool GetPTS2(byte *Buffer, dword *pPTS, dword *pDTS)  // 33 bits, 90 kHz, returns divided by 2 (?)
 {
   bool ret = FALSE;
   TRACEENTER;
@@ -147,7 +147,7 @@ bool GetPTS(byte *Buffer, dword *pPTS, dword *pDTS)
   else return FALSE;
 }
 
-bool GetPCR(byte *pBuffer, long long *pPCR)
+bool GetPCR(byte *pBuffer, long long *pPCR)  // 33 bits (90 kHz) + 9 bits (27 MHz)
 {
   TRACEENTER;
   if (/*pBuffer &&*/ (pBuffer[0] == 0x47) && ((pBuffer[3] & 0x20) != 0) && (pBuffer[4] > 0) && (pBuffer[5] & 0x10))
@@ -165,7 +165,7 @@ bool GetPCR(byte *pBuffer, long long *pPCR)
   TRACEEXIT;
   return FALSE;
 }
-bool GetPCRms(byte *pBuffer, dword *pPCR)
+bool GetPCRms(byte *pBuffer, dword *pPCR)  // 33 bits, 90 kHz, returns divided by 2, then by 45
 {
   TRACEENTER;
   if (/*pBuffer &&*/ (pBuffer[0] == 0x47) && ((pBuffer[3] & 0x20) != 0) && (pBuffer[4] > 0) && (pBuffer[5] & 0x10))
@@ -235,14 +235,14 @@ dword DeltaPCR(dword FirstPCR, dword SecondPCR)
   }
   TRACEEXIT;
   return 0;
-}
+}*/
 
-static dword FindPictureHeader(byte *Buffer, byte *pFrameType)
+dword FindPictureHeader(byte *Buffer, int BufferLen, byte *pFrameType)  // 1 = I-Frame, 2 = P-Frame, 3 = B-Frame (?)
 {
   int                   i;
 
   TRACEENTER;
-  for(i = 0; i < 176; i++)
+  for(i = 0; i < BufferLen - 6; i++)
   {
     if((Buffer[i] == 0x00) && (Buffer[i + 1] == 0x00) && (Buffer[i + 2] == 0x01) && (Buffer[i + 3] == 0x00))
     {
@@ -254,7 +254,7 @@ static dword FindPictureHeader(byte *Buffer, byte *pFrameType)
   }
   TRACEEXIT;
   return 0;
-}*/
+}
 
 
 void NavProcessor_Init(void)

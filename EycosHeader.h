@@ -140,6 +140,6 @@ typedef struct
 
 char* EycosGetPart(char *const OutEycosPart, const char* AbsTrpName, int NrPart);
 int   EycosGetNrParts(const char* AbsTrpName);
-bool  LoadEycosHeader(char *AbsTrpFileName, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecInf);
+bool  LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf);
 
 #endif

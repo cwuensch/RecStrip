@@ -107,10 +107,11 @@ time_t                  RecFileTimeStamp = 0;
 SYSTEM_TYPE             SystemType = ST_UNKNOWN;
 byte                    PACKETSIZE = 192, PACKETOFFSET = 4, OutPacketSize = 0;
 word                    VideoPID = (word) -1, TeletextPID = (word) -1, TeletextPage = 0;
+tAudioTrack             AudioPIDs[MAXCONTINUITYPIDS];
 word                    ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs = 1;
 bool                    isHDVideo = FALSE, AlreadyStripped = FALSE, HumaxSource = FALSE, EycosSource = FALSE;
-bool                    DoStrip = FALSE, DoSkip = FALSE, RemoveScrambled = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE, DoInfoOnly = FALSE, MedionMode = FALSE, MedionStrip = FALSE, WriteDescPackets = FALSE;
-int                     DoCut = 0, DoMerge = 0;  // DoCut: 1=remove_parts, 2=copy_separate, DoMerge: 1=append, 2=merge
+bool                    DoStrip = FALSE, DoSkip = FALSE, RemoveScrambled = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE, DoInfoOnly = FALSE, DoFixPMT = FALSE, MedionMode = FALSE, MedionStrip = FALSE, WriteDescPackets = FALSE;
+int                     DoCut = 0, DoMerge = 0, DoInfFix = 0;  // DoCut: 1=remove_parts, 2=copy_separate, DoMerge: 1=append, 2=merge  // DoInfFix: 1=enable, 2=inf to be fixed
 int                     curInputFile = 0, NrInputFiles = 1, NrEPGPacks = 0;
 int                     dbg_DelBytesSinceLastVid = 0;
 
@@ -424,6 +425,28 @@ bool isPacketStart(const byte PacketArray[], int ArrayLen)  // braucht 9*192+5 =
   TRACEEXIT;
   return ret;
 }
+bool isPacketStart_Rev(const byte PacketArray[], int ArrayLen)  // braucht 9*192+5 = 1733 / 3*192+5 = 581
+{
+  int                   i;
+  bool                  ret = TRUE;
+
+  TRACEENTER;
+  for (i = 1; i <= 10; i++)
+  {
+    if (i * PACKETSIZE > ArrayLen + PACKETOFFSET)
+    {
+      if (i < 3) ret = FALSE;
+      break;
+    }
+    if (PacketArray[ArrayLen - (i * PACKETSIZE) + PACKETOFFSET] != 'G')
+    {
+      ret = FALSE;
+      break;
+    }
+  }
+  TRACEEXIT;
+  return ret;
+}
 
 int FindNextPacketStart(const byte PacketArray[], int ArrayLen)  // braucht 20*192+1733 = 5573 / 1185+1733 = 2981
 {
@@ -448,7 +471,7 @@ int FindNextPacketStart(const byte PacketArray[], int ArrayLen)  // braucht 20*1
   
   if (ret < 0)
   {
-    for (i = 0; i <= 1184; i++)
+    for (i = 1; i <= 1184; i++)
     {
       if (i + PACKETOFFSET >= ArrayLen)
         break;
@@ -458,6 +481,47 @@ int FindNextPacketStart(const byte PacketArray[], int ArrayLen)  // braucht 20*1
         if (isPacketStart(&PacketArray[i], ArrayLen - i))
         {
           ret = i;
+          break;
+        }
+      }
+    }
+  }
+  return ret;
+  TRACEEXIT;
+}
+int FindPrevPacketStart(const byte PacketArray[], int ArrayLen)  // braucht 20*192+1733 = 5573 / 1185+1733 = 2981
+{
+  int ret = -1;
+  int i;
+
+  TRACEENTER;
+  for (i = 0; i <= 20; i++)
+  {
+    if ((i+1) * PACKETSIZE > ArrayLen + PACKETOFFSET)
+      break;
+
+    if (PacketArray[ArrayLen - ((i+1) * PACKETSIZE) + PACKETOFFSET] == 'G')
+    {
+      if (isPacketStart_Rev(PacketArray, ArrayLen - i*PACKETSIZE))
+      {
+        ret = ArrayLen - (i+1) * PACKETSIZE;
+        break;
+      }
+    }
+  }
+  
+  if (ret < 0)
+  {
+    for (i = 1; i <= 1184; i++)
+    {
+      if (i + PACKETSIZE > ArrayLen + PACKETOFFSET)
+        break;
+
+      if (PacketArray[ArrayLen - PACKETSIZE - i + PACKETOFFSET] == 'G')
+      {
+        if (isPacketStart(PacketArray, ArrayLen - i))
+        {
+          ret = ArrayLen - i - PACKETSIZE;
           break;
         }
       }
@@ -583,6 +647,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     ContinuityCtrs[k] = -1;
   }
   NrContinuityPIDs = 1;
+  memset(AudioPIDs, 0, MAXCONTINUITYPIDS * sizeof(tAudioTrack));
   memset(FileDefect, 0, MAXCONTINUITYPIDS * sizeof(tContinuityError));
   NrContErrsInFile = 0;
   LastContErrPos = 0;
@@ -1437,6 +1502,8 @@ int main(int argc, const char* argv[])
       case 'x':   RemoveScrambled = TRUE; break;
       case 'o':   OutPacketSize   = (argv[1][2] == '1') ? 188 : 192; break;
       case 'M':   MedionMode = TRUE;      break;
+      case 'f':   DoInfFix = 1;           break;
+      case 'p':   DoFixPMT = TRUE;        break;
       case 'v':   DoInfoOnly = TRUE;      break;
       case 'h':
       case '?':   ret = FALSE; AbortProcess = TRUE; break;
@@ -1485,7 +1552,7 @@ int main(int argc, const char* argv[])
 
   if (!*RecFileIn)
     { printf("\nNo input file specified!\n");  ret = FALSE; }
-  else if (!DoInfoOnly && (DoCut || DoStrip || DoMerge || OutPacketSize) && (!*RecFileOut || strcmp(RecFileIn, RecFileOut)==0))
+  else if ((!DoInfoOnly || DoFixPMT) && (DoCut || DoStrip || DoMerge || DoFixPMT || OutPacketSize) && (!*RecFileOut || strcmp(RecFileIn, RecFileOut)==0))
     { printf("\nNo output file specified or output same as input!\n");  ret = FALSE; }
   else if (DoMerge && DoCut==2)
     { printf("\nMerging cannot be used together with cut mode (single segment copy)!\n");  ret = FALSE; }
@@ -1495,6 +1562,8 @@ int main(int argc, const char* argv[])
     { printf("\nSkipping of stripped recordings cannot be combined with -r, -c, -a, -m!\n");  DoSkip = FALSE; }
   if (DoInfoOnly && (DoStrip || DoCut || DoMerge || RebuildNav || RebuildInf || ExtractTeletext))
     { printf("\nView info only (-v) disables any other option!\n"); }
+  if (!DoInfoOnly && DoFixPMT && (DoStrip || DoCut || DoMerge || RebuildNav || RebuildInf || ExtractTeletext))
+    { printf("\nFix PAT/PMT (-p) disables any other option!\n"); }
   if (MedionMode==1 && DoStrip)
     { MedionStrip = TRUE; DoStrip = FALSE; }
 //  if (ExtractTeletext && DoStrip)
@@ -1535,6 +1604,8 @@ int main(int argc, const char* argv[])
       printf("  -o1/-o2:   Change the packet size for output-rec: \n"
              "             1: PacketSize = 188 Bytes, 2: PacketSize = 192 Bytes.\n\n");
       printf("  -v:        View rec information only. Disables any other option.\n\n");
+      printf("  -p:        Fix PAT/PMT of output file. Disables any other option.\n\n");
+      printf("  -f:        Fix start time in source inf. Set source-file timestamps.\n\n");
       printf("  -M:        Medion Mode: Multiplexes 4 separate PES-Files into output.\n");
       printf("             (With InFile=<name>_video.pes, _audio1, _ttx, _epg are used.)\n");
       printf("\nExamples:\n---------\n");
@@ -1669,6 +1740,36 @@ int main(int argc, const char* argv[])
     ExtractTeletext = FALSE;
   }
 
+  // Spezialanpassung Humax / Medion
+  if ((HumaxSource || EycosSource || MedionMode==1) && (!DoInfoOnly || DoFixPMT) /*&& fOut && DoMerge != 1*/)
+  {
+    printf("  Generate new PAT/PMT for Humax/Medion/Eycos recording.\n");
+    if (!HumaxSource && !EycosSource)
+    {
+      AudioPIDs[0].pid = 101;
+      AudioPIDs[0].type = 0;
+      strncpy(AudioPIDs[0].desc, "deu", 3);
+      GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, 256, VideoPID, 101, TeletextPID, AudioPIDs);
+    }
+
+    if (MedionMode == 1)
+    {
+      ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID = 256;
+      printf("  TS: PMTPID=%hd", 256);
+      AnalysePMT(&PATPMTBuf[201], sizeof(PATPMTBuf) - 201, (TYPE_RecHeader_TMSS*)InfBuffer);
+      NrContinuityPIDs = 0;
+    }
+
+    if (HumaxSource)
+    {
+      char HumaxFile[FBLIB_DIR_SIZE + 6], *p;
+      strcpy(HumaxFile, RecFileOut);
+      if((p = strrchr(HumaxFile, '.'))) *p = '\0';  // ".rec" entfernen
+      strcat(HumaxFile, ".humax");
+      SaveHumaxHeader(RecFileIn, HumaxFile);
+    }
+  }
+
   // Hier beenden, wenn View Info Only
   if (DoInfoOnly)
   {
@@ -1748,7 +1849,86 @@ int main(int argc, const char* argv[])
     else
       fprintf(stderr, "\t\t%s\n",  (ExtEPGText ? ExtEPGText : ""));
     if(ExtEPGText) free(ExtEPGText);
+  }
 
+  // SPECIAL UNDOCUMENTED FEATURE: Fix start-time in source inf (-f)?
+  if (DoInfFix)
+  {
+    char                  NavFileIn[FBLIB_DIR_SIZE];
+    time_t                RecDate;
+
+    RecDate = TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE);
+
+    if (DoInfFix == 2 && *InfFileIn)
+    {
+      printf("\nINF FIX (source): Changing StartTime to: %s!\n", TimeStrTF(OrigStartTime, OrigStartSec));
+      SetInfStripFlags(InfFileIn, FALSE, FALSE, TRUE);
+    }
+
+    if (DoInfFix == 2 || RecFileTimeStamp != RecDate)
+    {
+      printf("\nINF FIX (source): Changing file timestamp to: %s!\n", TimeStrTF(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
+      snprintf(NavFileIn, sizeof(NavFileIn), "%s.nav", RecFileIn);
+
+      if (*RecFileIn)
+        HDD_SetFileDateTime(RecFileIn, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE));
+      if (*InfFileIn)
+        HDD_SetFileDateTime(InfFileIn, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE));
+      if (*NavFileIn)
+        HDD_SetFileDateTime(NavFileIn, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE));
+    }
+  }
+
+  // SPECIAL FEATURE: Fix PAT/PMT of output file (-p)
+  if (DoFixPMT && (HumaxSource || EycosSource || MedionMode==1 || WriteDescPackets))
+  {
+    byte PMTPacket[192];
+    time_t OldOutTimestamp = HDD_GetFileDateTime(RecFileOut);
+
+    if (*RecFileOut)
+    {
+      printf("\nOutput rec: %s\n", RecFileOut);
+      if (fOut = fopen(RecFileOut, "r+b"))
+      {
+        fread(&PMTPacket[(PACKETSIZE==192) ? 0 : 4], PACKETSIZE, 1, fOut);
+        if (memcmp(&PATPMTBuf[(OutPacketSize==192) ? 0 : 4], &PMTPacket[(OutPacketSize==192) ? 0 : 4], OutPacketSize) == 0)
+        {
+          fread(&PMTPacket[(PACKETSIZE==192) ? 0 : 4], PACKETSIZE, 1, fOut);
+          if (memcmp(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], &PMTPacket[(OutPacketSize==192) ? 0 : 4], OutPacketSize) == 0)
+            DoFixPMT = FALSE;
+        }
+
+        if (DoFixPMT)
+        {
+          printf("\nFixing PAT/PMT packets.\n");
+          fseeko64(fOut, 0, SEEK_SET);
+          fwrite(&PATPMTBuf[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut);
+          fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], OutPacketSize, 1, fOut);
+          fclose(fOut); fOut = NULL;
+          HDD_SetFileDateTime(RecFileOut, OldOutTimestamp);
+        }
+        else
+          printf("\nNo fix of PAT/PMT necessary.\n");
+      }
+      else
+      {
+        printf("ERROR: Cannot write output %s.\n", RecFileOut);
+        fclose(fIn); fIn = NULL;
+        CloseNavFileIn();
+        if(MedionMode == 1) SimpleMuxer_Close();
+        CutProcessor_Free();
+        InfProcessor_Free();
+        free(PendingBuf); PendingBuf = NULL;
+        if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
+        TRACEEXIT;
+        exit(7);
+      }
+    }
+  }
+
+  // Hier beenden, wenn View Info Only
+  if (DoInfoOnly || DoFixPMT)
+  {
     fclose(fIn); fIn = NULL;
     CloseNavFileIn();
     if(MedionMode == 1) SimpleMuxer_Close();
@@ -1756,35 +1936,11 @@ int main(int argc, const char* argv[])
     InfProcessor_Free();
     free(PendingBuf); PendingBuf = NULL;
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
-    printf("\nRecStrip finished. View information only.\n");
+    printf("\nRecStrip finished. View information / fix PMT only.\n");
     TRACEEXIT;
     exit(0);
   }
 
-  // Spezialanpassung Humax / Medion
-  if ((HumaxSource || EycosSource || MedionMode==1) /*&& fOut && DoMerge != 1*/)
-  {
-    printf("  Generate new PAT/PMT for Humax/Medion/Eycos recording.\n");
-    if (!HumaxSource && !EycosSource)
-      GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, 256, VideoPID, 101, TeletextPID, STREAM_VIDEO_MPEG2, STREAM_AUDIO_MPEG2);
-
-    if (MedionMode == 1)
-    {
-      ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID = 256;
-      printf("  TS: PMTPID=%hd", 256);
-      AnalysePMT(&PATPMTBuf[201], sizeof(PATPMTBuf) - 201, (TYPE_RecHeader_TMSS*)InfBuffer);
-      NrContinuityPIDs = 0;
-    }
-
-    if (HumaxSource)
-    {
-      char HumaxFile[FBLIB_DIR_SIZE + 6], *p;
-      strcpy(HumaxFile, RecFileOut);
-      if((p = strrchr(HumaxFile, '.'))) *p = '\0';  // ".rec" entfernen
-      strcat(HumaxFile, ".humax");
-      SaveHumaxHeader(RecFileIn, HumaxFile);
-    }
-  }
 
   // Spezialanpassung Medion (Teletext-Extraktion)
 /*  if (MedionMode)
