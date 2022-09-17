@@ -129,7 +129,7 @@ extern byte             PACKETSIZE, PACKETOFFSET, OutPacketSize;
 extern word             VideoPID, TeletextPID, TeletextPage;
 extern word             ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs;
 extern bool             isHDVideo, AlreadyStripped, HumaxSource, EycosSource;
-extern bool             DoStrip, DoSkip, RemoveEPGStream, RemoveTeletext, RebuildNav, RebuildInf, DoInfoOnly, MedionMode, MedionStrip, WriteDescPackets;
+extern bool             DoStrip, DoSkip, RemoveEPGStream, RemoveTeletext, RebuildNav, RebuildInf, DoInfoOnly, MedionMode, MedionStrip, WriteDescPackets, DoInfFix;
 extern int              DoCut, DoMerge;
 extern int              NrEPGPacks;
 extern int              dbg_DelBytesSinceLastVid;

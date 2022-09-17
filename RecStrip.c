@@ -109,7 +109,7 @@ byte                    PACKETSIZE = 192, PACKETOFFSET = 4, OutPacketSize = 0;
 word                    VideoPID = (word) -1, TeletextPID = (word) -1, TeletextPage = 0;
 word                    ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs = 1;
 bool                    isHDVideo = FALSE, AlreadyStripped = FALSE, HumaxSource = FALSE, EycosSource = FALSE;
-bool                    DoStrip = FALSE, DoSkip = FALSE, RemoveScrambled = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE, DoInfoOnly = FALSE, MedionMode = FALSE, MedionStrip = FALSE, WriteDescPackets = FALSE;
+bool                    DoStrip = FALSE, DoSkip = FALSE, RemoveScrambled = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE, DoInfoOnly = FALSE, MedionMode = FALSE, MedionStrip = FALSE, WriteDescPackets = FALSE, DoInfFix = FALSE;
 int                     DoCut = 0, DoMerge = 0;  // DoCut: 1=remove_parts, 2=copy_separate, DoMerge: 1=append, 2=merge
 int                     curInputFile = 0, NrInputFiles = 1, NrEPGPacks = 0;
 int                     dbg_DelBytesSinceLastVid = 0;
@@ -1752,6 +1752,34 @@ int main(int argc, const char* argv[])
     fclose(fIn); fIn = NULL;
     CloseNavFileIn();
     if(MedionMode == 1) SimpleMuxer_Close();
+
+// DIRTY HACK: Fix start-time in inf
+{
+  char                  NavFileIn[FBLIB_DIR_SIZE];
+  time_t                RecDate;
+
+  RecDate = TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE);
+
+  if (DoInfFix)
+  {
+    printf("\nINF FIX: Changing StartTime to: %s!\n", TimeStrTF(OrigStartTime, OrigStartSec));
+    SetInfStripFlags(InfFileIn, FALSE, FALSE, TRUE);
+  }
+
+  if (DoInfFix || RecFileTimeStamp != RecDate)
+  {
+    printf("\nINF FIX: Changing file timestamp to: %s!\n", TimeStrTF(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
+    snprintf(NavFileIn, sizeof(NavFileIn), "%s.nav", RecFileIn);
+
+    if (*RecFileIn)
+      HDD_SetFileDateTime(RecFileIn, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE));
+    if (*InfFileIn)
+      HDD_SetFileDateTime(InfFileIn, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE));
+    if (*NavFileIn)
+      HDD_SetFileDateTime(NavFileIn, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE));
+  }
+}
+
     CutProcessor_Free();
     InfProcessor_Free();
     free(PendingBuf); PendingBuf = NULL;

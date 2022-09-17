@@ -385,7 +385,10 @@ if (RecHeaderInfo->Reserved != 0)
       if(RecHeaderInfo->rs_HasBeenStripped)  AlreadyStripped = TRUE;
 
       if (abs((int)(RecHeaderInfo->StartTime - OrigStartTime)) > 1)
+      {
+DoInfFix = !(RecHeaderInfo->StartTimeSec != 0 || ((OrigStartSec == 0) && ((RecHeaderInfo->StartTimeSec & 0x0f) > 0)));
         printf("  INF: StartTime (%s) differs from TS start! Taking %s.\n", TimeStrTF(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec), ((RecHeaderInfo->StartTimeSec != 0 || ((OrigStartSec == 0) && ((RecHeaderInfo->StartTimeSec & 0x0f) > 0))) ? "inf" : "TS"));
+      }
 
       if (RecHeaderInfo->StartTimeSec != 0 || ((OrigStartSec == 0) && ((RecHeaderInfo->StartTimeSec & 0x0f) > 0)))
       {
