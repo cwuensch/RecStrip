@@ -136,7 +136,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
             }
             else
             {
-              printf("  PESProcessor: PS buffer overflow while parsing PID %hu\n", PSBuffer->PID);  // TODO: Beim Analysieren die maximale Länge des Puffers berücksichtigen (nicht darüberhinaus lesen)!!!
+              printf("  PESProcessor: PS buffer overflow while parsing PID %hu\n", PSBuffer->PID);  // Beim Analysieren die maximale Länge des Puffers berücksichtigen (nicht darüberhinaus lesen)!!!
               PSBuffer->ErrorFlag = TRUE;
             }
           }
@@ -189,7 +189,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
         }
         else
         {
-          printf("  PESProcessor: PS buffer overflow while parsing PID %hu\n", PSBuffer->PID);  // TODO: Beim Analysieren die maximale Länge des Puffers berücksichtigen (nicht darüberhinaus lesen)!!!
+          printf("  PESProcessor: PS buffer overflow while parsing PID %hu\n", PSBuffer->PID);  // Beim Analysieren die maximale Länge des Puffers berücksichtigen (nicht darüberhinaus lesen)!!!
           PSBuffer->ErrorFlag = TRUE;
         }
       }

@@ -66,6 +66,7 @@ tPVRTime Unix2TFTime(time_t UnixTimeStamp, byte *const outSec, bool convertToLoc
       UnixTimeStamp += 3600;
   }
 #endif
+
   if (outSec)
     *outSec = UnixTimeStamp % 60;
   return (DATE ( (UnixTimeStamp / 86400) + 0x9e8b, (UnixTimeStamp / 3600) % 24, (UnixTimeStamp / 60) % 60 ));
@@ -91,6 +92,7 @@ time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec, bool convertToUTC)
       Result -= 3600;
   }
 #endif
+
   return Result;
 }
 
@@ -770,7 +772,6 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   word                  PMTPID = 0;
   tPVRTime              TtxTime = 0;
   byte                  TtxTimeSec = 0;
-  time_t                FileTimeStamp;
   dword                 FirstPCRms = 0, LastPCRms = 0, TtxPCR = 0, dPCR = 0;
   int                   Offset, ReadBytes, Durchlauf, i;
   bool                  EITOK = FALSE, SDTOK = FALSE, TtxFound = FALSE, TtxOK = FALSE, VidOK = FALSE;
@@ -793,17 +794,6 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   rewind(fIn);
   if (!HumaxSource && !EycosSource)
     InitInfStruct(RecInf);
-
-  //Get the time stamp of the .rec. We assume that this is the time when the recording has finished
-  {
-    struct stat64 statbuf;
-    #ifdef WIN32
-      fstat64(_fileno(fIn), &statbuf);
-    #else
-      fstat64(fileno(fIn), &statbuf);
-    #endif
-    FileTimeStamp = statbuf.st_mtime;
-  }
 
   //Spezial-Anpassung, um Medion-PES (EPG und Teletext) auszulesen
   if (MedionMode)
@@ -1216,15 +1206,16 @@ printf("  TS: Duration  = %01u:%02u:%02u,%03u\n", (RecInf->RecHeaderInfo.Duratio
   }
   else if (!HumaxSource && !EycosSource)
   {
-    tPVRTime FileTimeTF = Unix2TFTime(FileTimeStamp, NULL, FALSE);
+    tPVRTime FileTimeTF = Unix2TFTime(RecFileTimeStamp, NULL, FALSE);
+
     RecInf->RecHeaderInfo.StartTime = EPG2TFTime(RecInf->EventInfo.StartTime, NULL);  // EventStart in lokale Zeit konvertieren und als StartTime setzen
 
     // Wenn rec-Datei am selben oder nächsten Tag geändert wurde, wie das EPG-Event -> nimm Datum der Datei
     if (!RecInf->EventInfo.StartTime || ((MJD(FileTimeTF) - MJD(RecInf->RecHeaderInfo.StartTime) <= 1) && (TIME(FileTimeTF) != 0)))
     {
-      FileTimeTF = Unix2TFTime(FileTimeStamp - (RecInf->RecHeaderInfo.DurationMin*60 + RecInf->RecHeaderInfo.DurationSec), NULL, FALSE);
+      FileTimeTF = Unix2TFTime(RecFileTimeStamp - (RecInf->RecHeaderInfo.DurationMin*60 + RecInf->RecHeaderInfo.DurationSec), NULL, FALSE);
       RecInf->RecHeaderInfo.StartTime = FileTimeTF;
-      RecInf->RecHeaderInfo.StartTimeSec = FileTimeStamp % 60;
+      RecInf->RecHeaderInfo.StartTimeSec = RecFileTimeStamp % 60;
     }
   }
 printf("  TS: StartTime = %s\n", (TimeStrTF(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec)));

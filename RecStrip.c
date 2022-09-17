@@ -64,6 +64,17 @@
 //#include "PESProcessor.h"
 
 
+/*#if defined(LINUX)
+  const bool TMS = TRUE;
+  const bool WINDOWS = FALSE;
+#elif defined(_WIN32)
+  const bool TMS = FALSE;
+  const bool WINDOWS = TRUE;
+#else
+  const bool TMS = FALSE;
+  const bool WINDOWS = FALSE;
+#endif*/
+
 #if defined(_MSC_VER) && _MSC_VER < 1900
   int c99_vsnprintf(char *outBuf, size_t size, const char *format, va_list ap)
   {
@@ -92,6 +103,7 @@ char                    RecFileIn[FBLIB_DIR_SIZE], RecFileOut[FBLIB_DIR_SIZE], O
 char                    MDEpgName[FBLIB_DIR_SIZE], MDTtxName[FBLIB_DIR_SIZE], MDAudName[FBLIB_DIR_SIZE];
 byte                    PATPMTBuf[2*192];
 unsigned long long      RecFileSize = 0;
+time_t                  RecFileTimeStamp = 0;
 SYSTEM_TYPE             SystemType = ST_UNKNOWN;
 byte                    PACKETSIZE = 192, PACKETOFFSET = 4, OutPacketSize = 0;
 word                    VideoPID = (word) -1, TeletextPID = (word) -1, TeletextPage = 0;
@@ -166,11 +178,41 @@ bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize)
   return ret;
 }
 
+// Zeit-Angaben in UTC (Achtung! Windows führt ggf. eine eigene DST-Anpassung durch)
+static time_t HDD_GetFileDateTime(char const *AbsFileName)
+{
+  struct stat64         statbuf;
+  time_t                Result = 0;
+
+  TRACEENTER;
+  if(AbsFileName)
+  {
+    if(stat64(AbsFileName, &statbuf) == 0)
+    {
+      Result = statbuf.st_mtime;
+
+      #ifdef _WIN32
+      {
+        struct tm timeinfo, timeinfo_sys;
+        time_t now = time(NULL);
+
+        localtime_s(&timeinfo, &Result);
+        localtime_s(&timeinfo_sys, &now);
+        Result -= (3600 * (timeinfo_sys.tm_isdst - timeinfo.tm_isdst));  // Windows-eigene DST-Korrektur ausgleichen
+      }
+      #endif
+    }
+  }
+  TRACEEXIT;
+  return Result;
+}
+
 static bool HDD_SetFileDateTime(char const *AbsFileName, time_t NewDateTime)
 {
   struct stat64         statbuf;
   struct utimbuf        timebuf;
 
+  TRACEENTER;
   if(NewDateTime == 0)
     NewDateTime = time(NULL);
 
@@ -178,6 +220,15 @@ static bool HDD_SetFileDateTime(char const *AbsFileName, time_t NewDateTime)
   {
     if(stat64(AbsFileName, &statbuf) == 0)
     {
+      #ifdef _WIN32
+        struct tm timeinfo, timeinfo_sys;
+        time_t now = time(NULL);
+
+        localtime_s(&timeinfo, &NewDateTime);
+        localtime_s(&timeinfo_sys, &now);
+        NewDateTime += (3600 * (timeinfo_sys.tm_isdst - timeinfo.tm_isdst));  // Windows-eigene DST-Korrektur ausgleichen
+      #endif
+
       timebuf.actime = statbuf.st_atime;
       timebuf.modtime = NewDateTime;
       utime(AbsFileName, &timebuf);
@@ -553,6 +604,9 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
 
   printf("\nInput file: %s\n", RecFileIn);
 
+  //Get the time stamp of the .rec. We assume that this is the time when the recording has finished
+  RecFileTimeStamp = HDD_GetFileDateTime(RecFileIn);
+
   if (HDD_GetFileSize(RecFileIn, &RecFileSize))
     fIn = fopen(RecFileIn, "rb");
   if (fIn)
@@ -571,6 +625,9 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
 
     if ((PS = GetPacketSize(fIn, &FileOffset)) || MedionMode)
     {
+      byte FileSec;
+      tPVRTime FileDate;
+
       if (MedionMode)
       {
         if(PS) MedionMode = 2;
@@ -583,6 +640,8 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
         OutPacketSize = PACKETSIZE;
       fseeko64(fIn, CurrentPosition, SEEK_SET);
       printf("  File size: %llu, packet size: %hhu\n", RecFileSize, PACKETSIZE);
+      FileDate = Unix2TFTime(RecFileTimeStamp, &FileSec, TRUE);
+      printf("  File date: %s (local)\n", TimeStrTF(FileDate, FileSec));
 
       LoadInfFromRec(RecFileIn);
 
@@ -871,13 +930,10 @@ static void CloseInputFiles(bool SetStripFlags, bool SetStartTime)
   }
   if (*InfFileIn && SetStripFlags)
   {
-    struct stat64 statbuf;
-    time_t OldInfTime = 0;
-    if (stat64(RecFileIn, &statbuf) == 0)
-      OldInfTime = statbuf.st_mtime;
+    time_t OldInfTime = HDD_GetFileDateTime(InfFileIn);
     SetInfStripFlags(InfFileIn, !DoCut, DoStrip && !DoMerge && DoCut!=2, SetStartTime);
     if (OldInfTime)
-      HDD_SetFileDateTime(InfFileIn, statbuf.st_mtime);
+      HDD_SetFileDateTime(InfFileIn, OldInfTime);
   }
   CloseNavFileIn();
   if(MedionMode == 1) SimpleMuxer_Close();
@@ -1313,9 +1369,9 @@ int main(int argc, const char* argv[])
     }
 
     RecDate = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec, TRUE);
-    if (stat64(RecFile, &statbuf) == 0)
+//    if (stat64(RecFile, &statbuf) == 0)
     {
-      if (ChangedInf || statbuf.st_mtime != RecDate)
+      if (ChangedInf || HDD_GetFileDateTime(RecFile) != RecDate)
       {
         printf("  Change file timestamp to: %s\n", TimeStrTF(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec));
 //        HDD_SetFileDateTime(RecFile, RecDate);
@@ -1471,7 +1527,7 @@ int main(int argc, const char* argv[])
     }
     else if (DoInfoOnly)
     {
-      fprintf(stderr, "RecFile\tRecSize\tStartTime\tDuration\tFirstPCR\tLastPCR\tisStripped\t");
+      fprintf(stderr, "RecFile\tRecSize\tFileDate\tStartTime\tDuration\tFirstPCR\tLastPCR\tisStripped\t");
       fprintf(stderr, "InfType\tSender\tServiceID\tPMTPid\tVideoPid\tAudioPid\tVideoType\tAudioType\tHD\tResolution\tFPS\tAspectRatio\t");
       fprintf(stderr, "SegmentMarker\tBookmarks\t");
       fprintf(stderr, "EventName\tEventDesc\tEventStart\tEventEnd\tEventDuration\tExtEventText\n");
@@ -1595,7 +1651,9 @@ int main(int argc, const char* argv[])
   if (DoInfoOnly)
   {
     TYPE_RecHeader_TMSS *Inf_TMSS = (TYPE_RecHeader_TMSS*)InfBuffer;
-    char                EventName[257], DurationStr[16];
+    char                EventName[257], DurationStr[16], FileDateStr[20], StartTimeStr[20];
+    byte                FileSec;
+    tPVRTime            FileDate = Unix2TFTime(RecFileTimeStamp, &FileSec, TRUE);
 
     // Print out details to STDERR
     memset(EventName, 0, sizeof(EventName));
@@ -1605,8 +1663,10 @@ int main(int argc, const char* argv[])
       snprintf(DurationStr, sizeof(DurationStr), "%02hu:%02hu:%02hu", Inf_TMSS->RecHeaderInfo.DurationMin/60, Inf_TMSS->RecHeaderInfo.DurationMin % 60, Inf_TMSS->RecHeaderInfo.DurationSec);
     strncpy(EventName, Inf_TMSS->EventInfo.EventNameDescription, Inf_TMSS->EventInfo.EventNameLength);
 
-    // REC:    RecFileIn;  RecSize;  StartTime (DateTime);  Duration (nav=hh:mm:ss.xxx, TS=hh:mm:ss);  FirstPCR;  LastPCR;  isStripped
-    fprintf(stderr, "%s\t%llu\t%s\t%s\t%lld\t%lld\t%s\t",  RecFileIn,  RecFileSize,  TimeStr_DB(Inf_TMSS->RecHeaderInfo.StartTime, Inf_TMSS->RecHeaderInfo.StartTimeSec),  DurationStr,  FirstFilePCR,  LastFilePCR,  (Inf_TMSS->RecHeaderInfo.rs_HasBeenStripped ? "yes" : "no"));
+    // REC:    RecFileIn;  RecSize;  FileDate;  StartTime (DateTime);  Duration (nav=hh:mm:ss.xxx, TS=hh:mm:ss);  FirstPCR;  LastPCR;  isStripped
+    strncpy(FileDateStr, TimeStr_DB(FileDate, FileSec), sizeof(FileDateStr));
+    strncpy(StartTimeStr, TimeStr_DB(Inf_TMSS->RecHeaderInfo.StartTime, Inf_TMSS->RecHeaderInfo.StartTimeSec), sizeof(StartTimeStr));
+    fprintf(stderr, "%s\t%llu\t%s\t%s\t%s\t%lld\t%lld\t%s\t",  RecFileIn,  RecFileSize,  FileDateStr,  StartTimeStr,  DurationStr,  FirstFilePCR,  LastFilePCR,  (Inf_TMSS->RecHeaderInfo.rs_HasBeenStripped ? "yes" : "no"));
 
     // SERVICE:  InfType;   Sender;   ServiceID;  PMTPid;  VideoPid;  AudioPid;  VideoType;  AudioType;  HD;  VideoWidth x VideoHeight;  VideoFPS;  VideoDAR
     fprintf(stderr, "ST_TMS%c\t%s\t%hu\t%hu\t%hu\t%hu\t0x%hx\t0x%hx\t%s\t%dx%d\t%.1f fps\t%.3f\t",  (SystemType==ST_TMSS ? 's' : ((SystemType==ST_TMSC) ? 'c' : ((SystemType==ST_TMST) ? 't' : '?'))),  Inf_TMSS->ServiceInfo.ServiceName,  Inf_TMSS->ServiceInfo.ServiceID,  Inf_TMSS->ServiceInfo.PMTPID,  Inf_TMSS->ServiceInfo.VideoPID,  Inf_TMSS->ServiceInfo.AudioPID,  Inf_TMSS->ServiceInfo.VideoStreamType,  Inf_TMSS->ServiceInfo.AudioStreamType,  (isHDVideo ? "yes" : "no"),  VideoWidth,  VideoHeight,  (NavFrames ? NavFrames/((double)NavDurationMS/1000) : VideoFPS),  VideoDAR);

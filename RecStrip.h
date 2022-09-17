@@ -123,6 +123,7 @@ typedef struct
 extern char             RecFileIn[], RecFileOut[], MDEpgName[], MDTtxName[];
 extern byte             PATPMTBuf[];
 extern unsigned long long RecFileSize;
+extern time_t           RecFileTimeStamp;
 extern SYSTEM_TYPE      SystemType;
 extern byte             PACKETSIZE, PACKETOFFSET, OutPacketSize;
 extern word             VideoPID, TeletextPID, TeletextPage;
