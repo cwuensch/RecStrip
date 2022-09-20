@@ -331,12 +331,12 @@ bool LoadInfFile(char *AbsInfName, bool FirstTime)
     if ((ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_PART2) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_H264) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_H263))
     {
       HDFound = TRUE;
-      printf("  INF: VideoStream=0x%x, VideoPID=%hu, HD=%d\n", ServiceInfo->VideoStreamType, ServiceInfo->VideoPID, HDFound);
+      printf("  INF: VideoStream=0x%x, VideoPID=%hd, HD=%d\n", ServiceInfo->VideoStreamType, ServiceInfo->VideoPID, HDFound);
     }
     else if ((ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG1) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG2))
     {
       HDFound = FALSE;
-      printf("  INF: VideoStream=0x%x, VideoPID=%hu, HD=%d\n", ServiceInfo->VideoStreamType, ServiceInfo->VideoPID, HDFound);
+      printf("  INF: VideoStream=0x%x, VideoPID=%hd, HD=%d\n", ServiceInfo->VideoStreamType, ServiceInfo->VideoPID, HDFound);
     }
     else
     {

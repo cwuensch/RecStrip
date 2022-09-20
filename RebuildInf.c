@@ -254,7 +254,7 @@ bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf)
 
   RecInf->ServiceInfo.ServiceID = PMT->ProgramNr1 * 256 | PMT->ProgramNr2;
   RecInf->ServiceInfo.PCRPID = PMT->PCRPID1 * 256 | PMT->PCRPID2;
-  printf(", SID=%hu, PCRPID=%hu", RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID);
+  printf(", SID=%hu, PCRPID=%hd", RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID);
 
   ProgramInfoLength = PMT->ProgInfoLen1 * 256 | PMT->ProgInfoLen2;
 
@@ -303,7 +303,7 @@ bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf)
             RecInf->ServiceInfo.VideoPID = PID;
             RecInf->ServiceInfo.VideoStreamType = Elem->stream_type;
             ContinuityPIDs[0] = PID;
-            printf(", Stream=0x%hhx, VPID=%hu, HD=%d", RecInf->ServiceInfo.VideoStreamType, VideoPID, isHDVideo);
+            printf(", Stream=0x%hhx, VPID=%hd, HD=%d", RecInf->ServiceInfo.VideoStreamType, VideoPID, isHDVideo);
           }
           break;
         }
@@ -321,13 +321,13 @@ bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf)
             {
               TeletextPID = PID;
               PID = 0;
-              printf("\n  TS: TeletxtPID=%hu", TeletextPID);
+              printf("\n  TS: TeletxtPID=%hd", TeletextPID);
               break;
             }
             else if (Desc->DescrTag == DESC_Subtitle)
             {
               // DVB-Subtitles
-              printf("\n  TS: SubtitlesPID=%hu", PID);
+              printf("\n  TS: SubtitlesPID=%hd", PID);
               PID = 0;
               break;
             }
@@ -1005,7 +1005,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           if(PMTPID)
           {
             RecInf->ServiceInfo.PMTPID = PMTPID;
-            printf("  TS: PMTPID=%hu", PMTPID);
+            printf("  TS: PMTPID=%hd", PMTPID);
 
             //Analyse the PMT
             PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE);
@@ -1210,12 +1210,14 @@ printf("  TS: Duration  = %01u:%02u:%02u,%03u\n", (RecInf->RecHeaderInfo.Duratio
 
     RecInf->RecHeaderInfo.StartTime = EPG2TFTime(RecInf->EventInfo.StartTime, NULL);  // EventStart in lokale Zeit konvertieren und als StartTime setzen
 
-    // Wenn rec-Datei am selben oder nächsten Tag geändert wurde, wie das EPG-Event -> nimm Datum der Datei
+    // Wenn rec-Datei am selben oder nächsten Tag geändert wurde, wie das EPG-Event -> nimm Datum der Datei (TODO: ABER inf dann nicht überschreiben?)
     if (!RecInf->EventInfo.StartTime || ((MJD(FileTimeTF) - MJD(RecInf->RecHeaderInfo.StartTime) <= 1) && (TIME(FileTimeTF) != 0)))
     {
-      FileTimeTF = Unix2TFTime(RecFileTimeStamp - (RecInf->RecHeaderInfo.DurationMin*60 + RecInf->RecHeaderInfo.DurationSec), NULL, FALSE);
+      byte sec;
+      printf("  TS: Setting start time to file time instead EPG event start.\n");
+      FileTimeTF = Unix2TFTime(RecFileTimeStamp /*- (RecInf->RecHeaderInfo.DurationMin*60 + RecInf->RecHeaderInfo.DurationSec)*/, &sec, TRUE);
       RecInf->RecHeaderInfo.StartTime = FileTimeTF;
-      RecInf->RecHeaderInfo.StartTimeSec = RecFileTimeStamp % 60;
+      RecInf->RecHeaderInfo.StartTimeSec = sec;
     }
   }
 printf("  TS: StartTime = %s\n", (TimeStrTF(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec)));

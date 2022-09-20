@@ -67,7 +67,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
       //Unerwarteter Continuity Counter, Daten verwerfen
       if(PSBuffer->LastCCCounter != 255)
       {
-        printf("  PESProcessor: CC error while parsing PID %hu\n", PSBuffer->PID);
+        printf("  PESProcessor: CC error while parsing PID %hd\n", PSBuffer->PID);
         PSBuffer_DropCurBuffer(PSBuffer);
       }
     }
@@ -77,7 +77,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
     {
       if(Packet->Data[0] > 183)
       {
-        printf("  PESProcessor: Illegal Adaptation field length (%hu) on PID %hu\n", Packet->Data[0], PSBuffer->PID);
+        printf("  PESProcessor: Illegal Adaptation field length (%hu) on PID %hd\n", Packet->Data[0], PSBuffer->PID);
         PSBuffer->ErrorFlag = TRUE;
         Start = 184;
       }
@@ -87,7 +87,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
       // Liegt ein DiscontinueFlag vor?
       if ((Packet->Data[0] > 0) && ((Packet->Data[1] & 0x80) > 0))
       {
-        printf("  PESProcessor: Discontinuity flag while parsing PID %hu\n", PSBuffer->PID);
+        printf("  PESProcessor: Discontinuity flag while parsing PID %hd\n", PSBuffer->PID);
         PSBuffer_DropCurBuffer(PSBuffer);
       }
     }
@@ -136,7 +136,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
             }
             else
             {
-              printf("  PESProcessor: PS buffer overflow while parsing PID %hu\n", PSBuffer->PID);  // Beim Analysieren die maximale Länge des Puffers berücksichtigen (nicht darüberhinaus lesen)!!!
+              printf("  PESProcessor: PS buffer overflow while parsing PID %hd\n", PSBuffer->PID);  // Beim Analysieren die maximale Länge des Puffers berücksichtigen (nicht darüberhinaus lesen)!!!
               PSBuffer->ErrorFlag = TRUE;
             }
           }
@@ -162,7 +162,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
       }
       else
       {
-        printf("  PESProcessor: TS packet is marked as Payload Start, but does not contain a start code (PID %hu)\n", PSBuffer->PID);
+        printf("  PESProcessor: TS packet is marked as Payload Start, but does not contain a start code (PID %hd)\n", PSBuffer->PID);
         PESStart = FALSE;
         RemainingBytes = 0;
       }
@@ -189,7 +189,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
         }
         else
         {
-          printf("  PESProcessor: PS buffer overflow while parsing PID %hu\n", PSBuffer->PID);  // Beim Analysieren die maximale Länge des Puffers berücksichtigen (nicht darüberhinaus lesen)!!!
+          printf("  PESProcessor: PS buffer overflow while parsing PID %hd\n", PSBuffer->PID);  // Beim Analysieren die maximale Länge des Puffers berücksichtigen (nicht darüberhinaus lesen)!!!
           PSBuffer->ErrorFlag = TRUE;
         }
       }

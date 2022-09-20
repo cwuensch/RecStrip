@@ -191,7 +191,7 @@ bool LoadEycosHeader(char *AbsTrpFileName, byte *const PATPMTBuf, TYPE_RecHeader
 //      RecInf->RecHeaderInfo.DurationMin   = 0;  // TODO
 //      RecInf->RecHeaderInfo.DurationSec   = 0;  // TODO
       ContinuityPIDs[0] = VideoPID;
-      printf("    PMTPID=%hu, SID=%hu, PCRPID=%hu, Stream=0x%hhx, VPID=%hu, TtxPID=%hu\n", RecInf->ServiceInfo.PMTPID, RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID, RecInf->ServiceInfo.VideoStreamType, VideoPID, TeletextPID);
+      printf("    PMTPID=%hd, SID=%hu, PCRPID=%hd, Stream=0x%hhx, VPID=%hd, TtxPID=%hd\n", RecInf->ServiceInfo.PMTPID, RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID, RecInf->ServiceInfo.VideoStreamType, VideoPID, TeletextPID);
 
       strncpy(RecInf->ServiceInfo.ServiceName, EycosHeader.SenderName, sizeof(RecInf->ServiceInfo.ServiceName) - 1);
 
@@ -264,9 +264,9 @@ bool LoadEycosHeader(char *AbsTrpFileName, byte *const PATPMTBuf, TYPE_RecHeader
               if (EycosHeader.Pids[j].PID == VideoPID)
                 RecInf->ServiceInfo.VideoStreamType = STREAM_VIDEO_MPEG2;
             }
-            printf("    Video Stream: PID=%hu, Type=0x%hhx, HD=%d\n", VideoPID, RecInf->ServiceInfo.VideoStreamType, isHDVideo);
+            printf("    Video Stream: PID=%hd, Type=0x%hhx, HD=%d\n", VideoPID, RecInf->ServiceInfo.VideoStreamType, isHDVideo);
             if (EycosHeader.Pids[j].PID != VideoPID)
-              printf("  Eycos-Import: Video stream (PID=%hu, Type=0x%hx) differs from Video PID %hu.\n", EycosHeader.Pids[j].PID, EycosHeader.Pids[j].Type, VideoPID);
+              printf("  Eycos-Import: Video stream (PID=%hd, Type=0x%hx) differs from Video PID %hd.\n", EycosHeader.Pids[j].PID, EycosHeader.Pids[j].Type, VideoPID);
             break;
           }
 
@@ -332,7 +332,7 @@ bool LoadEycosHeader(char *AbsTrpFileName, byte *const PATPMTBuf, TYPE_RecHeader
           // Anderes
           default:
           {
-            printf("  Eycos-Import: Unknown elementary stream type 0x%hx (PID=%hu)\n", EycosHeader.Pids[j].Type, EycosHeader.Pids[j].PID);
+            printf("  Eycos-Import: Unknown elementary stream type 0x%hx (PID=%hd)\n", EycosHeader.Pids[j].Type, EycosHeader.Pids[j].PID);
             break;
           }
         }
@@ -382,18 +382,17 @@ if (strlen(RecInf->ExtEventInfo.Text) != RecInf->ExtEventInfo.TextLength)
       EvtEndUnix = MakeUnixDate(EycosEvent.EvtEndYear, EycosEvent.EvtEndMonth, EycosEvent.EvtEndDay, EycosEvent.EvtEndHour, EycosEvent.EvtEndMin, 0);
       RecInf->EventInfo.StartTime       = Unix2TFTime(EvtStartUnix, NULL, FALSE);  // DATE(UnixToMJD(EvtStartUnix), EycosEvent.EvtStartHour, EycosEvent.EvtStartMin);  // kein Convert, da ins EPG UTC geschrieben wird
       RecInf->EventInfo.EndTime         = Unix2TFTime(EvtEndUnix, NULL, FALSE);    // DATE(UnixToMJD(EvtEndUnix), EycosEvent.EvtEndHour, EycosEvent.EvtEndMin);        // "
+      RecInf->RecHeaderInfo.StartTime   = Unix2TFTime(EvtStartUnix, NULL, TRUE);   // Convert, da EvtStartUnix als UTC-Timestamp geparsed wurde
 #ifdef _DEBUG
-if (HOUR(RecInf->EventInfo.StartTime) != EycosEvent.EvtStartHour || MINUTE(RecInf->EventInfo.StartTime) != EycosEvent.EvtStartMin)
-  printf("ASSERT: Eycos Header StartTime (%u:%u) differs from converted time (%u:%u)!\n", EycosEvent.EvtStartHour, EycosEvent.EvtStartMin, HOUR(RecInf->EventInfo.StartTime), MINUTE(RecInf->EventInfo.StartTime));
-if (HOUR(RecInf->EventInfo.EndTime) != EycosEvent.EvtEndHour || MINUTE(RecInf->EventInfo.EndTime) != EycosEvent.EvtEndMin)
-  printf("ASSERT: Eycos Header EndTime (%u:%u) differs from converted time (%u:%u)!\n", EycosEvent.EvtEndHour, EycosEvent.EvtEndMin, HOUR(RecInf->EventInfo.EndTime), MINUTE(RecInf->EventInfo.EndTime));
+if (HOUR(RecInf->RecHeaderInfo.StartTime) != EycosEvent.EvtStartHour || MINUTE(RecInf->RecHeaderInfo.StartTime) != EycosEvent.EvtStartMin)
+  printf("ASSERT: Eycos Header StartTime (%u:%u) differs from converted time (%u:%u)!\n", EycosEvent.EvtStartHour, EycosEvent.EvtStartMin, HOUR(RecInf->RecHeaderInfo.StartTime), MINUTE(RecInf->RecHeaderInfo.StartTime));
+//if (HOUR(RecInf->EventInfo.EndTime) != EycosEvent.EvtEndHour || MINUTE(RecInf->EventInfo.EndTime) != EycosEvent.EvtEndMin)
+//  printf("ASSERT: Eycos Header EndTime (%u:%u) differs from converted time (%u:%u)!\n", EycosEvent.EvtEndHour, EycosEvent.EvtEndMin, HOUR(RecInf->EventInfo.EndTime), MINUTE(RecInf->EventInfo.EndTime));
 #endif
-      RecInf->RecHeaderInfo.StartTime   = RecInf->EventInfo.StartTime;
-      RecInf->RecHeaderInfo.DurationMin = (word)((EvtEndUnix - EvtStartUnix) / 60);
+//      RecInf->RecHeaderInfo.DurationMin = (word)((EvtEndUnix - EvtStartUnix) / 60);
       RecInf->EventInfo.DurationHour    = RecInf->RecHeaderInfo.DurationMin / 60;
       RecInf->EventInfo.DurationMin     = RecInf->RecHeaderInfo.DurationMin % 60;
-
-      printf("    Start Time: %s\n", TimeStrTF(RecInf->RecHeaderInfo.StartTime, 0));
+      printf("    Start Time (Event): %s (local)\n", TimeStrTF(RecInf->RecHeaderInfo.StartTime, 0));
     }
     fclose(fTxt);
   }

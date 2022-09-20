@@ -310,7 +310,7 @@ static void PrintFileDefect()
     // CONTINUITY ERROR:  Nr.  Position(Prozent)  { PID;  Position }
     printf("TS Check: Continuity Error:\t%d.\t%.2f%%", NrContErrsInFile, (double)FileDefect[0].Position*100/RecFileSize);
     for (i = 0; i < NrContinuityPIDs; i++)
-      printf("\t%hu\t%lld", FileDefect[i].PID, FileDefect[i].Position);
+      printf("\t%hd\t%lld", FileDefect[i].PID, FileDefect[i].Position);
     printf("\n");
   }
   TRACEEXIT;
@@ -659,7 +659,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
 //      if(DoStrip) ContinuityPIDs[0] = (word) -1;
       printf("  PIDs to be checked for continuity: [0] %s%hd%s", (DoStrip ? "[" : ""), ContinuityPIDs[0], (DoStrip ? "]" : ""));
       for (k = 1; k < NrContinuityPIDs; k++)
-        printf(", [%d] %hu", k, ContinuityPIDs[k]);
+        printf(", [%d] %hd", k, ContinuityPIDs[k]);
       printf("\n");
     }
     else
@@ -1153,7 +1153,7 @@ int main(int argc, const char* argv[])
     }
     InfProcessor_Free();
   }
-  printf("\nPIDS: Video=%hu, Audio=%hu, Teletext=%hu, EPG=%hu\n\n", PIDs[0], PIDs[1], PIDs[2], PIDs[3]);
+  printf("\nPIDS: Video=%hd, Audio=%hd, Teletext=%hd, EPG=%hd\n\n", PIDs[0], PIDs[1], PIDs[2], PIDs[3]);
 
   in = fopen(DemuxInFile, "rb");
   for (i = 0; i < 4; i++)
@@ -1202,7 +1202,7 @@ int main(int argc, const char* argv[])
     if (Streams[i].BufferPtr)
       fwrite(Streams[i].pBuffer-Streams[i].BufferPtr, 1, Streams[i].BufferPtr, out[i]);
 #ifdef _DEBUG
-    printf("Max. PES length (PID=%hu): %u\n", Streams[i].PID, Streams[i].maxPESLen);
+    printf("Max. PES length (PID=%hd): %u\n", Streams[i].PID, Streams[i].maxPESLen);
 #endif
     fclose(out[i]);
     if(Streams[i].ErrorFlag) ret = 2;
@@ -1301,7 +1301,7 @@ int main(int argc, const char* argv[])
     {
       if (RecInf->ServiceInfo.PMTPID == 256 && PMTPid == 64)
       {
-        printf("  Change PMTPid in inf: %hu to %hu", RecInf->ServiceInfo.PMTPID, PMTPid);
+        printf("  Change PMTPid in inf: %hd to %hd", RecInf->ServiceInfo.PMTPID, PMTPid);
         RecInf->ServiceInfo.PMTPID = PMTPid;
         ChangedInf = TRUE;
       }
@@ -1325,7 +1325,7 @@ int main(int argc, const char* argv[])
     }
     if (RecInf->ExtEventInfo.TextLength > 1024)
     {
-      printf("  Change ExtEventText length in inf: %hu to %hu", RecInf->ExtEventInfo.TextLength, 1024);
+      printf("  Change ExtEventText length in inf: %hd to %hd", RecInf->ExtEventInfo.TextLength, 1024);
       memset(&Buffer2[0x570], 0, InfSize - 0x570);
       RecInf->ExtEventInfo.TextLength = 1024;
       ChangedInf = TRUE;
@@ -1669,7 +1669,7 @@ int main(int argc, const char* argv[])
     fprintf(stderr, "%s\t%llu\t%s\t%s\t%s\t%lld\t%lld\t%s\t",  RecFileIn,  RecFileSize,  FileDateStr,  StartTimeStr,  DurationStr,  FirstFilePCR,  LastFilePCR,  (Inf_TMSS->RecHeaderInfo.rs_HasBeenStripped ? "yes" : "no"));
 
     // SERVICE:  InfType;   Sender;   ServiceID;  PMTPid;  VideoPid;  AudioPid;  VideoType;  AudioType;  HD;  VideoWidth x VideoHeight;  VideoFPS;  VideoDAR
-    fprintf(stderr, "ST_TMS%c\t%s\t%hu\t%hu\t%hu\t%hu\t0x%hx\t0x%hx\t%s\t%dx%d\t%.1f fps\t%.3f\t",  (SystemType==ST_TMSS ? 's' : ((SystemType==ST_TMSC) ? 'c' : ((SystemType==ST_TMST) ? 't' : '?'))),  Inf_TMSS->ServiceInfo.ServiceName,  Inf_TMSS->ServiceInfo.ServiceID,  Inf_TMSS->ServiceInfo.PMTPID,  Inf_TMSS->ServiceInfo.VideoPID,  Inf_TMSS->ServiceInfo.AudioPID,  Inf_TMSS->ServiceInfo.VideoStreamType,  Inf_TMSS->ServiceInfo.AudioStreamType,  (isHDVideo ? "yes" : "no"),  VideoWidth,  VideoHeight,  (NavFrames ? NavFrames/((double)NavDurationMS/1000) : VideoFPS),  VideoDAR);
+    fprintf(stderr, "ST_TMS%c\t%s\t%hu\t%hd\t%hd\t%hd\t0x%hx\t0x%hx\t%s\t%dx%d\t%.1f fps\t%.3f\t",  (SystemType==ST_TMSS ? 's' : ((SystemType==ST_TMSC) ? 'c' : ((SystemType==ST_TMST) ? 't' : '?'))),  Inf_TMSS->ServiceInfo.ServiceName,  Inf_TMSS->ServiceInfo.ServiceID,  Inf_TMSS->ServiceInfo.PMTPID,  Inf_TMSS->ServiceInfo.VideoPID,  Inf_TMSS->ServiceInfo.AudioPID,  Inf_TMSS->ServiceInfo.VideoStreamType,  Inf_TMSS->ServiceInfo.AudioStreamType,  (isHDVideo ? "yes" : "no"),  VideoWidth,  VideoHeight,  (NavFrames ? NavFrames/((double)NavDurationMS/1000) : VideoFPS),  VideoDAR);
 
     // SEGMENTMARKERS (getrennt durch ; und |)
     if (NrSegmentMarker > 2)
@@ -1770,7 +1770,7 @@ int main(int argc, const char* argv[])
     if (MedionMode == 1)
     {
       ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID = 0x100;
-      printf("  TS: PMTPID=%hu", 0x100);
+      printf("  TS: PMTPID=%hd", 0x100);
       AnalysePMT(&PATPMTBuf[201], sizeof(PATPMTBuf) - 201, (TYPE_RecHeader_TMSS*)InfBuffer);
       NrContinuityPIDs = 0;
     }
@@ -2074,7 +2074,7 @@ int main(int argc, const char* argv[])
               {
 //              if (!DoCut || (i < NrSegmentMarker && CurrentPosition != SegmentMarker[i].Position))
                 {
-                  fprintf(stderr, "PID check: TS continuity mismatch (PID=%hu, pos=%lld, expect=%hhu, found=%hhu, missing=%hhd)\n", CurPID, CurrentPosition, *CurCtr, ((tTSPacket*) &Buffer[4])->ContinuityCount, (((tTSPacket*) &Buffer[4])->ContinuityCount + 16 - *CurCtr) % 16);
+                  fprintf(stderr, "PID check: TS continuity mismatch (PID=%hd, pos=%lld, expect=%hhu, found=%hhu, missing=%hhd)\n", CurPID, CurrentPosition, *CurCtr, ((tTSPacket*) &Buffer[4])->ContinuityCount, (((tTSPacket*) &Buffer[4])->ContinuityCount + 16 - *CurCtr) % 16);
                   AddContinuityError(CurPID, CurrentPosition, *CurCtr, ((tTSPacket*) &Buffer[4])->ContinuityCount);
                 }
                 if (CurPID == VideoPID)
