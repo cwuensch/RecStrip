@@ -16,7 +16,7 @@
 
 tPESStream              PESVideo;
 static tPESStream       PESAudio, PESTeletxt;
-byte                   *EPGBuffer;
+byte                   *EPGBuffer = 0;
 int                     EPGLen = 0;
 static const byte       PIDs[4] = {100, 101, 102, 0x12};
 static byte             ContCtr[4] = {1, 1, 1, 1};
