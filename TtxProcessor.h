@@ -7,9 +7,10 @@ extern FILE            *fTtxOut;
 extern dword            global_timestamp;
 extern dword            last_timestamp;
 
-char* TimeStr(time_t *const UnixTimeStamp);
-char* TimeStr_UTC(time_t *const UnixTimeStamp);
-char* TimeStr_DB(time_t *const UnixTimeStamp);
+//char* TimeStr(time_t *const UnixTimeStamp);
+//char* TimeStr_UTC(time_t *const UnixTimeStamp);
+char* TimeStrTF(tPVRTime TFTimeStamp, byte TFTimeSec);
+char* TimeStr_DB(tPVRTime TFTimeStamp, byte TFTimeSec);
 void SetTeletextBreak(bool NewInputFile, word SubtitlePage);
 void TtxProcessor_Init(word SubtitlePage);
 bool LoadTeletextOut(const char* AbsOutFile);

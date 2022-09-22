@@ -160,7 +160,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet, long long 
       //Unerwarteter Continuity Counter, Daten verwerfen
       if(PSBuffer->LastCCCounter != 255)
       {
-        printf("  PESProcessor: TS continuity mismatch (PID=%hu, pos=%lld, expect=%hhu, found=%hhu)\n", PSBuffer->PID, FilePosition, ((PSBuffer->LastCCCounter + 1) % 16), Packet->ContinuityCount);
+        printf("  PESProcessor: TS continuity mismatch (PID=%hd, pos=%lld, expect=%hhu, found=%hhu)\n", PSBuffer->PID, FilePosition, ((PSBuffer->LastCCCounter + 1) % 16), Packet->ContinuityCount);
         if (PSBuffer->IgnoreContErrors)
           PSBuffer_StartNewBuffer(PSBuffer, FALSE, TRUE);
         else
@@ -174,7 +174,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet, long long 
     {
       if(Packet->Data[0] > 183)
       {
-        printf("  PESProcessor: Illegal Adaptation field length (%hu) on PID %hu\n", Packet->Data[0], PSBuffer->PID);
+        printf("  PESProcessor: Illegal Adaptation field length (%hu) on PID %hd\n", Packet->Data[0], PSBuffer->PID);
         PSBuffer->ErrorFlag = TRUE;
         Start = 184;
       }
@@ -184,7 +184,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet, long long 
       // Liegt ein DiscontinueFlag vor?
       if ((Packet->Data[0] > 0) && ((Packet->Data[1] & 0x80) > 0))
       {
-        printf("  PESProcessor: TS discontinuity flag (PID=%hu, pos=%lld)\n", PSBuffer->PID, FilePosition);
+        printf("  PESProcessor: TS discontinuity flag (PID=%hd, pos=%lld)\n", PSBuffer->PID, FilePosition);
         if (PSBuffer->IgnoreContErrors)
           PSBuffer_StartNewBuffer(PSBuffer, FALSE, TRUE);
         else
@@ -238,7 +238,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet, long long 
             }
             else
             {
-              printf("  PESProcessor: PS buffer overflow while parsing PID %hu\n", PSBuffer->PID);
+              printf("  PESProcessor: PS buffer overflow while parsing PID %hd\n", PSBuffer->PID);  // Beim Analysieren die maximale Länge des Puffers berücksichtigen (nicht darüberhinaus lesen)!!!
               PSBuffer->ErrorFlag = TRUE;
             }
           }
@@ -254,7 +254,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet, long long 
       }
       else
       {
-        printf("  PESProcessor: TS packet is marked as Payload Start, but does not contain a start code (PID=%hu, pos=%lld)\n", PSBuffer->PID, FilePosition);
+        printf("  PESProcessor: TS packet is marked as Payload Start, but does not contain a start code (PID=%hd, pos=%lld)\n", PSBuffer->PID, FilePosition);
         PESStart = FALSE;
         RemainingBytes = 0;
       }
@@ -287,7 +287,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet, long long 
         }
         else
         {
-          printf("  PESProcessor: PS buffer overflow while parsing PID %hu\n", PSBuffer->PID);
+          printf("  PESProcessor: PS buffer overflow while parsing PID %hd\n", PSBuffer->PID);  // Beim Analysieren die maximale Länge des Puffers berücksichtigen (nicht darüberhinaus lesen)!!!
           PSBuffer->ErrorFlag = TRUE;
         }
       }

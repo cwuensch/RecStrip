@@ -63,6 +63,17 @@
 #include "EycosHeader.h"
 
 
+/*#if defined(LINUX)
+  const bool TMS = TRUE;
+  const bool WINDOWS = FALSE;
+#elif defined(_WIN32)
+  const bool TMS = FALSE;
+  const bool WINDOWS = TRUE;
+#else
+  const bool TMS = FALSE;
+  const bool WINDOWS = FALSE;
+#endif*/
+
 #if defined(_MSC_VER) && _MSC_VER < 1900
   int c99_vsnprintf(char *outBuf, size_t size, const char *format, va_list ap)
   {
@@ -91,6 +102,7 @@ char                    RecFileIn[FBLIB_DIR_SIZE], RecFileOut[FBLIB_DIR_SIZE], O
 char                    MDEpgName[FBLIB_DIR_SIZE], MDTtxName[FBLIB_DIR_SIZE], MDAudName[FBLIB_DIR_SIZE];
 byte                    PATPMTBuf[2*192];
 unsigned long long      RecFileSize = 0;
+time_t                  RecFileTimeStamp = 0;
 SYSTEM_TYPE             SystemType = ST_UNKNOWN;
 byte                    PACKETSIZE = 192, PACKETOFFSET = 4, OutPacketSize = 0;
 word                    VideoPID = (word) -1, TeletextPID = (word) -1, TeletextPage = 0;
@@ -167,11 +179,41 @@ bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize)
   return ret;
 }
 
+// Zeit-Angaben in UTC (Achtung! Windows führt ggf. eine eigene DST-Anpassung durch)
+static time_t HDD_GetFileDateTime(char const *AbsFileName)
+{
+  struct stat64         statbuf;
+  time_t                Result = 0;
+
+  TRACEENTER;
+  if(AbsFileName)
+  {
+    if(stat64(AbsFileName, &statbuf) == 0)
+    {
+      Result = statbuf.st_mtime;
+
+      #ifdef _WIN32
+      {
+        struct tm timeinfo, timeinfo_sys;
+        time_t now = time(NULL);
+
+        localtime_s(&timeinfo, &Result);
+        localtime_s(&timeinfo_sys, &now);
+        Result -= (3600 * (timeinfo_sys.tm_isdst - timeinfo.tm_isdst));  // Windows-eigene DST-Korrektur ausgleichen
+      }
+      #endif
+    }
+  }
+  TRACEEXIT;
+  return Result;
+}
+
 static bool HDD_SetFileDateTime(char const *AbsFileName, time_t NewDateTime)
 {
   struct stat64         statbuf;
   struct utimbuf        timebuf;
 
+  TRACEENTER;
   if(NewDateTime == 0)
     NewDateTime = time(NULL);
 
@@ -179,6 +221,15 @@ static bool HDD_SetFileDateTime(char const *AbsFileName, time_t NewDateTime)
   {
     if(stat64(AbsFileName, &statbuf) == 0)
     {
+      #ifdef _WIN32
+        struct tm timeinfo, timeinfo_sys;
+        time_t now = time(NULL);
+
+        localtime_s(&timeinfo, &NewDateTime);
+        localtime_s(&timeinfo_sys, &now);
+        NewDateTime += (3600 * (timeinfo_sys.tm_isdst - timeinfo.tm_isdst));  // Windows-eigene DST-Korrektur ausgleichen
+      #endif
+
       timebuf.actime = statbuf.st_atime;
       timebuf.modtime = NewDateTime;
       utime(AbsFileName, &timebuf);
@@ -260,7 +311,7 @@ static void PrintFileDefect()
     // CONTINUITY ERROR:  Nr.  Position(Prozent)  { PID;  Position }
     printf("TS Check: Continuity Error:\t%d.\t%.2f%%", NrContErrsInFile, (double)FileDefect[0].Position*100/RecFileSize);
     for (i = 0; i < NrContinuityPIDs; i++)
-      printf("\t%hu\t%lld", FileDefect[i].PID, FileDefect[i].Position);
+      printf("\t%hd\t%lld", FileDefect[i].PID, FileDefect[i].Position);
     printf("\n");
   }
   TRACEEXIT;
@@ -554,6 +605,9 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
 
   printf("\nInput file: %s\n", RecFileIn);
 
+  //Get the time stamp of the .rec. We assume that this is the time when the recording has finished
+  RecFileTimeStamp = HDD_GetFileDateTime(RecFileIn);
+
   if (HDD_GetFileSize(RecFileIn, &RecFileSize))
     fIn = fopen(RecFileIn, "rb");
   if (fIn)
@@ -572,6 +626,9 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
 
     if ((PS = GetPacketSize(fIn, &FileOffset)) || MedionMode)
     {
+      byte FileSec;
+      tPVRTime FileDate;
+
       if (MedionMode)
       {
         if(PS) MedionMode = 2;
@@ -584,6 +641,8 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
         OutPacketSize = PACKETSIZE;
       fseeko64(fIn, CurrentPosition, SEEK_SET);
       printf("  File size: %llu, packet size: %hhu\n", RecFileSize, PACKETSIZE);
+      FileDate = Unix2TFTime(RecFileTimeStamp, &FileSec, TRUE);
+      printf("  File date: %s (local)\n", TimeStrTF(FileDate, FileSec));
 
       LoadInfFromRec(RecFileIn);
 
@@ -601,7 +660,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
 //      if(DoStrip) ContinuityPIDs[0] = (word) -1;
       printf("  PIDs to be checked for continuity: [0] %s%hd%s", (DoStrip ? "[" : ""), ContinuityPIDs[0], (DoStrip ? "]" : ""));
       for (k = 1; k < NrContinuityPIDs; k++)
-        printf(", [%d] %hu", k, ContinuityPIDs[k]);
+        printf(", [%d] %hd", k, ContinuityPIDs[k]);
       printf("\n");
     }
     else
@@ -879,13 +938,10 @@ static void CloseInputFiles(bool SetStripFlags, bool SetStartTime)
   }
   if (*InfFileIn && SetStripFlags)
   {
-    struct stat64 statbuf;
-    time_t OldInfTime = 0;
-    if (stat64(RecFileIn, &statbuf) == 0)
-      OldInfTime = statbuf.st_mtime;
+    time_t OldInfTime = HDD_GetFileDateTime(InfFileIn);
     SetInfStripFlags(InfFileIn, !DoCut, DoStrip && !DoMerge && DoCut!=2, SetStartTime);
     if (OldInfTime)
-      HDD_SetFileDateTime(InfFileIn, statbuf.st_mtime);
+      HDD_SetFileDateTime(InfFileIn, OldInfTime);
   }
   CloseNavFileIn();
   if(MedionMode == 1) SimpleMuxer_Close();
@@ -955,13 +1011,13 @@ static bool CloseOutputFiles(void)
 
 
   if (*RecFileOut)
-    HDD_SetFileDateTime(RecFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, FALSE));
+    HDD_SetFileDateTime(RecFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE));
   if (*InfFileOut)
-    HDD_SetFileDateTime(InfFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, FALSE));
+    HDD_SetFileDateTime(InfFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE));
   if (*NavFileOut)
-    HDD_SetFileDateTime(NavFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, FALSE));
+    HDD_SetFileDateTime(NavFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE));
 //  if (*CutFileOut)
-//    HDD_SetFileDateTime(CutFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, FALSE));
+//    HDD_SetFileDateTime(CutFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE));
 
 
   if (HasNavOld)
@@ -1101,7 +1157,7 @@ FILE *fDbg;
     }
     InfProcessor_Free();
   }
-  printf("\nPIDS: Video=%hu, Audio=%hu, Teletext=%hu, EPG=%hu\n\n", PIDs[0], PIDs[1], PIDs[2], PIDs[3]);
+  printf("\nPIDS: Video=%hd, Audio=%hd, Teletext=%hd, EPG=%hd\n\n", PIDs[0], PIDs[1], PIDs[2], PIDs[3]);
 
   in = fopen(DemuxInFile, "rb");
   for (i = 0; i < 4; i++)
@@ -1150,7 +1206,7 @@ FILE *fDbg;
     if (Streams[i].BufferPtr)
       fwrite(Streams[i].pBuffer-Streams[i].BufferPtr, 1, Streams[i].BufferPtr, out[i]);
 #ifdef _DEBUG
-    printf("Max. PES length (PID=%hu): %u\n", Streams[i].PID, Streams[i].maxPESLen);
+    printf("Max. PES length (PID=%hd): %u\n", Streams[i].PID, Streams[i].maxPESLen);
 #endif
     fclose(out[i]);
     if(Streams[i].ErrorFlag) ret = 2;
@@ -1249,7 +1305,7 @@ FILE *fDbg;
     {
       if (RecInf->ServiceInfo.PMTPID == 256 && PMTPid == 64)
       {
-        printf("  Change PMTPid in inf: %hu to %hu", RecInf->ServiceInfo.PMTPID, PMTPid);
+        printf("  Change PMTPid in inf: %hd to %hd", RecInf->ServiceInfo.PMTPID, PMTPid);
         RecInf->ServiceInfo.PMTPID = PMTPid;
         ChangedInf = TRUE;
       }
@@ -1273,7 +1329,7 @@ FILE *fDbg;
     }
     if (RecInf->ExtEventInfo.TextLength > 1024)
     {
-      printf("  Change ExtEventText length in inf: %hu to %hu", RecInf->ExtEventInfo.TextLength, 1024);
+      printf("  Change ExtEventText length in inf: %hd to %hd", RecInf->ExtEventInfo.TextLength, 1024);
       memset(&Buffer2[0x570], 0, InfSize - 0x570);
       RecInf->ExtEventInfo.TextLength = 1024;
       ChangedInf = TRUE;
@@ -1283,19 +1339,13 @@ FILE *fDbg;
     {
       tPVRTime EvtStart = RecInf->EventInfo.StartTime;
       tPVRTime EvtEnd   = RecInf->EventInfo.EndTime;
-      time_t DisplayTime1, DisplayTime2;
-      char DisplayString1[26], DisplayString2[26];
       
       if (EvtStart != 0 && EvtEnd != 0)
       {
-        DisplayTime1 = TF2UnixTime(EvtStart, 0, FALSE);
-        EvtStart = Unix2TFTime(TF2UnixTime(EvtStart, 0, FALSE), 0, TRUE);
-        EvtEnd   = Unix2TFTime(TF2UnixTime(EvtEnd, 0, FALSE), 0, TRUE);
-
-        DisplayTime2 = TF2UnixTime(EvtStart, 0, FALSE);
-        strcpy(DisplayString1, TimeStr(&DisplayTime1));
-        strcpy(DisplayString2, TimeStr(&DisplayTime2));
-        printf("  Change EvtStart from %s to %s\n", DisplayString1, DisplayString2);
+        printf("  Change EvtStart from %s", TimeStrTF(EvtStart));
+        EvtStart = Unix2TFTime(TF2UnixTime(EvtStart, 0, TRUE), 0, FALSE);
+        EvtEnd   = Unix2TFTime(TF2UnixTime(EvtEnd, 0, TRUE), 0, FALSE);
+        printf(" to %s\n", TimeStrTF(EvtStart));
 
         RecInf->EventInfo.StartTime = EvtStart;
         RecInf->EventInfo.EndTime = EvtEnd;
@@ -1322,12 +1372,12 @@ FILE *fDbg;
       }
     }
 
-    RecDate = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec, FALSE);
-    if (stat64(RecFile, &statbuf) == 0)
+    RecDate = TF2UnixTime(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec, TRUE);
+//    if (stat64(RecFile, &statbuf) == 0)
     {
-      if (ChangedInf || statbuf.st_mtime != RecDate)
+      if (ChangedInf || HDD_GetFileDateTime(RecFile) != RecDate)
       {
-        printf("  Change file timestamp to: %s\n", TimeStr(&RecDate));
+        printf("  Change file timestamp to: %s\n", TimeStrTF(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec));
 //        HDD_SetFileDateTime(RecFile, RecDate);
         HDD_SetFileDateTime(InfFile, RecDate);
 //        HDD_SetFileDateTime(NavFile, RecDate);
@@ -1360,7 +1410,7 @@ FILE *fDbg;
                   {
                     int newPage = 0;
                     ExtractTeletext = TRUE;
-                    if ((argc > 2) && (argv[2][0] != '-') && ((newPage = strtol(argv[2], NULL, 16))))
+                    if ((argc > 2) && (argv[2][0] != '-') && (strlen(argv[2]) <= 3) && ((newPage = strtol(argv[2], NULL, 10))))
                     {
                       TeletextPage = (word)newPage;
                       argv[1] = argv[0];
@@ -1477,12 +1527,13 @@ FILE *fDbg;
       printf("  RecStrip 'RecFile.rec'                     RebuildNav.\n\n");
       printf("  RecStrip -s -e InFile.rec OutFile.rec      Strip recording.\n\n");
       printf("  RecStrip -n -i -o2 InFile.ts OutFile.rec   Convert TS to Topfield rec.\n\n");
-      printf("  RecStrip -r -s -e -o1 InRec.rec OutMpg.ts  Strip & cut rec and convert to TS.\n");
+      printf("  RecStrip -r -s -e -o1 InRec.rec OutMpg.ts  Strip & cut rec and convert to TS.\n\n");
     }
     else if (DoInfoOnly)
     {
-      fprintf(stderr, "RecFile\tRecSize\tStartTime\tDuration\tFirstPCR\tLastPCR\tisStripped\t");
+      fprintf(stderr, "RecFile\tRecSize\tFileDate\tStartTime\tDuration\tFirstPCR\tLastPCR\tisStripped\t");
       fprintf(stderr, "InfType\tSender\tServiceID\tPMTPid\tVideoPid\tAudioPid\tVideoType\tAudioType\tHD\tResolution\tFPS\tAspectRatio\t");
+      fprintf(stderr, "SegmentMarker\tBookmarks\t");
       fprintf(stderr, "EventName\tEventDesc\tEventStart\tEventEnd\tEventDuration\tExtEventText\n");
     }
     TRACEEXIT;
@@ -1605,30 +1656,78 @@ FILE *fDbg;
   if (DoInfoOnly)
   {
     TYPE_RecHeader_TMSS *Inf_TMSS = (TYPE_RecHeader_TMSS*)InfBuffer;
-    char                EventName[257], DurationStr[16];
-
-    time_t              StartTimeUnix = TF2UnixTime(Inf_TMSS->RecHeaderInfo.StartTime, Inf_TMSS->RecHeaderInfo.StartTimeSec, FALSE);
-    time_t              EvtStartUnix = TF2UnixTime(Inf_TMSS->EventInfo.StartTime, 0, TRUE);
-    time_t              EvtEndUnix = TF2UnixTime(Inf_TMSS->EventInfo.EndTime, 0, TRUE);
+    char                EventName[257], DurationStr[16], FileDateStr[20], StartTimeStr[20];
+    byte                FileSec;
+    tPVRTime            FileDate = Unix2TFTime(RecFileTimeStamp, &FileSec, TRUE);
 
     // Print out details to STDERR
     memset(EventName, 0, sizeof(EventName));
     if (NavDurationMS)
-      snprintf(DurationStr, sizeof(DurationStr), "%02hu:%02hu:%02hu.%03u", NavDurationMS/3600000, NavDurationMS/60000 % 60, NavDurationMS/1000 % 60, NavDurationMS % 1000);
+      snprintf(DurationStr, sizeof(DurationStr), "%02u:%02u:%02u.%03u", NavDurationMS/3600000, NavDurationMS/60000 % 60, NavDurationMS/1000 % 60, NavDurationMS % 1000);
     else
       snprintf(DurationStr, sizeof(DurationStr), "%02hu:%02hu:%02hu", Inf_TMSS->RecHeaderInfo.DurationMin/60, Inf_TMSS->RecHeaderInfo.DurationMin % 60, Inf_TMSS->RecHeaderInfo.DurationSec);
     strncpy(EventName, Inf_TMSS->EventInfo.EventNameDescription, Inf_TMSS->EventInfo.EventNameLength);
 
-    // REC:    RecFileIn;  RecSize;  StartTime (DateTime);  Duration (nav=hh:mm:ss.xxx, TS=hh:mm:ss);  FirstPCR;  LastPCR;  isStripped
-    fprintf(stderr, "%s\t%llu\t%s\t%s\t%lld\t%lld\t%s\t",  RecFileIn,  RecFileSize,  TimeStr_DB(&StartTimeUnix),  DurationStr,  FirstFilePCR,  LastFilePCR,  (Inf_TMSS->RecHeaderInfo.rs_HasBeenStripped ? "yes" : "no"));
+    // REC:    RecFileIn;  RecSize;  FileDate;  StartTime (DateTime);  Duration (nav=hh:mm:ss.xxx, TS=hh:mm:ss);  FirstPCR;  LastPCR;  isStripped
+    strncpy(FileDateStr, TimeStr_DB(FileDate, FileSec), sizeof(FileDateStr));
+    strncpy(StartTimeStr, TimeStr_DB(Inf_TMSS->RecHeaderInfo.StartTime, Inf_TMSS->RecHeaderInfo.StartTimeSec), sizeof(StartTimeStr));
+    fprintf(stderr, "%s\t%llu\t%s\t%s\t%s\t%lld\t%lld\t%s\t",  RecFileIn,  RecFileSize,  FileDateStr,  StartTimeStr,  DurationStr,  FirstFilePCR,  LastFilePCR,  (Inf_TMSS->RecHeaderInfo.rs_HasBeenStripped ? "yes" : "no"));
 
     // SERVICE:  InfType;   Sender;   ServiceID;  PMTPid;  VideoPid;  AudioPid;  VideoType;  AudioType;  HD;  VideoWidth x VideoHeight;  VideoFPS;  VideoDAR
-    fprintf(stderr, "ST_TMS%c\t%s\t%hu\t%hu\t%hu\t%hu\t0x%hx\t0x%hx\t%s\t%dx%d\t%.1f fps\t%.3f\t",  (SystemType==ST_TMSS ? 's' : ((SystemType==ST_TMSC) ? 'c' : ((SystemType==ST_TMST) ? 't' : '?'))),  Inf_TMSS->ServiceInfo.ServiceName,  Inf_TMSS->ServiceInfo.ServiceID,  Inf_TMSS->ServiceInfo.PMTPID,  Inf_TMSS->ServiceInfo.VideoPID,  Inf_TMSS->ServiceInfo.AudioPID,  Inf_TMSS->ServiceInfo.VideoStreamType,  Inf_TMSS->ServiceInfo.AudioStreamType,  (isHDVideo ? "yes" : "no"),  VideoWidth,  VideoHeight,  (NavFrames ? NavFrames/((double)NavDurationMS/1000) : VideoFPS),  VideoDAR);
+    fprintf(stderr, "ST_TMS%c\t%s\t%hu\t%hd\t%hd\t%hd\t0x%hx\t0x%hx\t%s\t%dx%d\t%.1f fps\t%.3f\t",  (SystemType==ST_TMSS ? 's' : ((SystemType==ST_TMSC) ? 'c' : ((SystemType==ST_TMST) ? 't' : '?'))),  Inf_TMSS->ServiceInfo.ServiceName,  Inf_TMSS->ServiceInfo.ServiceID,  Inf_TMSS->ServiceInfo.PMTPID,  Inf_TMSS->ServiceInfo.VideoPID,  Inf_TMSS->ServiceInfo.AudioPID,  Inf_TMSS->ServiceInfo.VideoStreamType,  Inf_TMSS->ServiceInfo.AudioStreamType,  (isHDVideo ? "yes" : "no"),  VideoWidth,  VideoHeight,  (NavFrames ? NavFrames/((double)NavDurationMS/1000) : VideoFPS),  VideoDAR);
+
+    // SEGMENTMARKERS (getrennt durch ; und |)
+    if (NrSegmentMarker > 2)
+    {
+      int p; char *c;
+
+      fprintf(stderr, "{");
+      for (p = 0; p < NrSegmentMarker; p++)
+      {
+        float Percent = (float)(((float)SegmentMarker[p].Position / RecFileSize) * 100.0);
+        snprintf(DurationStr, sizeof(DurationStr), "%u:%02u:%02u,%03u", SegmentMarker[p].Timems/3600000, SegmentMarker[p].Timems/60000 % 60, SegmentMarker[p].Timems/1000 % 60, SegmentMarker[p].Timems % 1000);
+
+        // Ersetze eventuelles '\t', ' | ' in der Caption
+        if (SegmentMarker[p].pCaption)
+          for (c = SegmentMarker[p].pCaption; *c != '\0'; c++)
+          {
+            if (c[0]=='\t' /*&& c[1]=='}'*/) c[0] = ' ';
+            else if (c[0]==' ' && c[1]=='|' && c[2]==' ') c[1] = ',';
+          }
+        fprintf(stderr, "%s%s; %lld; %u; %s; %.1f%%; %s", ((p > 0) ? " | " : ""), (SegmentMarker[p].Selected ? "*" : "-"), ((OutCutVersion>=4) ? SegmentMarker[p].Position : 0), ((OutCutVersion<=3) ? CalcBlockSize(SegmentMarker[p].Position) : 0), DurationStr, Percent, (SegmentMarker[p].pCaption ? SegmentMarker[p].pCaption : ""));
+      }
+      fprintf(stderr, "}");
+    }
+    fprintf(stderr, "\t");
+
+    // BOOKMARKS (TimeStamps berechnen)
+    if (BookmarkInfo->NrBookmarks > 0)
+    {
+      int NrTimeStamps, p;
+      tTimeStamp2 *TimeStamps = NavLoad(RecFileIn, &NrTimeStamps, PACKETSIZE);
+      fprintf(stderr, "{");
+
+      for (p = 0; p < (int)BookmarkInfo->NrBookmarks; p++)
+      {
+        if (TimeStamps)
+        {
+          dword Timems = NavGetPosTimeStamp(TimeStamps, NrTimeStamps, BookmarkInfo->Bookmarks[p] * 9024LL);
+          snprintf(DurationStr, sizeof(DurationStr), "%u:%02u:%02u,%03u", Timems/3600000, Timems/60000 % 60, Timems/1000 % 60, Timems % 1000);
+          fprintf(stderr, ((p > 0) ? " | %u; %s" : "%u; %s"), BookmarkInfo->Bookmarks[p], DurationStr);
+        }
+        else
+          fprintf(stderr, ((p > 0) ? " | %u" : "%u"), BookmarkInfo->Bookmarks[p]);
+      }
+
+      if(TimeStamps) free(TimeStamps);
+      fprintf(stderr, "}");
+    }
+    fprintf(stderr, "\t");
 
     // EPG:    EventName;  EventDesc;  EventStart (DateTime);  EventEnd (DateTime);  EventDuration (hh:mm);  ExtEventText (inkl. ItemizedItems, ohne '\n', '\t')
-    fprintf(stderr, "%s\t%s\t%s\t", EventName,  &Inf_TMSS->EventInfo.EventNameDescription[Inf_TMSS->EventInfo.EventNameLength],  TimeStr_DB(&EvtStartUnix));
-    if (EvtEndUnix != 0)
-      fprintf(stderr, "%s\t%02hhu:%02hhu\t%s\n", TimeStr_DB(&EvtEndUnix),  Inf_TMSS->EventInfo.DurationHour,  Inf_TMSS->EventInfo.DurationMin,  (ExtEPGText ? ExtEPGText : ""));
+    fprintf(stderr, "%s\t%s\t%s\t", EventName,  &Inf_TMSS->EventInfo.EventNameDescription[Inf_TMSS->EventInfo.EventNameLength],  TimeStr_DB(EPG2TFTime(Inf_TMSS->EventInfo.StartTime, NULL), 0));
+    if (Inf_TMSS->EventInfo.StartTime != 0)
+      fprintf(stderr, "%s\t%02hhu:%02hhu\t%s\n", TimeStr_DB(EPG2TFTime(Inf_TMSS->EventInfo.EndTime, NULL), 0),  Inf_TMSS->EventInfo.DurationHour,  Inf_TMSS->EventInfo.DurationMin,  (ExtEPGText ? ExtEPGText : ""));
     else
       fprintf(stderr, "\t\t%s\n",  (ExtEPGText ? ExtEPGText : ""));
     if(ExtEPGText) free(ExtEPGText);
@@ -1676,8 +1775,8 @@ FILE *fDbg;
     if (MedionMode == 1)
     {
       ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID = 0x100;
-      printf("  TS: PMTPID=%hu", 0x100);
-      AnalysePMT(&PATPMTBuf[201], (TYPE_RecHeader_TMSS*)InfBuffer);
+      printf("  TS: PMTPID=%hd", 0x100);
+      AnalysePMT(&PATPMTBuf[201], sizeof(PATPMTBuf) - 201, (TYPE_RecHeader_TMSS*)InfBuffer);
       NrContinuityPIDs = 0;
     }
 
@@ -2100,7 +2199,7 @@ FILE *fDbg;
               {
 //              if (!DoCut || (i < NrSegmentMarker && CurrentPosition != SegmentMarker[i].Position))
                 {
-                  fprintf(stderr, "PID check: TS continuity mismatch (PID=%hu, pos=%lld, expect=%hhu, found=%hhu, missing=%hhd)\n", CurPID, CurrentPosition, *CurCtr, ((tTSPacket*) &Buffer[4])->ContinuityCount, (((tTSPacket*) &Buffer[4])->ContinuityCount + 16 - *CurCtr) % 16);
+                  fprintf(stderr, "PID check: TS continuity mismatch (PID=%hd, pos=%lld, expect=%hhu, found=%hhu, missing=%hhd)\n", CurPID, CurrentPosition, *CurCtr, ((tTSPacket*) &Buffer[4])->ContinuityCount, (((tTSPacket*) &Buffer[4])->ContinuityCount + 16 - *CurCtr) % 16);
                   AddContinuityError(CurPID, CurrentPosition, *CurCtr, ((tTSPacket*) &Buffer[4])->ContinuityCount);
                 }
                 if (CurPID == VideoPID)

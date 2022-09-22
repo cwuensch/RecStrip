@@ -331,12 +331,12 @@ bool LoadInfFile(char *AbsInfName, bool FirstTime)
     if ((ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_PART2) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_H264) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG4_H263))
     {
       HDFound = TRUE;
-      printf("  INF: VideoStream=0x%x, VideoPID=%hu, HD=%d\n", ServiceInfo->VideoStreamType, ServiceInfo->VideoPID, HDFound);
+      printf("  INF: VideoStream=0x%x, VideoPID=%hd, HD=%d\n", ServiceInfo->VideoStreamType, ServiceInfo->VideoPID, HDFound);
     }
     else if ((ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG1) || (ServiceInfo->VideoStreamType==STREAM_VIDEO_MPEG2))
     {
       HDFound = FALSE;
-      printf("  INF: VideoStream=0x%x, VideoPID=%hu, HD=%d\n", ServiceInfo->VideoStreamType, ServiceInfo->VideoPID, HDFound);
+      printf("  INF: VideoStream=0x%x, VideoPID=%hd, HD=%d\n", ServiceInfo->VideoStreamType, ServiceInfo->VideoPID, HDFound);
     }
     else
     {
@@ -385,10 +385,8 @@ if (RecHeaderInfo->Reserved != 0)
       if(RecHeaderInfo->rs_HasBeenStripped)  AlreadyStripped = TRUE;
 
       if (abs((int)(RecHeaderInfo->StartTime - OrigStartTime)) > 1)
-      {
-        time_t StartTimeUnix = TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, FALSE);
-        printf("  INF: StartTime (%s) differs from TS start! Taking %s.\n", TimeStr(&StartTimeUnix), ((RecHeaderInfo->StartTimeSec != 0 || ((OrigStartSec == 0) && ((RecHeaderInfo->StartTimeSec & 0x0f) > 0))) ? "inf" : "TS"));
-      }
+        printf("  INF: StartTime (%s) differs from TS start! Taking %s.\n", TimeStrTF(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec), ((RecHeaderInfo->StartTimeSec != 0 || ((OrigStartSec == 0) && ((RecHeaderInfo->StartTimeSec & 0x0f) > 0))) ? "inf" : "TS"));
+
       if (RecHeaderInfo->StartTimeSec != 0 || ((OrigStartSec == 0) && ((RecHeaderInfo->StartTimeSec & 0x0f) > 0)))
       {
         OrigStartTime = RecHeaderInfo->StartTime;
@@ -409,6 +407,10 @@ if (RecHeaderInfo->Reserved != 0)
     InfDuration = 60*RecHeaderInfo->DurationMin + RecHeaderInfo->DurationSec;
 printf("  INF: Duration = %2.2d min %2.2d sec\n", RecHeaderInfo->DurationMin, RecHeaderInfo->DurationSec);
 printf("  INF: ServiceName = %s\n", ServiceInfo->ServiceName);
+    printf("  INF: Bookmarks = %s", (BookmarkInfo->NrBookmarks == 0) ? "-" : "");
+    for (k = 0; k < (int)BookmarkInfo->NrBookmarks; k++)
+      printf((k > 0) ? ", %u" : "%u", BookmarkInfo->Bookmarks[k]);
+    printf("\n");
   }
 
   // OldEventText setzen + ggf. Itemized Items in ExtEventText entfernen

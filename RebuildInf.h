@@ -246,12 +246,14 @@ typedef struct
 extern long long        FirstFilePCR, LastFilePCR;
 extern int              VideoHeight, VideoWidth;
 extern double           VideoFPS, VideoDAR;
+//extern int              TtxTimeZone;
 
-time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec, bool isUTC);
-tPVRTime Unix2TFTime(time_t UnixTimeStamp, byte *const outSec, bool toUTC);
+time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec, bool convertToUTC);
+tPVRTime Unix2TFTime(time_t UnixTimeStamp, byte *const outSec, bool convertToLocal);
+tPVRTime EPG2TFTime(tPVRTime TFTimeStamp, int *const out_timeoffset);
 tPVRTime AddTimeSec(tPVRTime pvrTime, byte pvrTimeSec, byte *const outSec, int addSeconds);
 void InitInfStruct(TYPE_RecHeader_TMSS *RecInf);
 bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf);
-bool AnalysePMT(byte *PSBuffer, TYPE_RecHeader_TMSS *RecInf);
+bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf);
 
 #endif

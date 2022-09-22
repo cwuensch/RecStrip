@@ -611,9 +611,21 @@ bool CutFileLoad(const char *AbsCutName)
     SegmentMarker[NrSegmentMarker - 1].Selected = FALSE;         // the very last marker (no segment)
   }
 
-  // Wenn zu wenig Segmente -> auf Standard zurücksetzen
-  if (NrSegmentMarker < 2)
+  if (NrSegmentMarker >= 2)
   {
+    char TimeStamp[16];
+    for (i = 0; i < NrSegmentMarker; i++)
+    {
+      MSecToTimeString(SegmentMarker[i].Timems, TimeStamp);
+      if (OutCutVersion >= 4)
+        ret = (printf("  %3d ;  %c  ; %13lld ;%14s ;  %5.1f%% ; %s\n", i, (SegmentMarker[i].Selected ? '*' : '-'), SegmentMarker[i].Position, TimeStamp, SegmentMarker[i].Percent, (SegmentMarker[i].pCaption ? SegmentMarker[i].pCaption : "")) > 0) && ret;
+      else
+        ret = (printf("  %3d ;  %c  ; %10u ;%14s ;  %5.1f%% ; %s\n", i, (SegmentMarker[i].Selected ? '*' : '-'), (dword)(SegmentMarker[i].Position/9024), TimeStamp, SegmentMarker[i].Percent, (SegmentMarker[i].pCaption ? SegmentMarker[i].pCaption : "")) > 0) && ret;
+    }
+  }
+  else
+  {
+    // Wenn zu wenig Segmente -> auf Standard zurücksetzen
     if(ret) printf("  CutFileLoad: Less than two timestamps imported -> resetting!\n"); 
     ResetSegmentMarkers();
 //    free(SegmentMarker);
