@@ -1048,7 +1048,6 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           PSBuffer_Init(&TtxBuffer, TeletextPID, 16384, FALSE, TRUE, TRUE);
         LastPMTBuffer = 0; LastEITBuffer = 0; LastTtxBuffer = 0;
 
-        FilePos = FilePos + Offset;
         fseeko64(fIn, FilePos, SEEK_SET);  // Hier auf 0 setzen (?)
         for (i = 0; i < 300; i++)
         {
@@ -1115,6 +1114,46 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           if(HumaxSource)
             fseeko64(fIn, +HumaxHeaderLaenge, SEEK_CUR);
         }
+
+        // Kopiere Descriptor-Packets vom Dateianfang in Buffer
+        if(Durchlauf == 1)
+        {
+          tTSPacket *packet1, *packet2;
+          fseeko64(fIn, FilePos, SEEK_SET);  // Hier auf 0 setzen (?)
+          fread(Buffer, PACKETSIZE, 32, fIn) * PACKETSIZE;
+
+          packet1 = (tTSPacket*) &Buffer[PACKETOFFSET];
+          packet2 = (tTSPacket*) &Buffer[PACKETOFFSET + PACKETSIZE];
+
+          if (((packet1->PID1 * 256 + packet1->PID2 == 0) && (packet1->Data[0] == 0) && (packet1->Data[1] == TABLE_PAT)) && ((packet2->PID1 * 256 + packet2->PID2 == 256) && (packet2->Data[0] == 0) && (packet2->Data[1] == TABLE_PMT)))
+          {
+            memset(PATPMTBuf, 0, 2*192);
+            memcpy(&PATPMTBuf[(PACKETSIZE==192) ? 0 : 4], &Buffer[0], PACKETSIZE);
+            memcpy(&PATPMTBuf[(PACKETSIZE==192) ? 0 : 4], &Buffer[PACKETSIZE], PACKETSIZE);
+            WriteDescPackets = TRUE;
+
+            NrEPGPacks = 0;
+            p = &Buffer[PACKETOFFSET + PACKETSIZE + PACKETSIZE];
+            while ((((tTSPacket*)p)->PID1 == 0) && (((tTSPacket*)p)->PID2 == 18))
+            {
+              NrEPGPacks++;
+              p += PACKETSIZE;
+            }
+            
+            if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
+            if (NrEPGPacks && ((EPGPacks = (byte*)malloc(NrEPGPacks * 192))))
+            {
+              memset(EPGPacks, 0, NrEPGPacks * 192);
+              p = &Buffer[PACKETOFFSET + PACKETSIZE + PACKETSIZE];
+              while ((((tTSPacket*)p)->PID1 == 0) && (((tTSPacket*)p)->PID2 == 18))
+              {
+                memcpy(&EPGPacks[(PACKETSIZE==192) ? 0 : 4], p, PACKETSIZE);
+                p += PACKETSIZE;
+              }
+            }
+          }
+        }
+
         if(!SDTOK)
           printf ("  Failed to get service name from SDT.\n");
         if(!EITOK && (Durchlauf == 1) && (EITBuffer.ValidBuffer == 0) && (LastEITBuffer == 0))

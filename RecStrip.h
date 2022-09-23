@@ -3,7 +3,7 @@
 
 #include "RecHeader.h"
 
-#define VERSION                  "v3.0c"
+#define VERSION                  "v3.0d"
 
 #define NRBOOKMARKS                177   // eigentlich werden nur 48 Bookmarks unterstützt!! (SRP2401)
 #define NRSEGMENTMARKER            101
@@ -121,7 +121,7 @@ typedef struct
 
 // Globale Variablen
 extern char             RecFileIn[], RecFileOut[], MDEpgName[], MDTtxName[];
-extern byte             PATPMTBuf[];
+extern byte             PATPMTBuf[], *EPGPacks;
 extern unsigned long long RecFileSize;
 extern time_t           RecFileTimeStamp;
 extern SYSTEM_TYPE      SystemType;
@@ -129,8 +129,9 @@ extern byte             PACKETSIZE, PACKETOFFSET, OutPacketSize;
 extern word             VideoPID, TeletextPID, TeletextPage;
 extern word             ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs;
 extern bool             isHDVideo, AlreadyStripped, HumaxSource, EycosSource;
-extern bool             DoStrip, DoSkip, RemoveEPGStream, RemoveTeletext, RebuildNav, RebuildInf, DoInfoOnly, MedionMode, MedionStrip;
+extern bool             DoStrip, DoSkip, RemoveEPGStream, RemoveTeletext, RebuildNav, RebuildInf, DoInfoOnly, MedionMode, MedionStrip, WriteDescPackets;
 extern int              DoCut, DoMerge;
+extern int              NrEPGPacks;
 extern int              dbg_DelBytesSinceLastVid;
 
 extern TYPE_Bookmark_Info *BookmarkInfo, BookmarkInfo_In;

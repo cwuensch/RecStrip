@@ -100,7 +100,7 @@
 // Globale Variablen
 char                    RecFileIn[FBLIB_DIR_SIZE], RecFileOut[FBLIB_DIR_SIZE], OutDir[FBLIB_DIR_SIZE];
 char                    MDEpgName[FBLIB_DIR_SIZE], MDTtxName[FBLIB_DIR_SIZE], MDAudName[FBLIB_DIR_SIZE];
-byte                    PATPMTBuf[2*192];
+byte                    PATPMTBuf[2*192], *EPGPacks = 0;
 unsigned long long      RecFileSize = 0;
 time_t                  RecFileTimeStamp = 0;
 SYSTEM_TYPE             SystemType = ST_UNKNOWN;
@@ -108,9 +108,9 @@ byte                    PACKETSIZE = 192, PACKETOFFSET = 4, OutPacketSize = 0;
 word                    VideoPID = (word) -1, TeletextPID = (word) -1, TeletextPage = 0;
 word                    ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs = 1;
 bool                    isHDVideo = FALSE, AlreadyStripped = FALSE, HumaxSource = FALSE, EycosSource = FALSE;
-bool                    DoStrip = FALSE, DoSkip = FALSE, RemoveScrambled = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE, DoInfoOnly = FALSE, MedionMode = FALSE, MedionStrip = FALSE;
+bool                    DoStrip = FALSE, DoSkip = FALSE, RemoveScrambled = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE, DoInfoOnly = FALSE, MedionMode = FALSE, MedionStrip = FALSE, WriteDescPackets = FALSE;
 int                     DoCut = 0, DoMerge = 0;  // DoCut: 1=remove_parts, 2=copy_separate, DoMerge: 1=append, 2=merge
-int                     curInputFile = 0, NrInputFiles = 1;
+int                     curInputFile = 0, NrInputFiles = 1, NrEPGPacks = 0;
 int                     dbg_DelBytesSinceLastVid = 0;
 
 TYPE_Bookmark_Info     *BookmarkInfo = NULL;
@@ -788,6 +788,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
 static bool OpenOutputFiles(void)
 {
   unsigned long long OutFileSize = 0;
+  int i;
   TRACEENTER;
 
   // ggf. Output-File öffnen
@@ -920,6 +921,22 @@ SONST
       printf("\nTeletext output: %s", TeletextOut);
   }
 
+  // Header-Pakete ausgeben (experimentell!)
+  if ((HumaxSource || EycosSource || MedionMode==1 || (WriteDescPackets && (CurrentPosition <= 384))) && fOut /*&& DoMerge != 1*/)
+  {
+    if (fwrite(&PATPMTBuf[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut))
+      PositionOffset -= OutPacketSize;
+    if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], OutPacketSize, 1, fOut))
+      PositionOffset -= OutPacketSize;
+    if (MedionMode == 1)
+      SimpleMuxer_DoEITOutput();
+    else if (WriteDescPackets && EPGPacks)
+    {
+      for (i = 0; i < NrEPGPacks; i++)
+        if (fwrite(&EPGPacks[i*192 + (OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut))
+          PositionOffset -= OutPacketSize;
+    }
+  }
   printf("\n");
   TRACEEXIT;
   return TRUE;
@@ -945,6 +962,7 @@ static void CloseInputFiles(bool SetStripFlags, bool SetStartTime)
   }
   CloseNavFileIn();
   if(MedionMode == 1) SimpleMuxer_Close();
+  if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
 
   TRACEEXIT;
 }
@@ -1606,6 +1624,7 @@ FILE *fDbg;
       CutProcessor_Free();
       InfProcessor_Free();
       PSBuffer_Reset(&VideoBuffer);
+      if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
       printf("ERROR: Cannot read output %s.\n", RecFileOut);
       TRACEEXIT;
       exit(3);
@@ -1631,6 +1650,7 @@ FILE *fDbg;
     CutProcessor_Free();
     InfProcessor_Free();
     PSBuffer_Reset(&VideoBuffer);
+    if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
     printf("ERROR: Cannot open input %s.\n", RecFileIn);
     TRACEEXIT;
     exit(4);
@@ -1643,6 +1663,7 @@ FILE *fDbg;
     CutProcessor_Free();
     InfProcessor_Free();
     PSBuffer_Reset(&VideoBuffer);
+    if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
     TRACEEXIT;
     exit(6);  */
   }
@@ -1738,27 +1759,11 @@ FILE *fDbg;
     CutProcessor_Free();
     InfProcessor_Free();
     PSBuffer_Reset(&VideoBuffer);
+    if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
     printf("\nRecStrip finished. View information only.\n");
     TRACEEXIT;
     exit(0);
   }
-
-  // Output-Files öffnen
-  if (DoCut < 2 && !OpenOutputFiles())
-  {
-    fclose(fIn); fIn = NULL;
-    CloseNavFileIn();
-    if(MedionMode == 1) SimpleMuxer_Close();
-    CutProcessor_Free();
-    InfProcessor_Free();
-    PSBuffer_Reset(&VideoBuffer);
-    printf("ERROR: Cannot write output %s.\n", RecFileOut);
-    TRACEEXIT;
-    exit(7);
-  }
-
-  // Wenn Appending, ans Ende der nav-Datei springen
-  if(DoMerge == 1) GoToEndOfNav(NULL);
 
   // Spezialanpassung Humax / Medion
   if ((HumaxSource || EycosSource || MedionMode==1) && fOut /*&& DoMerge != 1*/)
@@ -1766,11 +1771,6 @@ FILE *fDbg;
     printf("  Generate new PAT/PMT for Humax/Medion/Eycos recording.\n");
     if (!HumaxSource && !EycosSource)
       GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, 256, VideoPID, 101, TeletextPID, STREAM_VIDEO_MPEG2, STREAM_AUDIO_MPEG2);
-
-    if (fwrite(&PATPMTBuf[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut))
-      PositionOffset -= OutPacketSize;
-    if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], OutPacketSize, 1, fOut))
-      PositionOffset -= OutPacketSize;
 
     if (MedionMode == 1)
     {
@@ -1824,6 +1824,25 @@ FILE *fDbg;
   } */
 
   VideoBuffer.PID = VideoPID;
+
+  // Output-Files öffnen
+  if (DoCut < 2 && !OpenOutputFiles())
+  {
+    fclose(fIn); fIn = NULL;
+    CloseNavFileIn();
+    if(MedionMode == 1) SimpleMuxer_Close();
+    CutProcessor_Free();
+    InfProcessor_Free();
+    PSBuffer_Reset(&VideoBuffer);
+    if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
+    printf("ERROR: Cannot write output %s.\n", RecFileOut);
+    TRACEEXIT;
+    exit(7);
+  }
+
+  // Wenn Appending, ans Ende der nav-Datei springen
+  if(DoMerge == 1) GoToEndOfNav(NULL);
+
   if(!RebuildNav && *RecFileOut && HasNavIn)  SetFirstPacketAfterBreak();
 
 #ifdef _DEBUG
@@ -1910,6 +1929,7 @@ FILE *fDbg;
                 CutProcessor_Free();
                 InfProcessor_Free();
                 PSBuffer_Reset(&VideoBuffer);
+                if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
                 exit(10);
               }
 
@@ -2403,7 +2423,7 @@ FILE *fDbg;
             CurrentPosition += ReadBytes;
             CurBlockBytes += ReadBytes;
           }
-          if(MedionMode==1) PMTCounter++;
+          if(MedionMode==1 && !MedionStrip) PMTCounter++;
         }
 
         // KEIN PAKET-SYNCBYTE GEFUNDEN
@@ -2415,7 +2435,7 @@ FILE *fDbg;
             PositionOffset += HumaxHeaderLaenge;
             CurrentPosition += HumaxHeaderLaenge;
             CurBlockBytes += HumaxHeaderLaenge;
-            PMTCounter++;
+            if (!DoStrip) PMTCounter++;
             if (fOut && !DoStrip && (PMTCounter >= 29))
             {
               ((tTSPacket*) &PATPMTBuf[4])->ContinuityCount++;
@@ -2493,6 +2513,7 @@ FILE *fDbg;
           CutProcessor_Free();
           InfProcessor_Free();
           PSBuffer_Reset(&VideoBuffer);
+          if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
           printf("\n RecStrip aborted.\n");
           TRACEEXIT;
           exit(8);
@@ -2560,6 +2581,7 @@ FILE *fDbg;
         CutProcessor_Free();
         InfProcessor_Free();
         PSBuffer_Reset(&VideoBuffer);
+        if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
         printf("ERROR: Cannot open input %s.\n", RecFileIn);
         TRACEEXIT;
         exit(5);
@@ -2592,6 +2614,7 @@ FILE *fDbg;
     CutProcessor_Free();
     InfProcessor_Free();
     PSBuffer_Reset(&VideoBuffer);
+    if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
     exit(10);
   }
   CloseInputFiles(TRUE, (!*RecFileOut));
@@ -2599,6 +2622,7 @@ FILE *fDbg;
   CutProcessor_Free();
   InfProcessor_Free();
   PSBuffer_Reset(&VideoBuffer);
+  if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
 
   if (NrCopiedSegments > 0)
     printf("\nSegments: %d of %d segments copied.\n", NrCopiedSegments, NrSegments);
