@@ -152,8 +152,8 @@ bool LoadEycosHeader(char *AbsTrpFileName, byte *const PATPMTBuf, TYPE_RecHeader
       PMT = (tTSPMT*) &Packet->Data[1 /*+ Packet->Data[0]*/];
 
       Packet->SyncByte      = 'G';
-      Packet->PID1          = EycosHeader.PMTPid / 256;
-      Packet->PID2          = EycosHeader.PMTPid % 256;
+      Packet->PID1          = (byte)PAT->PMTPID1;
+      Packet->PID2          = (byte)PAT->PMTPID2;
       Packet->Payload_Unit_Start = 1;
       Packet->Payload_Exists = 1;
 
@@ -209,9 +209,12 @@ bool LoadEycosHeader(char *AbsTrpFileName, byte *const PATPMTBuf, TYPE_RecHeader
       SegmentMarker[NrSegmentMarker++].Timems = 0;
 
       // PIDs in PMT eintragen
-      for (j = 0; j < EycosHeader.NrPids; j++)
+      for (j = 0; j < (int)EycosHeader.NrPids; j++)
       {
         tTSAudioDesc *Desc    = NULL;
+
+//        EycosHeader.Pids[j].Type = EycosHeader.Pids[j].Type & 0xff;
+//        EycosHeader.Pids[j].PID = EycosHeader.Pids[j].PID & 0xffff;
 
         if (EycosHeader.Pids[j].PID == AudioPID)
         {

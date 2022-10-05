@@ -147,8 +147,8 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
   PAT->LastSection      = 0;
   PAT->ProgramNr1       = 0;
   PAT->ProgramNr2       = 1;
-  PAT->PMTPID1          = 0;
-  PAT->PMTPID2          = 64;
+  PAT->PMTPID1          = 1;
+  PAT->PMTPID2          = 00;
   PAT->Reserved111      = 7;
 //  PAT->CRC32            = rocksoft_crc((byte*)PAT, sizeof(tTSPAT)-4);    // CRC: 0x786989a2
 //  PAT->CRC32            = crc32m((byte*)PAT, sizeof(tTSPAT)-4);          // CRC: 0x786989a2
@@ -161,8 +161,8 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
   PMT = (tTSPMT*) &Packet->Data[1 /*+ Packet->Data[0]*/];
 
   Packet->SyncByte      = 'G';
-  Packet->PID1          = 0;
-  Packet->PID2          = 64;
+  Packet->PID1          = (byte)PAT->PMTPID1;
+  Packet->PID2          = (byte)PAT->PMTPID2;
   Packet->Payload_Unit_Start = 1;
   Packet->Payload_Exists = 1;
 
@@ -205,11 +205,17 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
         if (i == 1)  // Header 1: Programm-Information
         {
           printf("  Importing Humax header\n");
+
+          if (HumaxHeader.Allgemein.AudioPID == 256)
+          {
+            PAT->PMTPID1 = 0; PAT->PMTPID2 = 100;
+            Packet->PID1 = 0; Packet->PID1 = 100;
+          }
           VideoPID                            = HumaxHeader.Allgemein.VideoPID;
           TeletextPID                         = HumaxHeader.Allgemein.TeletextPID;
           RecInf->ServiceInfo.ServiceType     = 0;  // SVC_TYPE_Tv
           RecInf->ServiceInfo.ServiceID       = 1;
-          RecInf->ServiceInfo.PMTPID          = 64;
+          RecInf->ServiceInfo.PMTPID          = PAT->PMTPID1 * 256 + PAT->PMTPID2;
           RecInf->ServiceInfo.VideoPID        = VideoPID;
           RecInf->ServiceInfo.PCRPID          = VideoPID;
           RecInf->ServiceInfo.AudioPID        = HumaxHeader.Allgemein.AudioPID;
@@ -237,14 +243,14 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
             RecInf->ServiceInfo.ServiceName[sizeof(RecInf->ServiceInfo.ServiceName)-1] = '\0';
           }
         }
-        if (HumaxHeader.ZusInfoID == HumaxBookmarksID)  // Header 3: Bookmarks
+        else if (HumaxHeader.ZusInfoID == HumaxBookmarksID)  // Header 3: Bookmarks
         {
           tHumaxBlock_Bookmarks* HumaxBookmarks = (tHumaxBlock_Bookmarks*)HumaxHeader.ZusInfos;
           RecInf->BookmarkInfo.NrBookmarks = HumaxBookmarks->Anzahl;
           for (j = 0; j < HumaxBookmarks->Anzahl; j++)
             RecInf->BookmarkInfo.Bookmarks[j] = (dword) ((long long)HumaxBookmarks->Items[j] * 32768 / 9024);
         }
-        else if (HumaxHeader.ZusInfoID == HumaxTonSpurenID)  // Header 4: Tonspuren
+        else if (i == 4 || HumaxHeader.ZusInfoID == HumaxTonSpurenID)  // Header 4: Tonspuren
         {
           tHumaxBlock_Tonspuren* HumaxTonspuren = (tHumaxBlock_Tonspuren*)HumaxHeader.ZusInfos;
 
@@ -315,20 +321,46 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
             }
             else
             {
-              tTSTtxDesc *Desc = (tTSTtxDesc*) &Packet->Data[Offset];
+              if (j == 0)
+              {
+                Elem->stream_type   = STREAM_AUDIO_MPEG2;
+                Elem->ESPID1        = HumaxHeader.Allgemein.AudioPID / 256;
+                Elem->ESPID2        = HumaxHeader.Allgemein.AudioPID % 256;
+                Elem->ESInfoLen1    = 0;
+                Elem->ESInfoLen2    = sizeof(tTSAudioDesc);
 
-              Elem->stream_type     = 6;
-              Elem->ESPID1          = HumaxHeader.Allgemein.TeletextPID / 256;
-              Elem->ESPID2          = HumaxHeader.Allgemein.TeletextPID % 256;
-              Elem->ESInfoLen1      = 0;
-              Elem->ESInfoLen2      = 7;
+                Desc = (tTSAudioDesc*) &Packet->Data[Offset];
+                Desc->DescrTag      = DESC_Audio;
+                Desc->DescrLength   = 4;
+                strncpy(Desc->LanguageCode, "deu", 3);
 
-//              strcpy(&Packet->Data[Offset], "V" "\x05" "deu" "\x09");
-              Desc->DescrTag        = DESC_Teletext;
-              Desc->DescrLength     = 5;
-              memcpy(Desc->LanguageCode, "deu", 3); 
-              Desc->TtxType         = 1;
-              Desc->TtxMagazine     = 1;
+                Offset              += Elem->ESInfoLen2;
+                PMT->SectionLen2    += sizeof(tElemStream) + Elem->ESInfoLen2;
+
+                Elem = (tElemStream*) &Packet->Data[Offset];
+                Elem->Reserved1       = 7;
+                Elem->Reserved2       = 0xf;
+                Offset                += sizeof(tElemStream);
+
+                if(NrContinuityPIDs < MAXCONTINUITYPIDS && HumaxHeader.Allgemein.AudioPID != 0xffff)
+                  ContinuityPIDs[NrContinuityPIDs++] = HumaxHeader.Allgemein.AudioPID;
+              }
+
+              {
+                tTSTtxDesc *ttxDesc = (tTSTtxDesc*) &Packet->Data[Offset];
+                Elem->stream_type     = 6;
+                Elem->ESPID1          = HumaxHeader.Allgemein.TeletextPID / 256;
+                Elem->ESPID2          = HumaxHeader.Allgemein.TeletextPID % 256;
+                Elem->ESInfoLen1      = 0;
+                Elem->ESInfoLen2      = sizeof(tTSTtxDesc);
+
+//                strcpy(&Packet->Data[Offset], "V" "\x05" "deu" "\x09");
+                ttxDesc->DescrTag        = DESC_Teletext;
+                ttxDesc->DescrLength     = 5;
+                memcpy(ttxDesc->LanguageCode, "deu", 3);
+                ttxDesc->TtxType         = 1;
+                ttxDesc->TtxMagazine     = 1;
+              }
             }
             Offset                += Elem->ESInfoLen2;
             PMT->SectionLen2      += sizeof(tElemStream) + Elem->ESInfoLen2;

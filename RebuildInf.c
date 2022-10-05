@@ -1110,21 +1110,21 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             fseeko64(fIn, +HumaxHeaderLaenge, SEEK_CUR);
         }
 
-        // Kopiere Descriptor-Packets vom Dateianfang in Buffer
+        // Kopiere PAT/PMT/EIT-Pakete vom Dateianfang in Buffer
         if(Durchlauf == 1)
         {
           tTSPacket *packet1, *packet2;
           fseeko64(fIn, FilePos, SEEK_SET);  // Hier auf 0 setzen (?)
-          fread(Buffer, PACKETSIZE, 32, fIn) * PACKETSIZE;
+          fread(Buffer, PACKETSIZE, 32, fIn);
 
           packet1 = (tTSPacket*) &Buffer[PACKETOFFSET];
           packet2 = (tTSPacket*) &Buffer[PACKETOFFSET + PACKETSIZE];
 
-          if (((packet1->PID1 * 256 + packet1->PID2 == 0) && (packet1->Data[0] == 0) && (packet1->Data[1] == TABLE_PAT)) && ((packet2->PID1 * 256 + packet2->PID2 == 256) && (packet2->Data[0] == 0) && (packet2->Data[1] == TABLE_PMT)))
+          if (((packet1->PID1 * 256 + packet1->PID2 == 0) && (packet1->Data[0] == 0) && (packet1->Data[1] == TABLE_PAT)) && ((packet2->PID1 * 256 + packet2->PID2 == PMTPID) && (packet2->Data[0] == 0) && (packet2->Data[1] == TABLE_PMT)))
           {
             memset(PATPMTBuf, 0, 2*192);
             memcpy(&PATPMTBuf[(PACKETSIZE==192) ? 0 : 4], &Buffer[0], PACKETSIZE);
-            memcpy(&PATPMTBuf[(PACKETSIZE==192) ? 0 : 4], &Buffer[PACKETSIZE], PACKETSIZE);
+            memcpy(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], &Buffer[PACKETSIZE], PACKETSIZE);
             WriteDescPackets = TRUE;
 
             NrEPGPacks = 0;
@@ -1150,13 +1150,13 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         }
 
         if(!SDTOK)
-          printf ("  Failed to get service name from SDT.\n");
+          printf ("  Failed to get service name from SDT (%d/2).\n", Durchlauf + 1);
         if(!EITOK && (Durchlauf == 1) && (EITBuffer.ValidBuffer == 0) && (LastEITBuffer == 0))
           EITOK = !EITBuffer.ErrorFlag && AnalyseEIT(EITBuffer.Buffer1, EITBuffer.BufferPtr, RecInf->ServiceInfo.ServiceID, RecInf);  // Versuche EIT trotzdem zu parsen (bei gestrippten Aufnahmen gibt es kein Folge-Paket, das den Payload_Unit_Start auslöst)
         if(!EITOK)
-          printf ("  Failed to get the EIT information.\n");
+          printf ("  Failed to get the EIT information (%d/2).\n", Durchlauf + 1);
         if(TeletextPID != 0xffff && !TtxOK)
-          printf ("  Failed to get start time from Teletext.\n");
+          printf ("  Failed to get start time from Teletext (%d/2).\n", Durchlauf + 1);
         PSBuffer_Reset(&PMTBuffer);
         PSBuffer_Reset(&EITBuffer);
         if(TeletextPID != 0xffff)

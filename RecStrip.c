@@ -1691,7 +1691,7 @@ int main(int argc, const char* argv[])
     fprintf(stderr, "%s\t%llu\t%s\t%s\t%s\t%lld\t%lld\t%s\t",  RecFileIn,  RecFileSize,  FileDateStr,  StartTimeStr,  DurationStr,  FirstFilePCR,  LastFilePCR,  (Inf_TMSS->RecHeaderInfo.rs_HasBeenStripped ? "yes" : "no"));
 
     // SERVICE:  InfType;   Sender;   ServiceID;  PMTPid;  VideoPid;  AudioPid;  VideoType;  AudioType;  HD;  VideoWidth x VideoHeight;  VideoFPS;  VideoDAR
-    fprintf(stderr, "ST_TMS%c\t%s\t%hu\t%hd\t%hd\t%hd\t0x%hx\t0x%hx\t%s\t%dx%d\t%.1f fps\t%.3f\t",  (SystemType==ST_TMSS ? 's' : ((SystemType==ST_TMSC) ? 'c' : ((SystemType==ST_TMST) ? 't' : '?'))),  Inf_TMSS->ServiceInfo.ServiceName,  Inf_TMSS->ServiceInfo.ServiceID,  Inf_TMSS->ServiceInfo.PMTPID,  Inf_TMSS->ServiceInfo.VideoPID,  Inf_TMSS->ServiceInfo.AudioPID,  Inf_TMSS->ServiceInfo.VideoStreamType,  Inf_TMSS->ServiceInfo.AudioStreamType,  (isHDVideo ? "yes" : "no"),  VideoWidth,  VideoHeight,  (NavFrames ? NavFrames/((double)NavDurationMS/1000) : VideoFPS),  VideoDAR);
+    fprintf(stderr, "ST_TMS%c\t%s\t%hu\t%hd\t%hd\t%hd\t0x%hx\t0x%hx\t%s\t%dx%d\t%.1f fps\t%.3f\t",  (SystemType==ST_TMSS ? 's' : ((SystemType==ST_TMSC) ? 'c' : ((SystemType==ST_TMST) ? 't' : '?'))),  Inf_TMSS->ServiceInfo.ServiceName,  Inf_TMSS->ServiceInfo.ServiceID,  Inf_TMSS->ServiceInfo.PMTPID,  Inf_TMSS->ServiceInfo.VideoPID,  Inf_TMSS->ServiceInfo.AudioPID,  Inf_TMSS->ServiceInfo.VideoStreamType,  Inf_TMSS->ServiceInfo.AudioStreamType,  (isHDVideo ? "yes" : "no"),  VideoWidth,  VideoHeight,  (VideoFPS ? VideoFPS : (NavFrames ? NavFrames/((double)NavDurationMS/1000) : 0)),  VideoDAR);
 
     // SEGMENTMARKERS (getrennt durch ; und |)
     if (NrSegmentMarker > 2)
@@ -1762,7 +1762,7 @@ int main(int argc, const char* argv[])
   }
 
   // Spezialanpassung Humax / Medion
-  if ((HumaxSource || EycosSource || MedionMode==1) && fOut /*&& DoMerge != 1*/)
+  if ((HumaxSource || EycosSource || MedionMode==1) /*&& fOut && DoMerge != 1*/)
   {
     printf("  Generate new PAT/PMT for Humax/Medion/Eycos recording.\n");
     if (!HumaxSource && !EycosSource)
@@ -1770,8 +1770,8 @@ int main(int argc, const char* argv[])
 
     if (MedionMode == 1)
     {
-      ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID = 0x100;
-      printf("  TS: PMTPID=%hd", 0x100);
+      ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID = 256;
+      printf("  TS: PMTPID=%hd", 256);
       AnalysePMT(&PATPMTBuf[201], sizeof(PATPMTBuf) - 201, (TYPE_RecHeader_TMSS*)InfBuffer);
       NrContinuityPIDs = 0;
     }
@@ -1828,7 +1828,8 @@ int main(int argc, const char* argv[])
     if(MedionMode == 1) SimpleMuxer_Close();
     CutProcessor_Free();
     InfProcessor_Free();
-    free(PendingBuf); PendingBuf = NULL;      
+    free(PendingBuf); PendingBuf = NULL;
+    if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
     printf("ERROR: Cannot write output %s.\n", RecFileOut);
     TRACEEXIT;
     exit(7);

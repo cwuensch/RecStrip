@@ -55,8 +55,10 @@ ab 0x158: Marken (jeweils ein Long)
 #pragma pack(push, 1)
 typedef struct
 {
-  dword                 Type;  // 0x0b = Video, 0x04 / 0x05 / 0x0a = Audio, 0x09 = PCR?
-  dword                 PID;
+  dword                 Type:8;   // 0x0b = Video, 0x04 / 0x05 / 0x0a = Audio, 0x09 = PCR?
+  dword                 Unused:24;
+  dword                 PID:16;
+  dword                 Unused2:16;
 } tEycosPid;
 
 typedef struct
@@ -67,7 +69,8 @@ typedef struct
 
 typedef struct
 {
-  int                   NrPids;        // unbekannt?
+  dword                 NrPids:8;      // unbekannt?
+  dword                 Unknown:24;
   tEycosPid             Pids[16];      // 1. Video, 2. + 3. Audio, 4. PCR?
   word                  ConstantU;     // "U#"
   word                  ServiceID;
