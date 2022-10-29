@@ -448,13 +448,13 @@ bool isPacketStart_Rev(const byte PacketArray[], int ArrayLen)  // braucht 9*192
   return ret;
 }
 
-int FindNextPacketStart(const byte PacketArray[], int ArrayLen)  // braucht 20*192+1733 = 5573 / 1185+1733 = 2981
+int FindNextPacketStart(const byte PacketArray[], int ArrayLen)  // braucht [ 20*192 = 3840 / 10*188 + 1184 = 3064 ] + 1733
 {
   int ret = -1;
   int i;
 
   TRACEENTER;
-  for (i = 0; i <= 20; i++)
+  for (i = 0; i <= 20; i++)   // 20*192 = 3840
   {
     if (PACKETOFFSET + (i * PACKETSIZE) >= ArrayLen)
       break;
@@ -471,7 +471,7 @@ int FindNextPacketStart(const byte PacketArray[], int ArrayLen)  // braucht 20*1
   
   if (ret < 0)
   {
-    for (i = 1; i <= 1184; i++)
+    for (i = 1; i <= 3064; i++)   // 10*188 + 1184 = 3064
     {
       if (i + PACKETOFFSET >= ArrayLen)
         break;
@@ -489,13 +489,13 @@ int FindNextPacketStart(const byte PacketArray[], int ArrayLen)  // braucht 20*1
   return ret;
   TRACEEXIT;
 }
-int FindPrevPacketStart(const byte PacketArray[], int ArrayLen)  // braucht 20*192+1733 = 5573 / 1185+1733 = 2981
+int FindPrevPacketStart(const byte PacketArray[], int ArrayLen)  // braucht [ 20*192 = 3840 / 10*188 + 1184 = 3064 ] + 1733
 {
   int ret = -1;
   int i;
 
   TRACEENTER;
-  for (i = 0; i <= 20; i++)
+  for (i = 0; i <= 20; i++)   // 20*192 = 3840
   {
     if ((i+1) * PACKETSIZE > ArrayLen + PACKETOFFSET)
       break;
@@ -512,14 +512,14 @@ int FindPrevPacketStart(const byte PacketArray[], int ArrayLen)  // braucht 20*1
   
   if (ret < 0)
   {
-    for (i = 1; i <= 1184; i++)
+    for (i = 1; i <= 3064; i++)   // 10*188 + 1184 = 3064
     {
       if (i + PACKETSIZE > ArrayLen + PACKETOFFSET)
         break;
 
       if (PacketArray[ArrayLen - PACKETSIZE - i + PACKETOFFSET] == 'G')
       {
-        if (isPacketStart(PacketArray, ArrayLen - i))
+        if (isPacketStart_Rev(PacketArray, ArrayLen - i))
         {
           ret = ArrayLen - i - PACKETSIZE;
           break;
@@ -665,6 +665,8 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     snprintf(MDEpgName, sizeof(MDEpgName), "%s_epg.txt", MDBaseName);
     snprintf(MDTtxName, sizeof(MDTtxName), "%s_ttx.pes", MDBaseName);
     snprintf(MDAudName, sizeof(MDEpgName), "%s_audio1.pes", MDBaseName);
+    VideoPID = 100;
+    TeletextPID = 102;
   }
 
   printf("\nInput file: %s\n", RecFileIn);
@@ -1150,7 +1152,7 @@ int main(int argc, const char* argv[])
   printf("- based on MovieCutter 3.6 -\n");
   printf("- portions of Mpeg2cleaner (S. Poeschel), RebuildNav (Firebird) & TFTool (jkIT)\n");
 #ifdef _DEBUG
-  printf("(int: %d, long: %d, dword: %d, word: %d, short: %d, byte: %d, char: %d)\n", sizeof(int), sizeof(long), sizeof(dword), sizeof(word), sizeof(short), sizeof(byte), sizeof(char));
+  printf("(long long: %d, long: %d, int: %d, dword: %d, word: %d, short: %d, byte: %d, char: %d)\n", sizeof(long long), sizeof(long), sizeof(int), sizeof(dword), sizeof(word), sizeof(short), sizeof(byte), sizeof(char));
 #endif
 #ifndef LINUX
   {
@@ -1616,8 +1618,8 @@ int main(int argc, const char* argv[])
     }
     else if (DoInfoOnly)
     {
-      fprintf(stderr, "RecFile\tRecSize\tFileDate\tStartTime\tDuration\tFirstPCR\tLastPCR\tisStripped\t");
-      fprintf(stderr, "InfType\tSender\tServiceID\tPMTPid\tVideoPid\tAudioPid\tVideoType\tAudioType\tHD\tResolution\tFPS\tAspectRatio\t");
+      fprintf(stderr, "RecFile\tRecSize\tFileDate\tStartTime\tDuration\tFirstPCR\tLastPCR\tFirstPTS\tLastPTS\tisStripped\t");
+      fprintf(stderr, "InfType\tSender\tServiceID\tPMTPid\tVideoPid\tAudioPid\tVideoType\tAudioType\tAudioTypeFlag\tHD\tResolution\tFPS\tAspectRatio\t");
       fprintf(stderr, "SegmentMarker\tBookmarks\t");
       fprintf(stderr, "EventName\tEventDesc\tEventStart\tEventEnd\tEventDuration\tExtEventText\n");
     }
@@ -1729,7 +1731,7 @@ int main(int argc, const char* argv[])
 /*    CloseInputFiles(FALSE, FALSE);
     CutProcessor_Free();
     InfProcessor_Free();
-    free(PendingBuf); PendingBuf = NULL;      
+    free(PendingBuf); PendingBuf = NULL;
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
     TRACEEXIT;
     exit(6);  */
@@ -1741,26 +1743,20 @@ int main(int argc, const char* argv[])
   }
 
   // Spezialanpassung Humax / Medion
-  if ((HumaxSource || EycosSource || MedionMode==1) && (!DoInfoOnly || DoFixPMT) /*&& fOut && DoMerge != 1*/)
+  if ((HumaxSource || EycosSource || MedionMode==1 || (WriteDescPackets && DoFixPMT)) && (!DoInfoOnly || DoFixPMT) /*&& fOut && DoMerge != 1*/)
   {
-    printf("  Generate new PAT/PMT for Humax/Medion/Eycos recording.\n");
-    if (!HumaxSource && !EycosSource)
-    {
-      AudioPIDs[0].pid = 101;
-      AudioPIDs[0].type = 0;
-      strncpy(AudioPIDs[0].desc, "deu", 3);
-      GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, 256, VideoPID, 101, TeletextPID, AudioPIDs);
-    }
+    printf("Generate new PAT/PMT for Humax/Medion/Eycos recording.\n");
+//    GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, 256, VideoPID, 101, TeletextPID, AudioPIDs);
+    GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID, VideoPID, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.AudioPID, TeletextPID, AudioPIDs);
 
-    if (MedionMode == 1)
+/*    if (MedionMode == 1)
     {
-      ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID = 256;
-      printf("  TS: PMTPID=%hd", 256);
       AnalysePMT(&PATPMTBuf[201], sizeof(PATPMTBuf) - 201, (TYPE_RecHeader_TMSS*)InfBuffer);
       NrContinuityPIDs = 0;
-    }
+    } */
+    printf("\n");
 
-    if (HumaxSource)
+    if (HumaxSource && !DoInfoOnly)
     {
       char HumaxFile[FBLIB_DIR_SIZE + 6], *p;
       strcpy(HumaxFile, RecFileOut);
@@ -1786,13 +1782,13 @@ int main(int argc, const char* argv[])
       snprintf(DurationStr, sizeof(DurationStr), "%02hu:%02hu:%02hu", Inf_TMSS->RecHeaderInfo.DurationMin/60, Inf_TMSS->RecHeaderInfo.DurationMin % 60, Inf_TMSS->RecHeaderInfo.DurationSec);
     strncpy(EventName, Inf_TMSS->EventInfo.EventNameDescription, Inf_TMSS->EventInfo.EventNameLength);
 
-    // REC:    RecFileIn;  RecSize;  FileDate;  StartTime (DateTime);  Duration (nav=hh:mm:ss.xxx, TS=hh:mm:ss);  FirstPCR;  LastPCR;  isStripped
+    // REC:    RecFileIn;  RecSize;  FileDate;  StartTime (DateTime);  Duration (nav=hh:mm:ss.xxx, TS=hh:mm:ss);  FirstPCR;  LastPCR;  FirstPTS;  LastPTS;  isStripped
     strncpy(FileDateStr, TimeStr_DB(FileDate, FileSec), sizeof(FileDateStr));
     strncpy(StartTimeStr, TimeStr_DB(Inf_TMSS->RecHeaderInfo.StartTime, Inf_TMSS->RecHeaderInfo.StartTimeSec), sizeof(StartTimeStr));
-    fprintf(stderr, "%s\t%llu\t%s\t%s\t%s\t%lld\t%lld\t%s\t",  RecFileIn,  RecFileSize,  FileDateStr,  StartTimeStr,  DurationStr,  FirstFilePCR,  LastFilePCR,  (Inf_TMSS->RecHeaderInfo.rs_HasBeenStripped ? "yes" : "no"));
+    fprintf(stderr, "%s\t%llu\t%s\t%s\t%s\t%lld\t%lld\t%u\t%u\t%s\t",  RecFileIn,  RecFileSize,  FileDateStr,  StartTimeStr,  DurationStr,  FirstFilePCR,  LastFilePCR,  FirstFilePTS,  LastFilePTS,  (Inf_TMSS->RecHeaderInfo.rs_HasBeenStripped ? "yes" : "no"));
 
-    // SERVICE:  InfType;   Sender;   ServiceID;  PMTPid;  VideoPid;  AudioPid;  VideoType;  AudioType;  HD;  VideoWidth x VideoHeight;  VideoFPS;  VideoDAR
-    fprintf(stderr, "ST_TMS%c\t%s\t%hu\t%hd\t%hd\t%hd\t0x%hx\t0x%hx\t%s\t%dx%d\t%.1f fps\t%.3f\t",  (SystemType==ST_TMSS ? 's' : ((SystemType==ST_TMSC) ? 'c' : ((SystemType==ST_TMST) ? 't' : '?'))),  Inf_TMSS->ServiceInfo.ServiceName,  Inf_TMSS->ServiceInfo.ServiceID,  Inf_TMSS->ServiceInfo.PMTPID,  Inf_TMSS->ServiceInfo.VideoPID,  Inf_TMSS->ServiceInfo.AudioPID,  Inf_TMSS->ServiceInfo.VideoStreamType,  Inf_TMSS->ServiceInfo.AudioStreamType,  (isHDVideo ? "yes" : "no"),  VideoWidth,  VideoHeight,  (VideoFPS ? VideoFPS : (NavFrames ? NavFrames/((double)NavDurationMS/1000) : 0)),  VideoDAR);
+    // SERVICE:  InfType;   Sender;   ServiceID;  PMTPid;  VideoPid;  AudioPid;  VideoType;  AudioType;  AudioTypeFlag;  HD;  VideoWidth x VideoHeight;  VideoFPS;  VideoDAR
+    fprintf(stderr, "ST_TMS%c\t%s\t%hu\t%hd\t%hd\t%hd\t0x%hx\t0x%hx\t0x%hx\t%s\t%dx%d\t%.1f fps\t%.3f\t",  (SystemType==ST_TMSS ? 's' : ((SystemType==ST_TMSC) ? 'c' : ((SystemType==ST_TMST) ? 't' : '?'))),  Inf_TMSS->ServiceInfo.ServiceName,  Inf_TMSS->ServiceInfo.ServiceID,  Inf_TMSS->ServiceInfo.PMTPID,  Inf_TMSS->ServiceInfo.VideoPID,  Inf_TMSS->ServiceInfo.AudioPID,  Inf_TMSS->ServiceInfo.VideoStreamType,  Inf_TMSS->ServiceInfo.AudioStreamType,  Inf_TMSS->ServiceInfo.AudioTypeFlag,  (isHDVideo ? "yes" : "no"),  VideoWidth,  VideoHeight,  (VideoFPS ? VideoFPS : (NavFrames ? NavFrames/((double)NavDurationMS/1000) : 0)),  VideoDAR);
 
     // SEGMENTMARKERS (getrennt durch ; und |)
     if (NrSegmentMarker > 2)
@@ -1822,7 +1818,9 @@ int main(int argc, const char* argv[])
     if (BookmarkInfo->NrBookmarks > 0)
     {
       int NrTimeStamps, p;
-      tTimeStamp2 *TimeStamps = NavLoad(RecFileIn, &NrTimeStamps, PACKETSIZE);
+      tTimeStamp2 *TimeStamps = NULL;
+
+      NavLoad(RecFileIn, &NrTimeStamps, PACKETSIZE);  // Erzeugt Fehlermeldung, wenn nav-File nicht existiert!
       fprintf(stderr, "{");
 
       for (p = 0; p < (int)BookmarkInfo->NrBookmarks; p++)
@@ -1843,11 +1841,14 @@ int main(int argc, const char* argv[])
     fprintf(stderr, "\t");
 
     // EPG:    EventName;  EventDesc;  EventStart (DateTime);  EventEnd (DateTime);  EventDuration (hh:mm);  ExtEventText (inkl. ItemizedItems, ohne '\n', '\t')
-    fprintf(stderr, "%s\t%s\t%s\t", EventName,  &Inf_TMSS->EventInfo.EventNameDescription[Inf_TMSS->EventInfo.EventNameLength],  TimeStr_DB(EPG2TFTime(Inf_TMSS->EventInfo.StartTime, NULL), 0));
+    fprintf(stderr, "%s\t%s\t", EventName,  &Inf_TMSS->EventInfo.EventNameDescription[Inf_TMSS->EventInfo.EventNameLength]);
     if (Inf_TMSS->EventInfo.StartTime != 0)
+    {
+      fprintf(stderr, "%s\t", TimeStr_DB(EPG2TFTime(Inf_TMSS->EventInfo.StartTime, NULL), 0));
       fprintf(stderr, "%s\t%02hhu:%02hhu\t%s\n", TimeStr_DB(EPG2TFTime(Inf_TMSS->EventInfo.EndTime, NULL), 0),  Inf_TMSS->EventInfo.DurationHour,  Inf_TMSS->EventInfo.DurationMin,  (ExtEPGText ? ExtEPGText : ""));
+    }
     else
-      fprintf(stderr, "\t\t%s\n",  (ExtEPGText ? ExtEPGText : ""));
+      fprintf(stderr, "\t\t\t%s\n",  (ExtEPGText ? ExtEPGText : ""));
     if(ExtEPGText) free(ExtEPGText);
   }
 
@@ -1861,13 +1862,15 @@ int main(int argc, const char* argv[])
 
     if (DoInfFix == 2 && *InfFileIn)
     {
-      printf("\nINF FIX (source): Changing StartTime to: %s!\n", TimeStrTF(OrigStartTime, OrigStartSec));
+      printf("INF FIX (source): Changing StartTime to: %s\n", TimeStrTF(OrigStartTime, OrigStartSec));
       SetInfStripFlags(InfFileIn, FALSE, FALSE, TRUE);
     }
+    else
+      printf("No fix of source inf necessary.\n", TimeStrTF(OrigStartTime, OrigStartSec));
 
     if (DoInfFix == 2 || RecFileTimeStamp != RecDate)
     {
-      printf("\nINF FIX (source): Changing file timestamp to: %s!\n", TimeStrTF(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
+      printf("INF FIX (source): Changing file timestamp to: %s\n", TimeStrTF(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
       snprintf(NavFileIn, sizeof(NavFileIn), "%s.nav", RecFileIn);
 
       if (*RecFileIn)
@@ -1890,17 +1893,17 @@ int main(int argc, const char* argv[])
       printf("\nOutput rec: %s\n", RecFileOut);
       if (fOut = fopen(RecFileOut, "r+b"))
       {
-        fread(&PMTPacket[(PACKETSIZE==192) ? 0 : 4], PACKETSIZE, 1, fOut);
-        if (memcmp(&PATPMTBuf[(OutPacketSize==192) ? 0 : 4], &PMTPacket[(OutPacketSize==192) ? 0 : 4], OutPacketSize) == 0)
+        fread(PMTPacket, OutPacketSize, 1, fOut);
+        if (memcmp(&PATPMTBuf[(OutPacketSize==192) ? 0 : 4], PMTPacket, OutPacketSize) == 0)
         {
-          fread(&PMTPacket[(PACKETSIZE==192) ? 0 : 4], PACKETSIZE, 1, fOut);
-          if (memcmp(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], &PMTPacket[(OutPacketSize==192) ? 0 : 4], OutPacketSize) == 0)
+          fread(PMTPacket, OutPacketSize, 1, fOut);
+          if (memcmp(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], PMTPacket, OutPacketSize) == 0)
             DoFixPMT = FALSE;
         }
 
         if (DoFixPMT)
         {
-          printf("\nFixing PAT/PMT packets.\n");
+          printf("\nFixing PAT/PMT packets of output rec.\n");
           fseeko64(fOut, 0, SEEK_SET);
           fwrite(&PATPMTBuf[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut);
           fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], OutPacketSize, 1, fOut);
@@ -1908,11 +1911,11 @@ int main(int argc, const char* argv[])
           HDD_SetFileDateTime(RecFileOut, OldOutTimestamp);
         }
         else
-          printf("\nNo fix of PAT/PMT necessary.\n");
+          printf("\nNo fix of PAT/PMT (output) necessary.\n");
       }
       else
       {
-        printf("ERROR: Cannot write output %s.\n", RecFileOut);
+        printf("ERROR: Output file does not exist %s.\n", RecFileOut);
         fclose(fIn); fIn = NULL;
         CloseNavFileIn();
         if(MedionMode == 1) SimpleMuxer_Close();

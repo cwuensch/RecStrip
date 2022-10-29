@@ -322,9 +322,9 @@ bool SimpleMuxer_Open(FILE *fIn, char const* PESAudName, char const* PESTtxName,
 
   if (PESStream_Open(&PESVideo, fIn, VIDEOBUFSIZE) && PESStream_Open(&PESAudio, aud, 131027) && PESStream_Open(&PESTeletxt, ttx, 32768))
   {
-    if (!PESVideo.FileAtEnd)   { PESStream_GetNextPacket(&PESVideo); VideoPID = 100; }
-    if (!PESAudio.FileAtEnd)   { PESStream_GetNextPacket(&PESAudio); }
-    if (!PESTeletxt.FileAtEnd) { PESStream_GetNextPacket(&PESTeletxt); TeletextPID = 102; }
+    if (!PESVideo.FileAtEnd)    PESStream_GetNextPacket(&PESVideo);
+    if (!PESAudio.FileAtEnd)    PESStream_GetNextPacket(&PESAudio);
+    if (!PESTeletxt.FileAtEnd)  PESStream_GetNextPacket(&PESTeletxt);
 
     TRACEEXIT;
     return (!PESVideo.ErrorFlag && !PESAudio.ErrorFlag && !PESTeletxt.ErrorFlag);

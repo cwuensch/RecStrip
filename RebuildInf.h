@@ -44,6 +44,35 @@ typedef enum
   FR_RESERVED            = 9
 } FrameRates;
 
+
+#pragma pack(push, 1)
+
+typedef struct
+{
+  byte TableID;
+  byte SectionLen1:4;    // first 2 bits are 0
+  byte Reserved1:2;      // = 0x03 (all 1)
+  byte Private:1;        // = 0
+  byte SectionSyntax:1;  // = 1
+  byte SectionLen2;
+  byte TS_ID1;
+  byte TS_ID2;
+  byte CurNextInd:1;
+  byte VersionNr:5;
+  byte Reserved2:2;      // = 0x03 (all 1)
+  byte SectionNr;
+  byte LastSection;
+
+//  for i = 0 to N  {
+    word ProgramNr1:8;
+    word ProgramNr2:8;
+    word PMTPID1:5;  // oder NetworkPID, falls ProgramNr==0
+    word Reserved111:3;
+    word PMTPID2:8;  // oder NetworkPID, falls ProgramNr==0
+//  }
+  dword CRC32;
+} tTSPAT;
+
 typedef struct
 {
   byte TableID;
@@ -81,6 +110,38 @@ typedef struct
   byte Reserved2:4;      // = 0x07 (all 1)
   byte ESInfoLen2;
 } tElemStream;
+
+typedef struct
+{
+  byte DescrTag;
+  byte DescrLength;
+//  char Name[4];          // without terminating 0
+  byte Reserved:4;
+  byte asvc_flag:1;
+  byte mainid_flag:1;
+  byte bsid_flag:1;
+  byte component_type_flag:1;
+} tTSAC3Desc;            // Ist das richtig??
+
+typedef struct
+{
+  byte DescrTag;
+  byte DescrLength;
+  char LanguageCode[3]; // without terminating 0
+  byte AudioType;
+} tTSAudioDesc;
+
+typedef struct
+{
+  byte DescrTag;
+  byte DescrLength;
+  char LanguageCode[3];  // without terminating 0
+  byte TtxMagazine:1;    // = 1
+  byte Unknown2:2;       // = 0
+  byte TtxType:2;        // 1 = initial Teletext page
+  byte Unknown:3;        // unknown
+  byte FirstPage;
+} tTSTtxDesc;
 
 
 typedef struct
@@ -259,14 +320,45 @@ typedef struct
   byte                  Copyright:1;      // 0=none, 1=yes
   byte                  ModeExtension:2;
   byte                  Mode:2;           // 0=Stereo, 1=Joint Stereo, 2=Dual Channel, 3=Single Channel
-} tAudioHeader;
+} __attribute__((packed)) tAudioHeader;
 
+// siehe: http://stnsoft.com/DVD/dtshdr.html
+typedef struct
+{
+  byte                  StartCode[4];       // StartCode: 0x7FFE8001 (32 bits)
+
+  byte                  nblks1:1;
+  byte                  cpf:1;
+  byte                  shrt:5;
+  byte                  ftype:1;
+
+  byte                  fsize1:2;
+  byte                  nblks2:6;
+
+  byte                  fsize2;
+
+	byte                  amode1:4;
+  byte                  fsize3:4;
+
+  byte                  rate1:2;
+  byte                  sfreq:4;
+	byte                  amode2:2;
+
+  byte                  hdcd:1;
+  byte                  auxf:1;
+  byte                  timef:1;
+  byte                  dynf:1;
+  byte                  mix:1;
+  byte                  rate2:3;
+} tDTSHeader;
+#pragma pack(pop)
 
 
 #define                 EPGBUFFERSIZE 4097
 
 //extern FILE            *fIn;  // dirty Hack
 extern long long        FirstFilePCR, LastFilePCR;
+extern dword            FirstFilePTS, LastFilePTS;
 extern int              VideoHeight, VideoWidth;
 extern double           VideoFPS, VideoDAR;
 //extern int              TtxTimeZone;
@@ -279,7 +371,7 @@ void InitInfStruct(TYPE_RecHeader_TMSS *RecInf);
 bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf);
 bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf);
 
-bool SortAudioPIDs(tAudioTrack AudioPIDs[]);
+void SortAudioPIDs(tAudioTrack AudioPIDs[]);
 void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPID, word VideoPID, word AudioPID, word TtxPID, tAudioTrack AudioPIDs[]);
 
 #endif

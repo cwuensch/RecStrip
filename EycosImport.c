@@ -118,7 +118,7 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
 //      RecInf->RecHeaderInfo.DurationMin   = 0;  // TODO
 //      RecInf->RecHeaderInfo.DurationSec   = 0;  // TODO
       ContinuityPIDs[0] = VideoPID;
-      printf("    PMTPID=%hd, SID=%hu, PCRPID=%hd, Stream=0x%hhx, VPID=%hd, TtxPID=%hd\n", RecInf->ServiceInfo.PMTPID, RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID, RecInf->ServiceInfo.VideoStreamType, VideoPID, TeletextPID);
+      printf("    PMTPID=%hd, SID=%hu, PCRPID=%hd, Stream=0x%hhx, VPID=%hd, APID=%hd, TtxPID=%hd\n", RecInf->ServiceInfo.PMTPID, RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID, RecInf->ServiceInfo.VideoStreamType, VideoPID, AudioPID, TeletextPID);
 
       strncpy(RecInf->ServiceInfo.ServiceName, EycosHeader.SenderName, sizeof(RecInf->ServiceInfo.ServiceName) - 1);
 
@@ -180,7 +180,7 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
               RecInf->ServiceInfo.AudioTypeFlag = 1;
             }
 
-            for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0); k++);
+            for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0) && (AudioPIDs[k].pid != EycosHeader.Pids[j].PID); k++);
             if (k < MAXCONTINUITYPIDS)
             {
               AudioPIDs[k].pid = EycosHeader.Pids[j].PID;
@@ -196,7 +196,7 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
                 break;
               }
             }
-            printf("    Audio Track %d: PID=%d, Type=0x%x (%s) \n", j, AudioPIDs[k].pid, AudioPIDs[k].type, AudioPIDs[k].desc);
+            printf("    Audio Track %d: PID=%d, Type=0x%x (%s)\n", k+1, AudioPIDs[k].pid, AudioPIDs[k].type, AudioPIDs[k].desc);
             
             if (NrContinuityPIDs < MAXCONTINUITYPIDS)
             {
@@ -263,8 +263,8 @@ if (HOUR(RecInf->RecHeaderInfo.StartTime) != EycosEvent.EvtStartHour || MINUTE(R
 //  printf("ASSERT: Eycos Header EndTime (%u:%u) differs from converted time (%u:%u)!\n", EycosEvent.EvtEndHour, EycosEvent.EvtEndMin, HOUR(RecInf->EventInfo.EndTime), MINUTE(RecInf->EventInfo.EndTime));
 #endif
 //      RecInf->RecHeaderInfo.DurationMin = (word)((EvtEndUnix - EvtStartUnix) / 60);
-      RecInf->EventInfo.DurationHour    = RecInf->RecHeaderInfo.DurationMin / 60;
-      RecInf->EventInfo.DurationMin     = RecInf->RecHeaderInfo.DurationMin % 60;
+      RecInf->EventInfo.DurationHour    = (byte)((EvtEndUnix - EvtStartUnix) / 60);
+      RecInf->EventInfo.DurationMin     = (word)((EvtEndUnix - EvtStartUnix) % 60);
       printf("    Start Time (Event): %s (local)\n", TimeStrTF(RecInf->RecHeaderInfo.StartTime, 0));
     }
     fclose(fTxt);

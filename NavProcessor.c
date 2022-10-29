@@ -95,6 +95,34 @@ static int get_ue_golomb32(byte *p, byte *StartBit)
   return (1 << leadingZeroBits) - 1 + d;
 }
 
+static int get_ue_golomb8(byte d, byte *StartBit)
+{
+  int                   leadingZeroBits;
+
+  TRACEENTER;
+  if(d == 0)
+  {
+    TRACEEXIT;
+    return 0;
+  }
+
+  leadingZeroBits = 0;
+  while(((d >> *StartBit) & 1) == 0)
+  {
+    leadingZeroBits++;
+    *StartBit = *StartBit - 1;
+  }
+  *StartBit = *StartBit - 1;
+
+  d >>= (*StartBit + 1 - leadingZeroBits);
+  d &= ((1 << leadingZeroBits) - 1);
+
+  *StartBit = *StartBit - leadingZeroBits;
+
+  TRACEEXIT;
+  return (1 << leadingZeroBits) - 1 + d;
+}
+
 bool GetPTS2(byte *Buffer, dword *pPTS, dword *pDTS)  // 33 bits, 90 kHz, returns divided by 2 (?)
 {
   bool ret = FALSE;
@@ -239,17 +267,27 @@ dword DeltaPCR(dword FirstPCR, dword SecondPCR)
 
 dword FindPictureHeader(byte *Buffer, int BufferLen, byte *pFrameType)  // 1 = I-Frame, 2 = P-Frame, 3 = B-Frame (?)
 {
-  int                   i;
+  int i;
 
   TRACEENTER;
   for(i = 0; i < BufferLen - 6; i++)
   {
-    if((Buffer[i] == 0x00) && (Buffer[i + 1] == 0x00) && (Buffer[i + 2] == 0x01) && (Buffer[i + 3] == 0x00))
+    if((Buffer[i] == 0x00) && (Buffer[i + 1] == 0x00) && (Buffer[i + 2] == 0x01))
     {
-      if (pFrameType)
-        *pFrameType = (Buffer[i + 5] >> 3) & 0x03;
-      TRACEEXIT;
-      return i + 8;
+      if (isHDVideo && ((Buffer[i + 3] & 0x80) == 0x00))
+      {
+        // MPEG4 picture header: 
+        if(pFrameType)  *pFrameType = ((Buffer[i + 4] >> 5) & 7) + 1;
+        TRACEEXIT;
+        return i + 6;
+      }
+      else if (!isHDVideo && (Buffer[i + 3] == 0x00))
+      {
+        // MPEG2 picture header: http://dvdnav.mplayerhq.hu/dvdinfo/mpeghdrs.html#picture
+        if(pFrameType)  *pFrameType = (Buffer[i + 5] >> 3) & 0x03;
+        TRACEEXIT;
+        return i + 9;
+      }
     }
   }
   TRACEEXIT;
@@ -400,8 +438,12 @@ dbg_HeaderPosOffset = dbg_PositionOffset - (Ptr-PayloadStart <= 1 ? dbg_DelBytes
     // Process access on Packet[Ptr+4]
     if (GetPPSID)
     {
-      byte Bit = 31;
-      PPS[PPSCount-1].ID = get_ue_golomb32(&Packet->Data[Ptr], &Bit);
+      byte Bit = 7, Bit2 = 31;
+      byte ID2 = get_ue_golomb32(&Packet->Data[Ptr], &Bit2);
+      PPS[PPSCount-1].ID = get_ue_golomb8(Packet->Data[Ptr], &Bit);
+if(ID2 > 1 || (PPS[PPSCount-1].ID != ID2))
+  printf("DEBUG! ASSERTION ERROR: get_ue_golomb8 != get_ue_golomb32\n");
+
       #if DEBUGLOG != 0
         snprintf(&s[strlen(s)], sizeof(s)-strlen(s), " (ID=%d)", PPS[PPSCount-1].ID);
       #endif
@@ -409,13 +451,22 @@ dbg_HeaderPosOffset = dbg_PositionOffset - (Ptr-PayloadStart <= 1 ? dbg_DelBytes
     }
     if (GetSlicePPSID)
     {
-      byte Bit = 31;
+      byte Bit = 7, Bit2 = 31, SlicePPSID2;
       //first_mb_in_slice
-      get_ue_golomb32(&Packet->Data[Ptr], &Bit);
+      get_ue_golomb32(&Packet->Data[Ptr], &Bit2);
       //slice_type
-      get_ue_golomb32(&Packet->Data[Ptr], &Bit);
+      get_ue_golomb32(&Packet->Data[Ptr], &Bit2);
       //pic_parameter_set_id
-      SlicePPSID = get_ue_golomb32(&Packet->Data[Ptr], &Bit);
+      SlicePPSID2 = get_ue_golomb32(&Packet->Data[Ptr], &Bit2);
+
+      //first_mb_in_slice
+      get_ue_golomb8(Packet->Data[Ptr], &Bit);
+      //slice_type
+      get_ue_golomb8(Packet->Data[Ptr], &Bit);
+      //pic_parameter_set_id
+      SlicePPSID = get_ue_golomb8(Packet->Data[Ptr], &Bit);
+if(SlicePPSID2 || (SlicePPSID != SlicePPSID2))
+  printf("DEBUG! ASSERTION ERROR: get_ue_golomb8 != get_ue_golomb32\n");
 
       #if DEBUGLOG != 0
         snprintf(&s[strlen(s)], sizeof(s)-strlen(s), " (PPS ID=%hu)\n", SlicePPSID);
@@ -1232,7 +1283,7 @@ tTimeStamp2* NavLoad(const char *AbsInRec, int *const OutNrTimeStamps, byte Pack
   fNav = fopen(AbsFileName, "rb");
   if(!fNav)
   {
-    printf("  Could not open nav file.\n");
+//    printf("  Could not open nav file.\n");
     TRACEEXIT;
     return(NULL);
   }

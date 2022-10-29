@@ -147,7 +147,7 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           RecInf->RecHeaderInfo.DurationMin   = (word)(HumaxHeader.Allgemein.Dauer / 60);
           RecInf->RecHeaderInfo.DurationSec   = (word)(HumaxHeader.Allgemein.Dauer % 60);
           ContinuityPIDs[0] = VideoPID;
-          printf("    PMTPID=%hd, SID=%hu, PCRPID=%hd, Stream=0x%hhx, VPID=%hd, TtxPID=%hd\n", RecInf->ServiceInfo.PMTPID, RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID, RecInf->ServiceInfo.VideoStreamType, VideoPID, TeletextPID);
+          printf("    PMTPID=%hd, SID=%hu, PCRPID=%hd, Stream=0x%hhx, VPID=%hd, APID=%hd, TtxPID=%hd\n", RecInf->ServiceInfo.PMTPID, RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID, RecInf->ServiceInfo.VideoStreamType, VideoPID, HumaxHeader.Allgemein.AudioPID, TeletextPID);
 
           printf("    Start Time: %s\n", TimeStrTF(RecInf->RecHeaderInfo.StartTime, 0));
 
@@ -172,42 +172,45 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           for (j = 0; j < HumaxBookmarks->Anzahl; j++)
             RecInf->BookmarkInfo.Bookmarks[j] = (dword) ((long long)HumaxBookmarks->Items[j] * 32768 / 9024);
         }
-        else if ((i == 4) || (HumaxHeader.ZusInfoID == HumaxTonSpurenID))  // Header 4: Tonspuren
+        if ((i == 4) || (HumaxHeader.ZusInfoID == HumaxTonSpurenID))  // Header 4: Tonspuren
         {
-          tHumaxBlock_Tonspuren* HumaxTonspuren = (tHumaxBlock_Tonspuren*)HumaxHeader.ZusInfos;
-
           AudioPIDs[0].pid = HumaxHeader.Allgemein.AudioPID;
           AudioPIDs[0].sorted = TRUE;
           
-          for (j = 0; j < HumaxTonspuren->Anzahl; j++)
+          if (HumaxHeader.ZusInfoID == HumaxTonSpurenID)
           {
-            if (HumaxTonspuren->Items[j].PID == AudioPIDs[0].pid)
+            tHumaxBlock_Tonspuren* HumaxTonspuren = (tHumaxBlock_Tonspuren*)HumaxHeader.ZusInfos;
+            for (j = 0; j < HumaxTonspuren->Anzahl; j++)
             {
-              strncpy(AudioPIDs[0].desc, HumaxTonspuren->Items[j].Name, 3);
-              if ((j >= 1) && (strncmp(AudioPIDs[0].desc, "AC", 2) != 0 || strncmp(AudioPIDs[0].desc, "ac", 2) != 0))   // (strstr(AudioPIDs[k].desc, "2ch") == 0) && (strstr(AudioPIDs[k].desc, "mis") == 0) && (strstr(AudioPIDs[k].desc, "fra") == 0)
+              if (HumaxTonspuren->Items[j].PID == AudioPIDs[0].pid)
               {
-                RecInf->ServiceInfo.AudioStreamType = STREAM_AUDIO_MPEG4_AC3_PLUS;
-                RecInf->ServiceInfo.AudioTypeFlag = 1;
+                strncpy(AudioPIDs[0].desc, HumaxTonspuren->Items[j].Name, 3);
+                if ((j >= 1) && (strncmp(AudioPIDs[0].desc, "AC", 2) != 0 || strncmp(AudioPIDs[0].desc, "ac", 2) != 0))   // (strstr(AudioPIDs[k].desc, "2ch") == 0) && (strstr(AudioPIDs[k].desc, "mis") == 0) && (strstr(AudioPIDs[k].desc, "fra") == 0)
+                {
+                  RecInf->ServiceInfo.AudioStreamType = STREAM_AUDIO_MPEG4_AC3_PLUS;
+                  RecInf->ServiceInfo.AudioTypeFlag = 1;
+                }
               }
-            }
-            else
-            {
-              for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0); k++);
-              if (k < MAXCONTINUITYPIDS)
+              else
               {
-                AudioPIDs[k].pid = HumaxTonspuren->Items[j].PID;
-                AudioPIDs[k].sorted = TRUE;
-                strncpy(AudioPIDs[k].desc, HumaxTonspuren->Items[j].Name, 3);
+                for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0) && (AudioPIDs[k].pid != HumaxTonspuren->Items[j].PID); k++);
+                if (k < MAXCONTINUITYPIDS)
+                {
+                  AudioPIDs[k].pid = HumaxTonspuren->Items[j].PID;
+                  AudioPIDs[k].sorted = TRUE;
+                  strncpy(AudioPIDs[k].desc, HumaxTonspuren->Items[j].Name, 3);
+                }
               }
-            }
 
-            if (NrContinuityPIDs < MAXCONTINUITYPIDS)
-            {
-              for (k = 1; (k < NrContinuityPIDs) && (ContinuityPIDs[k] != HumaxTonspuren->Items[j].PID); k++);
-              if (k <= NrContinuityPIDs)
-                ContinuityPIDs[NrContinuityPIDs++] = HumaxTonspuren->Items[j].PID;
+              if (NrContinuityPIDs < MAXCONTINUITYPIDS)
+              {
+                for (k = 1; (k < NrContinuityPIDs) && (ContinuityPIDs[k] != HumaxTonspuren->Items[j].PID); k++);
+                if (k >= NrContinuityPIDs)
+                  ContinuityPIDs[NrContinuityPIDs++] = HumaxTonspuren->Items[j].PID;
+              }
             }
           }
+          if(!*AudioPIDs[0].desc) strncpy(AudioPIDs[0].desc, "deu", 3);
         }
       }
     }

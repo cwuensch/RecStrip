@@ -10,7 +10,7 @@
 #define MAXCONTINUITYPIDS            8
 #define BUFSIZE                  65536
 #define FBLIB_DIR_SIZE             512
-#define RECBUFFERENTRIES          5000
+//#define RECBUFFERENTRIES          5000
 #define PENDINGBUFSIZE           65536
 #define VIDEOBUFSIZE           2097152
 #define CONT_MAXDIST             38400
@@ -165,8 +165,8 @@ bool HDD_FileExist(const char *AbsFileName);
 bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize);
 void AddContinuityError(word CurPID, long long CurrentPosition, byte CountShould, byte CountIs);
 bool isPacketStart(const byte PacketArray[], int ArrayLen);        // braucht 9*192+5 = 1733 / 3*192+5 = 581
-int  FindNextPacketStart(const byte PacketArray[], int ArrayLen);  // braucht 20*192+1733 = 5573 / 1185+1733 = 2981
-int  FindPrevPacketStart(const byte PacketArray[], int ArrayLen);  // braucht 20*192+1733 = 5573 / 1185+1733 = 2981
+int  FindNextPacketStart(const byte PacketArray[], int ArrayLen);  // braucht [ 20*192 = 3840 / 10*188 + 1184 = 3064 ] + 1733
+int  FindPrevPacketStart(const byte PacketArray[], int ArrayLen);  // braucht [ 20*192 = 3840 / 10*188 + 1184 = 3064 ] + 1733
 //int  GetPacketSize(FILE *RecFile, int *OutOffset);
 void DeleteSegmentMarker(int MarkerIndex, bool FreeCaption);
 int  main(int argc, const char* argv[]);

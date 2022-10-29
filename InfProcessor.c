@@ -172,21 +172,25 @@ bool LoadInfFromRec(char *AbsRecFileName)
 
   if (HumaxSource)
   {
-    Result = LoadHumaxHeader(fIn, PATPMTBuf, RecInf);
+    Result = LoadHumaxHeader(fIn, RecInf);
     if (!Result) HumaxSource = FALSE;
   }
   else if (EycosSource)
   {
-    Result = LoadEycosHeader(AbsRecFileName, PATPMTBuf, RecInf);
+    Result = LoadEycosHeader(AbsRecFileName, RecInf);
     if (!Result) EycosSource = FALSE;
   }
 
   Result = GenerateInfFile(fIn, RecInf);
   
-  if (HumaxSource || EycosSource)
+  if (HumaxSource || EycosSource || MedionMode == 1)
   {
+    int k;
+    for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0) && (AudioPIDs[k].pid != RecInf->ServiceInfo.AudioPID); k++);
+    if ((k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid == RecInf->ServiceInfo.AudioPID))
+      if(AudioPIDs[k].type == 1) RecInf->ServiceInfo.AudioStreamType = STREAM_AUDIO_MPEG1;
+
     SortAudioPIDs(AudioPIDs);
-    GeneratePatPmt(PATPMTBuf, 1, RecInf->ServiceInfo.PMTPID, VideoPID, RecInf->ServiceInfo.AudioPID, TeletextPID, AudioPIDs);
   }
 
 //  CurrentStartTime = ((TYPE_RecHeader_Info*)InfBuffer)->StartTime;

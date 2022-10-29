@@ -26,6 +26,7 @@ FILE                   *fTtxOut = NULL;
 static tPSBuffer        TtxBuffer;
 static int              LastBuffer = 0;
 static bool             FirstPacketAfterBreak = TRUE;
+static uint16_t         pages[8], nrpages = 0;
 
 // global TS PCR value
 dword global_timestamp = 0;
@@ -558,12 +559,33 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
     uint8_t flag_subtitle = (unham_8_4(packet->data[5]) & 0x08) >> 3;
     uint16_t page_number;
     uint8_t charset;
+    uint16_t page;
 
     cc_map[i] |= flag_subtitle << (m - 1);
 
-    if ((config.page == 0) && (flag_subtitle == YES) && (i < 0xff)) {
-      config.page = (m << 8) | (unham_8_4(packet->data[1]) << 4) | unham_8_4(packet->data[0]);
-      printf("  TTX: Trying to extract subtitles from page %03x\n\n", config.page);
+    if ((flag_subtitle == YES) && (i < 0xff)) {
+      page = (m << 8) | i;
+      if (config.page == 0)
+      {
+        config.page = page;
+        printf("  TTX: Trying to extract subtitles from page %03x\n\n", config.page);
+        pages[nrpages++] = page;
+      }
+      else if (page != config.page)
+      {
+        int k;
+        for (k = 0; ((k < nrpages) && (pages[k] != page)); k++);
+        if ((k >= nrpages) && (nrpages < 8))
+        {
+          if (page == 150 || page == 777 || page == 149 || page == 571) {
+            config.page = page;
+            printf("  TTX: Using alternative subtitle page: %03x\n\n", page);
+          }
+          else
+            printf("  TTX: Additional subtitle page: %03x\n\n", page);
+          pages[nrpages++] = page;
+        }
+      }
     }
 
      // Page number and control bits
@@ -926,6 +948,8 @@ void TtxProcessor_Init(word SubtitlePage)
 {
   memset(&page_buffer, 0, sizeof(teletext_page_t));
   config.page = SubtitlePage;
+  nrpages = 0;
+  memset(pages, 0, sizeof(pages));
 }
 
 bool LoadTeletextOut(const char* AbsOutFile)
