@@ -1,6 +1,7 @@
 #ifndef __REBUILDINFH__
 #define __REBUILDINFH__
 
+// PAT/PMT: https://www.etsi.org/deliver/etsi_en/300400_300499/300468/01.11.01_60/en_300468v011101p.pdf
 typedef enum
 {
   TABLE_PAT              = 0x00,
@@ -12,6 +13,7 @@ typedef enum
 typedef enum
 {
   DESC_Audio             = 0x0A,
+  DESC_StreamIdentifier  = 'R',  // 0x52
   DESC_EITShortEvent     = 'M',  // 0x4d
   DESC_EITExtEvent       = 'N',  // 0x4e
   DESC_Service           = 'H',  // 0x48
@@ -102,6 +104,18 @@ typedef struct
 
 typedef struct
 {
+  byte DescrTag;
+  byte DescrLength;
+} tTSDesc;
+typedef struct
+{
+  byte DescrTag;
+  byte DescrLength;
+  byte Data[1];
+} tTSDesc2;
+
+typedef struct
+{
   byte stream_type;
   byte ESPID1:5;
   byte Reserved1:3;      // = 0x03 (all 1)
@@ -142,6 +156,25 @@ typedef struct
   byte Unknown:3;        // unknown
   byte FirstPage;
 } tTSTtxDesc;
+
+typedef struct
+{
+  byte DescrTag;
+  byte DescrLength;
+  char LanguageCode[3];  // without terminating 0
+  byte subtitling_type;
+  byte composition_page_id1;
+  byte composition_page_id2;
+  byte ancillary_page_id1;
+  byte ancillary_page_id2;
+} tTSSubtDesc;
+
+typedef struct
+{
+  byte DescrTag;
+  byte DescLength;
+  byte component_tag;
+} tTSStreamIDDesc;
 
 
 typedef struct
@@ -260,12 +293,6 @@ typedef struct
 //  char Text[];
 } tExtEvtDesc;
 
-typedef struct
-{
-  byte DescrTag;
-  byte DescrLength;
-  // Data of length DescrLength
-} tTSDesc;
 
 // siehe: http://stnsoft.com/DVD/mpeghdrs.html
 typedef struct
@@ -351,6 +378,13 @@ typedef struct
   byte                  mix:1;
   byte                  rate2:3;
 } tDTSHeader;
+
+typedef struct
+{
+  byte                  data_identifier;       // 0x10 = Teletext
+  byte                  data_unit_id;          // 0x02 = Teletext non-subtitle, 0x03 = Teletext subtitle
+  byte                  data_unit_length;
+} tTtxHeader;
 #pragma pack(pop)
 
 
@@ -369,9 +403,9 @@ tPVRTime EPG2TFTime(tPVRTime TFTimeStamp, int *const out_timeoffset);
 tPVRTime AddTimeSec(tPVRTime pvrTime, byte pvrTimeSec, byte *const outSec, int addSeconds);
 void InitInfStruct(TYPE_RecHeader_TMSS *RecInf);
 bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf);
-bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf);
+//bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf);
 
 void SortAudioPIDs(tAudioTrack AudioPIDs[]);
-void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPID, word VideoPID, word AudioPID, word TtxPID, tAudioTrack AudioPIDs[]);
+void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPID, word VideoPID, word AudioPID, word TtxPID, word SubtitlesPID, tAudioTrack AudioPIDs[], bool PATonly);
 
 #endif

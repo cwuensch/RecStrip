@@ -40,6 +40,8 @@ static bool             GetPPSID = FALSE, GetSlicePPSID = FALSE, GetPrimPicType 
 static byte             SlicePPSID = 0;
 static dword            FirstSEIPTS = 0, SEIPTS = 0, IFramePTS = 0, SPSLen = 0;
 static dword            FirstPCR = 0;
+static dword            Golomb = 0;
+static byte             GolombFull = 0;
 //static tFrameCtr        CounterStack[COUNTSTACKSIZE];
 //static int              LastIFrame = 0;
 
@@ -65,63 +67,75 @@ static bool             FirstRun = TRUE;
 // *****  PROCESS NAV FILE  *****
 // ----------------------------------------------
 
-static int get_ue_golomb32(byte *p, byte *StartBit)
+static int get_ue_golomb32(/* byte *p */ dword d, byte *StartBit)
 {
   int                   leadingZeroBits;
-  dword                 d;
+//  dword                 d;
 
   TRACEENTER;
-  d = (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3];
-  if(d == 0)
+//  d = (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3];
+  if(d == 0 || *StartBit > 32)
   {
     TRACEEXIT;
     return 0;
   }
 
   leadingZeroBits = 0;
-  while(((d >> *StartBit) & 1) == 0)
+  while((*StartBit > 1) && (((d >> *StartBit) & 1) == 0))
   {
     leadingZeroBits++;
     *StartBit = *StartBit - 1;
   }
   *StartBit = *StartBit - 1;
+  
+  if (*StartBit >= leadingZeroBits)
+  {
+    d >>= (*StartBit + 1 - leadingZeroBits);
+    d &= ((1 << leadingZeroBits) - 1);
 
-  d >>= (*StartBit + 1 - leadingZeroBits);
-  d &= ((1 << leadingZeroBits) - 1);
-
-  *StartBit = *StartBit - leadingZeroBits;
-
+    *StartBit = *StartBit - leadingZeroBits;
+    TRACEEXIT;
+    return (1 << leadingZeroBits) - 1 + d;
+  }
+  printf("Assertion error: get_ue_golomb32() used more than 32 bits!\n");
+  *StartBit = 0;
   TRACEEXIT;
-  return (1 << leadingZeroBits) - 1 + d;
+  return 0;
 }
 
-static int get_ue_golomb8(byte d, byte *StartBit)
+/*static int get_ue_golomb8(byte d, byte *StartBit)
 {
   int                   leadingZeroBits;
 
   TRACEENTER;
-  if(d == 0)
+  if(d == 0 || *StartBit > 7)
   {
     TRACEEXIT;
     return 0;
   }
 
   leadingZeroBits = 0;
-  while(((d >> *StartBit) & 1) == 0)
+  while((*StartBit > 1) && (((d >> *StartBit) & 1) == 0))
   {
     leadingZeroBits++;
     *StartBit = *StartBit - 1;
   }
   *StartBit = *StartBit - 1;
 
-  d >>= (*StartBit + 1 - leadingZeroBits);
-  d &= ((1 << leadingZeroBits) - 1);
+  if (*StartBit >= leadingZeroBits)
+  {
+    d >>= (*StartBit + 1 - leadingZeroBits);
+    d &= ((1 << leadingZeroBits) - 1);
 
-  *StartBit = *StartBit - leadingZeroBits;
-
+    *StartBit = *StartBit - leadingZeroBits;
+    TRACEEXIT;
+    return (1 << leadingZeroBits) - 1 + d;
+  }
   TRACEEXIT;
-  return (1 << leadingZeroBits) - 1 + d;
-}
+  printf("Assertion error: get_ue_golomb8() used more than 8 bits!\n");
+  *StartBit = 0;
+  return 0;
+} */
 
 bool GetPTS2(byte *Buffer, dword *pPTS, dword *pDTS)  // 33 bits, 90 kHz, returns divided by 2 (?)
 {
@@ -316,6 +330,7 @@ void NavProcessor_Init(void)
   SlicePPSID = 0;
   FirstSEIPTS = 0; SEIPTS = 0; IFramePTS = 0; SPSLen = 0;
   FirstPCR = 0;
+  GolombFull = 0;
 //  LastIFrame = 0;
 
   dbg_NavPictureHeaderOffset = 0; dbg_SEIFound = 0;
@@ -436,42 +451,44 @@ dbg_HeaderPosOffset = dbg_PositionOffset - (Ptr-PayloadStart <= 1 ? dbg_DelBytes
     }
 
     // Process access on Packet[Ptr+4]
-    if (GetPPSID)
+    if (GetPPSID || GetSlicePPSID)
     {
-      byte Bit = 7, Bit2 = 31;
-      byte ID2 = get_ue_golomb32(&Packet->Data[Ptr], &Bit2);
-      PPS[PPSCount-1].ID = get_ue_golomb8(Packet->Data[Ptr], &Bit);
-if(ID2 > 1 || (PPS[PPSCount-1].ID != ID2))
-  printf("DEBUG! ASSERTION ERROR: get_ue_golomb8 != get_ue_golomb32\n");
+      if (GolombFull < 4)
+      {
+        Golomb = Golomb << 8 | Packet->Data[Ptr];
+        GolombFull++;
+      }
+      if (GolombFull >= 4)
+      {
+        if (GetPPSID)
+        {
+          byte Bit = 31;
+          PPS[PPSCount-1].ID = get_ue_golomb32(Golomb, &Bit);
 
-      #if DEBUGLOG != 0
-        snprintf(&s[strlen(s)], sizeof(s)-strlen(s), " (ID=%d)", PPS[PPSCount-1].ID);
-      #endif
-      GetPPSID = FALSE;
-    }
-    if (GetSlicePPSID)
-    {
-      byte Bit = 7, Bit2 = 31, SlicePPSID2;
-      //first_mb_in_slice
-      get_ue_golomb32(&Packet->Data[Ptr], &Bit2);
-      //slice_type
-      get_ue_golomb32(&Packet->Data[Ptr], &Bit2);
-      //pic_parameter_set_id
-      SlicePPSID2 = get_ue_golomb32(&Packet->Data[Ptr], &Bit2);
+          #if DEBUGLOG != 0
+            snprintf(&s[strlen(s)], sizeof(s)-strlen(s), " (ID=%d)", PPS[PPSCount-1].ID);
+          #endif
+          GetPPSID = FALSE;
+        }
+        if (GetSlicePPSID)
+        {
+          byte Bit = 31;
+          if (Ptr >= 180)
+            printf("Assertion error (warning): get_ue_golomb32() called with less than 4 bytes left!\n");
 
-      //first_mb_in_slice
-      get_ue_golomb8(Packet->Data[Ptr], &Bit);
-      //slice_type
-      get_ue_golomb8(Packet->Data[Ptr], &Bit);
-      //pic_parameter_set_id
-      SlicePPSID = get_ue_golomb8(Packet->Data[Ptr], &Bit);
-if(SlicePPSID2 || (SlicePPSID != SlicePPSID2))
-  printf("DEBUG! ASSERTION ERROR: get_ue_golomb8 != get_ue_golomb32\n");
+          //first_mb_in_slice
+          get_ue_golomb32(Golomb, &Bit);
+          //slice_type
+          get_ue_golomb32(Golomb, &Bit);
+          //pic_parameter_set_id
+          SlicePPSID = get_ue_golomb32(Golomb, &Bit);
 
-      #if DEBUGLOG != 0
-        snprintf(&s[strlen(s)], sizeof(s)-strlen(s), " (PPS ID=%hu)\n", SlicePPSID);
-      #endif
-      GetSlicePPSID = FALSE;
+          #if DEBUGLOG != 0
+            snprintf(&s[strlen(s)], sizeof(s)-strlen(s), " (PPS ID=%hu)\n", SlicePPSID);
+          #endif
+          GetSlicePPSID = FALSE;
+        }
+      }
     }
     if (GetPrimPicType)
     {
@@ -557,6 +574,7 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
               PPS[PPSCount].Len = 0;
               PPSCount++;
               GetPPSID = TRUE;
+              GolombFull = 0;
             }
 
             if (!navHD.FrameType)
@@ -576,6 +594,7 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
               strcpy(s, "NAL_SLICE");
             #endif
             GetSlicePPSID = TRUE;
+            GolombFull = 0;
             if((navHD.FrameType == 3) && (NALRefIdc > 0)) navHD.FrameType = 2;
             break;
           }

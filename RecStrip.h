@@ -134,16 +134,16 @@ typedef struct
 
 // Globale Variablen
 extern char             RecFileIn[], RecFileOut[], MDEpgName[], MDTtxName[], MDAudName[];
-extern byte             PATPMTBuf[], *EPGPacks;
+extern byte            *PATPMTBuf, *EPGPacks;
 extern unsigned long long RecFileSize;
 extern time_t           RecFileTimeStamp;
 extern SYSTEM_TYPE      SystemType;
 extern byte             PACKETSIZE, PACKETOFFSET, OutPacketSize;
-extern word             VideoPID, TeletextPID, TeletextPage;
+extern word             VideoPID, TeletextPID, SubtitlesPID, TeletextPage;
 extern tAudioTrack      AudioPIDs[];
 extern word             ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs;
 extern bool             isHDVideo, AlreadyStripped, HumaxSource, EycosSource;
-extern bool             DoStrip, DoSkip, RemoveEPGStream, RemoveTeletext, RebuildNav, RebuildInf, DoInfoOnly, DoFixPMT, MedionMode, MedionStrip, WriteDescPackets;
+extern bool             DoStrip, DoSkip, RemoveEPGStream, RemoveTeletext, RebuildNav, RebuildInf, DoInfoOnly, DoFixPMT, MedionMode, MedionStrip, WriteDescPackets, PMTatStart;
 extern int              DoCut, DoMerge, DoInfFix;
 extern int              NrEPGPacks;
 extern int              dbg_DelBytesSinceLastVid;
@@ -163,6 +163,7 @@ extern char            *ExtEPGText;
 dword CalcBlockSize(long long Size);
 bool HDD_FileExist(const char *AbsFileName);
 bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize);
+void AddContinuityPids(word newPID, bool first);
 void AddContinuityError(word CurPID, long long CurrentPosition, byte CountShould, byte CountIs);
 bool isPacketStart(const byte PacketArray[], int ArrayLen);        // braucht 9*192+5 = 1733 / 3*192+5 = 581
 int  FindNextPacketStart(const byte PacketArray[], int ArrayLen);  // braucht [ 20*192 = 3840 / 10*188 + 1184 = 3064 ] + 1733
