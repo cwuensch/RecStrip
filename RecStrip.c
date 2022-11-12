@@ -101,7 +101,7 @@
 // Globale Variablen
 char                    RecFileIn[FBLIB_DIR_SIZE], RecFileOut[FBLIB_DIR_SIZE], OutDir[FBLIB_DIR_SIZE];
 char                    MDEpgName[FBLIB_DIR_SIZE], MDTtxName[FBLIB_DIR_SIZE], MDAudName[FBLIB_DIR_SIZE];
-byte                    PATPMTBuf[2*192], *EPGPacks = 0;
+byte                   *PATPMTBuf = 0, *EPGPacks = 0;
 unsigned long long      RecFileSize = 0;
 time_t                  RecFileTimeStamp = 0;
 SYSTEM_TYPE             SystemType = ST_UNKNOWN;
@@ -315,6 +315,27 @@ static void PrintFileDefect()
     printf("\n");
   }
   TRACEEXIT;
+}
+
+void AddContinuityPids(word newPID, bool first)
+{
+  int k;
+  if (first || (NrContinuityPIDs < MAXCONTINUITYPIDS))
+  {
+    for (k = 1; (k < NrContinuityPIDs) && (ContinuityPIDs[k] != newPID); k++);
+    
+    if (first)
+    {
+      if (NrContinuityPIDs < MAXCONTINUITYPIDS)
+        NrContinuityPIDs++;
+      for (k = NrContinuityPIDs-1; k > 1; k--)
+        ContinuityPIDs[k] = ContinuityPIDs[k-1];
+      ContinuityPIDs[1] = newPID;
+    }
+    else
+      if (k >= NrContinuityPIDs)
+        ContinuityPIDs[NrContinuityPIDs++] = newPID;
+  }
 }
 
 void AddContinuityError(word CurPID, long long CurrentPosition, byte CountShould, byte CountIs)
@@ -1021,6 +1042,7 @@ static void CloseInputFiles(bool SetStripFlags, bool SetStartTime)
   }
   CloseNavFileIn();
   if(MedionMode == 1) SimpleMuxer_Close();
+  if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
   if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
 
   TRACEEXIT;
@@ -1639,6 +1661,17 @@ int main(int argc, const char* argv[])
   NavProcessor_Init();
   TtxProcessor_Init(TeletextPage);
 
+  PATPMTBuf = (byte*) malloc(4*192);
+  if (!PATPMTBuf)
+  {
+    printf("ERROR: Memory allocation failed.\n");
+    CutProcessor_Free();
+    InfProcessor_Free();
+    TRACEEXIT;
+    exit(2);
+  }
+  memset(PATPMTBuf, 0, 4*192);
+
   // Pending Buffer initialisieren
   if (DoStrip)
   {
@@ -1649,6 +1682,7 @@ int main(int argc, const char* argv[])
       printf("ERROR: Memory allocation failed.\n");
       CutProcessor_Free();
       InfProcessor_Free();
+      free(PATPMTBuf); PATPMTBuf = NULL;
       TRACEEXIT;
       exit(2);
     }
@@ -1678,6 +1712,7 @@ int main(int argc, const char* argv[])
       CutProcessor_Free();
       InfProcessor_Free();
       free(PendingBuf); PendingBuf = NULL;
+      if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
       if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
       printf("\nRecStrip finished. No files to process.\n");
       TRACEEXIT;
@@ -1693,6 +1728,7 @@ int main(int argc, const char* argv[])
       CutProcessor_Free();
       InfProcessor_Free();
       free(PendingBuf); PendingBuf = NULL;
+      if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
       if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
       printf("ERROR: Cannot read output %s.\n", RecFileOut);
       TRACEEXIT;
@@ -1719,6 +1755,7 @@ int main(int argc, const char* argv[])
     CutProcessor_Free();
     InfProcessor_Free();
     free(PendingBuf); PendingBuf = NULL;
+    if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
     printf("ERROR: Cannot open input %s.\n", RecFileIn);
     TRACEEXIT;
@@ -1732,6 +1769,7 @@ int main(int argc, const char* argv[])
     CutProcessor_Free();
     InfProcessor_Free();
     free(PendingBuf); PendingBuf = NULL;
+    if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
     TRACEEXIT;
     exit(6);  */
@@ -1743,7 +1781,7 @@ int main(int argc, const char* argv[])
   }
 
   // Spezialanpassung Humax / Medion
-  if ((HumaxSource || EycosSource || MedionMode==1 || (WriteDescPackets && DoFixPMT)) && (!DoInfoOnly || DoFixPMT) /*&& fOut && DoMerge != 1*/)
+  if ((HumaxSource || EycosSource || MedionMode==1 || (WriteDescPackets && (DoFixPMT || PATPMTBuf[4]!='G'))) && (!DoInfoOnly || DoFixPMT) /*&& fOut && DoMerge != 1*/)
   {
     printf("Generate new PAT/PMT for Humax/Medion/Eycos recording.\n");
 //    GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, 256, VideoPID, 101, TeletextPID, AudioPIDs);
@@ -1893,20 +1931,20 @@ int main(int argc, const char* argv[])
       printf("\nOutput rec: %s\n", RecFileOut);
       if (fOut = fopen(RecFileOut, "r+b"))
       {
-        fread(PMTPacket, OutPacketSize, 1, fOut);
-        if (memcmp(&PATPMTBuf[(OutPacketSize==192) ? 0 : 4], PMTPacket, OutPacketSize) == 0)
+        for (k = 0; (PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + k*192] == 'G'); k++)
         {
           fread(PMTPacket, OutPacketSize, 1, fOut);
-          if (memcmp(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], PMTPacket, OutPacketSize) == 0)
+          if (memcmp(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + k*192], PMTPacket, OutPacketSize) == 0)
             DoFixPMT = FALSE;
+          k++;
         }
 
         if (DoFixPMT)
         {
           printf("\nFixing PAT/PMT packets of output rec.\n");
           fseeko64(fOut, 0, SEEK_SET);
-          fwrite(&PATPMTBuf[(OutPacketSize==192) ? 0 : 4], OutPacketSize, 1, fOut);
-          fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], OutPacketSize, 1, fOut);
+          for (k = 0; (PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + k*192] == 'G'); k++)
+            fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + 192], OutPacketSize, 1, fOut);
           fclose(fOut); fOut = NULL;
           HDD_SetFileDateTime(RecFileOut, OldOutTimestamp);
         }
@@ -1922,6 +1960,7 @@ int main(int argc, const char* argv[])
         CutProcessor_Free();
         InfProcessor_Free();
         free(PendingBuf); PendingBuf = NULL;
+        if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
         if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
         TRACEEXIT;
         exit(7);
@@ -1938,6 +1977,7 @@ int main(int argc, const char* argv[])
     CutProcessor_Free();
     InfProcessor_Free();
     free(PendingBuf); PendingBuf = NULL;
+    if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
     printf("\nRecStrip finished. View information / fix PMT only.\n");
     TRACEEXIT;
@@ -1988,6 +2028,7 @@ int main(int argc, const char* argv[])
     CutProcessor_Free();
     InfProcessor_Free();
     free(PendingBuf); PendingBuf = NULL;
+    if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
     printf("ERROR: Cannot write output %s.\n", RecFileOut);
     TRACEEXIT;
@@ -2062,6 +2103,7 @@ int main(int argc, const char* argv[])
             CutProcessor_Free();
             InfProcessor_Free();
             free(PendingBuf); PendingBuf = NULL;
+            if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
             if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
             exit(10);
           }
@@ -2174,6 +2216,7 @@ int main(int argc, const char* argv[])
               CutProcessor_Free();
               InfProcessor_Free();
               free(PendingBuf); PendingBuf = NULL;      
+              if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
               if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
               printf("ERROR: Cannot create %s.\n", RecFileOut);
               TRACEEXIT;
@@ -2599,6 +2642,7 @@ int main(int argc, const char* argv[])
           CutProcessor_Free();
           InfProcessor_Free();
           free(PendingBuf);
+          if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
           if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
           printf("\n RecStrip aborted.\n");
           TRACEEXIT;
@@ -2666,6 +2710,7 @@ int main(int argc, const char* argv[])
         CutProcessor_Free();
         InfProcessor_Free();
         free(PendingBuf); PendingBuf = NULL;
+        if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
         if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
         printf("ERROR: Cannot open input %s.\n", RecFileIn);
         TRACEEXIT;
@@ -2697,6 +2742,7 @@ int main(int argc, const char* argv[])
     CutProcessor_Free();
     InfProcessor_Free();
     free(PendingBuf); PendingBuf = NULL;
+    if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
     exit(10);
   }
@@ -2705,6 +2751,7 @@ int main(int argc, const char* argv[])
   CutProcessor_Free();
   InfProcessor_Free();
   free(PendingBuf); PendingBuf = NULL;
+  if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
   if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
 
   if (NrCopiedSegments > 0)

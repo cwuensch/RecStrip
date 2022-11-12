@@ -233,7 +233,7 @@ void InitInfStruct(TYPE_RecHeader_TMSS *RecInf)
   TRACEEXIT;
 }
 
-bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf)
+static bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf)
 {
   tTSPMT               *PMT = (tTSPMT*)PSBuffer;
   int                   ElemPt;
@@ -345,34 +345,14 @@ bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf)
         case STREAM_AUDIO_MPEG4_DTS:
         {
           int k;
-          if(RecInf->ServiceInfo.AudioStreamType == 0xff)
+          for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0) && (AudioPIDs[k].pid != PID); k++);
+          if ((k < MAXCONTINUITYPIDS) && (AudioPIDs[k].flags == 0))
           {
-            RecInf->ServiceInfo.AudioStreamType = Elem->stream_type;
-            RecInf->ServiceInfo.AudioPID = PID;
-            switch (RecInf->ServiceInfo.AudioStreamType)
-            {
-              case STREAM_AUDIO_MPEG1:
-              case STREAM_AUDIO_MPEG2:
-                RecInf->ServiceInfo.AudioTypeFlag = 0;
-                break;
-              case STREAM_AUDIO_MPEG4_AC3:
-                RecInf->ServiceInfo.AudioTypeFlag = 1;
-                break;
-              case STREAM_AUDIO_MPEG4_AAC:
-              case STREAM_AUDIO_MPEG4_AAC_PLUS:
-                RecInf->ServiceInfo.AudioTypeFlag = 2;
-                break;
-              default:
-                RecInf->ServiceInfo.AudioTypeFlag = 3;
-            }
+            AudioPIDs[k].pid = PID;
+            AudioPIDs[k].type = Elem->stream_type;  // (Elem->stream_type == 4) ? 0 : (Elem->stream_type == 3 ? 1 : Elem->stream_type);
+            AudioPIDs[k].sorted = TRUE;
           }
-
-          if (NrContinuityPIDs < MAXCONTINUITYPIDS)
-          {
-            for (k = 1; (k < NrContinuityPIDs) && (ContinuityPIDs[k] != PID); k++);
-            if (k >= NrContinuityPIDs)
-              ContinuityPIDs[NrContinuityPIDs++] = PID;
-          }
+          AddContinuityPids(PID, FALSE);
           break;
         }
       }
@@ -380,8 +360,8 @@ bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf)
     ElemPt += (ElemLength + sizeof(tElemStream));
   }
 
-  if(NrContinuityPIDs < MAXCONTINUITYPIDS && TeletextPID != 0xffff)  ContinuityPIDs[NrContinuityPIDs++] = TeletextPID;
-  if(NrContinuityPIDs < MAXCONTINUITYPIDS)                           ContinuityPIDs[NrContinuityPIDs++] = 0x12;
+  if(TeletextPID != 0xffff) AddContinuityPids(TeletextPID, FALSE);
+  AddContinuityPids(0x12, FALSE);
   printf("\n");
 
 //  isHDVideo = HDFound;
@@ -561,140 +541,140 @@ printf("  TS: EPGExtEvent = %s\n", ExtEPGText);
 static bool AnalyseTtx(byte *PSBuffer, int BufSize, tPVRTime *const TtxTime, byte *const TtxTimeSec, int *const TtxTimeZone, char *const ServiceName, int SvcNameLen)
 {
   char                  programme[50];
+  dword                 History = 0xffffffff;
   int                   PESLength = BufSize, p = 0;
 
   TRACEENTER;
 
-  if (PSBuffer[0]==0 && PSBuffer[1]==0 && PSBuffer[2]==1)
+  while (p + 10 < BufSize)
   {
-    p = 6;
-    PESLength = PSBuffer[4] * 256 + PSBuffer[5];
-    PESLength = min(PESLength + 6, BufSize);
-    if ((PSBuffer[p] & 0xf0) == 0x80)  // Additional header
-      p += PSBuffer[8] + 3;
-  }
-
-  if (PSBuffer[p] == 0x10)
-  {
-    p++;
-    while (p + 46 <= PESLength)
+    if ((History & 0xFFFFFF00) == 0x00000100)
     {
-      if ((PSBuffer[p] & 0xfe) == 0x02 && PSBuffer[p+1] == 44)
+      tPESHeader *PESHeader = (tPESHeader*) &PSBuffer[p-4];
+      PESLength = PESHeader->PacketLength1 * 256 + PESHeader->PacketLength2;
+      PESLength = min(PESLength + 7, BufSize - (p-4));
+      p = p-4 + 7 + (PESHeader->OptionalHeaderMarker ? PESHeader->PESHeaderLen + 2 : 0);  // Additional header
+    }
+
+    if (PSBuffer[p] == 0x10)
+    {
+      p++;
+      while (p + 46 <= PESLength)
       {
-        byte *data_block = &PSBuffer[p+6];
-
-        byte row = ((hamming_decode_rev(PSBuffer[p+5]) & 0x0f) << 4) | (hamming_decode_rev(PSBuffer[p+4]) & 0x0f);
-        byte magazin = row & 7;
-        if (magazin == 0) magazin = 8;
-        row = row >> 3;
-
-        if (magazin == 8 && row == 30 && data_block[1] == 0xA8)
+        if ((PSBuffer[p] & 0xfe) == 0x02 && PSBuffer[p+1] == 44)
         {
-          int i;
-          byte packet_format = hamming_decode_rev(data_block[0]) & 0x0e;
+          byte *data_block = &PSBuffer[p+6];
 
-          if (packet_format <= 2)
+          byte row = ((hamming_decode_rev(PSBuffer[p+5]) & 0x0f) << 4) | (hamming_decode_rev(PSBuffer[p+4]) & 0x0f);
+          byte magazin = row & 7;
+          if (magazin == 0) magazin = 8;
+          row = row >> 3;
+
+          if (magazin == 8 && row == 30 && data_block[1] == 0xA8)
           {
-            // get initial page
-/*            byte initialPageUnits = hamming_decode_rev(data_block[1]);
-            byte initialPageTens  = hamming_decode_rev(data_block[2]);
-            //byte initialPageSub1  = hammingDecode_rev(data_block[3]);
-            byte initialPageSub2  = hamming_decode_rev(data_block[4]);
-            //byte initialPageSub3  = hamming_decode_rev(data_block[5]);
-            byte initialPageSub4  = hamming_decode_rev(data_block[6]);
-            dword InitialPage = initialPageUnits + 10 * initialPageTens + 100 * (((initialPageSub2 >> 3) & 1) + ((initialPageSub4 >> 1) & 6));
-*/
-            // Programme Identification
-            programme[0] = '\0';
-            for (i = 20; i < 40; i++)
+            int i;
+            byte packet_format = hamming_decode_rev(data_block[0]) & 0x0e;
+
+            if (packet_format <= 2)
             {
-              char u[4] = { 0, 0, 0, 0 };
-              word c = telx_to_ucs2(byte_reverse(data_block[i]));
-              // strip any control codes from PID, eg. TVP station
-              if (c < 0x20) continue;
-              ucs2_to_utf8(u, c);
-              strcat(programme, u);
-            }
-            rtrim(programme);
-            if(ServiceName)
-            {
-//              memset(ServiceName, 0, SvcNameLen);
-              strncpy(ServiceName, programme, SvcNameLen-1);
-            }
-          }
-
-          if (packet_format < 2)
-          {
-            // offset in half hours
-            byte timeOffsetCode   = byte_reverse(data_block[9]);
-            byte timeOffsetH2     = ((timeOffsetCode >> 1) & 0x1F);
-
-            // get current time
-            byte mjd1             = byte_reverse(data_block[10]);
-            byte mjd2             = byte_reverse(data_block[11]);
-            byte mjd3             = byte_reverse(data_block[12]);
-            dword mjd = ((mjd1 & 0x0F)-1)*10000 + ((mjd2 >> 4)-1)*1000 + ((mjd2 & 0x0F)-1)*100 + ((mjd3 >> 4)-1)*10 + ((mjd3 & 0x0F)-1);
-
-            byte utc1             = byte_reverse(data_block[13]);
-            byte utc2             = byte_reverse(data_block[14]);
-            byte utc3             = byte_reverse(data_block[15]);
-
-            int localH = 10 * ((utc1 >> 4) - 1) + ((utc1 & 0x0f) - 1);
-            int localM = 10 * ((utc2 >> 4) - 1) + ((utc2 & 0x0f) - 1);
-            int localS = 10 * ((utc3 >> 4) - 1) + ((utc3 & 0x0f) - 1);
-
-            if ((timeOffsetCode & 0x40) == 0)
-            {
-              // positive offset polarity
-              localM += (timeOffsetH2 * 30);
-              localH += (localM / 60);
-              mjd    += (localH / 24);
-              localM  = localM % 60;
-              localH  = localH % 24;
-              if(TtxTimeZone) *TtxTimeZone = -1 * (int)timeOffsetH2 * 1800;
-            }
-            else
-            {
-              // negative offset polarity
-              localM -= (timeOffsetH2 * 30);
-              while (localM < 0)  { localM += 60; localH--; }
-              while (localH < 0)  { localH += 24; mjd--; }
-              if(TtxTimeZone) *TtxTimeZone = (int)timeOffsetH2 * 1800;
+              // get initial page
+  /*            byte initialPageUnits = hamming_decode_rev(data_block[1]);
+              byte initialPageTens  = hamming_decode_rev(data_block[2]);
+              //byte initialPageSub1  = hammingDecode_rev(data_block[3]);
+              byte initialPageSub2  = hamming_decode_rev(data_block[4]);
+              //byte initialPageSub3  = hamming_decode_rev(data_block[5]);
+              byte initialPageSub4  = hamming_decode_rev(data_block[6]);
+              dword InitialPage = initialPageUnits + 10 * initialPageTens + 100 * (((initialPageSub2 >> 3) & 1) + ((initialPageSub4 >> 1) & 6));
+  */
+              // Programme Identification
+              programme[0] = '\0';
+              for (i = 20; i < 40; i++)
+              {
+                char u[4] = { 0, 0, 0, 0 };
+                word c = telx_to_ucs2(byte_reverse(data_block[i]));
+                // strip any control codes from PID, eg. TVP station
+                if (c < 0x20) continue;
+                ucs2_to_utf8(u, c);
+                strcat(programme, u);
+              }
+              rtrim(programme);
+              if(ServiceName)
+              {
+  //              memset(ServiceName, 0, SvcNameLen);
+                strncpy(ServiceName, programme, SvcNameLen-1);
+              }
             }
 
-            if (TtxTime)
+            if (packet_format < 2)
             {
-              *TtxTime = DATE(mjd, localH, localM);
-              if(TtxTimeSec) *TtxTimeSec = localS;
-            }
+              // offset in half hours
+              byte timeOffsetCode   = byte_reverse(data_block[9]);
+              byte timeOffsetH2     = ((timeOffsetCode >> 1) & 0x1F);
 
-printf("  TS: Teletext Programme Identification Data: '%s'\n", programme);
-printf("  TS: Teletext date: %s (GMT%+d)\n", TimeStrTF(*TtxTime, *TtxTimeSec), -*TtxTimeZone/3600);
-//printf("  TS: Teletext date: mjd=%u, %02hhu:%02hhu:%02hhu\n", mjd, localH, localM, localS);
-            TRACEEXIT;
-            return TRUE;
+              // get current time
+              byte mjd1             = byte_reverse(data_block[10]);
+              byte mjd2             = byte_reverse(data_block[11]);
+              byte mjd3             = byte_reverse(data_block[12]);
+              dword mjd = ((mjd1 & 0x0F)-1)*10000 + ((mjd2 >> 4)-1)*1000 + ((mjd2 & 0x0F)-1)*100 + ((mjd3 >> 4)-1)*10 + ((mjd3 & 0x0F)-1);
+
+              byte utc1             = byte_reverse(data_block[13]);
+              byte utc2             = byte_reverse(data_block[14]);
+              byte utc3             = byte_reverse(data_block[15]);
+
+              int localH = 10 * ((utc1 >> 4) - 1) + ((utc1 & 0x0f) - 1);
+              int localM = 10 * ((utc2 >> 4) - 1) + ((utc2 & 0x0f) - 1);
+              int localS = 10 * ((utc3 >> 4) - 1) + ((utc3 & 0x0f) - 1);
+
+              if ((timeOffsetCode & 0x40) == 0)
+              {
+                // positive offset polarity
+                localM += (timeOffsetH2 * 30);
+                localH += (localM / 60);
+                mjd    += (localH / 24);
+                localM  = localM % 60;
+                localH  = localH % 24;
+                if(TtxTimeZone) *TtxTimeZone = -1 * (int)timeOffsetH2 * 1800;
+              }
+              else
+              {
+                // negative offset polarity
+                localM -= (timeOffsetH2 * 30);
+                while (localM < 0)  { localM += 60; localH--; }
+                while (localH < 0)  { localH += 24; mjd--; }
+                if(TtxTimeZone) *TtxTimeZone = (int)timeOffsetH2 * 1800;
+              }
+
+              if (TtxTime)
+              {
+                *TtxTime = DATE(mjd, localH, localM);
+                if(TtxTimeSec) *TtxTimeSec = localS;
+              }
+
+  printf("  TS: Teletext Programme Identification Data: '%s'\n", programme);
+  printf("  TS: Teletext date: %s (GMT%+d)\n", TimeStrTF(*TtxTime, *TtxTimeSec), -*TtxTimeZone/3600);
+  //printf("  TS: Teletext date: mjd=%u, %02hhu:%02hhu:%02hhu\n", mjd, localH, localM, localS);
+              TRACEEXIT;
+              return TRUE;
+            }
           }
         }
+        p += max(PSBuffer[p+1] + 2, 1);
       }
-      p += max(PSBuffer[p+1] + 2, 1);
     }
+    History = (History << 8) | PSBuffer[p++];
   }
-
   TRACEEXIT;
   return FALSE;
 }
 
 // Audio Substream Headers: http://stnsoft.com/DVD/ass-hdr.html
 // AC3-Header: http://stnsoft.com/DVD/ac3hdr.html
-static bool AnalyseAudio(byte *PSBuffer, int BufSize, tAudioTrack *const AudioTrack)
+static bool AnalyseAudio(byte *PSBuffer, int BufSize, word pid, tAudioTrack *const AudioTrack)
 {
   int                   p = 0;
   dword                 History = 0xffffffff;
-  word                  pid = 0;
   byte                  HeaderFound = 0;
   TRACEENTER;
-
-  if(AudioTrack) pid = AudioTrack->pid;
 
   while (p + 10 < BufSize)
   {
@@ -703,7 +683,7 @@ static bool AnalyseAudio(byte *PSBuffer, int BufSize, tAudioTrack *const AudioTr
     {
       tPESHeader *PESHeader = (tPESHeader*) &PSBuffer[p-4];
       HeaderFound = History & 0xFF;
-      p = p-4 + sizeof(tPESHeader) + PESHeader->PESHeaderLen;
+      p = p-4 + 7 + (PESHeader->OptionalHeaderMarker ? PESHeader->PESHeaderLen + 2 : 0);
     }
 
     // Audio Sequence Header
@@ -736,6 +716,21 @@ static bool AnalyseAudio(byte *PSBuffer, int BufSize, tAudioTrack *const AudioTr
         TRACEEXIT;
         return TRUE;
       }
+      else if (History == 0x000001BD) // && (PSBuffer[p] == 0x10) && ((PSBuffer[p+1] & 0xfe) == 0x02))
+      {
+        tTtxHeader *ttxHeader = (tTtxHeader*) &PSBuffer[p];
+        if ((ttxHeader->data_identifier == 0x10)  // = EBU data EN 300 472 (teletext)
+          && (ttxHeader->data_unit_id == 0x02 || ttxHeader->data_unit_id == 0x03))  // = EBU Teletext (non-subtitle) data / DATA_UNIT_EBU_TELETEXT_SUBTITLE / DATA_UNIT_EBU_TELETEXT_NONSUBTITLE
+        {
+          printf("  TS: PID=%d, Telextext stream\n", pid);
+          if (TeletextPID == (word) -1)
+            TeletextPID = pid;
+          TRACEEXIT;
+          return FALSE;
+        }
+        else if (ttxHeader->data_identifier == 0x20)  // = EBU Subtitles (?)
+          printf("  TS: PID=%d, DVB subtitles stream (assumed)\n", pid);
+      }
     }
     else if (HeaderFound && ((History & 0xFFF00000) == 0xFFF00000))
     {
@@ -764,7 +759,7 @@ static bool AnalyseAudio(byte *PSBuffer, int BufSize, tAudioTrack *const AudioTr
 }
 
 // PES Headers: https://en.wikipedia.org/wiki/Packetized_elementary_stream
-static bool AnalyseVideo(byte *PSBuffer, int BufSize, int *const VidHeight, int *const VidWidth, double *const VidFPS, double *const VidDAR)
+static bool AnalyseVideo(byte *PSBuffer, int BufSize, word pid, int *const VidHeight, int *const VidWidth, double *const VidFPS, double *const VidDAR)
 {
   const double          FrameRateValues[10]  = {0, 24000/1001.0, 24.0, 25.0, 30000/1001.0, 30.0, 50.0, 60000/1001.0, 60.0, 0};
   const double          AspectRatioValues[6] = {0, 1.0, 4/3.0, 16/9.0, 2.21, 0}; 
@@ -782,7 +777,7 @@ static bool AnalyseVideo(byte *PSBuffer, int BufSize, int *const VidHeight, int 
     {
       tPESHeader *PESHeader = (tPESHeader*) &PSBuffer[p-4];
       PESHeaderFound = TRUE;
-      p = p-4 + sizeof(tPESHeader) + PESHeader->PESHeaderLen;
+      p = p-4 + 7 + (PESHeader->OptionalHeaderMarker ? PESHeader->PESHeaderLen + 2 : 0);
     }
 
     // Video Sequence Header (MPEG2)
@@ -800,7 +795,7 @@ static bool AnalyseVideo(byte *PSBuffer, int BufSize, int *const VidHeight, int 
 //      Bitrate = (((SeqHeader->Bitrate1 << 8) + SeqHeader->Bitrate2) << 3) + SeqHeader->Bitrate3;
 
 //      isHDVideo = FALSE;
-      printf("  TS: PID=%hd, VideoType: MPEG2, %dx%d @ %.3f fps, AspectRatio=%s (%.3f)\n", VideoPID, VideoWidth, VideoHeight, VideoFPS, AspectRatioTexts[SeqHeader->AspectRatio], VideoDAR);
+      printf("  TS: PID=%hd, VideoType: MPEG2, %dx%d @ %.3f fps, AspectRatio=%s (%.3f) -> SD\n", pid, VideoWidth, VideoHeight, VideoFPS, AspectRatioTexts[SeqHeader->AspectRatio], VideoDAR);
       TRACEEXIT;
       return (SeqHeader->AspectRatio > 0) && (SeqHeader->FrameRate > 0);
     }
@@ -829,7 +824,7 @@ static bool AnalyseVideo(byte *PSBuffer, int BufSize, int *const VidHeight, int 
       else if ((VideoDAR - 1.0 <= 0.001) && (1.0 - VideoDAR <= 0.001))
         AspectString = AspectRatioTexts[AR_1to1];
 
-      printf("  TS: PID=%hd, VideoType: H.264, %dx%d @ %.3f fps, AspectRatio=%s (%.3f)\n", VideoPID, VideoWidth, VideoHeight, VideoFPS, AspectString, VideoDAR);
+      printf("  TS: PID=%hd, VideoType: H.264, %dx%d @ %.3f fps, AspectRatio=%s (%.3f) -> HD\n", pid, VideoWidth, VideoHeight, VideoFPS, AspectString, VideoDAR);
       TRACEEXIT;
       return (*VidFPS > 0) && (*VidDAR > 0);
     }
@@ -854,7 +849,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   tPVRTime              TtxTime = 0;
   byte                  TtxTimeSec = 0;
   dword                 TtxPCR = 0, dPCR = 0, dPTS = 0;
-  int                   Offset, ReadBytes, i, d;
+  int                   Offset, ReadBytes, d, i;
   bool                  PMTatStart = FALSE, EITOK = FALSE, SDTOK = FALSE, TtxFound = FALSE, TtxOK = FALSE, VidOK = FALSE;
   bool                  FirstFilePTSOK = FALSE, LastFilePTSOK = FALSE;
   int                   AudOK = 0;
@@ -914,7 +909,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           }
 
           if (!VidOK)
-            VidOK = AnalyseVideo(&Buffer[p], ReadBytes - p, &VideoHeight, &VideoWidth, &VideoFPS, &VideoDAR);
+            VidOK = AnalyseVideo(&Buffer[p], ReadBytes - p, VideoPID, &VideoHeight, &VideoWidth, &VideoFPS, &VideoDAR);
           if (VidOK && isHDVideo) RecInf->ServiceInfo.VideoStreamType = STREAM_VIDEO_MPEG4_H264;
 
           if(FirstFilePTSOK && (!DoInfoOnly || VidOK)) break;
@@ -973,7 +968,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         {
           while ((p < 32000) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1))
             p++;
-          if (AnalyseAudio(&Buffer[p], 32768-p, &AudioPIDs[0]))
+          if (AnalyseAudio(&Buffer[p], 32768-p, AudioPIDs[0].pid, &AudioPIDs[0]))
           {
 /*            if (AudioPIDs[0].type >= 2)
             {
@@ -1211,6 +1206,9 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     if (!PMTPID)
     {
       printf("  Failed to locate a PMT packet.\n");
+      RecInf->ServiceInfo.PMTPID = 256;  // TODO: Was wenn Kollision mit Audio-PID?
+      RecInf->ServiceInfo.ServiceID = 1;
+      WriteDescPackets = TRUE;
       ret = FALSE;
     }
 
@@ -1220,8 +1218,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     {
       PSBuffer_Init(&PMTBuffer, 0x0011, 16384, TRUE);
       PSBuffer_Init(&EITBuffer, 0x0012, 16384, TRUE);
-      if (TeletextPID != 0xffff)
-        PSBuffer_Init(&TtxBuffer, TeletextPID, 16384, FALSE);
+      PSBuffer_Init(&TtxBuffer, TeletextPID, 16384, FALSE);
       LastPMTBuffer = 0; LastEITBuffer = 0; LastTtxBuffer = 0;
 
       fseeko64(fIn, FilePos, SEEK_SET);  // Hier auf 0 setzen (?)
@@ -1271,51 +1268,94 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           }
           if(TtxFound && !TtxOK)
             TtxOK = (GetPCRms(p, &TtxPCR) && TtxPCR != 0);
-          if (DoInfoOnly && !VidOK)
+          if (!VidOK)
           {
             tTSPacket *curPacket = (tTSPacket*)p;
-            if (((curPacket->PID1 * 256 | curPacket->PID2) == VideoPID) && curPacket->Payload_Unit_Start)
+            if ((!PMTPID || ((curPacket->PID1 * 256 + curPacket->PID2) == VideoPID)) && curPacket->Payload_Unit_Start)
             {
               if (curPacket->Adapt_Field_Exists)
-                VidOK = AnalyseVideo((byte*)&curPacket->Data + curPacket->Data[0] + 1, sizeof(curPacket->Data) - curPacket->Data[0] - 1, &VideoHeight, &VideoWidth, &VideoFPS, &VideoDAR);
+                VidOK = AnalyseVideo((byte*)&curPacket->Data + curPacket->Data[0] + 1, sizeof(curPacket->Data) - curPacket->Data[0] - 1, (curPacket->PID1 * 256 | curPacket->PID2), &VideoHeight, &VideoWidth, &VideoFPS, &VideoDAR);
               else
-                VidOK = AnalyseVideo((byte*)&curPacket->Data, sizeof(curPacket->Data), &VideoHeight, &VideoWidth, &VideoFPS, &VideoDAR);
+                VidOK = AnalyseVideo((byte*)&curPacket->Data, sizeof(curPacket->Data), (curPacket->PID1 * 256 | curPacket->PID2), &VideoHeight, &VideoWidth, &VideoFPS, &VideoDAR);
+
+              if (VidOK)
+              {
+                RecInf->ServiceInfo.ServiceType = 0;  // SVC_TYPE_Tv
+                if(RecInf->ServiceInfo.VideoStreamType == 0xff)
+                {
+                  VideoPID = (curPacket->PID1 * 256 | curPacket->PID2);
+                  RecInf->ServiceInfo.VideoPID = VideoPID;
+                  RecInf->ServiceInfo.PCRPID = VideoPID;
+                  RecInf->ServiceInfo.VideoStreamType = (isHDVideo ? STREAM_VIDEO_MPEG4_H264 : STREAM_VIDEO_MPEG2);
+                  ContinuityPIDs[0] = VideoPID;
+                }
+              }
             }
           }
           {
             tTSPacket *curPacket = (tTSPacket*)p;
             word curPID = curPacket->PID1 * 256 | curPacket->PID2;
+            word TeletextPID_alt = TeletextPID; TeletextPID = (word) -1;
 
-            if ((curPID != VideoPID) && (curPID != TeletextPID) && curPacket->Payload_Unit_Start)
+            if ((curPID != VideoPID) && (curPID != TeletextPID_alt) && curPacket->Payload_Unit_Start)
             {
               int k;
               for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0) && (AudioPIDs[k].pid != curPID); k++);
               if ((k < MAXCONTINUITYPIDS) && (AudioPIDs[k].flags == 0))
               {
                 AudioPIDs[k].pid = curPID;
-                if (AnalyseAudio((byte*)&curPacket->Data + (curPacket->Adapt_Field_Exists ? curPacket->Data[0] + 1 : 0), sizeof(curPacket->Data) - (curPacket->Adapt_Field_Exists ? curPacket->Data[0] - 1 : 0), &AudioPIDs[k]))
+                if (AnalyseAudio((byte*)&curPacket->Data + (curPacket->Adapt_Field_Exists ? curPacket->Data[0] + 1 : 0), sizeof(curPacket->Data) - (curPacket->Adapt_Field_Exists ? curPacket->Data[0] - 1 : 0), curPID, &AudioPIDs[k]))
                 {
                   AudioPIDs[k].flags = 1;
-                  // eventuell raus(?)
-                  if (NrContinuityPIDs < MAXCONTINUITYPIDS)
-                  {
-                    for (k = 1; (k < NrContinuityPIDs) && (ContinuityPIDs[k] != curPID); k++);
-                    if (k >= NrContinuityPIDs)
-                      ContinuityPIDs[NrContinuityPIDs++] = curPID;
-                  }
+                  AddContinuityPids(curPID, FALSE);
                   AudOK++;
                 }
-                else AudioPIDs[k].flags = 2;
+                else
+                  if (AudioPIDs[k].pid == curPID)
+                    AudioPIDs[k].flags = 2;
               }
             }
+            if (TeletextPID_alt != (word)-1) TeletextPID = TeletextPID_alt;
           }
-          if((PMTatStart || (EITOK && SDTOK)) && (TtxOK || TeletextPID == 0xffff) && (!(HumaxSource || EycosSource || MedionMode==1) || AudOK>=3) && (!DoInfoOnly || VidOK)) break;
+          if((PMTatStart                                                || (EITOK && SDTOK)) && (TtxOK || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((!DoInfoOnly && PMTPID) || VidOK))
+            break;
           p += PACKETSIZE;
         }
-        if(((PMTatStart || HumaxSource || EycosSource || MedionMode==1) || (EITOK && SDTOK)) && (TtxOK || TeletextPID == 0xffff) && (!(HumaxSource || EycosSource || MedionMode==1) || AudOK>=3) && (!DoInfoOnly || VidOK)) break;
+        if(((PMTatStart || HumaxSource || EycosSource || MedionMode==1) || (EITOK && SDTOK)) && (TtxOK || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((!DoInfoOnly && PMTPID) || VidOK))
+        {
+          ret = TRUE;
+          break;
+        }
         if(HumaxSource)
           fseeko64(fIn, +HumaxHeaderLaenge, SEEK_CUR);
       }
+
+      // Setze Audio-Type in inf
+      if ((AudioPIDs[0].pid > 0) && (RecInf->ServiceInfo.AudioStreamType == 0xff))
+      {
+        RecInf->ServiceInfo.AudioPID = AudioPIDs[0].pid;
+        RecInf->ServiceInfo.AudioStreamType = (AudioPIDs[0].type <= 1) ? ((AudioPIDs[0].type == 1) ? STREAM_AUDIO_MPEG1 : STREAM_AUDIO_MPEG2) : AudioPIDs[0].type;
+        switch (RecInf->ServiceInfo.AudioStreamType)
+        {
+          case 0:
+          case 1:
+          case STREAM_AUDIO_MPEG1:
+          case STREAM_AUDIO_MPEG2:
+            RecInf->ServiceInfo.AudioTypeFlag = 0;
+            break;
+          case STREAM_AUDIO_MPEG4_AC3:
+            RecInf->ServiceInfo.AudioTypeFlag = 1;
+            break;
+          case STREAM_AUDIO_MPEG4_AAC:
+          case STREAM_AUDIO_MPEG4_AAC_PLUS:
+            RecInf->ServiceInfo.AudioTypeFlag = 2;
+            break;
+          default:
+            RecInf->ServiceInfo.AudioTypeFlag = 3;
+        }
+      }
+      if (TeletextPID != (word) -1) AddContinuityPids(TeletextPID, FALSE);
+      AddContinuityPids(0x12, FALSE);
 
       // Kopiere PAT/PMT/EIT-Pakete vom Dateianfang in Buffer (nur beim ersten File-Open?)
       if (PMTatStart /*&& !WriteDescPackets*/)
@@ -1359,8 +1399,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         printf ("  Failed to get start time from Teletext.\n");
       PSBuffer_Reset(&PMTBuffer);
       PSBuffer_Reset(&EITBuffer);
-      if(TeletextPID != 0xffff)
-        PSBuffer_Reset(&TtxBuffer);
+      PSBuffer_Reset(&TtxBuffer);
     }
 
 
@@ -1639,7 +1678,7 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPid, word Vid
 
   Offset                += Elem->ESInfoLen2;
   PMT->SectionLen2      += sizeof(tElemStream) + Elem->ESInfoLen2;
-
+  printf("  Video Track: PID=%d, %s, Type=0x%x\n", VideoPID, (isHDVideo ? "HD" : "SD"), Elem->stream_type);
 
   // Sortiere Audio-PIDs
 //  SortAudioPIDs(AudioPIDs);
@@ -1670,7 +1709,7 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPid, word Vid
     else if (AudioPIDs[k].type <= 1)
     {
       Desc = (tTSAudioDesc*) &Packet->Data[Offset];
-      Elem->stream_type   = ((AudioPIDs[k].type == 1) ? STREAM_AUDIO_MPEG1 : STREAM_AUDIO_MPEG2);
+      Elem->stream_type   = (AudioPIDs[k].type <= 1) ? ((AudioPIDs[k].type == 1) ? STREAM_AUDIO_MPEG1 : STREAM_AUDIO_MPEG2) : AudioPIDs[k].type;
       Elem->ESInfoLen2    = sizeof(tTSAudioDesc);
       printf("  Audio Track %d: PID=%d, MPEG, Type=0x%x (%s)\n", (k + 1), AudioPIDs[k].pid, Elem->stream_type, AudioPIDs[k].desc);
     }
@@ -1717,6 +1756,7 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPid, word Vid
 
     Offset                += Elem->ESInfoLen2;
     PMT->SectionLen2      += sizeof(tElemStream) + Elem->ESInfoLen2;
+    printf("  Teletext Track: PID=%d (%s)\n", TtxPID, "deu");
   }
 
   CRC                   = (dword*) &Packet->Data[Offset];

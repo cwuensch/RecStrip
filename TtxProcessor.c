@@ -764,7 +764,7 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
         uint32_t t;
         time_t t0;
 
-        printf("  TTX: Programme Identification Data = ");
+//        printf("  TTX: Programme Identification Data = ");
         for (i = 20; i < 40; i++) {
           char u[4] = { 0, 0, 0, 0 };
           uint16_t c = telx_to_ucs2(packet->data[i]);
@@ -772,9 +772,9 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
           if (c < 0x20) continue;
 
           ucs2_to_utf8(u, c);
-          printf("%s", u);
+//          printf("%s", u);
         }
-        printf("\n");
+//        printf("\n");
 
         // OMG! ETS 300 706 stores timestamp in 7 bytes in Modified Julian Day in BCD format + HH:MM:SS in BCD format
         // + timezone as 5-bit count of half-hours from GMT with 1-bit sign
@@ -798,7 +798,7 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
         // 4th step: conversion to time_t
         t0 = (time_t)t;
         // ctime output itself is \n-ended
-        printf("  TTX: Programme Timestamp (UTC) = %s\n", TimeStr_UTC(t0));
+//        printf("  TTX: Programme Timestamp (UTC) = %s\n", TimeStr_UTC(t0));
 
 //        VERBOSE_ONLY printf("  Transmission mode = %s\n", (transmission_mode == TRANSMISSION_MODE_SERIAL ? "serial" : "parallel"));
 
@@ -905,7 +905,8 @@ void process_pes_packet(uint8_t *buffer, uint16_t size) {
 
   // skip optional PES header and process each 46 bytes long teletext packet
   i = 7;
-  if (optional_pes_header_included == YES) i += 3 + optional_pes_header_length;
+  if (optional_pes_header_included == YES) i += 2 + optional_pes_header_length;
+  i++;
   while (i <= pes_packet_length - 6) {
     uint8_t data_unit_id = buffer[i++];
     uint8_t data_unit_len = buffer[i++];

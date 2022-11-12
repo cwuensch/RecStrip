@@ -351,6 +351,13 @@ typedef struct
   byte                  mix:1;
   byte                  rate2:3;
 } tDTSHeader;
+
+typedef struct
+{
+  byte                  data_identifier;       // 0x10 = Teletext
+  byte                  data_unit_id;          // 0x02 = Teletext non-subtitle, 0x03 = Teletext subtitle
+  byte                  data_unit_length;
+} tTtxHeader;
 #pragma pack(pop)
 
 
@@ -369,7 +376,7 @@ tPVRTime EPG2TFTime(tPVRTime TFTimeStamp, int *const out_timeoffset);
 tPVRTime AddTimeSec(tPVRTime pvrTime, byte pvrTimeSec, byte *const outSec, int addSeconds);
 void InitInfStruct(TYPE_RecHeader_TMSS *RecInf);
 bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf);
-bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf);
+//bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf);
 
 void SortAudioPIDs(tAudioTrack AudioPIDs[]);
 void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPID, word VideoPID, word AudioPID, word TtxPID, tAudioTrack AudioPIDs[]);

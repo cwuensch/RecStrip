@@ -377,20 +377,8 @@ if (RecHeaderInfo->Reserved != 0)
     }
 
     // Prüfe, ob Audio-PID in Continuity-Scan-Liste enthalten ist
-    for (k = 1; k < NrContinuityPIDs; k++)
-    {
-      if (ContinuityPIDs[k] == ServiceInfo->AudioPID)
-        break;
-    }
-    if (k >= NrContinuityPIDs)
-    {
-      if (NrContinuityPIDs < MAXCONTINUITYPIDS)
-        NrContinuityPIDs++;
-      for (k = NrContinuityPIDs-1; k > 1; k--)
-        ContinuityPIDs[k] = ContinuityPIDs[k-1];
-      ContinuityPIDs[1] = ServiceInfo->AudioPID;
-    }
-
+    AddContinuityPids(ServiceInfo->AudioPID, TRUE);
+    
     if(FirstTime)
     {
       if(RecHeaderInfo->rs_HasBeenStripped)  AlreadyStripped = TRUE;

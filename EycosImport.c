@@ -198,12 +198,7 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
             }
             printf("    Audio Track %d: PID=%d, Type=0x%x (%s)\n", k+1, AudioPIDs[k].pid, AudioPIDs[k].type, AudioPIDs[k].desc);
             
-            if (NrContinuityPIDs < MAXCONTINUITYPIDS)
-            {
-              for (k = 1; (k < NrContinuityPIDs) && (ContinuityPIDs[k] != EycosHeader.Pids[j].PID); k++);
-              if (k >= NrContinuityPIDs)
-                ContinuityPIDs[NrContinuityPIDs++] = EycosHeader.Pids[j].PID;
-            }
+            AddContinuityPids(EycosHeader.Pids[j].PID, FALSE);
             break;
           }
 

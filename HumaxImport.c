@@ -201,13 +201,7 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                   strncpy(AudioPIDs[k].desc, HumaxTonspuren->Items[j].Name, 3);
                 }
               }
-
-              if (NrContinuityPIDs < MAXCONTINUITYPIDS)
-              {
-                for (k = 1; (k < NrContinuityPIDs) && (ContinuityPIDs[k] != HumaxTonspuren->Items[j].PID); k++);
-                if (k >= NrContinuityPIDs)
-                  ContinuityPIDs[NrContinuityPIDs++] = HumaxTonspuren->Items[j].PID;
-              }
+              AddContinuityPids(HumaxTonspuren->Items[j].PID, FALSE);
             }
           }
           if(!*AudioPIDs[0].desc) strncpy(AudioPIDs[0].desc, "deu", 3);
@@ -215,8 +209,7 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       }
     }
   }
-
-  if(NrContinuityPIDs < MAXCONTINUITYPIDS && TeletextPID != 0xffff)  ContinuityPIDs[NrContinuityPIDs++] = TeletextPID;
+  AddContinuityPids(TeletextPID, FALSE);
 
 //  fseeko64(fIn, FilePos, SEEK_SET);
   if (!ret)
