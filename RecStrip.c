@@ -45,6 +45,7 @@
 #else
   #include <unistd.h>
   #include <utime.h>
+  #include <dirent.h>
 #endif
 
 #include <sys/stat.h>
@@ -1005,6 +1006,17 @@ SONST
   // Header-Pakete ausgeben (experimentell!)
   if ((HumaxSource || EycosSource || MedionMode==1 || (WriteDescPackets && (CurrentPosition >= 384 || !PMTatStart))) && fOut /*&& DoMerge != 1*/)
   {
+
+// DEBUG-NOV
+FILE *fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/PMT_6_OpenOutput.bin", "wb");
+fwrite(PATPMTBuf, 1, 4*192 + 5, fDbg);
+fclose(fDbg);
+// DEBUG-NOV
+fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/EIT_6_OpenOutput.bin", "wb");
+fwrite(EPGPacks, 192, NrEPGPacks, fDbg);
+fclose(fDbg);
+
+
     for (i = 0; (PATPMTBuf[4 + i*192] == 'G'); i++)
       if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + i*192], OutPacketSize, 1, fOut))
         PositionOffset -= OutPacketSize;
@@ -1783,9 +1795,58 @@ int main(int argc, const char* argv[])
   // Spezialanpassung Humax / Medion
   if ((HumaxSource || EycosSource || MedionMode==1 || (WriteDescPackets && (DoFixPMT || PATPMTBuf[4]!='G'))) && (!DoInfoOnly || DoFixPMT) /*&& fOut && DoMerge != 1*/)
   {
-    printf("Generate new PAT/PMT for Humax/Medion/Eycos recording.\n");
-//    GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, 256, VideoPID, 101, TeletextPID, AudioPIDs);
-    GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID, VideoPID, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.AudioPID, TeletextPID, SubtitlesPID, AudioPIDs, (PATPMTBuf[192+4]=='G'));
+    bool pmt_used = FALSE;
+FILE *fDbg;
+#ifdef _DEBUG
+  #ifndef _WIN32
+    if (!(MedionMode == 1))
+    {
+      DIR *d;
+
+      if ((d = opendir(".")))
+      {
+        FILE* fPMT;
+        struct dirent *dir;
+        char svc_name[71], answer;
+        word sid, vpid, apid, year;
+        byte month, day;
+
+        while (((dir = readdir(d)) != NULL) && (dir->d_type == DT_REG))
+        {
+          if (sscanf(dir->d_name, "%hu_%hd_%hd_%hd-%hhu-%hhu_%70s.pmt", &sid, &vpid, &apid, &year, &month, &day, svc_name) == 7)
+          {
+            if ((vpid == VideoPID) && (apid == ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.AudioPID))
+              printf("Use the following PMT from database: %s? [y/n] ", dir->d_name);
+              if ((scanf("%c", &answer) == 1) && (answer=='y' || answer=='j'))
+              {
+                printf("\nUsing PAT/PMT %s from database (ServiceName=%s).\n", dir->d_name, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceName);
+                if ((fPMT = fopen(dir->d_name, "rb")))
+                {
+                  fread(PATPMTBuf, 1, 4*192 + 5, fPMT);
+                  fclose(fPMT);
+                }
+                pmt_used = TRUE;
+              }
+              else
+                printf("\n");
+          }
+        }
+        closedir(d);
+      }
+    }
+  #endif
+#endif
+    if ((MedionMode == 1) || !pmt_used)
+    {
+      printf("Generate new %s for Humax/Medion/Eycos recording.\n", ((PATPMTBuf[192+4]=='G') ? "PAT" : "PAT/PMT"));
+//      GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, 256, VideoPID, 101, TeletextPID, AudioPIDs);
+      GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID, VideoPID, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.AudioPID, TeletextPID, SubtitlesPID, AudioPIDs, (PATPMTBuf[192+4]=='G'));
+
+// DEBUG-NOV
+fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/PMT_5_AfterPAT.bin", "wb");
+fwrite(PATPMTBuf, 1, 4*192 + 5, fDbg);
+fclose(fDbg);
+    }
 
 /*    if (MedionMode == 1)
     {
@@ -2257,10 +2318,15 @@ int main(int argc, const char* argv[])
           // Wiederhole PAT/PMT und EIT Information alle 5000 Pakete (verzichte darauf, wenn MedionStrip aktiv)
           for (k = 0; (PATPMTBuf[4 + k*192] == 'G'); k++)
           {
-            // TODO: 4 Byte Timecode passend setzen?
-            ((tTSPacket*) &PATPMTBuf[4 + k*192])->ContinuityCount++;
-            if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + k*192], OutPacketSize, 1, fOut))
-              PositionOffset -= OutPacketSize;
+            int l;
+            ((tTSPacket*) &PATPMTBuf[4])->ContinuityCount += l;  // PAT Continuity Counter setzen
+            for (l = 1; l <= k; l++)
+              ((tTSPacket*) &PATPMTBuf[4 + l*192])->ContinuityCount += l;  // PMT Continuity Counter setzen
+
+            if (OutPacketSize == 192)
+              fwrite(&Buffer[0], 4, 1, fOut);  // 4 Byte Timecode schreiben
+            fwrite(&PATPMTBuf[4 + k*192], 188, 1, fOut);
+            PositionOffset -= OutPacketSize;
           }
           SimpleMuxer_DoEITOutput();
           PMTCounter = 0;
@@ -2576,10 +2642,15 @@ int main(int argc, const char* argv[])
             {
               for (k = 0; (PATPMTBuf[4 + k*192] == 'G'); k++)
               {
-                // TODO: 4 Byte Timecode passend setzen?
-                ((tTSPacket*) &PATPMTBuf[4 + k*192])->ContinuityCount++;
-                if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + k*192], OutPacketSize, 1, fOut))
-                  PositionOffset -= OutPacketSize;
+                int l;
+                ((tTSPacket*) &PATPMTBuf[4])->ContinuityCount += l;  // PAT Continuity Counter setzen
+                for (l = 1; l <= k; l++)
+                  ((tTSPacket*) &PATPMTBuf[4 + l*192])->ContinuityCount += l;  // PMT Continuity Counter setzen
+
+                if (OutPacketSize == 192)
+                  fwrite(&Buffer[0], 4, 1, fOut);  // 4 Byte Timecode schreiben
+                fwrite(&PATPMTBuf[4 + k*192], 188, 1, fOut);
+                PositionOffset -= OutPacketSize;
               }
               PMTCounter = 0;
             }

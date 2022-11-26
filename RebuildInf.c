@@ -327,13 +327,13 @@ static bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf)
               if (Desc->DescrTag == DESC_Teletext)
               {
                 TeletextPID = PID;
-                printf("\n  TS: TeletxtPID=%hd [%s]", TeletextPID, LangCode);
+                printf("\n  TS: TeletxtPID=%hd [%.3s]", TeletextPID, LangCode);
               }
               else if (Desc->DescrTag == DESC_Subtitle)
               {
                 // DVB-Subtitles
                 SubtitlesPID = PID;
-                printf("\n  TS: SubtitlesPID=%hd [%s]", SubtitlesPID, LangCode);
+                printf("\n  TS: SubtitlesPID=%hd [%.3s]", SubtitlesPID, LangCode);
               }
 
               if ((k < MAXCONTINUITYPIDS) && (AudioPIDs[k].flags == 0))
@@ -1241,12 +1241,14 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 
             if ((PMTOK = AnalysePMT((PMTBuffer.ValidBuffer==2) ? PMTBuffer.Buffer2 : PMTBuffer.Buffer1, (PMTBuffer.ValidBuffer) ? PMTBuffer.ValidBufLen : PMTBuffer.BufferPtr, RecInf)))
             {
+FILE *fDbg;
+
               byte *pBuffer = (PMTBuffer.ValidBuffer==2) ? PMTBuffer.Buffer2 : PMTBuffer.Buffer1;
               int BufLen = (PMTBuffer.ValidBuffer) ? PMTBuffer.ValidBufLen : PMTBuffer.BufferPtr;
               int k = 0;
 
               memset(&PATPMTBuf[192], 0, 3 * 192 + 5);
-              for (k = 0; (k < 3) && (k*184 < BufLen); k++)
+              for (k = 0; (k == 0) || (k < 3 && 183 + (k-1)*184 < BufLen); k++)
               {
                 tTSPacket* packet = (tTSPacket*) &PATPMTBuf[4 + (k+1)*192];
                 packet->SyncByte = 'G';
@@ -1254,9 +1256,22 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                 packet->PID2 = PMTPID & 0xff;
                 packet->Payload_Exists = 1;
                 packet->Payload_Unit_Start = (k == 0) ? 1 : 0;
-                packet->ContinuityCount = k++;
-                memcpy(packet->Data, &pBuffer[k*184], 184);
+                packet->ContinuityCount = k;
+                memset(packet->Data, 0xff, 184);
+                if (k == 0)
+                {
+                  packet->Data[0] = 0;
+                  memcpy(&packet->Data[1], &pBuffer[0], min(BufLen, 183));
+                }
+                else
+                  memcpy(packet->Data, &pBuffer[183 + (k-1)*184], min(BufLen - 183 + (k-1)*184, 184));
               }
+
+// DEBUG-NOV
+fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/PMT_2_AnalysePMT.bin", "wb");
+fwrite(PATPMTBuf, 1, 4*192 + 5, fDbg);
+fclose(fDbg);
+
             }
             PSBuffer_Reset(&PMTBuffer);
           }
@@ -1296,11 +1311,19 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           {
             if ((((tTSPacket*) p)->PID1 == 0) && (((tTSPacket*) p)->PID2 == 0) && (((tTSPacket*) p)->Payload_Unit_Start))
             {
+FILE *fDbg;
               tTSPacket* packet = (tTSPacket*) &PATPMTBuf[4];
-              memcpy(packet, p, PACKETSIZE);
+              memcpy(packet, p, 188);
               packet->ContinuityCount = 0;
-              packet->PID1 = PMTPID / 256;
-              packet->PID2 = PMTPID & 0xff;
+              
+//              ((tTSPAT*) packet->Data)->PMTPID1 = PMTPID / 256;
+//              ((tTSPAT*) packet->Data)->PMTPID2 = PMTPID & 0xff;
+
+// DEBUG-NOV
+fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/PMT_4_CopyPAT.bin", "wb");
+fwrite(PATPMTBuf, 1, 4*192 + 5, fDbg);
+fclose(fDbg);
+
             }
           }
           if (!SDTOK)
@@ -1319,11 +1342,12 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             PSBuffer_ProcessTSPacket(&EITBuffer, (tTSPacket*)p);
             if(EITBuffer.ValidBuffer != LastEITBuffer)
             {
+FILE *fDbg;
               byte *pBuffer = (EITBuffer.ValidBuffer==2) ? EITBuffer.Buffer2 : EITBuffer.Buffer1;
               if ((EITOK = !EITBuffer.ErrorFlag && AnalyseEIT(pBuffer, EITBuffer.ValidBufLen, RecInf->ServiceInfo.ServiceID, RecInf)))
               {
                 int k;
-                NrEPGPacks = ((EITBuffer.ValidBufLen + 183) / 184);
+                NrEPGPacks = ((EITBuffer.ValidBufLen + 182) / 184);
 
                 if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
                 if (NrEPGPacks && ((EPGPacks = (byte*)malloc(NrEPGPacks * 192))))
@@ -1331,18 +1355,31 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                   memset(EPGPacks, 0, NrEPGPacks * 192);
                   for (k = 0; k < NrEPGPacks; k++)
                   {
-                    tTSPacket* packet = (tTSPacket*) &EPGPacks[((PACKETSIZE==192) ? 0 : 4) + k*192];
+                    tTSPacket* packet = (tTSPacket*) &EPGPacks[4 + k*192];
                     packet->SyncByte = 'G';
                     packet->PID2 = 18;
                     packet->Payload_Exists = 1;
                     packet->Payload_Unit_Start = (k == 0) ? 1 : 0;
-                    packet->ContinuityCount = k++;
-                    memcpy(packet->Data, &pBuffer[k * 184], 184);
+                    packet->ContinuityCount = k;
+                    memset(packet->Data, 0xff, 184);
+                    if (k == 0)
+                    {
+                      packet->Data[0] = 0;
+                      memcpy(&packet->Data[1], &pBuffer[0], min(EITBuffer.ValidBufLen, 183));
+                    }
+                    else
+                      memcpy(packet->Data, &pBuffer[183 + (k-1)*184], min(EITBuffer.ValidBufLen - 183 + (k-1)*184, 184));
                   }
                 }
               }
               EITBuffer.ErrorFlag = FALSE;
               LastEITBuffer = EITBuffer.ValidBuffer;
+
+// DEBUG-NOV
+fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/EIT_2_AnalyseEPG.bin", "wb");
+fwrite(EPGPacks, 192, NrEPGPacks, fDbg);
+fclose(fDbg);
+
             }
           }
           if (TeletextPID != 0xffff && !TtxOK)
@@ -1454,9 +1491,27 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       if (TeletextPID != (word) -1) AddContinuityPids(TeletextPID, FALSE);
       AddContinuityPids(0x12, FALSE);
 
+      // Schreibe PAT/PMT in "Datenbank"
+#ifdef _DEBUG
+      if ((PATPMTBuf[4] == 'G') && (PATPMTBuf[196] == 'G'))
+      {
+        FILE *fPMT = NULL;
+        char ServiceString[100];
+
+        snprintf(ServiceString, sizeof(ServiceString), "%hu_%hd_%hd_%.10s_%.70s.pmt", RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.VideoPID, RecInf->ServiceInfo.AudioPID, TimeStr_DB(RecInf->RecHeaderInfo.StartTime), RecInf->ServiceInfo.ServiceName);
+        if ((fPMT = fopen(ServiceString, "wb")))
+        {
+          fwrite(PATPMTBuf, 1, 4*192 + 5, fPMT);
+          fclose(fPMT);
+        }
+      }
+#endif
+
       // Kopiere PAT/PMT/EIT-Pakete vom Dateianfang in Buffer (nur beim ersten File-Open?)
       if (PMTatStart /*&& !WriteDescPackets*/)
       {
+FILE *fDbg;
+
         int k = 0;
         tTSPacket *curPacket;
         fseeko64(fIn, FilePos, SEEK_SET);  // Hier auf 0 setzen (?)
@@ -1487,6 +1542,16 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           for (k = 0; k < NrEPGPacks; k++)
             memcpy(&EPGPacks[((PACKETSIZE==192) ? 0 : 4) + k*192], &Buffer[(k+2)*PACKETSIZE], PACKETSIZE);
         }
+
+// DEBUG-NOV
+fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/PMT_3_CopyPMT.bin", "wb");
+fwrite(PATPMTBuf, 1, 4*192 + 5, fDbg);
+fclose(fDbg);
+// DEBUG-NOV
+fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/EIT_3_CopyEPG.bin", "wb");
+fwrite(EPGPacks, 192, NrEPGPacks, fDbg);
+fclose(fDbg);
+
       }
 
       if(!SDTOK)
