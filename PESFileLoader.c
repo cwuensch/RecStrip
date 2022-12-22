@@ -18,7 +18,7 @@ tPESStream              PESVideo;
 static tPESStream       PESAudio, PESTeletxt;
 byte                   *EPGBuffer = 0;
 int                     EPGLen = 0;
-static const byte       PIDs[4] = {100, 101, 102, 0x12};
+static word             PIDs[4] = {100, 101, 102, 0x12};  // künftig: {101, 102, 104, 0x12};  // TODO
 static byte             ContCtr[4] = {1, 1, 1, 1};
 static bool             DoEITOutput = TRUE;
 
@@ -273,7 +273,7 @@ printf("DEBUG: Assertion. Empty PES packet (after stripping) found!");
 // ---------------------------------------------------------------------------------
 static bool           FirstRun = 2;
 static dword          LastVidDTS = 0;
-static byte           curPid = 0;
+static word           curPid = 0;
 static int            StreamNr = 0;
 
 
@@ -332,6 +332,15 @@ bool SimpleMuxer_Open(FILE *fIn, char const* PESAudName, char const* PESTtxName,
 
   TRACEEXIT;
   return FALSE;
+}
+
+void SimpleMuxer_SetPIDs(word VideoPID, word AudioPID, word TtxPID)
+{
+  TRACEENTER;
+  if (VideoPID) PIDs[0] = VideoPID;
+  if (AudioPID) PIDs[1] = AudioPID;
+  if (TtxPID)   PIDs[2] = TtxPID;
+  TRACEEXIT;
 }
 
 void SimpleMuxer_DoEITOutput(void)

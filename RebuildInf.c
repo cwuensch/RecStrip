@@ -233,7 +233,7 @@ void InitInfStruct(TYPE_RecHeader_TMSS *RecInf)
   TRACEEXIT;
 }
 
-static bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf)
+bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf)
 {
   tTSPMT               *PMT = (tTSPMT*)PSBuffer;
   char                  LangCode[4];
@@ -283,6 +283,9 @@ static bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf)
 
 //    if (ElemLength > 0)  // Ist das nötig??
     {
+
+printf("\n  ELEMENT: Type=%hhu, PID=%hd, Length=%d\n", Elem->stream_type, PID, ElemLength);
+
       switch (Elem->stream_type)
       {
         case STREAM_VIDEO_MPEG4_PART2:
@@ -297,6 +300,7 @@ static bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf)
         case STREAM_VIDEO_MPEG1:
         case STREAM_VIDEO_MPEG2:
         {
+int DescrLength = ElemLength;
           VideoFound = TRUE;
           RecInf->ServiceInfo.ServiceType = 0;  // SVC_TYPE_Tv
           if(RecInf->ServiceInfo.VideoStreamType == 0xff)
@@ -306,6 +310,18 @@ static bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf)
             RecInf->ServiceInfo.VideoStreamType = Elem->stream_type;
             ContinuityPIDs[0] = PID;
             printf(", Stream=0x%hhx, VPID=%hd, HD=%d", RecInf->ServiceInfo.VideoStreamType, VideoPID, isHDVideo);
+
+while (DescrLength > 0)
+{
+  dword DescrPt = ElemPt + sizeof(tElemStream);
+  while (DescrLength > 0)
+  {
+    tTSDesc2* Desc = (tTSDesc2*) &PSBuffer[ElemPt + sizeof(tElemStream)];
+printf("    DESC: Type=TSDesc, Size=%d, Len=%hhu, Tag=0x%02hhx (%c), Data=0x%02hhx\n", sizeof(tTSDesc), Desc->DescrLength, Desc->DescrTag, (Desc->DescrTag > 0x20 ? Desc->DescrTag : ' '), Desc->Data[0]);
+    DescrPt     += (Desc->DescrLength + sizeof(tTSDesc));
+    DescrLength -= (Desc->DescrLength + sizeof(tTSDesc));
+  }
+}
           }
           break;
         }
@@ -319,10 +335,12 @@ static bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf)
           {
             tTSSubtDesc* Desc = (tTSSubtDesc*) &PSBuffer[DescrPt];
 
+printf("    DESC: Type=Subtitle, Size=%d, Len=%hhu, Tag=0x%02hhx (%c), Data=0x%02hhx, Lang=%.3s\n", sizeof(tTSDesc), Desc->DescrLength, Desc->DescrTag, (Desc->DescrTag > 0x20 ? Desc->DescrTag : ' '), Desc->LanguageCode[0], (Desc->DescrTag==0xa ? Desc->LanguageCode : ""));
+
             if ((Desc->DescrTag == DESC_Teletext) || (Desc->DescrTag == DESC_Subtitle))
             {
-              if (Desc->DescrLength >= 3)
-                strncpy(LangCode, &((char*)Desc)[2], 3);
+              if ((Desc->DescrTag == 10) && (Desc->DescrLength >= 3))
+                strncpy(LangCode, (char*)Desc->LanguageCode, 3);
 
               if (Desc->DescrTag == DESC_Teletext)
               {
@@ -336,7 +354,7 @@ static bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf)
                 printf("\n  TS: SubtitlesPID=%hd [%.3s]", SubtitlesPID, LangCode);
               }
 
-              if ((k < MAXCONTINUITYPIDS) && (AudioPIDs[k].flags == 0))
+              if ((k < MAXCONTINUITYPIDS) && !AudioPIDs[k].scanned && !AudioPIDs[k].noAudio)
               {
                 AudioPIDs[k].pid = PID;
                 AudioPIDs[k].sorted = TRUE;
@@ -351,6 +369,7 @@ static bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf)
           }
           if (PID == 0) break;
           // sonst fortsetzen mit Audio (fall-through)
+printf("    -> No Teletext/Subtitle track detected! Analysing audio instead...\n");
         }
 
         //case STREAM_AUDIO_MP3:  //Ignored because it crashes with STREAM_VIDEO_MPEG1
@@ -367,16 +386,19 @@ static bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf)
           while (DescrLength > 0)
           {
             tTSDesc2* Desc = (tTSDesc2*) &PSBuffer[DescrPt];
+
+printf("    DESC: Type=TSDesc, Size=%d, Len=%hhu, Tag=0x%02hhx (%c), Data=0x%02hhx, Lang=%.3s\n", sizeof(tTSDesc), Desc->DescrLength, Desc->DescrTag, (Desc->DescrTag > 0x20 ? Desc->DescrTag : ' '), Desc->Data[0], (Desc->DescrTag==0xa ? Desc->Data : ""));
+
             if ((Desc->DescrTag == DESC_Audio) && (Desc->DescrLength >= 3))
             {
-              strncpy(LangCode, &((char*)Desc)[2], 3);
+              strncpy(LangCode, (char*)Desc->Data, 3);
               break;
             }
             DescrPt     += (Desc->DescrLength + sizeof(tTSDesc));
             DescrLength -= (Desc->DescrLength + sizeof(tTSDesc));
           }
 
-          if ((k < MAXCONTINUITYPIDS) && (AudioPIDs[k].flags == 0))
+          if ((k < MAXCONTINUITYPIDS) && !AudioPIDs[k].scanned && !AudioPIDs[k].noAudio)
           {
             AudioPIDs[k].pid = PID;
             AudioPIDs[k].type = Elem->stream_type;  // (Elem->stream_type == 4) ? 0 : (Elem->stream_type == 3 ? 1 : Elem->stream_type);
@@ -396,7 +418,6 @@ static bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf)
   printf("\n");
 
 //  isHDVideo = HDFound;
-
   TRACEEXIT;
   return VideoFound;
 }
@@ -922,10 +943,6 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     
     if (MedionMode == 1)
     {
-      RecInf->ServiceInfo.PMTPID = 256;
-      RecInf->ServiceInfo.PCRPID = VideoPID;
-      RecInf->ServiceInfo.VideoPID = VideoPID;
-      RecInf->ServiceInfo.AudioPID = VideoPID + 1;
       RecInf->ServiceInfo.ServiceType = 0;
       RecInf->ServiceInfo.VideoStreamType = STREAM_VIDEO_MPEG2;
       RecInf->ServiceInfo.AudioStreamType = STREAM_AUDIO_MPEG2;
@@ -949,7 +966,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           }
 
           if (!VidOK)
-            VidOK = AnalyseVideo(&Buffer[p], ReadBytes - p, VideoPID, &VideoHeight, &VideoWidth, &VideoFPS, &VideoDAR);
+            VidOK = AnalyseVideo(&Buffer[p], ReadBytes - p, 0, &VideoHeight, &VideoWidth, &VideoFPS, &VideoDAR);
           if (VidOK && isHDVideo) RecInf->ServiceInfo.VideoStreamType = STREAM_VIDEO_MPEG4_H264;
 
           if(FirstFilePTSOK && (!DoInfoOnly || VidOK)) break;
@@ -1001,14 +1018,11 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       if (fread(Buffer, 1, 32768, fMDIn) > 0)
       {
         int p = 0;
-        RecInf->ServiceInfo.AudioPID = 101;
-        AudioPIDs[0].pid = 101;
-
         while (p < 32000)
         {
           while ((p < 32000) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1))
             p++;
-          if (AnalyseAudio(&Buffer[p], 32768-p, AudioPIDs[0].pid, &AudioPIDs[0]))
+          if (AnalyseAudio(&Buffer[p], 32768-p, 0, &AudioPIDs[0]))
           {
 /*            if (AudioPIDs[0].type >= 2)
             {
@@ -1094,7 +1108,17 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       }
       fclose(fMDIn);
     }
+
+    RecInf->ServiceInfo.PMTPID = 100;
     printf("  TS: PMTPID=%hd, SID=%hu, PCRPID=%hd\n", RecInf->ServiceInfo.PMTPID, RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID);
+
+    if (RecInf->ServiceInfo.ServiceID != 1)
+      GetPidsFromMap(RecInf->ServiceInfo.ServiceID, &VideoPID, &AudioPIDs[0].pid, &TeletextPID);
+    RecInf->ServiceInfo.PCRPID = VideoPID;
+    RecInf->ServiceInfo.VideoPID = VideoPID;
+    RecInf->ServiceInfo.AudioPID = AudioPIDs[0].pid;
+    SimpleMuxer_SetPIDs(VideoPID, AudioPIDs[0].pid, TeletextPID);
+    printf("  TS: Using new VideoPID=%hd, AudioPID=%hd, TtxPID=%hd\n", VideoPID, AudioPIDs[0].pid, TeletextPID);
 
     if(!TtxFound)
       printf ("  Failed to get Teletext information.\n");
@@ -1156,6 +1180,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     for (d = -1; d < 10; d++)
     {
       bool PMTOK = FALSE;
+
       if (d < 0)
       {
         // Versuche erst PMT am Anfang der Aufnahme zu finden (gestrippte Aufnahmen mit PMT/EPG nur in den ersten Paketen)
@@ -1268,9 +1293,9 @@ FILE *fDbg;
               }
 
 // DEBUG-NOV
-fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/PMT_2_AnalysePMT.bin", "wb");
-fwrite(PATPMTBuf, 1, 4*192 + 5, fDbg);
-fclose(fDbg);
+//fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/PMT_2_AnalysePMT.bin", "wb");
+//fwrite(PATPMTBuf, 1, 4*192, fDbg);
+//fclose(fDbg);
 
             }
             PSBuffer_Reset(&PMTBuffer);
@@ -1279,10 +1304,10 @@ fclose(fDbg);
       }
       if(PMTPID && PMTOK) break;
     }
-    if (!PMTPID)
+    if (!RecInf->ServiceInfo.PMTPID)
     {
       printf("  Failed to locate a PMT packet.\n");
-      RecInf->ServiceInfo.PMTPID = 256;  // TODO: Was wenn Kollision mit Audio-PID?
+      RecInf->ServiceInfo.PMTPID = 100;
       RecInf->ServiceInfo.ServiceID = 1;
       WriteDescPackets = TRUE;
       ret = FALSE;
@@ -1320,9 +1345,9 @@ FILE *fDbg;
 //              ((tTSPAT*) packet->Data)->PMTPID2 = PMTPID & 0xff;
 
 // DEBUG-NOV
-fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/PMT_4_CopyPAT.bin", "wb");
-fwrite(PATPMTBuf, 1, 4*192 + 5, fDbg);
-fclose(fDbg);
+//fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/PMT_4_CopyPAT.bin", "wb");
+//fwrite(PATPMTBuf, 1, 4*192, fDbg);
+//fclose(fDbg);
 
             }
           }
@@ -1376,9 +1401,9 @@ FILE *fDbg;
               LastEITBuffer = EITBuffer.ValidBuffer;
 
 // DEBUG-NOV
-fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/EIT_2_AnalyseEPG.bin", "wb");
-fwrite(EPGPacks, 192, NrEPGPacks, fDbg);
-fclose(fDbg);
+//fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/EIT_2_AnalyseEPG.bin", "wb");
+//fwrite(EPGPacks, 192, NrEPGPacks, fDbg);
+//fclose(fDbg);
 
             }
           }
@@ -1418,6 +1443,7 @@ fclose(fDbg);
                   RecInf->ServiceInfo.VideoPID = VideoPID;
                   RecInf->ServiceInfo.PCRPID = VideoPID;
                   RecInf->ServiceInfo.VideoStreamType = (isHDVideo ? STREAM_VIDEO_MPEG4_H264 : STREAM_VIDEO_MPEG2);
+                  RecInf->ServiceInfo.ServiceID = GetSidFromMap(VideoPID, 0, 0, RecInf->ServiceInfo.ServiceName);
                   ContinuityPIDs[0] = VideoPID;
                 }
               }
@@ -1430,12 +1456,12 @@ fclose(fDbg);
             {
               int k;
               for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0) && (AudioPIDs[k].pid != curPID); k++);
-              if ((k < MAXCONTINUITYPIDS) && (AudioPIDs[k].flags == 0))
+              if ((k < MAXCONTINUITYPIDS) && !AudioPIDs[k].scanned && !AudioPIDs[k].noAudio)
               {
                 AudioPIDs[k].pid = curPID;
                 if (AnalyseAudio((byte*)&curPacket->Data + (curPacket->Adapt_Field_Exists ? curPacket->Data[0] + 1 : 0), sizeof(curPacket->Data) - (curPacket->Adapt_Field_Exists ? curPacket->Data[0] - 1 : 0), curPID, &AudioPIDs[k]))
                 {
-                  AudioPIDs[k].flags = 1;
+                  AudioPIDs[k].scanned = 1;
                   AddContinuityPids(curPID, FALSE);
                   AudOK++;
                   if ((TeletextPID != TeletextPID_PMT) && !TtxOK)
@@ -1447,7 +1473,7 @@ fclose(fDbg);
                 }
                 else
                   if (AudioPIDs[k].pid == curPID)
-                    AudioPIDs[k].flags = 2;
+                    AudioPIDs[k].noAudio = 1;
               }
             }
           }
@@ -1491,22 +1517,6 @@ fclose(fDbg);
       if (TeletextPID != (word) -1) AddContinuityPids(TeletextPID, FALSE);
       AddContinuityPids(0x12, FALSE);
 
-      // Schreibe PAT/PMT in "Datenbank"
-#ifdef _DEBUG
-      if ((PATPMTBuf[4] == 'G') && (PATPMTBuf[196] == 'G'))
-      {
-        FILE *fPMT = NULL;
-        char ServiceString[100];
-
-        snprintf(ServiceString, sizeof(ServiceString), "%hu_%hd_%hd_%.10s_%.70s.pmt", RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.VideoPID, RecInf->ServiceInfo.AudioPID, TimeStr_DB(RecInf->RecHeaderInfo.StartTime), RecInf->ServiceInfo.ServiceName);
-        if ((fPMT = fopen(ServiceString, "wb")))
-        {
-          fwrite(PATPMTBuf, 1, 4*192 + 5, fPMT);
-          fclose(fPMT);
-        }
-      }
-#endif
-
       // Kopiere PAT/PMT/EIT-Pakete vom Dateianfang in Buffer (nur beim ersten File-Open?)
       if (PMTatStart /*&& !WriteDescPackets*/)
       {
@@ -1544,13 +1554,13 @@ FILE *fDbg;
         }
 
 // DEBUG-NOV
-fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/PMT_3_CopyPMT.bin", "wb");
-fwrite(PATPMTBuf, 1, 4*192 + 5, fDbg);
-fclose(fDbg);
+//fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/PMT_3_CopyPMT.bin", "wb");
+//fwrite(PATPMTBuf, 1, 4*192 + 5, fDbg);
+//fclose(fDbg);
 // DEBUG-NOV
-fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/EIT_3_CopyEPG.bin", "wb");
-fwrite(EPGPacks, 192, NrEPGPacks, fDbg);
-fclose(fDbg);
+//fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/EIT_3_CopyEPG.bin", "wb");
+//fwrite(EPGPacks, 192, NrEPGPacks, fDbg);
+//fclose(fDbg);
 
       }
 
@@ -1698,6 +1708,23 @@ printf("\n");
   }
 printf("  TS: StartTime = %s\n", (TimeStrTF(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec)));
 
+  // Schreibe PAT/PMT in "Datenbank"
+//#ifdef _DEBUG
+  if ((PATPMTBuf[4] == 'G') && (PATPMTBuf[196] == 'G'))
+  {
+    FILE *fPMT = NULL;
+    char ServiceString[100];
+    char *p = TimeStr_DB(RecInf->RecHeaderInfo.StartTime, 0);
+
+    snprintf(ServiceString, sizeof(ServiceString), "%hu_%hd_%hd_%.10s_%.2s-%.2s_%.70s.pmt", RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.VideoPID, RecInf->ServiceInfo.AudioPID, p, &p[11], &p[14], RecInf->ServiceInfo.ServiceName);
+    if ((fPMT = fopen(ServiceString, "wb")))
+    {
+      fwrite(PATPMTBuf, 1, 4*192, fPMT);
+      fclose(fPMT);
+    }
+  }
+//#endif
+
   free(Buffer);
   TRACEEXIT;
   return ret;
@@ -1715,16 +1742,17 @@ void SortAudioPIDs(tAudioTrack AudioPIDs[])
   for (j = i; (j < MAXCONTINUITYPIDS) && (AudioPIDs[j].pid != 0) && !AudioPIDs[j].sorted; j++)  // PIDs der Größe nach sortieren (außer die un-gescannten)
   {
     minPid = 0x7fffffff;
+    minPos = j;
     for (k = j; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0) && !AudioPIDs[k].sorted; k++)
     {
-      curPid = (AudioPIDs[j].flags != 1) ? (AudioPIDs[j].flags + 1) << 16 | AudioPIDs[j].pid : AudioPIDs[j].pid;
+      curPid = (AudioPIDs[j].noAudio ? 0x20 : 0) + (!AudioPIDs[j].scanned ? 0x10 : 0) + AudioPIDs[j].pid;
       if(curPid < minPid)
       {
         minPid = curPid;
         minPos = k;
       }
     }
-    if (AudioPIDs[minPos].flags < 2)  // setze Track mit minimaler PID an die aktuelle Position j
+    if ((minPos != j) && !AudioPIDs[minPos].noAudio)  // setze Track mit minimaler PID an die aktuelle Position j
     {
       tmp = AudioPIDs[j];
       AudioPIDs[j] = AudioPIDs[minPos];
@@ -1742,9 +1770,10 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPid, word Vid
   tTSPAT               *PAT = NULL;
   tTSPMT               *PMT = NULL;
   tElemStream          *Elem = NULL;
+  tTSStreamDesc        *Desc0 = NULL;
   dword                *CRC = NULL;
   int                   Offset = 0;
-  int                   k;
+  int                   StreamTag = 1, k;
 
   TRACEENTER;
   memset(PATPMTBuf, 0, 192 * (PATonly ? 1 : 4));
@@ -1804,7 +1833,7 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPid, word Vid
   PMT->ProgramNr1       = ServiceID / 256;
   PMT->ProgramNr2       = (ServiceID & 0xff);
   PMT->CurNextInd       = 1;
-  PMT->VersionNr        = 0;
+  PMT->VersionNr        = 1;
   PMT->Reserved2        = 3;
   PMT->SectionNr        = 0;
   PMT->LastSection      = 0;
@@ -1820,29 +1849,13 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPid, word Vid
   Offset = 1 + /*Packet->Data[0] +*/ sizeof(tTSPMT);
 
 
-  // Video-PID
-  Elem = (tElemStream*) &Packet->Data[Offset];
-  Elem->Reserved1       = 7;
-  Elem->Reserved2       = 0xf;
-  Offset               += sizeof(tElemStream);
-
-  Elem->stream_type     = isHDVideo ? STREAM_VIDEO_MPEG4_H264 : STREAM_VIDEO_MPEG2;
-  Elem->ESPID1          = VideoPID / 256;
-  Elem->ESPID2          = (VideoPID & 0xff);
-  Elem->ESInfoLen1      = 0;
-  Elem->ESInfoLen2      = 0;
-
-  Offset               += Elem->ESInfoLen2;
-  PMT->SectionLen2     += sizeof(tElemStream) + Elem->ESInfoLen2;
-  printf("  Video Track: PID=%d, %s, Type=0x%x\n", VideoPID, (isHDVideo ? "HD" : "SD"), Elem->stream_type);
-
   // Sortiere Audio-PIDs
 //  SortAudioPIDs(AudioPIDs);
 
   // Audio-PIDs
   for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0); k++)
   {
-    if (AudioPIDs[k].flags == 1)
+    if (AudioPIDs[k].scanned && !AudioPIDs[k].noAudio)
     {
       tTSAudioDesc *Desc    = NULL;
 
@@ -1856,11 +1869,11 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPid, word Vid
 
       if ((AudioPIDs[k].type == STREAM_AUDIO_MPEG4_AC3_PLUS) || (AudioPIDs[k].type == STREAM_AUDIO_MPEG4_AC3) || (strncmp(AudioPIDs[k].desc, "AC", 2) == 0) || (strncmp(AudioPIDs[k].desc, "ac", 2) == 0))
       {
-        tTSAC3Desc *Desc0   = (tTSAC3Desc*) &Packet->Data[Offset];
+        tTSAC3Desc *Desc1   = (tTSAC3Desc*) &Packet->Data[Offset];
         Elem->stream_type   = AudioPIDs[k].type;  // STREAM_AUDIO_MPEG4_AC3_PLUS;
         Elem->ESInfoLen2    = sizeof(tTSAC3Desc) + sizeof(tTSAudioDesc);
-        Desc0->DescrTag     = DESC_AC3;
-        Desc0->DescrLength  = 1;
+        Desc1->DescrTag     = DESC_AC3;
+        Desc1->DescrLength  = 1;
         Desc                = (tTSAudioDesc*) &Packet->Data[Offset + sizeof(tTSAC3Desc)];
         printf("  Audio Track %d: PID=%d, AC3, Type=0x%x [%s]\n", (k + 1), AudioPIDs[k].pid, Elem->stream_type, AudioPIDs[k].desc);
       }
@@ -1880,9 +1893,17 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPid, word Vid
       }
       if (Desc)
       {
+        Desc0 = (tTSStreamDesc*) Desc;
+        Desc0->DescrTag     = DESC_StreamIdentifier;
+        Desc0->DescrLength  = 1;
+        Desc0->ComponentTag = StreamTag++;
+        Elem->ESInfoLen2   += sizeof(tTSStreamDesc);
+
+        Desc = (tTSAudioDesc*)((byte*)Desc + sizeof(tTSStreamDesc));
         Desc->DescrTag      = DESC_Audio;
         Desc->DescrLength   = 4;
         strncpy(Desc->LanguageCode, AudioPIDs[k].desc, 3);
+        Desc->AudioType     = 1;  // AudioPIDs[k].type;
       }
 
       Offset               += Elem->ESInfoLen2;
@@ -1956,6 +1977,29 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPid, word Vid
     PMT->SectionLen2       += sizeof(tElemStream) + Elem->ESInfoLen2;
     printf("  Subtitles Track: PID=%d [%s]\n", SubtitlesPID, "deu");
   }
+
+  // Video-PID
+  Elem = (tElemStream*) &Packet->Data[Offset];
+  Elem->Reserved1       = 7;
+  Elem->Reserved2       = 0xf;
+  Offset               += sizeof(tElemStream);
+
+  Elem->stream_type     = isHDVideo ? STREAM_VIDEO_MPEG4_H264 : STREAM_VIDEO_MPEG2;
+  Elem->ESPID1          = VideoPID / 256;
+  Elem->ESPID2          = (VideoPID & 0xff);
+  Elem->ESInfoLen1      = 0;
+  Elem->ESInfoLen2      = 0;
+
+  Desc0 = (tTSStreamDesc*) &Packet->Data[Offset];
+  Desc0->DescrTag       = DESC_StreamIdentifier;
+  Desc0->DescrLength    = 1;
+  Desc0->ComponentTag   = StreamTag++;
+  Elem->ESInfoLen2     += sizeof(tTSStreamDesc);
+
+  Offset               += Elem->ESInfoLen2;
+  PMT->SectionLen2     += sizeof(tElemStream) + Elem->ESInfoLen2;
+  printf("  Video Track: PID=%d, %s, Type=0x%x\n", VideoPID, (isHDVideo ? "HD" : "SD"), Elem->stream_type);
+
 
   CRC                   = (dword*) &Packet->Data[Offset];
 //  *CRC                  = rocksoft_crc((byte*)PMT, (int)CRC - (int)PMT);   // CRC: 0x0043710d  (0xb3ad75b7?)

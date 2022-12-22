@@ -12,14 +12,14 @@ typedef enum
 
 typedef enum
 {
-  DESC_Audio             = 0x0A,
+  DESC_Audio             = 0x0A,  // 10
   DESC_StreamIdentifier  = 'R',  // 0x52
   DESC_EITShortEvent     = 'M',  // 0x4d
   DESC_EITExtEvent       = 'N',  // 0x4e
   DESC_Service           = 'H',  // 0x48
   DESC_Teletext          = 'V',  // 0x56
   DESC_Subtitle          = 'Y',  // 0x59
-  DESC_AC3               = 0x6A
+  DESC_AC3               = 'j'   // 0x6A
 } DescrTags;
 
 typedef enum
@@ -129,6 +129,13 @@ typedef struct
 {
   byte DescrTag;
   byte DescrLength;
+  byte ComponentTag;
+} tTSStreamDesc;
+
+typedef struct
+{
+  byte DescrTag;
+  byte DescrLength;
 //  char Name[4];          // without terminating 0
   byte Reserved:4;
   byte asvc_flag:1;
@@ -142,7 +149,7 @@ typedef struct
   byte DescrTag;
   byte DescrLength;
   char LanguageCode[3]; // without terminating 0
-  byte AudioType;
+  byte AudioType;       // Ist das richtig??
 } tTSAudioDesc;
 
 typedef struct

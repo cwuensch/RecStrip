@@ -74,6 +74,84 @@ static dword crc32m(const unsigned char *buf, size_t len)
   return crc;
 } */
 
+
+bool GetPidsFromMap(word ServiceID, word *const OutVidPID, word *const OutAudPID, word *const OutTtxPID)
+{
+  FILE *fMap;
+  char LineBuf[FBLIB_DIR_SIZE], *p;
+  word Sid, VPid, APid, TPid;
+  int BytesRead;
+  strncpy(LineBuf, ExePath, sizeof(LineBuf));
+
+  if ((p = strrchr(LineBuf, '/'))) p[1] = '\0';
+  else if ((p = strrchr(LineBuf, '\\'))) p[1] = '\0';
+  else LineBuf[0] = 0;
+
+  strncat(LineBuf, "/SenderMap.txt", sizeof(LineBuf) - (p ? (p-LineBuf+1) : 0));
+  
+  if ((fMap = fopen(LineBuf, "r")))
+  {
+    while (fgets(LineBuf, sizeof(LineBuf), fMap))
+    {
+      if (sscanf(LineBuf, "%hu ; %hu ; %hu %*1[/] %*15[^;/] ; %hu ; %n %*70[^;\r\n]", &Sid, &VPid, &APid, &TPid, &BytesRead) == 4)
+        if (Sid == ServiceID)
+        {
+          printf("  Using PIDs from Map: VidPID=%hd, AudPID=%hd, TtxPID=%hd, %s", VPid, APid, TPid, &LineBuf[BytesRead]);
+          if (OutVidPID) *OutVidPID = VPid;
+          if (OutAudPID) *OutAudPID = APid;
+          if (OutTtxPID) *OutTtxPID = TPid;
+          return TRUE;
+        }
+    }
+    fclose(fMap);
+  }
+  return FALSE;
+}
+
+word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *ServiceName)
+{
+  FILE *fMap;
+  char LineBuf[FBLIB_DIR_SIZE], *p;
+  word Sid, VPid, APid, TPid;
+  int BytesRead;
+  word CandidateFound = 0;
+  strncpy(LineBuf, ExePath, sizeof(LineBuf));
+
+  if ((p = strrchr(LineBuf, '/'))) p[1] = '\0';
+  else if ((p = strrchr(LineBuf, '\\'))) p[1] = '\0';
+  else LineBuf[0] = 0;
+
+  strncat(LineBuf, "/SenderMap.txt", sizeof(LineBuf) - (p ? (p-LineBuf+1) : 0));
+  
+  if ((fMap = fopen(LineBuf, "r")))
+  {
+    while (fgets(LineBuf, sizeof(LineBuf), fMap) != 0)
+    {
+      if (sscanf(LineBuf, "%hu ; %hu ; %hu %*1[/] %*15[^;/] ; %hu ; %n %*70[^;\r\n]", &Sid, &VPid, &APid, &TPid, &BytesRead) == 4)
+      {
+        if ((VPid == VidPID) && ((APid == AudPID) || !AudPID) && ((TPid == TtxPID) || !TtxPID))
+        {
+          p = &LineBuf[BytesRead];
+          if ((strncmp(p, ServiceName, 2) == 0) || (strncmp(p, "Das", 3)==0 && strncmp(ServiceName, "ARD", 3)==0) || (strncmp(p, "BR", 2)==0 && strncmp(ServiceName, "Bay", 3)==0))
+          {
+            printf("  Using ServiceID from Map: SID=%hu, %s", Sid, p);
+            return Sid;
+          }
+          CandidateFound = (CandidateFound == 0) ? Sid : 0;
+        }
+        else if (CandidateFound)  // Nutzt aus, dass die SenderMap nach VideoPID sortiert ist
+        {
+          printf("  Using ServiceID from Map: SID=%hu, %s", Sid, p);
+          return Sid;
+        }
+      }
+    }
+    fclose(fMap);
+  }
+  return 1;
+}
+
+
 bool SaveHumaxHeader(char *const VidFileName, char *const OutFileName)
 {
   FILE                 *fIn, *fOut;
@@ -137,7 +215,7 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           TeletextPID                         = HumaxHeader.Allgemein.TeletextPID;
           RecInf->ServiceInfo.ServiceType     = 0;  // SVC_TYPE_Tv
           RecInf->ServiceInfo.ServiceID       = 1;
-          RecInf->ServiceInfo.PMTPID          = (HumaxHeader.Allgemein.AudioPID != 256) ? 256 : 100;
+          RecInf->ServiceInfo.PMTPID          = 100;  // vorher: (HumaxHeader.Allgemein.AudioPID != 256) ? 256 : 100;
           RecInf->ServiceInfo.VideoPID        = VideoPID;
           RecInf->ServiceInfo.PCRPID          = VideoPID;
           RecInf->ServiceInfo.AudioPID        = HumaxHeader.Allgemein.AudioPID;
@@ -209,6 +287,7 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       }
     }
   }
+  RecInf->ServiceInfo.ServiceID = GetSidFromMap(VideoPID, AudioPIDs[0].pid, 0, RecInf->ServiceInfo.ServiceName);
   AddContinuityPids(TeletextPID, FALSE);
 
 //  fseeko64(fIn, FilePos, SEEK_SET);

@@ -100,6 +100,9 @@ typedef struct
 
 
 dword crc32m_tab(const unsigned char *buf, size_t len);
+word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *ServiceName);
+bool GetPidsFromMap(word ServiceID, word *const OutVidPID, word *const OutAudPID, word *const OutTtxPID);
+
 bool SaveHumaxHeader(char *const VidFileName, char *const OutFileName);
 bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf);
 

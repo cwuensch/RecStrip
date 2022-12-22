@@ -60,6 +60,7 @@ void PESStream_Close(tPESStream *PESStream);
 byte* PESStream_GetNextPacket(tPESStream *PESStream);
 
 bool SimpleMuxer_Open(FILE *fIn, char const* PESAudName, char const* PESTtxName, char const* EITName);
+void SimpleMuxer_SetPIDs(word VideoPID, word AudioPID, word TtxPID);
 void SimpleMuxer_DoEITOutput(void);
 bool SimpleMuxer_NextTSPacket(tTSPacket *pack);
 void SimpleMuxer_Close(void);

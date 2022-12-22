@@ -102,6 +102,7 @@
 // Globale Variablen
 char                    RecFileIn[FBLIB_DIR_SIZE], RecFileOut[FBLIB_DIR_SIZE], OutDir[FBLIB_DIR_SIZE];
 char                    MDEpgName[FBLIB_DIR_SIZE], MDTtxName[FBLIB_DIR_SIZE], MDAudName[FBLIB_DIR_SIZE];
+const char             *ExePath;
 byte                   *PATPMTBuf = NULL, *EPGPacks = NULL;
 unsigned long long      RecFileSize = 0;
 time_t                  RecFileTimeStamp = 0;
@@ -688,8 +689,9 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     snprintf(MDEpgName, sizeof(MDEpgName), "%s_epg.txt", MDBaseName);
     snprintf(MDTtxName, sizeof(MDTtxName), "%s_ttx.pes", MDBaseName);
     snprintf(MDAudName, sizeof(MDEpgName), "%s_audio1.pes", MDBaseName);
-    VideoPID = 100;
-    TeletextPID = 102;
+    VideoPID = 100;          // künftig: 101   // TODO
+    AudioPIDs[0].pid = 101;  // künftig: 102
+    TeletextPID = 102;       // künftig: 104
   }
 
   printf("\nInput file: %s\n", RecFileIn);
@@ -1008,13 +1010,13 @@ SONST
   {
 
 // DEBUG-NOV
-FILE *fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/PMT_6_OpenOutput.bin", "wb");
-fwrite(PATPMTBuf, 1, 4*192 + 5, fDbg);
-fclose(fDbg);
+//FILE *fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/PMT_6_OpenOutput.bin", "wb");
+//fwrite(PATPMTBuf, 1, 4*192, fDbg);
+//fclose(fDbg);
 // DEBUG-NOV
-fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/EIT_6_OpenOutput.bin", "wb");
-fwrite(EPGPacks, 192, NrEPGPacks, fDbg);
-fclose(fDbg);
+//fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/EIT_6_OpenOutput.bin", "wb");
+//fwrite(EPGPacks, 192, NrEPGPacks, fDbg);
+//fclose(fDbg);
 
 
     for (i = 0; (PATPMTBuf[4 + i*192] == 'G'); i++)
@@ -1506,8 +1508,39 @@ int main(int argc, const char* argv[])
   exit(0);
 } */
 
+
+{
+  byte Buffer[192], Buffer2[384];
+  FILE *fPMT = NULL;
+  TYPE_RecHeader_TMSS RecInf;
+  int i;
+  memset(AudioPIDs, 0, MAXCONTINUITYPIDS * sizeof(tAudioTrack));
+  InitInfStruct(&RecInf);
+
+  if ((fPMT = fopen("D:/Test/pmts/28385_1201_1202_2022-12-01_13-09_Radio Bremen TV.pmt", "rb")))
+  {
+    fseek(fPMT, 192, SEEK_SET);
+    fread(Buffer, 1, 192, fPMT);
+    AnalysePMT(&Buffer[9], 192, &RecInf);
+    fclose(fPMT);
+  }
+
+  for (i = 0; i < MAXCONTINUITYPIDS; i++)
+    if(AudioPIDs[i].pid) AudioPIDs[i].scanned = TRUE; else break;
+
+  GeneratePatPmt(Buffer2, 28396, 100, 1601, 1602, 0, 0, AudioPIDs, FALSE);
+  if ((fPMT = fopen("D:/Test/pmts/28385_1201_1202_2022-12-01_13-09_Radio Bremen TV_out.pmt", "wb")))
+  {
+    fwrite(Buffer2, 1, 384, fPMT);
+    fclose(fPMT);
+  }
+  exit(1);
+}
+
+
   // Eingabe-Parameter prüfen
   if (argc <= 1)  AbortProcess = TRUE;
+  ExePath = argv[0];
   while ((argc > 1) && (argv && argv[1] && argv[1][0] == '-' && (argv[1][2] == '\0' || argv[1][3] == '\0')))
   {
     switch (argv[1][1])
@@ -1653,7 +1686,7 @@ int main(int argc, const char* argv[])
     else if (DoInfoOnly)
     {
       fprintf(stderr, "RecFile\tRecSize\tFileDate\tStartTime\tDuration\tFirstPCR\tLastPCR\tFirstPTS\tLastPTS\tisStripped\t");
-      fprintf(stderr, "InfType\tSender\tServiceID\tPMTPid\tVideoPid\tAudioPid\tVideoType\tAudioType\tAudioTypeFlag\tHD\tResolution\tFPS\tAspectRatio\t");
+      fprintf(stderr, "InfType\tSender\tServiceID\tPMTPid\tVideoPid\tAudioPid\tTtxPid\tVideoType\tAudioType\tAudioTypeFlag\tHD\tResolution\tFPS\tAspectRatio\t");
       fprintf(stderr, "SegmentMarker\tBookmarks\t");
       fprintf(stderr, "EventName\tEventDesc\tEventStart\tEventEnd\tEventDuration\tExtEventText\n");
     }
@@ -1796,56 +1829,42 @@ int main(int argc, const char* argv[])
   if ((HumaxSource || EycosSource || MedionMode==1 || (WriteDescPackets && (DoFixPMT || PATPMTBuf[4]!='G'))) && (!DoInfoOnly || DoFixPMT) /*&& fOut && DoMerge != 1*/)
   {
     bool pmt_used = FALSE;
+
+// Lese Original-PMT aus "Datenbank" ein (experimentell)
 FILE *fDbg;
-#ifdef _DEBUG
-  #ifndef _WIN32
-    if (!(MedionMode == 1))
+//#ifdef _DEBUG
+    if (!DoFixPMT)
     {
-      DIR *d;
+      FILE *fPMT = NULL;
+      char ServiceString[100];
 
-      if ((d = opendir(".")))
+      snprintf(ServiceString, sizeof(ServiceString), "%hu_%hd_%hd.pmt", ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, VideoPID, AudioPIDs[0].pid);
+      if (HDD_FileExist(ServiceString))
       {
-        FILE* fPMT;
-        struct dirent *dir;
-        char svc_name[71], answer;
-        word sid, vpid, apid, year;
-        byte month, day;
-
-        while (((dir = readdir(d)) != NULL) && (dir->d_type == DT_REG))
+        printf("\nUsing PAT/PMT %s from database.\n", ServiceString);
+        if ((fPMT = fopen(ServiceString, "rb")))
         {
-          if (sscanf(dir->d_name, "%hu_%hd_%hd_%hd-%hhu-%hhu_%70s.pmt", &sid, &vpid, &apid, &year, &month, &day, svc_name) == 7)
-          {
-            if ((vpid == VideoPID) && (apid == ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.AudioPID))
-              printf("Use the following PMT from database: %s? [y/n] ", dir->d_name);
-              if ((scanf("%c", &answer) == 1) && (answer=='y' || answer=='j'))
-              {
-                printf("\nUsing PAT/PMT %s from database (ServiceName=%s).\n", dir->d_name, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceName);
-                if ((fPMT = fopen(dir->d_name, "rb")))
-                {
-                  fread(PATPMTBuf, 1, 4*192 + 5, fPMT);
-                  fclose(fPMT);
-                }
-                pmt_used = TRUE;
-              }
-              else
-                printf("\n");
-          }
+          fread(PATPMTBuf, 1, 4*192, fPMT);
+          fclose(fPMT);
+
+          for (k = 0; k < 4; k++)
+            ((tTSPacket*)(&PATPMTBuf[192]))->ContinuityCount = (k==0 ? k : k-1);
+          pmt_used = TRUE;
+          DoInfFix = TRUE;
         }
-        closedir(d);
       }
     }
-  #endif
-#endif
-    if ((MedionMode == 1) || !pmt_used)
+//#endif
+    if (DoFixPMT || MedionMode || !pmt_used)
     {
       printf("Generate new %s for Humax/Medion/Eycos recording.\n", ((PATPMTBuf[192+4]=='G') ? "PAT" : "PAT/PMT"));
 //      GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, 256, VideoPID, 101, TeletextPID, AudioPIDs);
       GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID, VideoPID, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.AudioPID, TeletextPID, SubtitlesPID, AudioPIDs, (PATPMTBuf[192+4]=='G'));
 
 // DEBUG-NOV
-fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/PMT_5_AfterPAT.bin", "wb");
-fwrite(PATPMTBuf, 1, 4*192 + 5, fDbg);
-fclose(fDbg);
+//fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/PMT_5_AfterPAT.bin", "wb");
+//fwrite(PATPMTBuf, 1, 4*192, fDbg);
+//fclose(fDbg);
     }
 
 /*    if (MedionMode == 1)
@@ -1886,8 +1905,8 @@ fclose(fDbg);
     strncpy(StartTimeStr, TimeStr_DB(Inf_TMSS->RecHeaderInfo.StartTime, Inf_TMSS->RecHeaderInfo.StartTimeSec), sizeof(StartTimeStr));
     fprintf(stderr, "%s\t%llu\t%s\t%s\t%s\t%lld\t%lld\t%u\t%u\t%s\t",  RecFileIn,  RecFileSize,  FileDateStr,  StartTimeStr,  DurationStr,  FirstFilePCR,  LastFilePCR,  FirstFilePTS,  LastFilePTS,  (Inf_TMSS->RecHeaderInfo.rs_HasBeenStripped ? "yes" : "no"));
 
-    // SERVICE:  InfType;   Sender;   ServiceID;  PMTPid;  VideoPid;  AudioPid;  VideoType;  AudioType;  AudioTypeFlag;  HD;  VideoWidth x VideoHeight;  VideoFPS;  VideoDAR
-    fprintf(stderr, "ST_TMS%c\t%s\t%hu\t%hd\t%hd\t%hd\t0x%hx\t0x%hx\t0x%hx\t%s\t%dx%d\t%.1f fps\t%.3f\t",  (SystemType==ST_TMSS ? 's' : ((SystemType==ST_TMSC) ? 'c' : ((SystemType==ST_TMST) ? 't' : '?'))),  Inf_TMSS->ServiceInfo.ServiceName,  Inf_TMSS->ServiceInfo.ServiceID,  Inf_TMSS->ServiceInfo.PMTPID,  Inf_TMSS->ServiceInfo.VideoPID,  Inf_TMSS->ServiceInfo.AudioPID,  Inf_TMSS->ServiceInfo.VideoStreamType,  Inf_TMSS->ServiceInfo.AudioStreamType,  Inf_TMSS->ServiceInfo.AudioTypeFlag,  (isHDVideo ? "yes" : "no"),  VideoWidth,  VideoHeight,  (VideoFPS ? VideoFPS : (NavFrames ? NavFrames/((double)NavDurationMS/1000) : 0)),  VideoDAR);
+    // SERVICE:  InfType;   Sender;   ServiceID;  PMTPid;  VideoPid;  AudioPid;  TtxPid;  VideoType;  AudioType;  AudioTypeFlag;  HD;  VideoWidth x VideoHeight;  VideoFPS;  VideoDAR
+    fprintf(stderr, "ST_TMS%c\t%s\t%hu\t%hd\t%hd\t%hd\t%hd\t0x%hx\t0x%hx\t0x%hx\t%s\t%dx%d\t%.1f fps\t%.3f\t",  (SystemType==ST_TMSS ? 's' : ((SystemType==ST_TMSC) ? 'c' : ((SystemType==ST_TMST) ? 't' : '?'))),  Inf_TMSS->ServiceInfo.ServiceName,  Inf_TMSS->ServiceInfo.ServiceID,  Inf_TMSS->ServiceInfo.PMTPID,  Inf_TMSS->ServiceInfo.VideoPID,  Inf_TMSS->ServiceInfo.AudioPID,  TeletextPID,  Inf_TMSS->ServiceInfo.VideoStreamType,  Inf_TMSS->ServiceInfo.AudioStreamType,  Inf_TMSS->ServiceInfo.AudioTypeFlag,  (isHDVideo ? "yes" : "no"),  VideoWidth,  VideoHeight,  (VideoFPS ? VideoFPS : (NavFrames ? NavFrames/((double)NavDurationMS/1000) : 0)),  VideoDAR);
 
     // SEGMENTMARKERS (getrennt durch ; und |)
     if (NrSegmentMarker > 2)
@@ -1956,18 +1975,62 @@ fclose(fDbg);
   {
     char                  NavFileIn[FBLIB_DIR_SIZE];
     time_t                RecDate;
+    bool                  InfModified = FALSE;
 
     RecDate = TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE);
 
+    // Prüfe/Repariere Startzeit in der inf
     if (DoInfFix == 2 && *InfFileIn)
     {
       printf("INF FIX (source): Changing StartTime to: %s\n", TimeStrTF(OrigStartTime, OrigStartSec));
       SetInfStripFlags(InfFileIn, FALSE, FALSE, TRUE);
     }
     else
-      printf("No fix of source inf necessary.\n", TimeStrTF(OrigStartTime, OrigStartSec));
+      printf("No fix of source inf necessary.\n");
 
-    if (DoInfFix == 2 || RecFileTimeStamp != RecDate)
+    // Prüfe/Repariere ServiceID und AudioTypes in der inf
+    if (DoFixPMT && *InfFileIn)
+    {
+      FILE                 *fInfOut;
+      TYPE_RecHeader_Info   RecHeaderInfo_out;
+      TYPE_Service_Info     ServiceInfo_out;
+      TYPE_RecHeader_TMSS*  RecHeader = ((TYPE_RecHeader_TMSS*)InfBuffer);
+
+      if ((fInfOut = fopen(InfFileIn, "rb")))
+      {
+        if ((fread(&RecHeaderInfo_out, sizeof(TYPE_RecHeader_Info), 1, fInfOut)) && (fread(&ServiceInfo_out, sizeof(TYPE_Service_Info), 1, fInfOut))
+          && ((strncmp(RecHeaderInfo_out.Magic, "TFrc", 4) == 0) && (RecHeaderInfo_out.Version == 0x8000)))
+        {
+          if (ServiceInfo_out.ServiceID != RecHeader->ServiceInfo.ServiceID)
+          {
+            printf("INF FIX (source): Fixing ServiceID %hu -> %hu\n", ServiceInfo_out.ServiceID, RecHeader->ServiceInfo.ServiceID);
+            ServiceInfo_out.ServiceID = RecHeader->ServiceInfo.ServiceID;
+            InfModified = TRUE;
+          }
+          if (ServiceInfo_out.AudioStreamType != RecHeader->ServiceInfo.AudioStreamType)
+          {
+            printf("INF FIX (source): Fixing AudioStreamType %hhu -> %hhu\n", ServiceInfo_out.AudioStreamType, RecHeader->ServiceInfo.AudioStreamType);
+            ServiceInfo_out.AudioStreamType = RecHeader->ServiceInfo.AudioStreamType;
+            InfModified = TRUE;
+          }
+          if (ServiceInfo_out.AudioTypeFlag != RecHeader->ServiceInfo.AudioTypeFlag)
+          {
+            printf("INF FIX (source): Fixing AudioTypeFlag %hu -> %hu\n", ServiceInfo_out.AudioTypeFlag, RecHeader->ServiceInfo.AudioTypeFlag);
+            ServiceInfo_out.AudioTypeFlag = RecHeader->ServiceInfo.AudioTypeFlag;
+            InfModified = TRUE;
+          }
+        }
+        fclose(fInfOut);
+      }   
+      if ((fInfOut = fopen(InfFileIn, "r+b")))
+      {
+        fseek(fInfOut, sizeof(TYPE_RecHeader_Info), SEEK_SET);
+        fwrite(&ServiceInfo_out, 1, sizeof(TYPE_Service_Info), fInfOut);
+        fclose(fInfOut);
+      }
+    }
+
+    if (DoInfFix == 2 || RecFileTimeStamp != RecDate || InfModified)
     {
       printf("INF FIX (source): Changing file timestamp to: %s\n", TimeStrTF(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
       snprintf(NavFileIn, sizeof(NavFileIn), "%s.nav", RecFileIn);
@@ -1990,7 +2053,7 @@ fclose(fDbg);
     if (*RecFileOut)
     {
       printf("\nOutput rec: %s\n", RecFileOut);
-      if (fOut = fopen(RecFileOut, "r+b"))
+      if ((fOut = fopen(RecFileOut, "r+b")))
       {
         for (k = 0; (PATPMTBuf[4 + k*192] == 'G'); k++)
         {
@@ -2319,7 +2382,7 @@ fclose(fDbg);
           for (k = 0; (PATPMTBuf[4 + k*192] == 'G'); k++)
           {
             int l;
-            ((tTSPacket*) &PATPMTBuf[4])->ContinuityCount += l;  // PAT Continuity Counter setzen
+            ((tTSPacket*) &PATPMTBuf[4])->ContinuityCount += 1;  // PAT Continuity Counter setzen
             for (l = 1; l <= k; l++)
               ((tTSPacket*) &PATPMTBuf[4 + l*192])->ContinuityCount += l;  // PMT Continuity Counter setzen
 
@@ -2643,7 +2706,7 @@ fclose(fDbg);
               for (k = 0; (PATPMTBuf[4 + k*192] == 'G'); k++)
               {
                 int l;
-                ((tTSPacket*) &PATPMTBuf[4])->ContinuityCount += l;  // PAT Continuity Counter setzen
+                ((tTSPacket*) &PATPMTBuf[4])->ContinuityCount += 1;  // PAT Continuity Counter setzen
                 for (l = 1; l <= k; l++)
                   ((tTSPacket*) &PATPMTBuf[4 + l*192])->ContinuityCount += l;  // PMT Continuity Counter setzen
 

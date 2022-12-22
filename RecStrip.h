@@ -121,13 +121,14 @@ typedef struct
 typedef struct
 {
   word pid;
-  byte flags: 2;      // 0=toScan, 1=scanned, 2=noAudio
-  byte sorted: 1;
-  byte reserved: 1;
-  byte type: 4;       // 1=mpeg1, 0=mpeg2
+  byte type;          // 1=mpeg1, 0=mpeg2
   byte layer: 2;      // 3=Layer1, 2=Layer2, 1=Layer3
   byte mode: 2;       // 0=Stereo, 1=Joint stereo, 2=Dual channel, 3=Single channel
   byte bitrate: 4;
+  byte scanned: 1;    // Flags: 0=toScan, 1=scanned, 2=noAudio
+  byte sorted: 1;
+  byte noAudio: 1;
+  byte reserved: 5;
   char desc[4];
 } tAudioTrack;
 
@@ -135,6 +136,7 @@ typedef struct
 // Globale Variablen
 extern char             RecFileIn[], RecFileOut[], MDEpgName[], MDTtxName[], MDAudName[];
 extern byte            *PATPMTBuf, *EPGPacks;
+extern const char      *ExePath;
 extern unsigned long long RecFileSize;
 extern time_t           RecFileTimeStamp;
 extern SYSTEM_TYPE      SystemType;
