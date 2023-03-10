@@ -12,7 +12,7 @@ typedef enum
 
 typedef enum
 {
-  DESC_Audio             = 0x0A,  // 10
+  DESC_AudioLang         = 0x0A,  // 10
   DESC_StreamIdentifier  = 'R',  // 0x52
   DESC_EITShortEvent     = 'M',  // 0x4d
   DESC_EITExtEvent       = 'N',  // 0x4e
@@ -51,7 +51,7 @@ typedef enum
 
 typedef struct
 {
-  byte TableID;
+  byte TableID;          // TABLE_PAT = 0x00
   byte SectionLen1:4;    // first 2 bits are 0
   byte Reserved1:2;      // = 0x03 (all 1)
   byte Private:1;        // = 0
@@ -77,7 +77,7 @@ typedef struct
 
 typedef struct
 {
-  byte TableID;
+  byte TableID;          // TABLE_PMT = 0x02
   byte SectionLen1:4;    // first 2 bits are 0
   byte Reserved1:2;      // = 0x03 (all 1)
   byte Private:1;        // = 0
@@ -127,16 +127,16 @@ typedef struct
 
 typedef struct
 {
-  byte DescrTag;
+  byte DescrTag;         // DESC_StreamIdentifier = 'R' = 0x52
   byte DescrLength;
   byte ComponentTag;
 } tTSStreamDesc;
 
 typedef struct
 {
-  byte DescrTag;
+  byte DescrTag;         // DESC_AC3 = 'j' = 0x6A
   byte DescrLength;
-//  char Name[4];          // without terminating 0
+//  char Name[4];        // without terminating 0
   byte Reserved:4;
   byte asvc_flag:1;
   byte mainid_flag:1;
@@ -146,27 +146,33 @@ typedef struct
 
 typedef struct
 {
-  byte DescrTag;
+  byte DescrTag;         // DESC_AudioLang = 0x0A = 10
   byte DescrLength;
-  char LanguageCode[3]; // without terminating 0
-  byte AudioType;       // Ist das richtig??
+  char LanguageCode[3];  // without terminating 0
+  byte AudioType;        // Ist das richtig??
 } tTSAudioDesc;
 
 typedef struct
 {
-  byte DescrTag;
+  byte DescrTag;         // DESC_Teletext = 'V' = 0x56
   byte DescrLength;
   char LanguageCode[3];  // without terminating 0
-  byte TtxMagazine:1;    // = 1
-  byte Unknown2:2;       // = 0
-  byte TtxType:2;        // 1 = initial Teletext page
-  byte Unknown:3;        // unknown
+  union {
+    byte Flags;
+    struct
+    {
+      byte TtxMagazine:1;    // = 1
+      byte Unknown2:2;       // = 0
+      byte TtxType:2;        // 1 = initial Teletext page
+      byte Unknown:3;        // unknown
+    } __attribute__((packed));
+  };
   byte FirstPage;
 } tTSTtxDesc;
 
 typedef struct
 {
-  byte DescrTag;
+  byte DescrTag;         // DESC_Subtitle = 'Y' = 0x59
   byte DescrLength;
   char LanguageCode[3];  // without terminating 0
   byte subtitling_type;
@@ -176,17 +182,10 @@ typedef struct
   byte ancillary_page_id2;
 } tTSSubtDesc;
 
-typedef struct
-{
-  byte DescrTag;
-  byte DescLength;
-  byte component_tag;
-} tTSStreamIDDesc;
-
 
 typedef struct
 {
-  byte TableID;
+  byte TableID;          // TABLE_SDT = 0x42
   byte SectionLen1:4;    // first 2 bits are 0
   byte Reserved1:2;      // = 0x03 (all 1)
   byte Private:1;        // = 1
@@ -233,7 +232,7 @@ typedef struct
 
 typedef struct
 {
-  byte TableID;
+  byte TableID;          // TABLE_EIT = 0x4e
   byte SectionLen1:4;    // first 2 bits are 0
   byte Reserved1:2;      // = 0x03 (all 1)
   byte Private:1;        // = 1
@@ -408,6 +407,7 @@ time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec, bool convertToUTC);
 tPVRTime Unix2TFTime(time_t UnixTimeStamp, byte *const outSec, bool convertToLocal);
 tPVRTime EPG2TFTime(tPVRTime TFTimeStamp, int *const out_timeoffset);
 tPVRTime AddTimeSec(tPVRTime pvrTime, byte pvrTimeSec, byte *const outSec, int addSeconds);
+word GetMinimalAudioPID(tAudioTrack AudioPIDs[]);
 void InitInfStruct(TYPE_RecHeader_TMSS *RecInf);
 bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf);
 //bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf);

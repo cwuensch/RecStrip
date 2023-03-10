@@ -127,9 +127,10 @@ typedef struct
   byte bitrate: 4;
   byte scanned: 1;    // Flags: 0=toScan, 1=scanned, 2=noAudio
   byte sorted: 1;
-  byte noAudio: 1;
-  byte reserved: 5;
+  byte streamType: 2; // Flags: 0=Audio, 1=Teletext, 2=Subtitles, 3=unknown
+  byte streamId: 4;   // neu: StreamID aus der Original-PMT eintragen
   char desc[4];
+  byte desc_type;
 } tAudioTrack;
 
 
@@ -149,6 +150,7 @@ extern bool             DoStrip, DoSkip, RemoveEPGStream, RemoveTeletext, Rebuil
 extern int              DoCut, DoMerge, DoInfFix;
 extern int              NrEPGPacks;
 extern int              dbg_DelBytesSinceLastVid;
+extern byte             VideoStreamTag;
 
 extern TYPE_Bookmark_Info *BookmarkInfo, BookmarkInfo_In;
 extern tSegmentMarker2 *SegmentMarker;       //[0]=Start of file, [x]=End of file

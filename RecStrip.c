@@ -42,6 +42,7 @@
 #ifdef _WIN32
   #include <io.h>
   #include <sys/utime.h>
+  #include <windows.h>
 #else
   #include <unistd.h>
   #include <utime.h>
@@ -116,6 +117,7 @@ bool                    DoStrip = FALSE, DoSkip = FALSE, RemoveScrambled = FALSE
 int                     DoCut = 0, DoMerge = 0, DoInfFix = 0;  // DoCut: 1=remove_parts, 2=copy_separate, DoMerge: 1=append, 2=merge  // DoInfFix: 1=enable, 2=inf to be fixed
 int                     curInputFile = 0, NrInputFiles = 1, NrEPGPacks = 0;
 int                     dbg_DelBytesSinceLastVid = 0;
+byte                    VideoStreamTag = (byte) -1;
 
 TYPE_Bookmark_Info     *BookmarkInfo = NULL;
 tSegmentMarker2        *SegmentMarker = NULL;       //[0]=Start of file, [x]=End of file
@@ -153,29 +155,70 @@ static int              NrContErrsInFile = 0;
 char                   *ExtEPGText = NULL;
 
 
+#ifdef _WIN32
+static LPWSTR winMbcsToUnicode(const char *zText){
+  int nByte;
+  LPWSTR zMbcsText;
+
+  nByte = MultiByteToWideChar(CP_ACP, 0, zText, -1, NULL, 0) * sizeof(WCHAR);  // CP_OEMCP
+  if (nByte > 0)
+    if (zMbcsText = (LPWSTR) malloc(nByte * sizeof(WCHAR)))
+    {
+      if (MultiByteToWideChar(CP_ACP, 0, zText, -1, zMbcsText, nByte) > 0)  // CP_OEMCP
+        return zMbcsText;
+      else
+        free(zMbcsText);
+    }
+  return NULL;
+}
+#endif
+
 bool HDD_FileExist(const char *AbsFileName)
 {
-  struct stat           statbuf;
+//#ifdef _WIN32
+//  LPWSTR wAbsFileName = winMbcsToUnicode(AbsFileName);
+//  DWORD dwAttrib = GetFileAttributes(wAbsFileName);
+//  free(wAbsFileName);
+//  return (dwAttrib != INVALID_FILE_ATTRIBUTES && !(dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
+//#else
+  struct stat statbuf;
   return (stat(AbsFileName, &statbuf) == 0);
+//#endif
 }
 
 static bool HDD_DirExist(const char *AbsDirName)
 {
-  struct stat           statbuf;
+#ifdef _WIN32
+  LPWSTR wAbsDirName = winMbcsToUnicode(AbsDirName);
+  DWORD dwAttrib = GetFileAttributes(wAbsDirName);
+  free(wAbsDirName);
+  return (dwAttrib != INVALID_FILE_ATTRIBUTES && (dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
+#else
+  struct stat statbuf;
   return ((stat(AbsDirName, &statbuf) == 0) && (statbuf.st_mode & S_IFDIR));
+#endif
 }
 
 bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize)
 {
-  struct stat64         statbuf;
-  bool                  ret = FALSE;
+  bool ret = FALSE;
 
   TRACEENTER;
   if(AbsFileName)
   {
+#ifdef _WIN32
+    LPWSTR wAbsFileName = winMbcsToUnicode(AbsFileName);
+    WIN32_FILE_ATTRIBUTE_DATA fad;
+    ret = (GetFileAttributesEx(wAbsFileName, GetFileExInfoStandard, &fad));
+    free(wAbsFileName);
+    if (ret && OutFileSize)
+      *OutFileSize = (((unsigned long long)fad.nFileSizeHigh) << 32) + fad.nFileSizeLow;
+#else
+    struct stat64 statbuf;
     ret = (stat64(AbsFileName, &statbuf) == 0);
     if (ret && OutFileSize)
       *OutFileSize = statbuf.st_size;
+#endif
   }
   TRACEEXIT;
   return ret;
@@ -190,6 +233,15 @@ static time_t HDD_GetFileDateTime(char const *AbsFileName)
   TRACEENTER;
   if(AbsFileName)
   {
+#ifdef _WIN32
+    LPWSTR wAbsFileName = winMbcsToUnicode(AbsFileName);
+    WIN32_FILE_ATTRIBUTE_DATA fad;
+    time_t Result2;
+    if (GetFileAttributesEx(wAbsFileName, GetFileExInfoStandard, &fad))
+      Result2 = (time_t) ((((unsigned long long)fad.ftLastWriteTime.dwHighDateTime) << 32) + fad.ftLastWriteTime.dwLowDateTime) / 10000000 - 11644473600LL;  // Convert Windows ticks to Unix Timestamp
+    free(wAbsFileName);
+#endif
+
     if(stat64(AbsFileName, &statbuf) == 0)
     {
       Result = statbuf.st_mtime;
@@ -202,6 +254,8 @@ static time_t HDD_GetFileDateTime(char const *AbsFileName)
         localtime_s(&timeinfo, &Result);
         localtime_s(&timeinfo_sys, &now);
         Result -= (3600 * (timeinfo_sys.tm_isdst - timeinfo.tm_isdst));  // Windows-eigene DST-Korrektur ausgleichen
+        if (Result2 != Result)
+          printf("ASSERTION ERROR! Windows API date (%hhu) does not match 'correct' stat date (%hhu).\n", Result2, Result);
       }
       #endif
     }
@@ -236,8 +290,32 @@ static bool HDD_SetFileDateTime(char const *AbsFileName, time_t NewDateTime)
       timebuf.modtime = NewDateTime;
       utime(AbsFileName, &timebuf);
       TRACEEXIT;
+#ifndef _WIN32
       return TRUE;
+#endif
     }
+
+#ifdef _WIN32
+    {
+      LPWSTR wAbsFileName = winMbcsToUnicode(AbsFileName);
+      WIN32_FILE_ATTRIBUTE_DATA fad;
+      if (GetFileAttributesEx(wAbsFileName, GetFileExInfoStandard, &fad))
+      {
+        HANDLE hFile = CreateFile(wAbsFileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+        FILE_BASIC_INFO b;
+        NewDateTime = (NewDateTime + 11644473600LL) * 10000000;  // Convert Unix Timestamp to Windows ticks
+        b.LastWriteTime.HighPart  = NewDateTime >> 32;;
+        b.LastWriteTime.LowPart   = NewDateTime & 0xffffffff;
+        b.LastAccessTime.HighPart = fad.ftLastAccessTime.dwHighDateTime;
+        b.LastAccessTime.LowPart  = fad.ftLastAccessTime.dwLowDateTime;
+        b.FileAttributes          = GetFileAttributes(wAbsFileName);
+        SetFileInformationByHandle(hFile, FileBasicInfo, &b, sizeof(b));
+        CloseHandle(hFile);
+        free(wAbsFileName);
+        return TRUE;
+      }
+    }
+#endif
   }
   TRACEEXIT;
   return FALSE;
@@ -1509,7 +1587,7 @@ int main(int argc, const char* argv[])
 } */
 
 
-{
+/* {
   byte Buffer[192], Buffer2[384];
   FILE *fPMT = NULL;
   TYPE_RecHeader_TMSS RecInf;
@@ -1517,7 +1595,14 @@ int main(int argc, const char* argv[])
   memset(AudioPIDs, 0, MAXCONTINUITYPIDS * sizeof(tAudioTrack));
   InitInfStruct(&RecInf);
 
-  if ((fPMT = fopen("D:/Test/pmts/28385_1201_1202_2022-12-01_13-09_Radio Bremen TV.pmt", "rb")))
+//  if ((fPMT = fopen("D:/Test/pmts/28396_1601_1602_2008-12-25_17-00_EinsFestivalHD_out.pmt", "rb")))
+//  if ((fPMT = fopen("D:/Test/pmts/28385_1201_1202_2022-12-01_13-09_Radio Bremen TV.pmt", "rb")))
+//  if ((fPMT = fopen("D:/Test/pmts/17501_511_33_2022-11-28_10-17_ProSieben.pmt", "rb")))
+//  if ((fPMT = fopen("D:/Test/pmts/28724_401_402_2022-12-01_14-19_arte.pmt", "rb")))
+//  if ((fPMT = fopen("D:/Test/pmts/10302_5111_5112_2020-02-23_19-27_arte HD.pmt", "rb")))
+//  if ((fPMT = fopen("D:/Test/pmts/28006_110_120_2022-11-28_11-09_ZDF.pmt", "rb")))
+  if ((fPMT = fopen("D:/Test/pmts/pmts2/28006_110_120.pmt", "rb")))
+//  if ((fPMT = fopen("D:/Test/pmts/28006_110_120_2022-11-28_11-09_ZDF_out.pmt", "rb")))
   {
     fseek(fPMT, 192, SEEK_SET);
     fread(Buffer, 1, 192, fPMT);
@@ -1528,14 +1613,19 @@ int main(int argc, const char* argv[])
   for (i = 0; i < MAXCONTINUITYPIDS; i++)
     if(AudioPIDs[i].pid) AudioPIDs[i].scanned = TRUE; else break;
 
-  GeneratePatPmt(Buffer2, 28396, 100, 1601, 1602, 0, 0, AudioPIDs, FALSE);
-  if ((fPMT = fopen("D:/Test/pmts/28385_1201_1202_2022-12-01_13-09_Radio Bremen TV_out.pmt", "wb")))
+  GeneratePatPmt(Buffer2, RecInf.ServiceInfo.ServiceID, 100, VideoPID, AudioPIDs[0].pid, TeletextPID, SubtitlesPID, AudioPIDs, FALSE);
+//  if ((fPMT = fopen("D:/Test/pmts/28396_1601_1602_2008-12-25_17-00_EinsFestivalHD_out2.pmt", "wb")))
+//  if ((fPMT = fopen("D:/Test/pmts/28385_1201_1202_2022-12-01_13-09_Radio Bremen TV_out.pmt", "wb")))
+//  if ((fPMT = fopen("D:/Test/pmts/17501_511_33_2022-11-28_10-17_ProSieben_out.pmt", "wb")))
+//  if ((fPMT = fopen("D:/Test/pmts/28724_401_402_2022-12-01_14-19_arte_out.pmt", "wb")))
+//  if ((fPMT = fopen("D:/Test/pmts/10302_5111_5112_2020-02-23_19-27_arte HD_out.pmt", "wb")))
+  if ((fPMT = fopen("D:/Test/pmts/28006_110_120_2022-11-28_11-09_ZDF_out2.pmt", "wb")))
   {
     fwrite(Buffer2, 1, 384, fPMT);
     fclose(fPMT);
   }
   exit(1);
-}
+} */
 
 
   // Eingabe-Parameter prüfen
@@ -1833,12 +1923,20 @@ int main(int argc, const char* argv[])
 // Lese Original-PMT aus "Datenbank" ein (experimentell)
 FILE *fDbg;
 //#ifdef _DEBUG
-    if (!DoFixPMT)
+//    if (!DoFixPMT)
     {
       FILE *fPMT = NULL;
-      char ServiceString[100];
+      char ServiceString[128], *p;
+      int n = 0;
 
-      snprintf(ServiceString, sizeof(ServiceString), "%hu_%hd_%hd.pmt", ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, VideoPID, AudioPIDs[0].pid);
+      strncpy(ServiceString, ExePath, sizeof(ServiceString) - 1);
+      ServiceString[sizeof(ServiceString) - 1] = '\0';
+      if ((p = strrchr(ServiceString, '/'))) p[1] = '\0';
+      else if ((p = strrchr(ServiceString, '\\'))) p[1] = '\0';
+      else ServiceString[0] = 0;
+      n = strlen(ServiceString);
+
+      snprintf(&ServiceString[n], sizeof(ServiceString) - n, "pmts/%hu_%hd_%hd.pmt", ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, VideoPID, GetMinimalAudioPID(AudioPIDs));
       if (HDD_FileExist(ServiceString))
       {
         printf("\nUsing PAT/PMT %s from database.\n", ServiceString);
@@ -1848,7 +1946,14 @@ FILE *fDbg;
           fclose(fPMT);
 
           for (k = 0; k < 4; k++)
-            ((tTSPacket*)(&PATPMTBuf[192]))->ContinuityCount = (k==0 ? k : k-1);
+            ((tTSPacket*)(&PATPMTBuf[k*192 + 4]))->ContinuityCount = (k==0 ? k : k-1);
+          ((tTSPMT*)(&PATPMTBuf[201]))->CurNextInd = 1;
+          ((tTSPMT*)(&PATPMTBuf[201]))->VersionNr = 1;
+//          ((tTSPMT*)(&PATPMTBuf[200 + (((tTSPacket*)(&PATPMTBuf[196]))->Adapt_Field_Exists ? PATPMTBuf[200] : 0) + 1]))->CurNextInd = 1;
+//          ((tTSPMT*)(&PATPMTBuf[200 + (((tTSPacket*)(&PATPMTBuf[196]))->Adapt_Field_Exists ? PATPMTBuf[200] : 0) + 1]))->VersionNr = 1;
+          
+          ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID = ((tTSPacket*)(&PATPMTBuf[196]))->PID1 * 256 + ((tTSPacket*)(&PATPMTBuf[196]))->PID2;
+
           pmt_used = TRUE;
           DoInfFix = TRUE;
         }
@@ -1862,9 +1967,9 @@ FILE *fDbg;
       GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID, VideoPID, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.AudioPID, TeletextPID, SubtitlesPID, AudioPIDs, (PATPMTBuf[192+4]=='G'));
 
 // DEBUG-NOV
-//fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/PMT_5_AfterPAT.bin", "wb");
-//fwrite(PATPMTBuf, 1, 4*192, fDbg);
-//fclose(fDbg);
+fDbg = fopen("D:/Test/pmts/PMT_5_AfterPAT.bin", "wb");
+fwrite(PATPMTBuf, 1, 4*192, fDbg);
+fclose(fDbg);
     }
 
 /*    if (MedionMode == 1)
@@ -2052,6 +2157,7 @@ FILE *fDbg;
 
     if (*RecFileOut)
     {
+      fclose(fIn); fIn = NULL;
       printf("\nOutput rec: %s\n", RecFileOut);
       if ((fOut = fopen(RecFileOut, "r+b")))
       {
@@ -2095,7 +2201,7 @@ FILE *fDbg;
   // Hier beenden, wenn View Info Only
   if (DoInfoOnly || DoFixPMT)
   {
-    fclose(fIn); fIn = NULL;
+    if(fIn) fclose(fIn); fIn = NULL;
     CloseNavFileIn();
     if(MedionMode == 1) SimpleMuxer_Close();
     CutProcessor_Free();
