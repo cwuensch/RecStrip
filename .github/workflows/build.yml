@@ -53,7 +53,7 @@ jobs:
   
     - name: Create zip archive
       if: startsWith(github.ref, 'refs/tags/')
-      run: Compress-Archive -Path ${{ github.workspace }}\RecStrip_VS\RecStrip*.exe -DestinationPath RecStrip_VS2017.zip
+      run: Compress-Archive -Path ${{ github.workspace }}\RecStrip_VS\RecStrip*.exe,${{ github.workspace }}/SenderMap.txt -DestinationPath RecStrip_VS2017.zip
 
     - name: Upload release binaries
       uses: softprops/action-gh-release@v1
@@ -95,7 +95,7 @@ jobs:
 
     - name: Create zip archive
       if: startsWith(github.ref, 'refs/tags/')
-      run: Compress-Archive -Path ${{ github.workspace }}\RecStrip_VS\RecStrip*.exe -DestinationPath RecStrip_Windows.zip
+      run: Compress-Archive -Path ${{ github.workspace }}\RecStrip_VS\RecStrip*.exe,${{ github.workspace }}/SenderMap.txt -DestinationPath RecStrip_Windows.zip
 
     - name: Upload release binaries
       uses: softprops/action-gh-release@v1
@@ -122,7 +122,7 @@ jobs:
         cp Synology/Makefile .
         sed -i 's/^include \/env.mak//' Makefile
         sed -i 's/\$(CC) \$(CFLAGS) -rdynamic/\$(CC) \$(CFLAGS)/' Makefile
-        sed -i 's/CFLAGS2   ?= -O2/CFLAGS2   ?=/' Makefile
+        sed -i 's/CFLAGS2   ?= -O2/CFLAGS2   ?= -DUNICODE -D_UNICODE/' Makefile
 
     - name: Compile MinGW x86
       run: |
@@ -146,7 +146,7 @@ jobs:
 
     - name: Create zip archive
       if: startsWith(github.ref, 'refs/tags/')
-      run: zip -9 -r RecStrip_MinGW.zip RecStrip*.exe
+      run: zip -9 -r RecStrip_MinGW.zip RecStrip*.exe SenderMap.txt
 
     - name: Upload release binaries
       uses: softprops/action-gh-release@v1
@@ -332,7 +332,7 @@ jobs:
   
     - name: Create zip archive
       if: startsWith(github.ref, 'refs/tags/')
-      run: Compress-Archive -Path ${{ github.workspace }}\RecStrip_VS\RecStrip*.exe -DestinationPath RecStrip_Windows_new.zip
+      run: Compress-Archive -Path ${{ github.workspace }}\RecStrip_VS\RecStrip*.exe,${{ github.workspace }}/SenderMap.txt -DestinationPath RecStrip_Windows_new.zip
 
     - name: Upload release binaries
       uses: softprops/action-gh-release@v1
@@ -368,7 +368,7 @@ jobs:
 
     - name: Create zip archive
       if: startsWith(github.ref, 'refs/tags/')
-      run: zip -9 -r RecStrip_TMS.zip RecStrip
+      run: zip -9 -r RecStrip_TMS.zip RecStrip SenderMap.txt
 
     - name: Upload release binaries
       uses: softprops/action-gh-release@v1
@@ -380,7 +380,7 @@ jobs:
 
   linuxbuild:
     name: Build for Linux
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
 
     steps:
     - name: Checkout repository and submodules
@@ -425,7 +425,7 @@ jobs:
 
     - name: Create zip archive
       if: startsWith(github.ref, 'refs/tags/')
-      run: zip -9 -r RecStrip_Linux.zip RecStrip RecStrip_x64
+      run: zip -9 -r RecStrip_Linux.zip RecStrip RecStrip_x64 SenderMap.txt
 
     - name: Upload release binaries
       uses: softprops/action-gh-release@v1
@@ -437,8 +437,8 @@ jobs:
 
   striptest:
     name: Stripping test
-    runs-on: ubuntu-latest
-    needs: linuxbuild   
+    runs-on: ubuntu-22.04
+    needs: linuxbuild
     strategy:
       matrix:
         test: [SD, HD]
@@ -465,33 +465,34 @@ jobs:
         name: RecStrip_Linux
         path: ${{ github.workspace }}
     
-    - name: Copy StripTest from Docker container
-      run: |
-        mkdir ${{ github.workspace }}/StripTest
-        chmod a+w ${{ github.workspace }}/StripTest
-        docker run --rm -v ${{ github.workspace }}/StripTest:/host --entrypoint=/bin/bash cwuensch/striptest:${{ matrix.test }} -c "cp -aH /StripTest/* /host/"
-        sudo chown -R $(id -u):$(id -g) ${{ github.workspace }}/StripTest/*
-        chmod a+x ${{ github.workspace }}/StripTest/RunTest.sh
-        chmod a+x ${{ github.workspace }}/RecStrip*
-
-    - name: Perform test (on runner)
-      working-directory: ${{ github.workspace }}/StripTest
-      env:
-        RECSTRIP: "${{ github.workspace }}/${{ matrix.platform }}"
-      run: ./RunTest.sh
-    
-    - name: Perform x64 test (on runner)
-      working-directory: ${{ github.workspace }}/StripTest
-      run: ./RunTest.sh ${{env.RS_VER}} "${{ github.workspace }}/RecStrip_x64"
+## Use this form of test, if i386-C-libraries in container should be outdated
+#    - name: Copy StripTest from Docker container
+#      run: |
+#        mkdir ${{ github.workspace }}/StripTest
+#        chmod a+w ${{ github.workspace }}/StripTest
+#        docker run --rm -v ${{ github.workspace }}/StripTest:/host --entrypoint=/bin/bash cwuensch/striptest:${{ matrix.test }}_neu -c "cp -aH /StripTest/* /host/"
+#        sudo chown -R $(id -u):$(id -g) ${{ github.workspace }}/StripTest/*
+#        chmod a+x ${{ github.workspace }}/StripTest/RunTest.sh
+#        chmod a+x ${{ github.workspace }}/RecStrip*
+#
+#    - name: Perform test (on runner)
+#      working-directory: ${{ github.workspace }}/StripTest
+#      env:
+#        RECSTRIP: "${{ github.workspace }}/${{ matrix.platform }}"
+#      run: ./RunTest.sh
+#
+#    - name: Perform x64 test (on runner)
+#      working-directory: ${{ github.workspace }}/StripTest
+#      run: ./RunTest.sh ${{env.RS_VER}} "${{ github.workspace }}/RecStrip_x64"
 
 # That would be the "real" test -> does not work anymore because of outdated i386-C-libraries in container
-#    - name: Perform test (in container)
-#      run: |
-#        docker run --rm -v ${{ github.workspace }}:/StripTest/bin --env RS_VER=${{env.RS_VER}} --env RECSTRIP="bin/${{ matrix.platform }}" cwuensch/striptest:${{ matrix.test }}
-#        docker run --rm -v ${{ github.workspace }}:/StripTest/bin --env RS_VER=${{env.RS_VER}} --env RECSTRIP="bin/RecStrip_x64" cwuensch/striptest:${{ matrix.test }}
+    - name: Perform test (in container)
+      run: |
+        docker run --rm -v ${{ github.workspace }}:/StripTest/bin --env RS_VER=${{env.RS_VER}} --env RECSTRIP="bin/${{ matrix.platform }}" cwuensch/striptest:${{ matrix.test }}_neu
+        docker run --rm -v ${{ github.workspace }}:/StripTest/bin --env RS_VER=${{env.RS_VER}} --env RECSTRIP="bin/RecStrip_x64" cwuensch/striptest:${{ matrix.test }}_neu
 
 #    - name: Perform test (alternative)
-#      uses: docker://cwuensch/striptest:${{ matrix.test }}
+#      uses: docker://cwuensch/striptest:${{ matrix.test }}_neu
 #      env:
 ##        RS_VER: ${{ env.RS_VER }}
 #        RECSTRIP: /github/workspace/${{ matrix.platform }}
@@ -531,6 +532,7 @@ jobs:
         name: RecStrip_Synology
         path: |
           ${{ github.workspace }}/target/RecStrip_${{ matrix.platform }}
+          ${{ github.workspace }}/SenderMap.txt
 
   synoupload:
     name: Upload Synology release
@@ -545,7 +547,7 @@ jobs:
     - name: Create zip archive
       run: |
         cd ${{ github.workspace }}/RecStrip_Synology
-        zip -9 -r ${{ github.workspace }}/RecStrip_Synology.zip RecStrip*
+        zip -9 -r ${{ github.workspace }}/RecStrip_Synology.zip RecStrip* SenderMap.txt
 
     - name: Upload release binaries
       uses: softprops/action-gh-release@v1

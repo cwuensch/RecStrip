@@ -175,7 +175,7 @@ typedef struct
     byte magazine_nr:3;    // = 1
     byte teletext_type:5;  // 1 = initial Teletext page, 2 = subtitles page
     byte page_nr;          // = 0
-  } __attribute__((packed)) ttx[2];
+  } __attribute__((packed)) ttx[1];
 } tTSTtxDesc;
 
 typedef struct

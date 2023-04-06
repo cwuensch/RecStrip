@@ -1183,12 +1183,14 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 
     if (RecInf->ServiceInfo.ServiceID != 1)
       GetPidsFromMap(RecInf->ServiceInfo.ServiceID, &RecInf->ServiceInfo.PMTPID, &VideoPID, 0, &TeletextPID, NULL);
+    RecInf->ServiceInfo.PCRPID = VideoPID;
+    if(!RecInf->ServiceInfo.PMTPID) RecInf->ServiceInfo.PMTPID = 100;
     printf("  TS: SID=%hu, PCRPID=%hd, PMTPID=%hd\n", RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID, RecInf->ServiceInfo.PMTPID);
 
-    if(!RecInf->ServiceInfo.PMTPID) RecInf->ServiceInfo.PMTPID = 100;
-    RecInf->ServiceInfo.PCRPID = VideoPID;
     RecInf->ServiceInfo.VideoPID = VideoPID;
     RecInf->ServiceInfo.AudioPID = AudioPIDs[0].pid;
+    AudioPIDs[1].streamType = 1;
+    AudioPIDs[1].pid = TeletextPID;
     SimpleMuxer_SetPIDs(VideoPID, AudioPIDs[0].pid, TeletextPID);
     printf("  TS: Using new PMTPID=%hd, VideoPID=%hd, AudioPID=%hd, TtxPID=%hd\n", RecInf->ServiceInfo.PMTPID, VideoPID, AudioPIDs[0].pid, TeletextPID);
 

@@ -78,9 +78,9 @@ static dword crc32m(const unsigned char *buf, size_t len)
 bool GetPidsFromMap(word ServiceID, word *const OutPMTPID, word *const OutVidPID, word *const OutAudPID, word *const OutTtxPID, word *const OutSubtPID)
 {
   FILE *fMap;
-  char LineBuf[FBLIB_DIR_SIZE], *pPid, *pLng, *p;
-  word Sid, PPid, VPid, APid=0, TPid=0, SPid=0, curPid;
-  int APidStr = 0, ALangStr = 0, k, test;
+  char LineBuf[FBLIB_DIR_SIZE], *pPid, *pLng, *NameStr, *p;
+  word Sid, PPid, VPid, APid=0, TPid=0, SPid=0;
+  int APidStr = 0, ALangStr = 0, k;
   strncpy(LineBuf, ExePath, sizeof(LineBuf));
 
   if ((p = strrchr(LineBuf, '/'))) p[1] = '\0';
@@ -101,33 +101,32 @@ bool GetPidsFromMap(word ServiceID, word *const OutPMTPID, word *const OutVidPID
         LineBuf[--k] = '\0';
       
 //      if (sscanf(LineBuf, "%hu ; %hu ; %hu ; %hu %*1[/] %*15[^;/] ; %*20[^;/] ; %hu ; %hu ; %n %*70[^;\r\n]", &Sid, &PPid, &VPid, &APid, &TPid, &SPid, &BytesRead) == 6)
-      if (test = sscanf(LineBuf, "%hu ; %hu ; %hu ; %n %*19[^;] ; %n %*19[^;] ; %hu ; %hu ; %*70[^;\r\n]", &Sid, &PPid, &VPid, &APidStr, &ALangStr, &TPid, &SPid) >= 5)
+      if (sscanf(LineBuf, "%hu ; %hu ; %hu ; %n %*19[^;] ; %n %*19[^;] ; %hu ; %hu ; %*70[^;\r\n]", &Sid, &PPid, &VPid, &APidStr, &ALangStr, &TPid, &SPid) >= 3)
       {
         if (Sid == ServiceID)
         {
+          NameStr = strrchr(LineBuf, ';') + 1;
+          if((p = strchr(&LineBuf[APidStr], ';'))) p[0] = '\0';
           pPid = strtok(&LineBuf[APidStr], "/;");
           if(!APid) APid = (word) strtol(pPid, NULL, 10);
           pLng = &LineBuf[ALangStr];
-          if(pLng[0] == '\0') pLng = NULL;
-          while (pPid && pLng)
+          if(pLng[0] == ';') pLng = NULL;
+          for (k = 0; pPid && pLng && (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0); k++)
           {
-            curPid = (word) strtol(pPid, NULL, 10);
-            
-            // Add Language-Code from Map to AudioPIDs
-            for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0) && (AudioPIDs[k].pid != curPid); k++);
-            if (AudioPIDs[k].pid == curPid /*&& !AudioPIDs[k].desc*/)
-              strncpy(AudioPIDs[k].desc, pLng, 3);
+            // Set AudioPIDs according to Map
+            AudioPIDs[k].pid = (word) strtol(pPid, NULL, 10);
+            strncpy(AudioPIDs[k].desc, pLng, 3);
 
             pPid = strtok(NULL, "/;");
             pLng = (pLng && pLng[3] == '/') ? pLng + 4 : NULL;
           }
 
-          printf("  Using PIDs from Map: PMTPid=%hd, VidPID=%hd, AudPID=%hd, TtxPID=%hd, %s", PPid, VPid, APid, TPid, strrchr(LineBuf, ';'));
+          printf("  Found service from map: PMTPid=%hd, VidPID=%hd, AudPID=%hd, TtxPID=%hd (%s)\n", PPid, VPid, APid, TPid, NameStr);
           if (OutPMTPID && PPid) *OutPMTPID = PPid;
           if (OutVidPID && VPid) *OutVidPID = VPid;
           if (OutAudPID && APid) *OutAudPID = APid;
           if (OutTtxPID && TPid) *OutTtxPID = TPid;
-          if (OutTtxPID && SPid) *OutSubtPID = SPid;
+          if (OutSubtPID && SPid) *OutSubtPID = SPid;
           fclose(fMap);
           return TRUE;
         }
@@ -177,8 +176,8 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *InOutServiceName
   FILE *fMap;
   char LineBuf[100], SenderFound[32], PidsFound[20], LangFound[20];
   char *pPid, *pLng, *p;
-  word Sid, PPid, VPid, APid, TPid, SPid, curPid;
-  int APidStr = 0, ALangStr = 0, k, test;
+  word Sid, PPid, VPid, APid = 0, TPid = 0, SPid = 0, curPid;
+  int APidStr = 0, ALangStr = 0, k;
   word CandidateFound = 0, PMTFound = 0;
   strncpy(LineBuf, ExePath, sizeof(LineBuf));
 
@@ -199,28 +198,30 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *InOutServiceName
       while (k && (LineBuf[k-1] == '\r' || LineBuf[k-1] == '\n' || LineBuf[k-1] == ';'))
         LineBuf[--k] = '\0';
 
-      if (test = sscanf(LineBuf, "%hu ; %hu ; %hu ; %n %*19[^;] ; %n %*19[^;] ; %hu ; %hu ; %*70[^;\r\n]", &Sid, &PPid, &VPid, &APidStr, &ALangStr, &TPid, &SPid) >= 5)
+      if (sscanf(LineBuf, "%hu ; %hu ; %hu ; %n %*19[^;] ; %n %*19[^;] ; %hu ; %hu ; %*70[^;\r\n]", &Sid, &PPid, &VPid, &APidStr, &ALangStr, &TPid, &SPid) >= 3)
       {
         APid = (word) strtol(&LineBuf[APidStr], NULL, 10);
         if ((VPid == VidPID) && ((APid == AudPID) || !AudPID || AudPID == (word)-1) && ((TPid == TtxPID) || !TtxPID || TtxPID == (word)-1)
          && ((VidPID != 101 && VidPID != 201 && VidPID != 401 && VidPID != 601) || (*InOutServiceName && ((strncmp(p, InOutServiceName, 2) == 0) || (strncmp(p, "Das", 3)==0 && strncmp(InOutServiceName, "ARD", 3)==0) || (strncmp(p, "BR", 2)==0 && strncmp(InOutServiceName, "Bay", 3)==0)))))
         {
-          strncpy(SenderFound, strrchr(LineBuf, ';'), sizeof(SenderFound));
+          strncpy(SenderFound, strrchr(LineBuf, ';') + 1, sizeof(SenderFound));
           SenderFound[sizeof(SenderFound)-1] = '\0';
           strncpy(PidsFound, &LineBuf[APidStr], sizeof(PidsFound));
+          if ((p = strchr(PidsFound, ';'))) p[0] = '\0';
           strncpy(LangFound, &LineBuf[ALangStr], sizeof(LangFound));
           PMTFound = PPid;
-          printf("  Found ServiceID in Map: SID=%hu (%s), PMTPid=%hu\n", Sid, SenderFound, PPid);
-          if(CandidateFound) return 1;
+          if(CandidateFound) printf("\n");
+          printf("  Found ServiceID in Map: SID=%hu (%s), PMTPid=%hu", Sid, SenderFound, PPid);
+          if(CandidateFound) { printf(" (ambiguous) -> skipping\n"); return 1; }
           CandidateFound = Sid;
         }
         else if (CandidateFound)  // Nutzt aus, dass die SenderMap nach VideoPID sortiert ist
         {
-          printf("  Using ServiceID from Map: SID=%hu (%s), PMTPid=%hu\n", CandidateFound, SenderFound, PMTFound);
+          printf(" (unique) -> using SID\n");
 
-          pPid = strtok(&LineBuf[APidStr], "/;");
-          pLng = &LineBuf[ALangStr];
-          if(pLng[0] == '\0') pLng = NULL;
+          pPid = strtok(PidsFound, "/;");
+          pLng = LangFound;
+          if(pLng[0] == ';') pLng = NULL;
           while (pPid && pLng)
           {
             curPid = (word) strtol(pPid, NULL, 10);
