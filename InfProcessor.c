@@ -188,8 +188,13 @@ bool LoadInfFromRec(char *AbsRecFileName)
     int k;
     for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0) && (AudioPIDs[k].pid != RecInf->ServiceInfo.AudioPID); k++);
     if ((k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid == RecInf->ServiceInfo.AudioPID))
-      if(AudioPIDs[k].type == 1) RecInf->ServiceInfo.AudioStreamType = STREAM_AUDIO_MPEG1;
-
+    {
+      RecInf->ServiceInfo.AudioStreamType = AudioPIDs[k].type;  // if(AudioPIDs[k].type == 1) RecInf->ServiceInfo.AudioStreamType = STREAM_AUDIO_MPEG1;
+      if (RecInf->ServiceInfo.AudioTypeFlag > 3)
+printf("ASSERTION: AudioTypeFlag should be 0 or 1, but is %hd!\n", RecInf->ServiceInfo.AudioTypeFlag);
+      if (RecInf->ServiceInfo.AudioStreamType == STREAM_AUDIO_MPEG4_AC3)
+        RecInf->ServiceInfo.AudioTypeFlag = 1;
+    }
     SortAudioPIDs(AudioPIDs);
   }
 

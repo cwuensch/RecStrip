@@ -19,7 +19,8 @@ typedef enum
   DESC_Service           = 'H',  // 0x48
   DESC_Teletext          = 'V',  // 0x56
   DESC_Subtitle          = 'Y',  // 0x59
-  DESC_AC3               = 'j'   // 0x6A
+  DESC_AC3               = 'j',  // 0x6A
+  DESC_Extension         = 0x7F
 } DescrTags;
 
 typedef enum
@@ -134,6 +135,26 @@ typedef struct
 
 typedef struct
 {
+  byte DescrTag;         // DESC_AudioLang = 0x0A = 10
+  byte DescrLength;
+  char LanguageCode[3];  // without terminating 0
+  byte AudioFlag;        // 0=normal, 1=clean effects, 2=hearing impaired
+} tTSAudioDesc;
+
+typedef struct
+{
+  byte DescrTag;          // DESC_Extension = 0x7F
+  byte DescrLength;
+  byte DescrTagExt;      // 0x06 = Supplementary audio descriptor
+  byte language_code_present:1;
+  byte reserved:1;
+  byte editorial_classification:5;  // 0=main audio, 1=audio description for vis. imp., 2=clean audio for hear. imp., 3=spoken subtitles
+  byte mix_type:1;       // 1=independent stream, 0=supplementary stream to be mixed
+  char LanguageCode[3];  // without terminating 0
+} tTSSupplAudioDesc;
+
+typedef struct
+{
   byte DescrTag;         // DESC_AC3 = 'j' = 0x6A
   byte DescrLength;
 //  char Name[4];        // without terminating 0
@@ -146,28 +167,15 @@ typedef struct
 
 typedef struct
 {
-  byte DescrTag;         // DESC_AudioLang = 0x0A = 10
-  byte DescrLength;
-  char LanguageCode[3];  // without terminating 0
-  byte AudioType;        // Ist das richtig??
-} tTSAudioDesc;
-
-typedef struct
-{
   byte DescrTag;         // DESC_Teletext = 'V' = 0x56
   byte DescrLength;
-  char LanguageCode[3];  // without terminating 0
-  union {
-    byte Flags;
-    struct
-    {
-      byte TtxMagazine:1;    // = 1
-      byte Unknown2:2;       // = 0
-      byte TtxType:2;        // 1 = initial Teletext page
-      byte Unknown:3;        // unknown
-    } __attribute__((packed));
-  };
-  byte FirstPage;
+  struct
+  {
+    char LanguageCode[3];  // without terminating 0
+    byte magazine_nr:3;    // = 1
+    byte teletext_type:5;  // 1 = initial Teletext page, 2 = subtitles page
+    byte page_nr;          // = 0
+  } __attribute__((packed)) ttx[2];
 } tTSTtxDesc;
 
 typedef struct
@@ -413,6 +421,6 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf);
 //bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf);
 
 void SortAudioPIDs(tAudioTrack AudioPIDs[]);
-void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPID, word VideoPID, word AudioPID, word TtxPID, word SubtitlesPID, tAudioTrack AudioPIDs[], bool PATonly);
+void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPID, word VideoPID, tAudioTrack AudioPIDs[], bool PATonly);
 
 #endif

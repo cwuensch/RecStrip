@@ -114,6 +114,7 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
       RecInf->ServiceInfo.PCRPID          = VideoPID;
       RecInf->ServiceInfo.AudioPID        = AudioPID;
       RecInf->ServiceInfo.AudioStreamType = STREAM_AUDIO_MPEG2;
+      RecInf->ServiceInfo.AudioTypeFlag   = 0;
       RecInf->RecHeaderInfo.StartTime     = 0;  // TODO
 //      RecInf->RecHeaderInfo.DurationMin   = 0;  // TODO
 //      RecInf->RecHeaderInfo.DurationSec   = 0;  // TODO
@@ -145,7 +146,7 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
         {
           // Video
           case 0x0b:
-            if (EycosHeader.Pids[j].PID == VideoPID)
+            if (EycosHeader.Pids[j].PID == VideoPID)  // fall-through
             {
               isHDVideo = TRUE;  // fortsetzen...
               RecInf->ServiceInfo.VideoStreamType = STREAM_VIDEO_MPEG4_H264;

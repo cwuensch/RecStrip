@@ -130,7 +130,7 @@ typedef struct
   byte streamType: 2; // Flags: 0=Audio, 1=Teletext, 2=Subtitles, 3=unknown
   byte streamId: 4;   // neu: StreamID aus der Original-PMT eintragen
   char desc[4];
-  byte desc_type;
+  byte desc_flag;
 } tAudioTrack;
 
 

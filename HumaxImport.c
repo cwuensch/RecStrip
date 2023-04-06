@@ -75,12 +75,12 @@ static dword crc32m(const unsigned char *buf, size_t len)
 } */
 
 
-bool GetPidsFromMap(word ServiceID, word *const OutPMTPID, word *const OutVidPID, word *const OutAudPID, word *const OutTtxPID)
+bool GetPidsFromMap(word ServiceID, word *const OutPMTPID, word *const OutVidPID, word *const OutAudPID, word *const OutTtxPID, word *const OutSubtPID)
 {
   FILE *fMap;
-  char LineBuf[FBLIB_DIR_SIZE], *p;
-  word Sid, PPid, VPid, APid, TPid;
-  int BytesRead;
+  char LineBuf[FBLIB_DIR_SIZE], *pPid, *pLng, *p;
+  word Sid, PPid, VPid, APid=0, TPid=0, SPid=0, curPid;
+  int APidStr = 0, ALangStr = 0, k, test;
   strncpy(LineBuf, ExePath, sizeof(LineBuf));
 
   if ((p = strrchr(LineBuf, '/'))) p[1] = '\0';
@@ -93,16 +93,45 @@ bool GetPidsFromMap(word ServiceID, word *const OutPMTPID, word *const OutVidPID
   {
     while (fgets(LineBuf, sizeof(LineBuf), fMap))
     {
-      if (sscanf(LineBuf, "%hu ; %hu ; %hu ; %hu %*1[/] %*15[^;/] ; %hu ; %n %*70[^;\r\n]", &Sid, &PPid, &VPid, &APid, &TPid, &BytesRead) == 4)
+      if(LineBuf[0] == '#') continue;
+
+      // Remove line breaks in the end
+      k = (int)strlen(LineBuf);
+      while (k && (LineBuf[k-1] == '\r' || LineBuf[k-1] == '\n' || LineBuf[k-1] == ';'))
+        LineBuf[--k] = '\0';
+      
+//      if (sscanf(LineBuf, "%hu ; %hu ; %hu ; %hu %*1[/] %*15[^;/] ; %*20[^;/] ; %hu ; %hu ; %n %*70[^;\r\n]", &Sid, &PPid, &VPid, &APid, &TPid, &SPid, &BytesRead) == 6)
+      if (test = sscanf(LineBuf, "%hu ; %hu ; %hu ; %n %*19[^;] ; %n %*19[^;] ; %hu ; %hu ; %*70[^;\r\n]", &Sid, &PPid, &VPid, &APidStr, &ALangStr, &TPid, &SPid) >= 5)
+      {
         if (Sid == ServiceID)
         {
-          printf("  Using PIDs from Map: PMTPid=%hd, VidPID=%hd, AudPID=%hd, TtxPID=%hd, %s", PPid, VPid, APid, TPid, &LineBuf[BytesRead]);
+          pPid = strtok(&LineBuf[APidStr], "/;");
+          if(!APid) APid = (word) strtol(pPid, NULL, 10);
+          pLng = &LineBuf[ALangStr];
+          if(pLng[0] == '\0') pLng = NULL;
+          while (pPid && pLng)
+          {
+            curPid = (word) strtol(pPid, NULL, 10);
+            
+            // Add Language-Code from Map to AudioPIDs
+            for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0) && (AudioPIDs[k].pid != curPid); k++);
+            if (AudioPIDs[k].pid == curPid /*&& !AudioPIDs[k].desc*/)
+              strncpy(AudioPIDs[k].desc, pLng, 3);
+
+            pPid = strtok(NULL, "/;");
+            pLng = (pLng && pLng[3] == '/') ? pLng + 4 : NULL;
+          }
+
+          printf("  Using PIDs from Map: PMTPid=%hd, VidPID=%hd, AudPID=%hd, TtxPID=%hd, %s", PPid, VPid, APid, TPid, strrchr(LineBuf, ';'));
           if (OutPMTPID && PPid) *OutPMTPID = PPid;
           if (OutVidPID && VPid) *OutVidPID = VPid;
           if (OutAudPID && APid) *OutAudPID = APid;
           if (OutTtxPID && TPid) *OutTtxPID = TPid;
+          if (OutTtxPID && SPid) *OutSubtPID = SPid;
+          fclose(fMap);
           return TRUE;
         }
+      }
     }
     fclose(fMap);
   }
@@ -127,7 +156,7 @@ bool GetPidsFromMap(word ServiceID, word *const OutPMTPID, word *const OutVidPID
   {
     while (fgets(LineBuf, sizeof(LineBuf), fMap))
     {
-      if (sscanf(LineBuf, "%hu ; %hu ; %hu ; %hu %*1[/] %*15[^;/] ; %hu ; %n %*70[^;\r\n]", &Sid, &PPid, &VPid, &APid, &TPid, &BytesRead) == 4)
+      if (sscanf(LineBuf, "%hu ; %hu ; %hu ; %hu %*1[/] %*15[^;/] ; %*20[^;/] ; %hu ; %hu ; %n %*70[^;\r\n]", &Sid, &PPid, &VPid, &APid, &TPid, &SPid, &BytesRead) == 6)    
         if (Sid == ServiceID)
         {
           printf("  Detected service name from Map: %s", &LineBuf[BytesRead]);
@@ -146,9 +175,10 @@ bool GetPidsFromMap(word ServiceID, word *const OutPMTPID, word *const OutVidPID
 word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *InOutServiceName, word *const OutPMTPID)
 {
   FILE *fMap;
-  char LineBuf[100], Audios[32], SenderFound[24], *p;
-  word Sid, PPid, VPid, APid, TPid;
-  int BytesRead1=0, BytesRead2=0, BytesRead3=0, n;
+  char LineBuf[100], SenderFound[32], PidsFound[20], LangFound[20];
+  char *pPid, *pLng, *p;
+  word Sid, PPid, VPid, APid, TPid, SPid, curPid;
+  int APidStr = 0, ALangStr = 0, k, test;
   word CandidateFound = 0, PMTFound = 0;
   strncpy(LineBuf, ExePath, sizeof(LineBuf));
 
@@ -165,30 +195,48 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *InOutServiceName
       if(LineBuf[0] == '#') continue;
 
       // Remove line breaks in the end
-      n = (int)strlen(LineBuf);
-      while (n && (LineBuf[n-1] == '\r' || LineBuf[n-1] == '\n' || LineBuf[n-1] == ';'))
-        LineBuf[--n] = '\0';
+      k = (int)strlen(LineBuf);
+      while (k && (LineBuf[k-1] == '\r' || LineBuf[k-1] == '\n' || LineBuf[k-1] == ';'))
+        LineBuf[--k] = '\0';
 
-      if (sscanf(LineBuf, "%hu ; %hu ; %hu ; %hu%n%30[^;] %n", &Sid, &PPid, &VPid, &APid, &BytesRead1, Audios, &BytesRead2) >= 4 && sscanf(&LineBuf[max(BytesRead1,BytesRead2)], " ; %hu ; %n %*70[^;\r\n]", &TPid, &BytesRead3) >= 1)
+      if (test = sscanf(LineBuf, "%hu ; %hu ; %hu ; %n %*19[^;] ; %n %*19[^;] ; %hu ; %hu ; %*70[^;\r\n]", &Sid, &PPid, &VPid, &APidStr, &ALangStr, &TPid, &SPid) >= 5)
       {
-        if ((VPid == VidPID) && ((APid == AudPID) || !AudPID || AudPID == (word)-1) && ((TPid == TtxPID) || !TtxPID || TtxPID == (word)-1))
+        APid = (word) strtol(&LineBuf[APidStr], NULL, 10);
+        if ((VPid == VidPID) && ((APid == AudPID) || !AudPID || AudPID == (word)-1) && ((TPid == TtxPID) || !TtxPID || TtxPID == (word)-1)
+         && ((VidPID != 101 && VidPID != 201 && VidPID != 401 && VidPID != 601) || (*InOutServiceName && ((strncmp(p, InOutServiceName, 2) == 0) || (strncmp(p, "Das", 3)==0 && strncmp(InOutServiceName, "ARD", 3)==0) || (strncmp(p, "BR", 2)==0 && strncmp(InOutServiceName, "Bay", 3)==0)))))
         {
-          p = &LineBuf[max(BytesRead1,BytesRead2) + BytesRead3];
-          if ((VidPID != 101 && VidPID != 201 && VidPID != 401 && VidPID != 601) || (*InOutServiceName && ((strncmp(p, InOutServiceName, 2) == 0) || (strncmp(p, "Das", 3)==0 && strncmp(InOutServiceName, "ARD", 3)==0) || (strncmp(p, "BR", 2)==0 && strncmp(InOutServiceName, "Bay", 3)==0))))
-          {
-            strncpy(SenderFound, p, sizeof(SenderFound));
-            SenderFound[sizeof(SenderFound)-1] = '\0';
-            printf("  Found ServiceID in Map: SID=%hu (%s), PMTPid=%hu\n", Sid, SenderFound, PPid);
-            if(CandidateFound) return 1;
-            CandidateFound = Sid;
-            PMTFound = PPid;
-          }
+          strncpy(SenderFound, strrchr(LineBuf, ';'), sizeof(SenderFound));
+          SenderFound[sizeof(SenderFound)-1] = '\0';
+          strncpy(PidsFound, &LineBuf[APidStr], sizeof(PidsFound));
+          strncpy(LangFound, &LineBuf[ALangStr], sizeof(LangFound));
+          PMTFound = PPid;
+          printf("  Found ServiceID in Map: SID=%hu (%s), PMTPid=%hu\n", Sid, SenderFound, PPid);
+          if(CandidateFound) return 1;
+          CandidateFound = Sid;
         }
         else if (CandidateFound)  // Nutzt aus, dass die SenderMap nach VideoPID sortiert ist
         {
           printf("  Using ServiceID from Map: SID=%hu (%s), PMTPid=%hu\n", CandidateFound, SenderFound, PMTFound);
+
+          pPid = strtok(&LineBuf[APidStr], "/;");
+          pLng = &LineBuf[ALangStr];
+          if(pLng[0] == '\0') pLng = NULL;
+          while (pPid && pLng)
+          {
+            curPid = (word) strtol(pPid, NULL, 10);
+            
+            // Add Language-Code from Map to AudioPIDs
+            for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0) && (AudioPIDs[k].pid != curPid); k++);
+            if (AudioPIDs[k].pid == curPid /*&& !AudioPIDs[k].desc*/)
+              strncpy(AudioPIDs[k].desc, pLng, 3);
+
+            pPid = strtok(NULL, "/;");
+            pLng = (pLng && pLng[3] == '/') ? pLng + 4 : NULL;
+          }
+
           if(OutPMTPID && !*OutPMTPID) *OutPMTPID = PMTFound;
           if(InOutServiceName && !*InOutServiceName) strncpy(InOutServiceName, SenderFound, sizeof(((TYPE_Service_Info*)NULL)->ServiceName));
+          fclose(fMap);
           return CandidateFound;
         }
       }
@@ -234,7 +282,6 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 {
   tHumaxHeader          HumaxHeader;
   char                  FirstSvcName[32];
-  word                  PMTPid = 0;
   int                   i, j, k;
   bool                  ret = TRUE;
 
@@ -269,6 +316,7 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           RecInf->ServiceInfo.AudioPID        = HumaxHeader.Allgemein.AudioPID;
           RecInf->ServiceInfo.VideoStreamType = STREAM_VIDEO_MPEG2;
           RecInf->ServiceInfo.AudioStreamType = STREAM_AUDIO_MPEG2;
+          RecInf->ServiceInfo.AudioTypeFlag   = 0;
           RecInf->RecHeaderInfo.StartTime     = DATE(HumaxHeader.Allgemein.Datum, HumaxHeader.Allgemein.Zeit / 60, HumaxHeader.Allgemein.Zeit % 60);
           RecInf->RecHeaderInfo.DurationMin   = (word)(HumaxHeader.Allgemein.Dauer / 60);
           RecInf->RecHeaderInfo.DurationSec   = (word)(HumaxHeader.Allgemein.Dauer % 60);
