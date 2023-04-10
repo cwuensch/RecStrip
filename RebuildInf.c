@@ -1108,6 +1108,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                   RecInf->ServiceInfo.AudioTypeFlag = 3;
               } *//*
             } */
+            AudioPIDs[0].scanned = 1;
             strncpy(AudioPIDs[0].desc, "deu", 3);
             break;
           }
@@ -1183,14 +1184,14 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 
     if (RecInf->ServiceInfo.ServiceID != 1)
       GetPidsFromMap(RecInf->ServiceInfo.ServiceID, &RecInf->ServiceInfo.PMTPID, &VideoPID, 0, &TeletextPID, NULL);
-    RecInf->ServiceInfo.PCRPID = VideoPID;
     if(!RecInf->ServiceInfo.PMTPID) RecInf->ServiceInfo.PMTPID = 100;
     printf("  TS: SID=%hu, PCRPID=%hd, PMTPID=%hd\n", RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID, RecInf->ServiceInfo.PMTPID);
 
-    RecInf->ServiceInfo.VideoPID = VideoPID;
-    RecInf->ServiceInfo.AudioPID = AudioPIDs[0].pid;
     AudioPIDs[1].streamType = 1;
     AudioPIDs[1].pid = TeletextPID;
+    RecInf->ServiceInfo.VideoPID = VideoPID;
+    RecInf->ServiceInfo.AudioPID = AudioPIDs[0].pid;
+    RecInf->ServiceInfo.PCRPID = VideoPID;
     SimpleMuxer_SetPIDs(VideoPID, AudioPIDs[0].pid, TeletextPID);
     printf("  TS: Using new PMTPID=%hd, VideoPID=%hd, AudioPID=%hd, TtxPID=%hd\n", RecInf->ServiceInfo.PMTPID, VideoPID, AudioPIDs[0].pid, TeletextPID);
 

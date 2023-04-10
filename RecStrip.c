@@ -155,7 +155,7 @@ static int              NrContErrsInFile = 0;
 char                   *ExtEPGText = NULL;
 
 
-#ifdef _WIN32
+/* #ifdef _WIN32
 static LPWSTR winMbcsToUnicode(const char *zText){
   int nByte;
   LPWSTR zMbcsText;
@@ -171,32 +171,32 @@ static LPWSTR winMbcsToUnicode(const char *zText){
     }
   return NULL;
 }
-#endif
+#endif */
 
 bool HDD_FileExist(const char *AbsFileName)
 {
-//##if defined(_WIN32) // && defined(_MSC_VER)
+#if defined(_WIN32) // && defined(_MSC_VER)
 //  LPWSTR wAbsFileName = winMbcsToUnicode(AbsFileName);
-//  DWORD dwAttrib = GetFileAttributes(wAbsFileName);
+  DWORD dwAttrib = GetFileAttributesA(AbsFileName);
 //  free(wAbsFileName);
-//  return (dwAttrib != INVALID_FILE_ATTRIBUTES && !(dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
-//#else
+  return (dwAttrib != INVALID_FILE_ATTRIBUTES && !(dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
+#else
   struct stat statbuf;
   return (stat(AbsFileName, &statbuf) == 0);
-//#endif
+#endif
 }
 
 static bool HDD_DirExist(const char *AbsDirName)
 {
-//##if defined(_WIN32) // && defined(_MSC_VER)
+#if defined(_WIN32) // && defined(_MSC_VER)
 //  LPWSTR wAbsDirName = winMbcsToUnicode(AbsDirName);
-//  DWORD dwAttrib = GetFileAttributes(wAbsDirName);
+  DWORD dwAttrib = GetFileAttributesA(AbsDirName);
 //  free(wAbsDirName);
-//  return (dwAttrib != INVALID_FILE_ATTRIBUTES && (dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
-//#else
+  return (dwAttrib != INVALID_FILE_ATTRIBUTES && (dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
+#else
   struct stat statbuf;
   return ((stat(AbsDirName, &statbuf) == 0) && (statbuf.st_mode & S_IFDIR));
-//#endif
+#endif
 }
 
 bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize)
@@ -206,19 +206,19 @@ bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize)
   TRACEENTER;
   if(AbsFileName)
   {
-//#if defined(_WIN32) // && defined(_MSC_VER)
+#if defined(_WIN32) // && defined(_MSC_VER)
 //    LPWSTR wAbsFileName = winMbcsToUnicode(AbsFileName);
-//    WIN32_FILE_ATTRIBUTE_DATA fad;
-//    ret = (GetFileAttributesEx(wAbsFileName, GetFileExInfoStandard, &fad));
+    WIN32_FILE_ATTRIBUTE_DATA fad;
+    ret = (GetFileAttributesExA(AbsFileName, GetFileExInfoStandard, &fad));
 //    free(wAbsFileName);
-//    if (ret && OutFileSize)
-//      *OutFileSize = (((unsigned long long)fad.nFileSizeHigh) << 32) + fad.nFileSizeLow;
-//#else
+    if (ret && OutFileSize)
+      *OutFileSize = (((unsigned long long)fad.nFileSizeHigh) << 32) + fad.nFileSizeLow;
+#else
     struct stat64 statbuf;
     ret = (stat64(AbsFileName, &statbuf) == 0);
     if (ret && OutFileSize)
       *OutFileSize = statbuf.st_size;
-//#endif
+#endif
   }
   TRACEEXIT;
   return ret;
@@ -235,8 +235,8 @@ static time_t HDD_GetFileDateTime(char const *AbsFileName)
   {
 #if defined(_WIN32) // && defined(_MSC_VER)
 //    WIN32_FILE_ATTRIBUTE_DATA fad;
-    LPWSTR wAbsFileName = winMbcsToUnicode(AbsFileName);
-    HANDLE hFile = CreateFile(wAbsFileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+//    LPWSTR wAbsFileName = winMbcsToUnicode(AbsFileName);
+    HANDLE hFile = CreateFileA(AbsFileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
     FILETIME Result2;
     time_t Result3 = 0;
 
@@ -245,7 +245,7 @@ static time_t HDD_GetFileDateTime(char const *AbsFileName)
     if (GetFileTime(hFile, NULL, NULL, &Result2))
       Result3 = (time_t) ((((long long)Result2.dwHighDateTime) << 32) + Result2.dwLowDateTime) / 10000000 - 11644473600LL;  // Convert Windows ticks to Unix Timestamp
     CloseHandle(hFile);
-    free(wAbsFileName);
+//    free(wAbsFileName);
 #endif
 
     if(stat64(AbsFileName, &statbuf) == 0)
@@ -306,8 +306,8 @@ static bool HDD_SetFileDateTime(char const *AbsFileName, time_t NewDateTime)
       bool ret = FALSE;
       FILETIME NewWriteTime;
 //      WIN32_FILE_ATTRIBUTE_DATA fad;
-      LPWSTR wAbsFileName = winMbcsToUnicode(AbsFileName);
-      HANDLE hFile = CreateFile(wAbsFileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+//      LPWSTR wAbsFileName = winMbcsToUnicode(AbsFileName);
+      HANDLE hFile = CreateFileA(AbsFileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
 //      if (GetFileAttributesEx(wAbsFileName, GetFileExInfoStandard, &fad))
       if (hFile)
       {
@@ -323,7 +323,7 @@ static bool HDD_SetFileDateTime(char const *AbsFileName, time_t NewDateTime)
         SetFileTime(hFile, NULL, NULL, &NewWriteTime);
         CloseHandle(hFile);
       }
-      free(wAbsFileName);
+//      free(wAbsFileName);
       TRACEEXIT;
       return ret;
     }
@@ -781,7 +781,6 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     snprintf(MDAudName, sizeof(MDEpgName), "%s_audio1.pes", MDBaseName);
     VideoPID = 100;          // künftig: 101   // TODO
     AudioPIDs[0].pid = 101;  // künftig: 102
-    AudioPIDs[0].scanned = 1;
     TeletextPID = 102;       // künftig: 104
   }
 
@@ -1281,6 +1280,7 @@ int main(int argc, const char* argv[])
 #ifdef _DEBUG
   printf("(long long: %d, long: %d, int: %d, dword: %d, word: %d, short: %d, byte: %d, char: %d)\n", sizeof(long long), sizeof(long), sizeof(int), sizeof(dword), sizeof(word), sizeof(short), sizeof(byte), sizeof(char));
 #endif
+
 #ifndef LINUX
   {
     time_t curTime = time(NULL);
@@ -1982,7 +1982,7 @@ FILE *fDbg;
       GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID, VideoPID, AudioPIDs, (PATPMTBuf[192+4]=='G'));
 
 // DEBUG-NOV
-#ifdef _WIN32
+#if defined(_WIN32) && defined(_DEBUG)
   fDbg = fopen("D:/Test/pmts/PMT_5_AfterPAT.bin", "wb");
   fwrite(PATPMTBuf, 1, 4*192, fDbg);
   fclose(fDbg);

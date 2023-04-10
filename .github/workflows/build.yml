@@ -121,8 +121,8 @@ jobs:
         rm RecStrip*.exe
         cp Synology/Makefile .
         sed -i 's/^include \/env.mak//' Makefile
-        sed -i 's/\$(CC) \$(CFLAGS) -rdynamic/\$(CC) \$(CFLAGS)/' Makefile
-        sed -i 's/CFLAGS2   ?= -O2/CFLAGS2   ?= -DUNICODE -D_UNICODE/' Makefile
+        sed -i 's/\$(CC) \$(CFLAGS) -rdynamic/\$(CC) \$(CFLAGS) -DUNICODE/' Makefile
+        sed -i 's/CFLAGS2   ?= -O2/CFLAGS2   ?=/' Makefile
 
     - name: Compile MinGW x86
       run: |
