@@ -236,7 +236,7 @@ static time_t HDD_GetFileDateTime(char const *AbsFileName)
 #if defined(_WIN32) // && defined(_MSC_VER)
 //    WIN32_FILE_ATTRIBUTE_DATA fad;
 //    LPWSTR wAbsFileName = winMbcsToUnicode(AbsFileName);
-    HANDLE hFile = CreateFileA(AbsFileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+    HANDLE hFile = CreateFileA(AbsFileName, 0/*GENERIC_READ*/, FILE_SHARE_WRITE, NULL, OPEN_EXISTING, 0, NULL);
     FILETIME Result2;
     time_t Result3 = 0;
 
@@ -307,7 +307,7 @@ static bool HDD_SetFileDateTime(char const *AbsFileName, time_t NewDateTime)
       FILETIME NewWriteTime;
 //      WIN32_FILE_ATTRIBUTE_DATA fad;
 //      LPWSTR wAbsFileName = winMbcsToUnicode(AbsFileName);
-      HANDLE hFile = CreateFileA(AbsFileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
+      HANDLE hFile = CreateFileA(AbsFileName, 0/*GENERIC_READ*/, FILE_SHARE_READ, NULL, OPEN_EXISTING, 0, NULL);
 //      if (GetFileAttributesEx(wAbsFileName, GetFileExInfoStandard, &fad))
       if (hFile)
       {
@@ -1626,7 +1626,7 @@ int main(int argc, const char* argv[])
   for (i = 0; i < MAXCONTINUITYPIDS; i++)
     if(AudioPIDs[i].pid) AudioPIDs[i].scanned = TRUE; else break;
 
-  GeneratePatPmt(Buffer2, RecInf.ServiceInfo.ServiceID, 100, VideoPID, AudioPIDs[0].pid, TeletextPID, SubtitlesPID, AudioPIDs, FALSE);
+  GeneratePatPmt(Buffer2, RecInf.ServiceInfo.ServiceID, 100, VideoPID, VideoPID, AudioPIDs[0].pid, TeletextPID, SubtitlesPID, AudioPIDs, FALSE);
 //  if ((fPMT = fopen("D:/Test/pmts/28396_1601_1602_2008-12-25_17-00_EinsFestivalHD_out2.pmt", "wb")))
 //  if ((fPMT = fopen("D:/Test/pmts/28385_1201_1202_2022-12-01_13-09_Radio Bremen TV_out.pmt", "wb")))
 //  if ((fPMT = fopen("D:/Test/pmts/17501_511_33_2022-11-28_10-17_ProSieben_out.pmt", "wb")))
@@ -1661,7 +1661,7 @@ int main(int argc, const char* argv[])
                   {
                     int newPage = 0;
                     ExtractTeletext = TRUE;
-                    if ((argc > 2) && (argv[2][0] != '-') && (strlen(argv[2]) <= 3) && ((newPage = strtol(argv[2], NULL, 10))))
+                    if ((argc > 2) && (argv[2][0] != '-') && (strlen(argv[2]) <= 3) && ((newPage = strtol(argv[2], NULL, 16))))
                     {
                       TeletextPage = (word)newPage;
                       argv[1] = argv[0];
@@ -1978,8 +1978,8 @@ FILE *fDbg;
     if (/*DoFixPMT ||*/ MedionMode || !pmt_used)
     {
       printf("Generate new %s for Humax/Medion/Eycos recording.\n", ((PATPMTBuf[192+4]=='G') ? "PAT" : "PAT/PMT"));
-//      GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, 256, VideoPID, 101, TeletextPID, AudioPIDs);
-      GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID, VideoPID, AudioPIDs, (PATPMTBuf[192+4]=='G'));
+//      GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, 256, VideoPID, VideoPID, 101, TeletextPID, AudioPIDs);
+      GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID, VideoPID, VideoPID, AudioPIDs, (PATPMTBuf[192+4]=='G'));
 
 // DEBUG-NOV
 #if defined(_WIN32) && defined(_DEBUG)
@@ -2027,8 +2027,8 @@ FILE *fDbg;
     strncpy(StartTimeStr, TimeStr_DB(Inf_TMSS->RecHeaderInfo.StartTime, Inf_TMSS->RecHeaderInfo.StartTimeSec), sizeof(StartTimeStr));
     fprintf(stderr, "%s\t%llu\t%s\t%s\t%s\t%lld\t%lld\t%u\t%u\t%s\t",  RecFileIn,  RecFileSize,  FileDateStr,  StartTimeStr,  DurationStr,  FirstFilePCR,  LastFilePCR,  FirstFilePTS,  LastFilePTS,  (Inf_TMSS->RecHeaderInfo.rs_HasBeenStripped ? "yes" : "no"));
 
-    // SERVICE:  InfType;   Sender;   ServiceID;  PMTPid;  VideoPid;  AudioPid;  TtxPid;  VideoType;  AudioType;  AudioTypeFlag;  HD;  VideoWidth x VideoHeight;  VideoFPS;  VideoDAR;  TtsSubtPage; 
-    fprintf(stderr, "ST_TMS%c\t%s\t%hu\t%hd\t%hd\t%hd\t%hd\t0x%hx\t0x%hx\t0x%hx\t%s\t%dx%d\t%.1f fps\t%.3f\t%hu\t",  (SystemType==ST_TMSS ? 's' : ((SystemType==ST_TMSC) ? 'c' : ((SystemType==ST_TMST) ? 't' : '?'))),  Inf_TMSS->ServiceInfo.ServiceName,  Inf_TMSS->ServiceInfo.ServiceID,  Inf_TMSS->ServiceInfo.PMTPID,  Inf_TMSS->ServiceInfo.VideoPID,  Inf_TMSS->ServiceInfo.AudioPID,  TeletextPID,  Inf_TMSS->ServiceInfo.VideoStreamType,  Inf_TMSS->ServiceInfo.AudioStreamType,  Inf_TMSS->ServiceInfo.AudioTypeFlag,  (isHDVideo ? "yes" : "no"),  VideoWidth,  VideoHeight,  (VideoFPS ? VideoFPS : (NavFrames ? NavFrames/((double)NavDurationMS/1000) : 0)),  VideoDAR,  TeletextPage);
+    // SERVICE:  InfType;   Sender;   ServiceID;  PMTPid;  VideoPid;  AudioPid;  TtxPid;  VideoType;  AudioType;  AudioTypeFlag;  HD;  VideoWidth x VideoHeight;  VideoFPS;  VideoDAR;  TtxSubtPage; 
+    fprintf(stderr, "ST_TMS%c\t%s\t%hu\t%hd\t%hd\t%hd\t%hd\t0x%hx\t0x%hx\t0x%hx\t%s\t%dx%d\t%.1f fps\t%.3f\t%hx\t",  (SystemType==ST_TMSS ? 's' : ((SystemType==ST_TMSC) ? 'c' : ((SystemType==ST_TMST) ? 't' : '?'))),  Inf_TMSS->ServiceInfo.ServiceName,  Inf_TMSS->ServiceInfo.ServiceID,  Inf_TMSS->ServiceInfo.PMTPID,  Inf_TMSS->ServiceInfo.VideoPID,  Inf_TMSS->ServiceInfo.AudioPID,  TeletextPID,  Inf_TMSS->ServiceInfo.VideoStreamType,  Inf_TMSS->ServiceInfo.AudioStreamType,  Inf_TMSS->ServiceInfo.AudioTypeFlag,  (isHDVideo ? "yes" : "no"),  VideoWidth,  VideoHeight,  (VideoFPS ? VideoFPS : (NavFrames ? NavFrames/((double)NavDurationMS/1000) : 0)),  VideoDAR,  TeletextPage);
 
     // SEGMENTMARKERS (getrennt durch ; und |)
     if (NrSegmentMarker > 2)

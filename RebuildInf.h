@@ -421,6 +421,6 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf);
 //bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf);
 
 void SortAudioPIDs(tAudioTrack AudioPIDs[]);
-void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPID, word VideoPID, tAudioTrack AudioPIDs[], bool PATonly);
+void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPID, word VideoPID, word PCRPID, tAudioTrack AudioPIDs[], bool PATonly);
 
 #endif

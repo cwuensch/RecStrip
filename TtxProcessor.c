@@ -565,21 +565,21 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
 
     if ((flag_subtitle == YES) && (i < 0xff)) {
       page = (m << 8) | i;
-      if (config.page == 0)
+/*      if (config.page == 0)
       {
         config.page = page;
         printf("  TTX: Trying to extract subtitles from page %03x\n\n", config.page);
         pages[nrpages++] = page;
       }
-      else if (page != config.page)
+      else*/ if (page != config.page && !TeletextPage)
       {
         int k;
         for (k = 0; ((k < nrpages) && (pages[k] != page)); k++);
         if ((k >= nrpages) && (nrpages < 8))
         {
-          if (page == 150 || page == 777 || page == 149 || page == 571) {
+          if (page==0x150 || (page==0x777 && config.page!=0x150) || ((page==0x149 || page==0x160 || page==0x571) && config.page!=0x150 && config.page!=0x777) || config.page==0) {
             config.page = page;
-            printf("  TTX: Using alternative subtitle page: %03x\n\n", page);
+            printf("  TTX: Trying to extract subtitles from page %03x\n\n", config.page);
           }
           else
             printf("  TTX: Additional subtitle page: %03x\n\n", page);
@@ -941,7 +941,11 @@ void SetTeletextBreak(bool NewInputFile, word SubtitlePage)
   {
     states.programme_info_processed = NO;
     states.pts_initialized = NO;
-    config.page = SubtitlePage;
+    if (SubtitlePage != config.page)
+    {
+      config.page = SubtitlePage;
+      printf("  TTX: Trying to extract subtitles from user page %03x\n\n", config.page);
+    }
   }
 }
 
@@ -949,6 +953,8 @@ void TtxProcessor_Init(word SubtitlePage)
 {
   memset(&page_buffer, 0, sizeof(teletext_page_t));
   config.page = SubtitlePage;
+  if (SubtitlePage)
+    printf("  TTX: Trying to extract subtitles from user page %03x\n\n", config.page);
   nrpages = 0;
   memset(pages, 0, sizeof(pages));
 }

@@ -201,10 +201,11 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *InOutServiceName
       if (sscanf(LineBuf, "%hu ; %hu ; %hu ; %n %*19[^;] ; %n %*19[^;] ; %hu ; %hu ; %*70[^;\r\n]", &Sid, &PPid, &VPid, &APidStr, &ALangStr, &TPid, &SPid) >= 3)
       {
         APid = (word) strtol(&LineBuf[APidStr], NULL, 10);
+        p = strrchr(LineBuf, ';') + 1;
         if ((VPid == VidPID) && ((APid == AudPID) || !AudPID || AudPID == (word)-1) && ((TPid == TtxPID) || !TtxPID || TtxPID == (word)-1)
          && ((VidPID != 101 && VidPID != 201 && VidPID != 401 && VidPID != 601) || (*InOutServiceName && ((strncmp(p, InOutServiceName, 2) == 0) || (strncmp(p, "Das", 3)==0 && strncmp(InOutServiceName, "ARD", 3)==0) || (strncmp(p, "BR", 2)==0 && strncmp(InOutServiceName, "Bay", 3)==0)))))
         {
-          strncpy(SenderFound, strrchr(LineBuf, ';') + 1, sizeof(SenderFound));
+          strncpy(SenderFound, p, sizeof(SenderFound));
           SenderFound[sizeof(SenderFound)-1] = '\0';
           strncpy(PidsFound, &LineBuf[APidStr], sizeof(PidsFound));
           if ((p = strchr(PidsFound, ';'))) p[0] = '\0';
@@ -235,7 +236,7 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *InOutServiceName
             pLng = (pLng && pLng[3] == '/') ? pLng + 4 : NULL;
           }
 
-          if(OutPMTPID && !*OutPMTPID) *OutPMTPID = PMTFound;
+          if(OutPMTPID && (!*OutPMTPID || *OutPMTPID==256)) *OutPMTPID = PMTFound;
           if(InOutServiceName && !*InOutServiceName) strncpy(InOutServiceName, SenderFound, sizeof(((TYPE_Service_Info*)NULL)->ServiceName));
           fclose(fMap);
           return CandidateFound;
@@ -329,6 +330,8 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           if(p) *p = '\0';
           strncpy(FirstSvcName, HumaxHeader.Allgemein.Dateiname, sizeof(FirstSvcName));
           FirstSvcName[sizeof(FirstSvcName)-1] = '\0';
+// manuelle Ausnahme (IMGARTENEDEN2_0601112255.vid):
+if(VideoPID == 660 && TeletextPID == 130 && ExtractTeletext && DoStrip) RemoveTeletext = TRUE;
         }
         else if (i == 2)  // Header 2: Original-Dateiname
         {
@@ -339,6 +342,8 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             strncpy(RecInf->ServiceInfo.ServiceName, HumaxHeader.Allgemein.Dateiname, sizeof(RecInf->ServiceInfo.ServiceName));
             RecInf->ServiceInfo.ServiceName[sizeof(RecInf->ServiceInfo.ServiceName)-1] = '\0';
           }
+          else
+            printf("    Assertion error: Humax rec name without sender!\n");
         }
         else if (HumaxHeader.ZusInfoID == HumaxBookmarksID)  // Header 3: Bookmarks
         {
@@ -384,7 +389,7 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       }
     }
   }
-  RecInf->ServiceInfo.ServiceID = GetSidFromMap(VideoPID, /*GetMinimalAudioPID(AudioPIDs)*/ 0, 0, RecInf->ServiceInfo.ServiceName, &RecInf->ServiceInfo.PMTPID);
+  RecInf->ServiceInfo.ServiceID = GetSidFromMap(VideoPID, 0 /*GetMinimalAudioPID(AudioPIDs)*/, 0, RecInf->ServiceInfo.ServiceName, &RecInf->ServiceInfo.PMTPID);
   if (!RecInf->ServiceInfo.PMTPID)
     RecInf->ServiceInfo.PMTPID = (HumaxHeader.Allgemein.AudioPID != 256) ? 256 : 100;
   AddContinuityPids(TeletextPID, FALSE);

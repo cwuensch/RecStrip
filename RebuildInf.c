@@ -691,14 +691,14 @@ static bool AnalyseTtx(byte *PSBuffer, int BufSize, tPVRTime *const TtxTime, byt
             if (packet_format <= 2)
             {
               // get initial page
-  /*            byte initialPageUnits = hamming_decode_rev(data_block[1]);
+/*              byte initialPageUnits = hamming_decode_rev(data_block[1]);
               byte initialPageTens  = hamming_decode_rev(data_block[2]);
               //byte initialPageSub1  = hammingDecode_rev(data_block[3]);
               byte initialPageSub2  = hamming_decode_rev(data_block[4]);
               //byte initialPageSub3  = hamming_decode_rev(data_block[5]);
               byte initialPageSub4  = hamming_decode_rev(data_block[6]);
               dword InitialPage = initialPageUnits + 10 * initialPageTens + 100 * (((initialPageSub2 >> 3) & 1) + ((initialPageSub4 >> 1) & 6));
-  */
+*/
               // Programme Identification
               programme[0] = '\0';
               for (i = 20; i < 40; i++)
@@ -713,8 +713,8 @@ static bool AnalyseTtx(byte *PSBuffer, int BufSize, tPVRTime *const TtxTime, byt
               rtrim(programme);
               if(ServiceName)
               {
-  //              memset(ServiceName, 0, SvcNameLen);
                 strncpy(ServiceName, programme, SvcNameLen-1);
+                ServiceName[SvcNameLen-1] = '\0';
               }
             }
 
@@ -1645,9 +1645,9 @@ FILE *fDbg;
 
       if(!SDTOK)
         printf ("  Failed to get service name from SDT.\n");
-      if (!RecInf->ServiceInfo.ServiceID || !RecInf->ServiceInfo.PMTPID)
+      if (!RecInf->ServiceInfo.ServiceID || RecInf->ServiceInfo.ServiceID==1 || !RecInf->ServiceInfo.PMTPID || !*RecInf->ServiceInfo.ServiceName)
       {
-        RecInf->ServiceInfo.ServiceID = GetSidFromMap(VideoPID, /*GetMinimalAudioPID(AudioPIDs)*/ 0, TeletextPID, RecInf->ServiceInfo.ServiceName, &RecInf->ServiceInfo.PMTPID);
+        RecInf->ServiceInfo.ServiceID = GetSidFromMap(VideoPID, 0 /*GetMinimalAudioPID(AudioPIDs)*/, TeletextPID, RecInf->ServiceInfo.ServiceName, &RecInf->ServiceInfo.PMTPID);
         if(!RecInf->ServiceInfo.ServiceID) RecInf->ServiceInfo.ServiceID = 1;
         if(!RecInf->ServiceInfo.PMTPID) RecInf->ServiceInfo.PMTPID = 100;
       }
@@ -1847,7 +1847,7 @@ void SortAudioPIDs(tAudioTrack AudioPIDs[])
 }
 
 // Generate a PMT
-void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPid, word VideoPID, tAudioTrack AudioPIDs[], bool PATonly)
+void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPid, word VideoPID, word PCRPID, tAudioTrack AudioPIDs[], bool PATonly)
 {
   tTSPacket            *Packet = NULL;
   tTSPAT               *PAT = NULL;
@@ -1862,6 +1862,7 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPid, word Vid
 
   TRACEENTER;
   memset(PATPMTBuf, 0, 192 * (PATonly ? 1 : 4));
+  printf("  SID=%hu, PMTPid=%hd, PCRPID=%hd\n", ServiceID, PMTPid, PCRPID);
   
   // PAT/PMT initialisieren
   Packet = (tTSPacket*) &PATPMTBuf[4];
@@ -1923,9 +1924,9 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPid, word Vid
   PMT->SectionNr        = 0;
   PMT->LastSection      = 0;
 
-  PMT->PCRPID1          = VideoPID / 256;
+  PMT->PCRPID1          = PCRPID / 256;
   PMT->Reserved3        = 7;
-  PMT->PCRPID2          = (VideoPID & 0xff);
+  PMT->PCRPID2          = (PCRPID & 0xff);
 
   PMT->ProgInfoLen1     = 0;
   PMT->ProgInfoLen2     = 0;
