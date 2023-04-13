@@ -332,8 +332,8 @@ int DescrLength = ElemLength;
               {
                 tTSDesc2* Desc = (tTSDesc2*) &PSBuffer[ElemPt + sizeof(tElemStream)];
 printf("    DESC: Type=TSDesc, Size=%d, Len=%hhu, Tag=0x%02hhx (%c), Data=0x%02hhx\n", sizeof(tTSDesc), Desc->DescrLength, Desc->DescrTag, (Desc->DescrTag > 0x20 ? Desc->DescrTag : ' '), Desc->Data[0]);
-                if (Desc->DescrTag == DESC_StreamIdentifier)
-                  VideoStreamTag = Desc->Data[0];
+//                if (Desc->DescrTag == DESC_StreamIdentifier)
+//                  VideoStreamTag = Desc->Data[0];
                 DescrPt     += (Desc->DescrLength + sizeof(tTSDesc));
                 DescrLength -= (Desc->DescrLength + sizeof(tTSDesc));
               }
@@ -396,7 +396,7 @@ printf("    DESC: Type=Subtitle, Size=%d, Len=%hhu, Data=0x%02hhx, Lang=%.3s\n",
                   printf("\n  TS: SubtitlesPID=%hd [%.3s]", SubtitlesPID, LangCode);
                 }
                 streamType = 2;
-                DescType = Desc->subtitling_type + 1;
+                DescType = Desc->subtitling_type + 1;  // plus 1, because 0 = unset
               }
 
               if ((k < MAXCONTINUITYPIDS) && !AudioPIDs[k].scanned)
@@ -447,7 +447,7 @@ printf("    DESC: Type=TSDesc, Size=%d, Len=%hhu, Tag=0x%02hhx (%c), Data=0x%02h
             else if ((Desc->DescrTag == DESC_AudioLang) && (Desc->DescrLength >= 3))
             {
               strncpy(LangCode, (char*)Desc->Data, 3);
-              DescType = ((tTSAudioDesc*)Desc)->AudioFlag;
+              DescType = ((tTSAudioDesc*)Desc)->AudioFlag;  // plus 1, because 0 = unset
 //              break;
             }
             DescrPt     += (Desc->DescrLength + sizeof(tTSDesc));
@@ -1343,8 +1343,6 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 
             if ((PMTOK = AnalysePMT((PMTBuffer.ValidBuffer==2) ? PMTBuffer.Buffer2 : PMTBuffer.Buffer1, (PMTBuffer.ValidBuffer) ? PMTBuffer.ValidBufLen : PMTBuffer.BufferPtr, RecInf)))
             {
-FILE *fDbg;
-
               byte *pBuffer = (PMTBuffer.ValidBuffer==2) ? PMTBuffer.Buffer2 : PMTBuffer.Buffer1;
               int BufLen = (PMTBuffer.ValidBuffer) ? PMTBuffer.ValidBufLen : PMTBuffer.BufferPtr;
               int k = 0;
@@ -1368,12 +1366,6 @@ FILE *fDbg;
                 else
                   memcpy(packet->Data, &pBuffer[183 + (k-1)*184], min(BufLen - 183 + (k-1)*184, 184));
               }
-
-// DEBUG-NOV
-//fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/PMT_2_AnalysePMT.bin", "wb");
-//fwrite(PATPMTBuf, 1, 4*192, fDbg);
-//fclose(fDbg);
-
             }
             PSBuffer_Reset(&PMTBuffer);
           }
@@ -1412,19 +1404,12 @@ FILE *fDbg;
           {
             if ((((tTSPacket*) p)->PID1 == 0) && (((tTSPacket*) p)->PID2 == 0) && (((tTSPacket*) p)->Payload_Unit_Start))
             {
-FILE *fDbg;
               tTSPacket* packet = (tTSPacket*) &PATPMTBuf[4];
               memcpy(packet, p, 188);
               packet->ContinuityCount = 0;
               
 //              ((tTSPAT*) packet->Data)->PMTPID1 = PMTPID / 256;
 //              ((tTSPAT*) packet->Data)->PMTPID2 = PMTPID & 0xff;
-
-// DEBUG-NOV
-//fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/PMT_4_CopyPAT.bin", "wb");
-//fwrite(PATPMTBuf, 1, 4*192, fDbg);
-//fclose(fDbg);
-
             }
           }
           if (!SDTOK)
@@ -1443,7 +1428,6 @@ FILE *fDbg;
             PSBuffer_ProcessTSPacket(&EITBuffer, (tTSPacket*)p);
             if(EITBuffer.ValidBuffer != LastEITBuffer)
             {
-FILE *fDbg;
               byte *pBuffer = (EITBuffer.ValidBuffer==2) ? EITBuffer.Buffer2 : EITBuffer.Buffer1;
               if ((EITOK = !EITBuffer.ErrorFlag && AnalyseEIT(pBuffer, EITBuffer.ValidBufLen, RecInf->ServiceInfo.ServiceID, RecInf)))
               {
@@ -1475,12 +1459,6 @@ FILE *fDbg;
               }
               EITBuffer.ErrorFlag = FALSE;
               LastEITBuffer = EITBuffer.ValidBuffer;
-
-// DEBUG-NOV
-//fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/EIT_2_AnalyseEPG.bin", "wb");
-//fwrite(EPGPacks, 192, NrEPGPacks, fDbg);
-//fclose(fDbg);
-
             }
           }
           if (TeletextPID != 0xffff && !TtxOK)
@@ -1599,8 +1577,6 @@ FILE *fDbg;
       // Kopiere PAT/PMT/EIT-Pakete vom Dateianfang in Buffer (nur beim ersten File-Open?)
       if (PMTatStart /*&& !WriteDescPackets*/)
       {
-FILE *fDbg;
-
         int PacksRead, k = 0;
         tTSPacket *curPacket;
         fseeko64(fIn, FilePos, SEEK_SET);  // Hier auf 0 setzen (?)
@@ -1631,16 +1607,6 @@ FILE *fDbg;
           for (k = 0; k < NrEPGPacks; k++)
             memcpy(&EPGPacks[((PACKETSIZE==192) ? 0 : 4) + k*192], &Buffer[(k+2)*PACKETSIZE], PACKETSIZE);
         }
-
-// DEBUG-NOV
-//fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/PMT_3_CopyPMT.bin", "wb");
-//fwrite(PATPMTBuf, 1, 4*192 + 5, fDbg);
-//fclose(fDbg);
-// DEBUG-NOV
-//fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/EIT_3_CopyEPG.bin", "wb");
-//fwrite(EPGPacks, 192, NrEPGPacks, fDbg);
-//fclose(fDbg);
-
       }
 
       if(!SDTOK)
@@ -1794,7 +1760,7 @@ printf("\n");
 printf("  TS: StartTime = %s\n", (TimeStrTF(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec)));
 
   // Schreibe PAT/PMT in "Datenbank"
-//#ifdef _DEBUG
+//#if defined(_WIN32) && defined(_DEBUG)
 /*  if ((PATPMTBuf[4] == 'G') && (PATPMTBuf[196] == 'G'))
   {
     FILE *fPMT = NULL;

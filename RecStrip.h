@@ -150,7 +150,6 @@ extern bool             DoStrip, DoSkip, RemoveEPGStream, ExtractTeletext, Remov
 extern int              DoCut, DoMerge, DoInfFix;
 extern int              NrEPGPacks;
 extern int              dbg_DelBytesSinceLastVid;
-extern byte             VideoStreamTag;
 
 extern TYPE_Bookmark_Info *BookmarkInfo, BookmarkInfo_In;
 extern tSegmentMarker2 *SegmentMarker;       //[0]=Start of file, [x]=End of file

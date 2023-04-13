@@ -117,7 +117,6 @@ bool                    DoStrip = FALSE, DoSkip = FALSE, RemoveScrambled = FALSE
 int                     DoCut = 0, DoMerge = 0, DoInfFix = 0;  // DoCut: 1=remove_parts, 2=copy_separate, DoMerge: 1=append, 2=merge  // DoInfFix: 1=enable, 2=inf to be fixed
 int                     curInputFile = 0, NrInputFiles = 1, NrEPGPacks = 0;
 int                     dbg_DelBytesSinceLastVid = 0;
-byte                    VideoStreamTag = (byte) -1;
 
 TYPE_Bookmark_Info     *BookmarkInfo = NULL;
 tSegmentMarker2        *SegmentMarker = NULL;       //[0]=Start of file, [x]=End of file
@@ -1098,17 +1097,6 @@ SONST
   // Header-Pakete ausgeben (experimentell!)
   if ((HumaxSource || EycosSource || MedionMode==1 || (WriteDescPackets && (CurrentPosition >= 384 || !PMTatStart))) && fOut /*&& DoMerge != 1*/)
   {
-
-// DEBUG-NOV
-//FILE *fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/PMT_6_OpenOutput.bin", "wb");
-//fwrite(PATPMTBuf, 1, 4*192, fDbg);
-//fclose(fDbg);
-// DEBUG-NOV
-//fDbg = fopen("D:/Test/StripTestHD/new/RS_gem/EIT_6_OpenOutput.bin", "wb");
-//fwrite(EPGPacks, 192, NrEPGPacks, fDbg);
-//fclose(fDbg);
-
-
     for (i = 0; (PATPMTBuf[4 + i*192] == 'G'); i++)
       if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + i*192], OutPacketSize, 1, fOut))
         PositionOffset -= OutPacketSize;
@@ -1935,8 +1923,7 @@ int main(int argc, const char* argv[])
     bool pmt_used = FALSE;
 
 // Lese Original-PMT aus "Datenbank" ein (experimentell)
-FILE *fDbg;
-//#ifdef _DEBUG
+#if defined(_WIN32) && defined(_DEBUG)
 //    if (!DoFixPMT)
     {
       FILE *fPMT = NULL;
@@ -1974,19 +1961,12 @@ FILE *fDbg;
         }
       }
     }
-//#endif
+#endif
     if (/*DoFixPMT ||*/ MedionMode || !pmt_used)
     {
       printf("Generate new %s for Humax/Medion/Eycos recording.\n", ((PATPMTBuf[192+4]=='G') ? "PAT" : "PAT/PMT"));
 //      GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, 256, VideoPID, VideoPID, 101, TeletextPID, AudioPIDs);
       GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID, VideoPID, VideoPID, AudioPIDs, (PATPMTBuf[192+4]=='G'));
-
-// DEBUG-NOV
-#if defined(_WIN32) && defined(_DEBUG)
-  fDbg = fopen("D:/Test/pmts/PMT_5_AfterPAT.bin", "wb");
-  fwrite(PATPMTBuf, 1, 4*192, fDbg);
-  fclose(fDbg);
-#endif
     }
 
 /*    if (MedionMode == 1)
