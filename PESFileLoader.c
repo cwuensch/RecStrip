@@ -18,7 +18,7 @@ tPESStream              PESVideo;
 static tPESStream       PESAudio, PESTeletxt;
 byte                   *EPGBuffer = 0;
 int                     EPGLen = 0;
-static const byte       PIDs[4] = {100, 101, 102, 0x12};
+static word             PIDs[4] = {100, 101, 102, 0x12};  // künftig: {101, 102, 104, 0x12};  // TODO
 static byte             ContCtr[4] = {1, 1, 1, 1};
 static bool             DoEITOutput = TRUE;
 
@@ -273,140 +273,8 @@ printf("DEBUG: Assertion. Empty PES packet (after stripping) found!");
 // ---------------------------------------------------------------------------------
 static bool           FirstRun = 2;
 static dword          LastVidDTS = 0;
-static byte           curPid = 0;
+static word           curPid = 0;
 static int            StreamNr = 0;
-
-
-// Generate a PMT
-void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPID, word VideoPID, word AudioPID, word TtxPID, tVideoStreamFmt VideoType, tAudioStreamFmt AudioType)
-{
-  tTSPacket          *Packet = NULL;
-  tTSPAT             *PAT = NULL;
-  tTSPMT             *PMT = NULL;
-  dword              *CRC = NULL;
-  int                 i, Offset = 0;
-
-  TRACEENTER;
-  memset(PATPMTBuf, 0, 2*192);
-
-  Packet = (tTSPacket*) &PATPMTBuf[4];
-  PAT = (tTSPAT*) &Packet->Data[1 /*+ Packet->Data[0]*/];
-
-  Packet->SyncByte      = 'G';
-  Packet->PID1          = 0;
-  Packet->PID2          = 0;
-  Packet->Payload_Unit_Start = 1;
-  Packet->Payload_Exists = 1;
-
-  PAT->TableID          = TABLE_PAT;
-  PAT->SectionLen1      = 0;
-  PAT->SectionLen2      = sizeof(tTSPAT) - 3;
-  PAT->Reserved1        = 3;
-  PAT->Private          = 0;
-  PAT->SectionSyntax    = 1;
-  PAT->TS_ID1           = 0;
-  PAT->TS_ID2           = 6;  // ??
-  PAT->CurNextInd       = 1;
-  PAT->VersionNr        = 3;
-  PAT->Reserved2        = 3;
-  PAT->SectionNr        = 0;
-  PAT->LastSection      = 0;
-  PAT->ProgramNr1       = ServiceID / 256;
-  PAT->ProgramNr2       = (ServiceID & 0xff);
-  PAT->PMTPID1          = PMTPID / 256;
-  PAT->PMTPID2          = (PMTPID & 0xff);
-  PAT->Reserved111      = 7;
-  PAT->CRC32            = crc32m_tab((byte*)PAT, sizeof(tTSPAT)-4);      // CRC: 0x786989a2
-  
-  Offset = 1 + /*Packet->Data[0] +*/ sizeof(tTSPAT);
-  memset(&Packet->Data[Offset], 0xff, 184 - Offset);
-
-  Packet = (tTSPacket*) &PATPMTBuf[196];
-  PMT = (tTSPMT*) &Packet->Data[1 /*+ Packet->Data[0]*/];
-
-  Packet->SyncByte      = 'G';
-  Packet->PID1          = PMTPID / 256;
-  Packet->PID2          = (PMTPID & 0xff);
-  Packet->Payload_Unit_Start = 1;
-  Packet->Payload_Exists = 1;
-
-  PMT->TableID          = TABLE_PMT;
-  PMT->SectionLen1      = 0;
-  PMT->SectionLen2      = sizeof(tTSPMT) - 3 + 4;
-  PMT->Reserved1        = 3;
-  PMT->Private          = 0;
-  PMT->SectionSyntax    = 1;
-  PMT->ProgramNr1       = ServiceID / 256;
-  PMT->ProgramNr2       = (ServiceID & 0xff);
-  PMT->CurNextInd       = 1;
-  PMT->VersionNr        = 0;
-  PMT->Reserved2        = 3;
-  PMT->SectionNr        = 0;
-  PMT->LastSection      = 0;
-
-  PMT->Reserved3        = 7;
-
-  PMT->ProgInfoLen1     = 0;
-  PMT->ProgInfoLen2     = 0;
-  PMT->Reserved4        = 15;
-
-  Offset = 1 + /*Packet->Data[0] +*/ sizeof(tTSPMT);
-
-  for (i = 0; i < 3; i++)
-  {
-    tElemStream *Elem = (tElemStream*) &Packet->Data[Offset];
-    Elem->ESInfoLen1      = 0;
-    Elem->Reserved1       = 7;
-    Elem->Reserved2       = 0xf;
-    Offset                += sizeof(tElemStream);
-
-    if (i == 0)
-    {
-      Elem->stream_type   = VideoType;
-      Elem->ESPID1        = VideoPID / 256;
-      Elem->ESPID2        = (VideoPID & 0xff);
-      Elem->ESInfoLen2    = 0;
-    }
-    else if (i == 1 && AudioPID != (word)-1)
-    {
-      tTSAudioDesc *Desc  = (tTSAudioDesc*) &Packet->Data[Offset];
-
-      Elem->stream_type   = AudioType;
-      Elem->ESPID1        = AudioPID / 256;
-      Elem->ESPID2        = (AudioPID & 0xff);
-      Elem->ESInfoLen2    = sizeof(tTSAudioDesc);
-      Desc = (tTSAudioDesc*) &Packet->Data[Offset];
-      Desc->DescrTag      = DESC_Audio;
-      Desc->DescrLength   = 4;
-      memcpy(Desc->LanguageCode, "deu", 3);
-    }
-    else if (TtxPID != (word)-1)
-    {
-      tTSTtxDesc *Desc = (tTSTtxDesc*) &Packet->Data[Offset];
-
-      Elem->stream_type     = 6;
-      Elem->ESPID1          = TtxPID / 256;
-      Elem->ESPID2          = (TtxPID & 0xff);
-      Elem->ESInfoLen2      = 7;
-      Desc->DescrTag        = DESC_Teletext;
-      Desc->DescrLength     = 5;
-      memcpy(Desc->LanguageCode, "deu", 3); 
-      Desc->TtxType         = 1;
-      Desc->TtxMagazine     = 1;
-    }
-
-    Offset                += Elem->ESInfoLen2;
-    PMT->SectionLen2      += sizeof(tElemStream) + Elem->ESInfoLen2;
-  }
-
-  PMT->PCRPID1            = VideoPID / 256;
-  PMT->PCRPID2            = (VideoPID & 0xff);
-  CRC                     = (dword*) &Packet->Data[Offset];
-  *CRC                    = crc32m_tab((byte*)PMT, (byte*)CRC - (byte*)PMT);     // CRC: 0x0043710d  (0xb3ad75b7?)
-  Offset                 += 4;
-  memset(&Packet->Data[Offset], 0xff, 184 - Offset);
-  TRACEEXIT;
-}
 
 
 // Simple Muxer
@@ -454,9 +322,9 @@ bool SimpleMuxer_Open(FILE *fIn, char const* PESAudName, char const* PESTtxName,
 
   if (PESStream_Open(&PESVideo, fIn, VIDEOBUFSIZE) && PESStream_Open(&PESAudio, aud, 131027) && PESStream_Open(&PESTeletxt, ttx, 32768))
   {
-    if (!PESVideo.FileAtEnd)   { PESStream_GetNextPacket(&PESVideo); VideoPID = 100; }
-    if (!PESAudio.FileAtEnd)   { PESStream_GetNextPacket(&PESAudio); }
-    if (!PESTeletxt.FileAtEnd) { PESStream_GetNextPacket(&PESTeletxt); TeletextPID = 102; }
+    if (!PESVideo.FileAtEnd)    PESStream_GetNextPacket(&PESVideo);
+    if (!PESAudio.FileAtEnd)    PESStream_GetNextPacket(&PESAudio);
+    if (!PESTeletxt.FileAtEnd)  PESStream_GetNextPacket(&PESTeletxt);
 
     TRACEEXIT;
     return (!PESVideo.ErrorFlag && !PESAudio.ErrorFlag && !PESTeletxt.ErrorFlag);
@@ -464,6 +332,15 @@ bool SimpleMuxer_Open(FILE *fIn, char const* PESAudName, char const* PESTtxName,
 
   TRACEEXIT;
   return FALSE;
+}
+
+void SimpleMuxer_SetPIDs(word VideoPID, word AudioPID, word TtxPID)
+{
+  TRACEENTER;
+  if (VideoPID) PIDs[0] = VideoPID;
+  if (AudioPID) PIDs[1] = AudioPID;
+  if (TtxPID)   PIDs[2] = TtxPID;
+  TRACEEXIT;
 }
 
 void SimpleMuxer_DoEITOutput(void)

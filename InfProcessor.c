@@ -143,8 +143,9 @@ bool InfProcessor_Init()
 
 bool LoadInfFromRec(char *AbsRecFileName)
 {
-  FILE *fIn = NULL;
-  bool Result = FALSE;
+  FILE                 *fIn = NULL;
+  TYPE_RecHeader_TMSS  *RecInf = (TYPE_RecHeader_TMSS*)InfBuffer;
+  bool                  Result = FALSE;
 
   TRACEENTER;
   if(!InfBuffer)
@@ -171,17 +172,32 @@ bool LoadInfFromRec(char *AbsRecFileName)
 
   if (HumaxSource)
   {
-    Result = LoadHumaxHeader(fIn, PATPMTBuf, (TYPE_RecHeader_TMSS*)InfBuffer);
+    Result = LoadHumaxHeader(fIn, RecInf);
     if (!Result) HumaxSource = FALSE;
   }
   else if (EycosSource)
   {
-    Result = LoadEycosHeader(AbsRecFileName, PATPMTBuf, (TYPE_RecHeader_TMSS*)InfBuffer);
+    Result = LoadEycosHeader(AbsRecFileName, RecInf);
     if (!Result) EycosSource = FALSE;
   }
 
-  Result = GenerateInfFile(fIn, (TYPE_RecHeader_TMSS*)InfBuffer);
+  Result = GenerateInfFile(fIn, RecInf);
   
+  if (HumaxSource || EycosSource || MedionMode == 1)
+  {
+    int k;
+    for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0) && (AudioPIDs[k].pid != RecInf->ServiceInfo.AudioPID); k++);
+    if ((k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid == RecInf->ServiceInfo.AudioPID))
+    {
+      RecInf->ServiceInfo.AudioStreamType = AudioPIDs[k].type;  // if(AudioPIDs[k].type == 1) RecInf->ServiceInfo.AudioStreamType = STREAM_AUDIO_MPEG1;
+      if (RecInf->ServiceInfo.AudioTypeFlag > 3)
+printf("ASSERTION: AudioTypeFlag should be 0 or 1, but is %hd!\n", RecInf->ServiceInfo.AudioTypeFlag);
+      if (RecInf->ServiceInfo.AudioStreamType == STREAM_AUDIO_MPEG4_AC3)
+        RecInf->ServiceInfo.AudioTypeFlag = 1;
+    }
+    SortAudioPIDs(AudioPIDs);
+  }
+
 //  CurrentStartTime = ((TYPE_RecHeader_Info*)InfBuffer)->StartTime;
 //  CurrentStartSec  = ((TYPE_RecHeader_Info*)InfBuffer)->StartTimeSec;
   if(!OrigStartTime)
@@ -366,28 +382,20 @@ if (RecHeaderInfo->Reserved != 0)
     }
 
     // Prüfe, ob Audio-PID in Continuity-Scan-Liste enthalten ist
-    for (k = 1; k < NrContinuityPIDs; k++)
-    {
-      if (ContinuityPIDs[k] == ServiceInfo->AudioPID)
-        break;
-    }
-    if (k >= NrContinuityPIDs)
-    {
-      if (NrContinuityPIDs < MAXCONTINUITYPIDS)
-        NrContinuityPIDs++;
-      for (k = NrContinuityPIDs-1; k > 1; k--)
-        ContinuityPIDs[k] = ContinuityPIDs[k-1];
-      ContinuityPIDs[1] = ServiceInfo->AudioPID;
-    }
-
+    AddContinuityPids(ServiceInfo->AudioPID, TRUE);
+    
     if(FirstTime)
     {
       if(RecHeaderInfo->rs_HasBeenStripped)  AlreadyStripped = TRUE;
 
       if (abs((int)(RecHeaderInfo->StartTime - OrigStartTime)) > 1)
+      {
+        if ((RecHeaderInfo->StartTimeSec == 0) && (OrigStartSec != 0))
+          if(DoInfFix) DoInfFix = 2;
         printf("  INF: StartTime (%s) differs from TS start! Taking %s.\n", TimeStrTF(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec), ((RecHeaderInfo->StartTimeSec != 0 || ((OrigStartSec == 0) && ((RecHeaderInfo->StartTimeSec & 0x0f) > 0))) ? "inf" : "TS"));
+      }
 
-      if (RecHeaderInfo->StartTimeSec != 0 || ((OrigStartSec == 0) && ((RecHeaderInfo->StartTimeSec & 0x0f) > 0)))
+      if ((RecHeaderInfo->StartTimeSec != 0) || (OrigStartSec == 0))
       {
         OrigStartTime = RecHeaderInfo->StartTime;
         OrigStartSec  = RecHeaderInfo->StartTimeSec;

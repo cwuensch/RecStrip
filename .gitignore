@@ -1,0 +1,8 @@
+RecStrip_VS/Debug
+RecStrip_VS/Release
+RecStrip_VS/x64
+*.ipch
+*.user
+*.suo
+*.sdf
+*.opensdf

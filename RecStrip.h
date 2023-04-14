@@ -3,15 +3,14 @@
 
 #include "RecHeader.h"
 
-#define VERSION                  "v3.0d"
+#define VERSION                  "v3.1"
 
 #define NRBOOKMARKS                177   // eigentlich werden nur 48 Bookmarks unterstützt!! (SRP2401)
 #define NRSEGMENTMARKER            101
 #define MAXCONTINUITYPIDS            8
 #define BUFSIZE                  65536
 #define FBLIB_DIR_SIZE             512
-#define RECBUFFERENTRIES          5000
-#define MEDIONBUFFERBYTES       500000
+//#define RECBUFFERENTRIES          5000
 #define VIDEOBUFSIZE           2097152
 #define CONT_MAXDIST             38400
 
@@ -118,19 +117,36 @@ typedef struct
   byte CountShould;
 } tContinuityError;
 
+typedef struct
+{
+  word pid;
+  byte type;          // 1=mpeg1, 0=mpeg2
+  byte layer: 2;      // 3=Layer1, 2=Layer2, 1=Layer3
+  byte mode: 2;       // 0=Stereo, 1=Joint stereo, 2=Dual channel, 3=Single channel
+  byte bitrate: 4;
+  byte scanned: 1;    // Flags: 0=toScan, 1=scanned, 2=noAudio
+  byte sorted: 1;
+  byte streamType: 2; // Flags: 0=Audio, 1=Teletext, 2=Subtitles, 3=unknown
+  byte streamId: 4;   // neu: StreamID aus der Original-PMT eintragen
+  char desc[4];
+  byte desc_flag;
+} tAudioTrack;
+
 
 // Globale Variablen
-extern char             RecFileIn[], RecFileOut[], MDEpgName[], MDTtxName[];
-extern byte             PATPMTBuf[], *EPGPacks;
+extern char             RecFileIn[], RecFileOut[], MDEpgName[], MDTtxName[], MDAudName[];
+extern byte            *PATPMTBuf, *EPGPacks;
+extern const char      *ExePath;
 extern unsigned long long RecFileSize;
 extern time_t           RecFileTimeStamp;
 extern SYSTEM_TYPE      SystemType;
 extern byte             PACKETSIZE, PACKETOFFSET, OutPacketSize;
-extern word             VideoPID, TeletextPID, TeletextPage;
+extern word             VideoPID, TeletextPID, SubtitlesPID, TeletextPage;
+extern tAudioTrack      AudioPIDs[];
 extern word             ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs;
 extern bool             isHDVideo, AlreadyStripped, HumaxSource, EycosSource;
-extern bool             DoStrip, DoSkip, RemoveEPGStream, RemoveTeletext, RebuildNav, RebuildInf, DoInfoOnly, MedionMode, MedionStrip, WriteDescPackets;
-extern int              DoCut, DoMerge;
+extern bool             DoStrip, DoSkip, RemoveEPGStream, ExtractTeletext, RemoveTeletext, RebuildNav, RebuildInf, DoInfoOnly, DoFixPMT, MedionMode, MedionStrip, WriteDescPackets, PMTatStart;
+extern int              DoCut, DoMerge, DoInfFix;
 extern int              NrEPGPacks;
 extern int              dbg_DelBytesSinceLastVid;
 
@@ -150,9 +166,11 @@ extern char            *ExtEPGText;
 dword CalcBlockSize(long long Size);
 bool HDD_FileExist(const char *AbsFileName);
 bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize);
+void AddContinuityPids(word newPID, bool first);
 void AddContinuityError(word CurPID, long long CurrentPosition, byte CountShould, byte CountIs);
 bool isPacketStart(const byte PacketArray[], int ArrayLen);        // braucht 9*192+5 = 1733 / 3*192+5 = 581
-int  FindNextPacketStart(const byte PacketArray[], int ArrayLen);  // braucht 20*192+1733 = 5573 / 1185+1733 = 2981
+int  FindNextPacketStart(const byte PacketArray[], int ArrayLen);  // braucht [ 20*192 = 3840 / 10*188 + 1184 = 3064 ] + 1733
+int  FindPrevPacketStart(const byte PacketArray[], int ArrayLen);  // braucht [ 20*192 = 3840 / 10*188 + 1184 = 3064 ] + 1733
 //int  GetPacketSize(FILE *RecFile, int *OutOffset);
 void DeleteSegmentMarker(int MarkerIndex, bool FreeCaption);
 int  main(int argc, const char* argv[]);

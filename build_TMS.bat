@@ -12,11 +12,11 @@ if "%1"=="/debug" (
 )
 make %MakeParam%
 set BuildState=%errorlevel%
-del *.d
+if exist *.d del *.d
 del *.o
 
-copy /y RecStrip_VS\Release\RecStrip.exe RecStrip3_Win32.exe
-copy /y RecStrip_VS\x64\Release\RecStrip.exe RecStrip3_x64.exe
+if exist RecStrip_VS\Release\RecStrip.exe copy /y RecStrip_VS\Release\RecStrip.exe RecStrip3_Win32.exe
+if exist RecStrip_VS\x64\Release\RecStrip.exe copy /y RecStrip_VS\x64\Release\RecStrip.exe RecStrip3_x64.exe
 
 if not "%1"=="/quiet" (
   if not "%2"=="/quiet" (

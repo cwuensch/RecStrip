@@ -40,6 +40,8 @@ static bool             GetPPSID = FALSE, GetSlicePPSID = FALSE, GetPrimPicType 
 static byte             SlicePPSID = 0;
 static dword            FirstSEIPTS = 0, SEIPTS = 0, IFramePTS = 0, SPSLen = 0;
 static dword            FirstPCR = 0;
+static dword            Golomb = 0;
+static byte             GolombFull = 0;
 //static tFrameCtr        CounterStack[COUNTSTACKSIZE];
 //static int              LastIFrame = 0;
 
@@ -65,37 +67,77 @@ static bool             FirstRun = TRUE;
 // *****  PROCESS NAV FILE  *****
 // ----------------------------------------------
 
-static int get_ue_golomb32(byte *p, byte *StartBit)
+static int get_ue_golomb32(/* byte *p */ dword d, byte *StartBit)
 {
   int                   leadingZeroBits;
-  dword                 d;
+//  dword                 d;
 
   TRACEENTER;
-  d = (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3];
-  if(d == 0)
+//  d = (p[0] << 24) | (p[1] << 16) | (p[2] << 8) | p[3];
+  if(d == 0 || *StartBit > 32)
   {
     TRACEEXIT;
     return 0;
   }
 
   leadingZeroBits = 0;
-  while(((d >> *StartBit) & 1) == 0)
+  while((*StartBit > 1) && (((d >> *StartBit) & 1) == 0))
+  {
+    leadingZeroBits++;
+    *StartBit = *StartBit - 1;
+  }
+  *StartBit = *StartBit - 1;
+  
+  if (*StartBit >= leadingZeroBits)
+  {
+    d >>= (*StartBit + 1 - leadingZeroBits);
+    d &= ((1 << leadingZeroBits) - 1);
+
+    *StartBit = *StartBit - leadingZeroBits;
+    TRACEEXIT;
+    return (1 << leadingZeroBits) - 1 + d;
+  }
+  printf("Assertion error: get_ue_golomb32() used more than 32 bits!\n");
+  *StartBit = 0;
+  TRACEEXIT;
+  return 0;
+}
+
+/*static int get_ue_golomb8(byte d, byte *StartBit)
+{
+  int                   leadingZeroBits;
+
+  TRACEENTER;
+  if(d == 0 || *StartBit > 7)
+  {
+    TRACEEXIT;
+    return 0;
+  }
+
+  leadingZeroBits = 0;
+  while((*StartBit > 1) && (((d >> *StartBit) & 1) == 0))
   {
     leadingZeroBits++;
     *StartBit = *StartBit - 1;
   }
   *StartBit = *StartBit - 1;
 
-  d >>= (*StartBit + 1 - leadingZeroBits);
-  d &= ((1 << leadingZeroBits) - 1);
+  if (*StartBit >= leadingZeroBits)
+  {
+    d >>= (*StartBit + 1 - leadingZeroBits);
+    d &= ((1 << leadingZeroBits) - 1);
 
-  *StartBit = *StartBit - leadingZeroBits;
-
+    *StartBit = *StartBit - leadingZeroBits;
+    TRACEEXIT;
+    return (1 << leadingZeroBits) - 1 + d;
+  }
   TRACEEXIT;
-  return (1 << leadingZeroBits) - 1 + d;
-}
+  printf("Assertion error: get_ue_golomb8() used more than 8 bits!\n");
+  *StartBit = 0;
+  return 0;
+} */
 
-bool GetPTS2(byte *Buffer, dword *pPTS, dword *pDTS)
+bool GetPTS2(byte *Buffer, dword *pPTS, dword *pDTS)  // 33 bits, 90 kHz, returns divided by 2 (?)
 {
   bool ret = FALSE;
   TRACEENTER;
@@ -147,7 +189,7 @@ bool GetPTS(byte *Buffer, dword *pPTS, dword *pDTS)
   else return FALSE;
 }
 
-bool GetPCR(byte *pBuffer, long long *pPCR)
+bool GetPCR(byte *pBuffer, long long *pPCR)  // 33 bits (90 kHz) + 9 bits (27 MHz)
 {
   TRACEENTER;
   if (/*pBuffer &&*/ (pBuffer[0] == 0x47) && ((pBuffer[3] & 0x20) != 0) && (pBuffer[4] > 0) && (pBuffer[5] & 0x10))
@@ -165,7 +207,7 @@ bool GetPCR(byte *pBuffer, long long *pPCR)
   TRACEEXIT;
   return FALSE;
 }
-bool GetPCRms(byte *pBuffer, dword *pPCR)
+bool GetPCRms(byte *pBuffer, dword *pPCR)  // 33 bits, 90 kHz, returns divided by 2, then by 45
 {
   TRACEENTER;
   if (/*pBuffer &&*/ (pBuffer[0] == 0x47) && ((pBuffer[3] & 0x20) != 0) && (pBuffer[4] > 0) && (pBuffer[5] & 0x10))
@@ -235,26 +277,36 @@ dword DeltaPCR(dword FirstPCR, dword SecondPCR)
   }
   TRACEEXIT;
   return 0;
-}
+}*/
 
-static dword FindPictureHeader(byte *Buffer, byte *pFrameType)
+dword FindPictureHeader(byte *Buffer, int BufferLen, byte *pFrameType)  // 1 = I-Frame, 2 = P-Frame, 3 = B-Frame (?)
 {
-  int                   i;
+  int i;
 
   TRACEENTER;
-  for(i = 0; i < 176; i++)
+  for(i = 0; i < BufferLen - 6; i++)
   {
-    if((Buffer[i] == 0x00) && (Buffer[i + 1] == 0x00) && (Buffer[i + 2] == 0x01) && (Buffer[i + 3] == 0x00))
+    if((Buffer[i] == 0x00) && (Buffer[i + 1] == 0x00) && (Buffer[i + 2] == 0x01))
     {
-      if (pFrameType)
-        *pFrameType = (Buffer[i + 5] >> 3) & 0x03;
-      TRACEEXIT;
-      return i + 8;
+      if (isHDVideo && ((Buffer[i + 3] & 0x80) == 0x00))
+      {
+        // MPEG4 picture header: 
+        if(pFrameType)  *pFrameType = ((Buffer[i + 4] >> 5) & 7) + 1;
+        TRACEEXIT;
+        return i + 6;
+      }
+      else if (!isHDVideo && (Buffer[i + 3] == 0x00))
+      {
+        // MPEG2 picture header: http://dvdnav.mplayerhq.hu/dvdinfo/mpeghdrs.html#picture
+        if(pFrameType)  *pFrameType = (Buffer[i + 5] >> 3) & 0x03;
+        TRACEEXIT;
+        return i + 9;
+      }
     }
   }
   TRACEEXIT;
   return 0;
-}*/
+}
 
 
 void NavProcessor_Init(void)
@@ -278,6 +330,7 @@ void NavProcessor_Init(void)
   SlicePPSID = 0;
   FirstSEIPTS = 0; SEIPTS = 0; IFramePTS = 0; SPSLen = 0;
   FirstPCR = 0;
+  GolombFull = 0;
 //  LastIFrame = 0;
 
   dbg_NavPictureHeaderOffset = 0; dbg_SEIFound = 0;
@@ -401,29 +454,44 @@ dbg_HeaderPosOffset = dbg_PositionOffset - (Ptr-PayloadStart <= 1 ? dbg_DelBytes
     }
 
     // Process access on Packet[Ptr+4]
-    if (GetPPSID)
+    if (GetPPSID || GetSlicePPSID)
     {
-      byte Bit = 31;
-      PPS[PPSCount-1].ID = get_ue_golomb32(&Packet->Data[Ptr], &Bit);
-      #if DEBUGLOG != 0
-        snprintf(&s[strlen(s)], sizeof(s)-strlen(s), " (ID=%d)", PPS[PPSCount-1].ID);
-      #endif
-      GetPPSID = FALSE;
-    }
-    if (GetSlicePPSID)
-    {
-      byte Bit = 31;
-      //first_mb_in_slice
-      get_ue_golomb32(&Packet->Data[Ptr], &Bit);
-      //slice_type
-      get_ue_golomb32(&Packet->Data[Ptr], &Bit);
-      //pic_parameter_set_id
-      SlicePPSID = get_ue_golomb32(&Packet->Data[Ptr], &Bit);
+      if (GolombFull < 4)
+      {
+        Golomb = Golomb << 8 | Packet->Data[Ptr];
+        GolombFull++;
+      }
+      if (GolombFull >= 4)
+      {
+        if (GetPPSID)
+        {
+          byte Bit = 31;
+          PPS[PPSCount-1].ID = get_ue_golomb32(Golomb, &Bit);
 
-      #if DEBUGLOG != 0
-        snprintf(&s[strlen(s)], sizeof(s)-strlen(s), " (PPS ID=%hu)\n", SlicePPSID);
-      #endif
-      GetSlicePPSID = FALSE;
+          #if DEBUGLOG != 0
+            snprintf(&s[strlen(s)], sizeof(s)-strlen(s), " (ID=%d)", PPS[PPSCount-1].ID);
+          #endif
+          GetPPSID = FALSE;
+        }
+        if (GetSlicePPSID)
+        {
+          byte Bit = 31;
+          if (Ptr >= 180)
+            printf("Assertion error (warning): get_ue_golomb32() called with less than 4 bytes left!\n");
+
+          //first_mb_in_slice
+          get_ue_golomb32(Golomb, &Bit);
+          //slice_type
+          get_ue_golomb32(Golomb, &Bit);
+          //pic_parameter_set_id
+          SlicePPSID = get_ue_golomb32(Golomb, &Bit);
+
+          #if DEBUGLOG != 0
+            snprintf(&s[strlen(s)], sizeof(s)-strlen(s), " (PPS ID=%hu)\n", SlicePPSID);
+          #endif
+          GetSlicePPSID = FALSE;
+        }
+      }
     }
     if (GetPrimPicType)
     {
@@ -509,6 +577,7 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
               PPS[PPSCount].Len = 0;
               PPSCount++;
               GetPPSID = TRUE;
+              GolombFull = 0;
             }
 
             if (!navHD.FrameType)
@@ -528,6 +597,7 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
               strcpy(s, "NAL_SLICE");
             #endif
             GetSlicePPSID = TRUE;
+            GolombFull = 0;
             if((navHD.FrameType == 3) && (NALRefIdc > 0)) navHD.FrameType = 2;
             break;
           }
@@ -1235,7 +1305,7 @@ tTimeStamp2* NavLoad(const char *AbsInRec, int *const OutNrTimeStamps, byte Pack
   fNav = fopen(AbsFileName, "rb");
   if(!fNav)
   {
-    printf("  Could not open nav file.\n");
+//    printf("  Could not open nav file.\n");
     TRACEEXIT;
     return(NULL);
   }
@@ -1313,7 +1383,7 @@ TAP_PrintNet("Achtung! I-Frame an %llu hat denselben Timestamp wie sein Vorgänge
     TimeStamps = (tTimeStamp2*) realloc(TimeStampBuffer, NrTimeStamps * sizeof(tTimeStamp2));
     if(!TimeStamps) TimeStamps = TimeStampBuffer;
   }
-  *OutNrTimeStamps = NrTimeStamps;
+  if(OutNrTimeStamps) *OutNrTimeStamps = NrTimeStamps;
 
   TRACEEXIT;
   return(TimeStamps);

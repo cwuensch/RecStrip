@@ -26,6 +26,7 @@ FILE                   *fTtxOut = NULL;
 static tPSBuffer        TtxBuffer;
 static int              LastBuffer = 0;
 static bool             FirstPacketAfterBreak = TRUE;
+static uint16_t         pages[8], nrpages = 0;
 
 // global TS PCR value
 dword global_timestamp = 0;
@@ -558,12 +559,33 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
     uint8_t flag_subtitle = (unham_8_4(packet->data[5]) & 0x08) >> 3;
     uint16_t page_number;
     uint8_t charset;
+    uint16_t page;
 
     cc_map[i] |= flag_subtitle << (m - 1);
 
-    if ((config.page == 0) && (flag_subtitle == YES) && (i < 0xff)) {
-      config.page = (m << 8) | (unham_8_4(packet->data[1]) << 4) | unham_8_4(packet->data[0]);
-      printf("  TTX: Trying to extract subtitles from page %03x\n\n", config.page);
+    if ((flag_subtitle == YES) && (i < 0xff)) {
+      page = (m << 8) | i;
+/*      if (config.page == 0)
+      {
+        config.page = page;
+        printf("  TTX: Trying to extract subtitles from page %03x\n\n", config.page);
+        pages[nrpages++] = page;
+      }
+      else*/ if (page != config.page && !TeletextPage)
+      {
+        int k;
+        for (k = 0; ((k < nrpages) && (pages[k] != page)); k++);
+        if ((k >= nrpages) && (nrpages < 8))
+        {
+          if (page==0x150 || (page==0x777 && config.page!=0x150) || ((page==0x149 || page==0x160 || page==0x571) && config.page!=0x150 && config.page!=0x777) || config.page==0) {
+            config.page = page;
+            printf("  TTX: Trying to extract subtitles from page %03x\n\n", config.page);
+          }
+          else
+            printf("  TTX: Additional subtitle page: %03x\n\n", page);
+          pages[nrpages++] = page;
+        }
+      }
     }
 
      // Page number and control bits
@@ -742,7 +764,7 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
         uint32_t t;
         time_t t0;
 
-        printf("  TTX: Programme Identification Data = ");
+//        printf("  TTX: Programme Identification Data = ");
         for (i = 20; i < 40; i++) {
           char u[4] = { 0, 0, 0, 0 };
           uint16_t c = telx_to_ucs2(packet->data[i]);
@@ -750,9 +772,9 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
           if (c < 0x20) continue;
 
           ucs2_to_utf8(u, c);
-          printf("%s", u);
+//          printf("%s", u);
         }
-        printf("\n");
+//        printf("\n");
 
         // OMG! ETS 300 706 stores timestamp in 7 bytes in Modified Julian Day in BCD format + HH:MM:SS in BCD format
         // + timezone as 5-bit count of half-hours from GMT with 1-bit sign
@@ -776,7 +798,7 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
         // 4th step: conversion to time_t
         t0 = (time_t)t;
         // ctime output itself is \n-ended
-        printf("  TTX: Programme Timestamp (UTC) = %s\n", TimeStr_UTC(t0));
+//        printf("  TTX: Programme Timestamp (UTC) = %s\n", TimeStr_UTC(t0));
 
 //        VERBOSE_ONLY printf("  Transmission mode = %s\n", (transmission_mode == TRANSMISSION_MODE_SERIAL ? "serial" : "parallel"));
 
@@ -883,7 +905,8 @@ void process_pes_packet(uint8_t *buffer, uint16_t size) {
 
   // skip optional PES header and process each 46 bytes long teletext packet
   i = 7;
-  if (optional_pes_header_included == YES) i += 3 + optional_pes_header_length;
+  if (optional_pes_header_included == YES) i += 2 + optional_pes_header_length;
+  i++;
   while (i <= pes_packet_length - 6) {
     uint8_t data_unit_id = buffer[i++];
     uint8_t data_unit_len = buffer[i++];
@@ -918,7 +941,11 @@ void SetTeletextBreak(bool NewInputFile, word SubtitlePage)
   {
     states.programme_info_processed = NO;
     states.pts_initialized = NO;
-    config.page = SubtitlePage;
+    if (SubtitlePage != config.page)
+    {
+      config.page = SubtitlePage;
+      printf("  TTX: Trying to extract subtitles from user page %03x\n\n", config.page);
+    }
   }
 }
 
@@ -926,6 +953,10 @@ void TtxProcessor_Init(word SubtitlePage)
 {
   memset(&page_buffer, 0, sizeof(teletext_page_t));
   config.page = SubtitlePage;
+  if (SubtitlePage)
+    printf("  TTX: Trying to extract subtitles from user page %03x\n\n", config.page);
+  nrpages = 0;
+  memset(pages, 0, sizeof(pages));
 }
 
 bool LoadTeletextOut(const char* AbsOutFile)

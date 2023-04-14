@@ -74,6 +74,181 @@ static dword crc32m(const unsigned char *buf, size_t len)
   return crc;
 } */
 
+
+bool GetPidsFromMap(word ServiceID, word *const OutPMTPID, word *const OutVidPID, word *const OutAudPID, word *const OutTtxPID, word *const OutSubtPID)
+{
+  FILE *fMap;
+  char LineBuf[FBLIB_DIR_SIZE], *pPid, *pLng, *NameStr, *p;
+  word Sid, PPid, VPid, APid=0, TPid=0, SPid=0;
+  int APidStr = 0, ALangStr = 0, k;
+  strncpy(LineBuf, ExePath, sizeof(LineBuf));
+
+  if ((p = strrchr(LineBuf, '/'))) p[1] = '\0';
+  else if ((p = strrchr(LineBuf, '\\'))) p[1] = '\0';
+  else LineBuf[0] = 0;
+
+  strncat(LineBuf, "/SenderMap.txt", sizeof(LineBuf) - (p ? (p-LineBuf+1) : 0));
+  
+  if ((fMap = fopen(LineBuf, "r")))
+  {
+    while (fgets(LineBuf, sizeof(LineBuf), fMap))
+    {
+      if(LineBuf[0] == '#') continue;
+
+      // Remove line breaks in the end
+      k = (int)strlen(LineBuf);
+      while (k && (LineBuf[k-1] == '\r' || LineBuf[k-1] == '\n' || LineBuf[k-1] == ';'))
+        LineBuf[--k] = '\0';
+      
+//      if (sscanf(LineBuf, "%hu ; %hu ; %hu ; %hu %*1[/] %*15[^;/] ; %*20[^;/] ; %hu ; %hu ; %n %*70[^;\r\n]", &Sid, &PPid, &VPid, &APid, &TPid, &SPid, &BytesRead) == 6)
+      if (sscanf(LineBuf, "%hu ; %hu ; %hu ; %n %*19[^;] ; %n %*19[^;] ; %hu ; %hu ; %*70[^;\r\n]", &Sid, &PPid, &VPid, &APidStr, &ALangStr, &TPid, &SPid) >= 3)
+      {
+        if (Sid == ServiceID)
+        {
+          NameStr = strrchr(LineBuf, ';') + 1;
+          if((p = strchr(&LineBuf[APidStr], ';'))) p[0] = '\0';
+          pPid = strtok(&LineBuf[APidStr], "/;");
+          if(!APid) APid = (word) strtol(pPid, NULL, 10);
+          pLng = &LineBuf[ALangStr];
+          if(pLng[0] == ';') pLng = NULL;
+          for (k = 0; pPid && pLng && (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0); k++)
+          {
+            // Set AudioPIDs according to Map
+            AudioPIDs[k].pid = (word) strtol(pPid, NULL, 10);
+            strncpy(AudioPIDs[k].desc, pLng, 3);
+
+            pPid = strtok(NULL, "/;");
+            pLng = (pLng && pLng[3] == '/') ? pLng + 4 : NULL;
+          }
+
+          printf("  Found service from map: PMTPid=%hd, VidPID=%hd, AudPID=%hd, TtxPID=%hd (%s)\n", PPid, VPid, APid, TPid, NameStr);
+          if (OutPMTPID && PPid) *OutPMTPID = PPid;
+          if (OutVidPID && VPid) *OutVidPID = VPid;
+          if (OutAudPID && APid) *OutAudPID = APid;
+          if (OutTtxPID && TPid) *OutTtxPID = TPid;
+          if (OutSubtPID && SPid) *OutSubtPID = SPid;
+          fclose(fMap);
+          return TRUE;
+        }
+      }
+    }
+    fclose(fMap);
+  }
+  return FALSE;
+}
+
+/* bool GetSvcNameFromMap(word ServiceID, char *const OutSvcName, char maxOutLen)
+{
+  FILE *fMap;
+  char LineBuf[FBLIB_DIR_SIZE], *p;
+  word Sid, PPid, VPid, APid, TPid;
+  int BytesRead;
+  strncpy(LineBuf, ExePath, sizeof(LineBuf));
+
+  if ((p = strrchr(LineBuf, '/'))) p[1] = '\0';
+  else if ((p = strrchr(LineBuf, '\\'))) p[1] = '\0';
+  else LineBuf[0] = 0;
+
+  strncat(LineBuf, "/SenderMap.txt", sizeof(LineBuf) - (p ? (p-LineBuf+1) : 0));
+  
+  if ((fMap = fopen(LineBuf, "r")))
+  {
+    while (fgets(LineBuf, sizeof(LineBuf), fMap))
+    {
+      if (sscanf(LineBuf, "%hu ; %hu ; %hu ; %hu %*1[/] %*15[^;/] ; %*20[^;/] ; %hu ; %hu ; %n %*70[^;\r\n]", &Sid, &PPid, &VPid, &APid, &TPid, &SPid, &BytesRead) == 6)    
+        if (Sid == ServiceID)
+        {
+          printf("  Detected service name from Map: %s", &LineBuf[BytesRead]);
+          if (OutSvcName) {
+            strncpy(OutSvcName, &LineBuf[BytesRead], maxOutLen-1);
+            OutSvcName[maxOutLen-1] = '\0';
+          }
+          return TRUE;
+        }
+    }
+    fclose(fMap);
+  }
+  return FALSE;
+} */
+
+word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *InOutServiceName, word *const OutPMTPID)
+{
+  FILE *fMap;
+  char LineBuf[100], SenderFound[32], PidsFound[20], LangFound[20];
+  char *pPid, *pLng, *p;
+  word Sid, PPid, VPid, APid = 0, TPid = 0, SPid = 0, curPid;
+  int APidStr = 0, ALangStr = 0, k;
+  word CandidateFound = 0, PMTFound = 0;
+  strncpy(LineBuf, ExePath, sizeof(LineBuf));
+
+  if ((p = strrchr(LineBuf, '/'))) p[1] = '\0';
+  else if ((p = strrchr(LineBuf, '\\'))) p[1] = '\0';
+  else LineBuf[0] = 0;
+
+  strncat(LineBuf, "SenderMap.txt", sizeof(LineBuf) - (p ? (p-LineBuf+1) : 0));
+  
+  if ((fMap = fopen(LineBuf, "rb")))
+  {
+    while (fgets(LineBuf, sizeof(LineBuf), fMap) != 0)
+    {
+      if(LineBuf[0] == '#') continue;
+
+      // Remove line breaks in the end
+      k = (int)strlen(LineBuf);
+      while (k && (LineBuf[k-1] == '\r' || LineBuf[k-1] == '\n' || LineBuf[k-1] == ';'))
+        LineBuf[--k] = '\0';
+
+      if (sscanf(LineBuf, "%hu ; %hu ; %hu ; %n %*19[^;] ; %n %*19[^;] ; %hu ; %hu ; %*70[^;\r\n]", &Sid, &PPid, &VPid, &APidStr, &ALangStr, &TPid, &SPid) >= 3)
+      {
+        APid = (word) strtol(&LineBuf[APidStr], NULL, 10);
+        p = strrchr(LineBuf, ';') + 1;
+        if ((VPid == VidPID) && ((APid == AudPID) || !AudPID || AudPID == (word)-1) && ((TPid == TtxPID) || !TtxPID || TtxPID == (word)-1)
+         && ((VidPID != 101 && VidPID != 201 && VidPID != 401 && VidPID != 601) || (*InOutServiceName && ((strncmp(p, InOutServiceName, 2) == 0) || (strncmp(p, "Das", 3)==0 && strncmp(InOutServiceName, "ARD", 3)==0) || (strncmp(p, "BR", 2)==0 && strncmp(InOutServiceName, "Bay", 3)==0)))))
+        {
+          strncpy(SenderFound, p, sizeof(SenderFound));
+          SenderFound[sizeof(SenderFound)-1] = '\0';
+          strncpy(PidsFound, &LineBuf[APidStr], sizeof(PidsFound));
+          if ((p = strchr(PidsFound, ';'))) p[0] = '\0';
+          strncpy(LangFound, &LineBuf[ALangStr], sizeof(LangFound));
+          PMTFound = PPid;
+          if(CandidateFound) printf("\n");
+          printf("  Found ServiceID in Map: SID=%hu (%s), PMTPid=%hu", Sid, SenderFound, PPid);
+          if(CandidateFound) { printf(" (ambiguous) -> skipping\n"); return 1; }
+          CandidateFound = Sid;
+        }
+        else if (CandidateFound)  // Nutzt aus, dass die SenderMap nach VideoPID sortiert ist
+        {
+          printf(" (unique) -> using SID\n");
+
+          pPid = strtok(PidsFound, "/;");
+          pLng = LangFound;
+          if(pLng[0] == ';') pLng = NULL;
+          while (pPid && pLng)
+          {
+            curPid = (word) strtol(pPid, NULL, 10);
+            
+            // Add Language-Code from Map to AudioPIDs
+            for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0) && (AudioPIDs[k].pid != curPid); k++);
+            if (AudioPIDs[k].pid == curPid /*&& !AudioPIDs[k].desc*/)
+              strncpy(AudioPIDs[k].desc, pLng, 3);
+
+            pPid = strtok(NULL, "/;");
+            pLng = (pLng && pLng[3] == '/') ? pLng + 4 : NULL;
+          }
+
+          if(OutPMTPID && (!*OutPMTPID || *OutPMTPID==256)) *OutPMTPID = PMTFound;
+          if(InOutServiceName && !*InOutServiceName) strncpy(InOutServiceName, SenderFound, sizeof(((TYPE_Service_Info*)NULL)->ServiceName));
+          fclose(fMap);
+          return CandidateFound;
+        }
+      }
+    }
+    fclose(fMap);
+  }
+  return 1;
+}
+
+
 bool SaveHumaxHeader(char *const VidFileName, char *const OutFileName)
 {
   FILE                 *fIn, *fOut;
@@ -105,90 +280,17 @@ bool SaveHumaxHeader(char *const VidFileName, char *const OutFileName)
   return ret;
 }
 
-bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecInf)
+bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 {
   tHumaxHeader          HumaxHeader;
-  tTSPacket            *Packet = NULL;
-  tTSPAT               *PAT = NULL;
-  tTSPMT               *PMT = NULL;
-  tElemStream          *Elem = NULL;
   char                  FirstSvcName[32];
-  dword                *CRC = NULL;
-  int                   Offset = 0;
-//  long long             FilePos = ftello64(fIn);
   int                   i, j, k;
   bool                  ret = TRUE;
 
   TRACEENTER;
   InitInfStruct(RecInf);
-  memset(PATPMTBuf, 0, 2*192);
 
-  Packet = (tTSPacket*) &PATPMTBuf[4];
-  PAT = (tTSPAT*) &Packet->Data[1 /*+ Packet->Data[0]*/];
-
-  Packet->SyncByte      = 'G';
-  Packet->PID1          = 0;
-  Packet->PID2          = 0;
-  Packet->Payload_Unit_Start = 1;
-  Packet->Payload_Exists = 1;
-
-  PAT->TableID          = TABLE_PAT;
-  PAT->SectionLen1      = 0;
-  PAT->SectionLen2      = sizeof(tTSPAT) - 3;
-  PAT->Reserved1        = 3;
-  PAT->Private          = 0;
-  PAT->SectionSyntax    = 1;
-  PAT->TS_ID1           = 0;
-  PAT->TS_ID2           = 6;  // ??
-  PAT->CurNextInd       = 1;
-  PAT->VersionNr        = 3;
-  PAT->Reserved2        = 3;
-  PAT->SectionNr        = 0;
-  PAT->LastSection      = 0;
-  PAT->ProgramNr1       = 0;
-  PAT->ProgramNr2       = 1;
-  PAT->PMTPID1          = 0;
-  PAT->PMTPID2          = 64;
-  PAT->Reserved111      = 7;
-//  PAT->CRC32            = rocksoft_crc((byte*)PAT, sizeof(tTSPAT)-4);    // CRC: 0x786989a2
-//  PAT->CRC32            = crc32m((byte*)PAT, sizeof(tTSPAT)-4);          // CRC: 0x786989a2
-  PAT->CRC32            = crc32m_tab((byte*)PAT, sizeof(tTSPAT)-4);      // CRC: 0x786989a2
-  
-  Offset = 1 + /*Packet->Data[0] +*/ sizeof(tTSPAT);
-  memset(&Packet->Data[Offset], 0xff, 184 - Offset);
-
-  Packet = (tTSPacket*) &PATPMTBuf[196];
-  PMT = (tTSPMT*) &Packet->Data[1 /*+ Packet->Data[0]*/];
-
-  Packet->SyncByte      = 'G';
-  Packet->PID1          = 0;
-  Packet->PID2          = 64;
-  Packet->Payload_Unit_Start = 1;
-  Packet->Payload_Exists = 1;
-
-  PMT->TableID          = TABLE_PMT;
-  PMT->SectionLen1      = 0;
-  PMT->SectionLen2      = sizeof(tTSPMT) - 3 + 4;
-  PMT->Reserved1        = 3;
-  PMT->Private          = 0;
-  PMT->SectionSyntax    = 1;
-  PMT->ProgramNr1       = 0;
-  PMT->ProgramNr2       = 1;
-  PMT->CurNextInd       = 1;
-  PMT->VersionNr        = 0;
-  PMT->Reserved2        = 3;
-  PMT->SectionNr        = 0;
-  PMT->LastSection      = 0;
-
-  PMT->Reserved3        = 7;
-
-  PMT->ProgInfoLen1     = 0;
-  PMT->ProgInfoLen2     = 0;
-  PMT->Reserved4        = 15;
-
-  Offset = 1 + /*Packet->Data[0] +*/ sizeof(tTSPMT);
-
-  rewind(fIn);
+//  rewind(fIn);
   for (i = 1; ret && (i <= 4); i++)
   {
     fseeko64(fIn, (i*HumaxHeaderIntervall) - HumaxHeaderLaenge, SEEK_SET);
@@ -205,27 +307,31 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
         if (i == 1)  // Header 1: Programm-Information
         {
           printf("  Importing Humax header\n");
+
           VideoPID                            = HumaxHeader.Allgemein.VideoPID;
           TeletextPID                         = HumaxHeader.Allgemein.TeletextPID;
           RecInf->ServiceInfo.ServiceType     = 0;  // SVC_TYPE_Tv
           RecInf->ServiceInfo.ServiceID       = 1;
-          RecInf->ServiceInfo.PMTPID          = 64;
+          RecInf->ServiceInfo.PMTPID          = 0;  // vorher: (HumaxHeader.Allgemein.AudioPID != 256) ? 256 : 100;
           RecInf->ServiceInfo.VideoPID        = VideoPID;
           RecInf->ServiceInfo.PCRPID          = VideoPID;
           RecInf->ServiceInfo.AudioPID        = HumaxHeader.Allgemein.AudioPID;
           RecInf->ServiceInfo.VideoStreamType = STREAM_VIDEO_MPEG2;
           RecInf->ServiceInfo.AudioStreamType = STREAM_AUDIO_MPEG2;
+          RecInf->ServiceInfo.AudioTypeFlag   = 0;
           RecInf->RecHeaderInfo.StartTime     = DATE(HumaxHeader.Allgemein.Datum, HumaxHeader.Allgemein.Zeit / 60, HumaxHeader.Allgemein.Zeit % 60);
           RecInf->RecHeaderInfo.DurationMin   = (word)(HumaxHeader.Allgemein.Dauer / 60);
           RecInf->RecHeaderInfo.DurationSec   = (word)(HumaxHeader.Allgemein.Dauer % 60);
           ContinuityPIDs[0] = VideoPID;
-          printf("    PMTPID=%hd, SID=%hu, PCRPID=%hd, Stream=0x%hhx, VPID=%hd, TtxPID=%hd\n", RecInf->ServiceInfo.PMTPID, RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID, RecInf->ServiceInfo.VideoStreamType, VideoPID, TeletextPID);
+          printf("    PMTPID=%hd, SID=%hu, PCRPID=%hd, Stream=0x%hhx, VPID=%hd, APID=%hd, TtxPID=%hd\n", RecInf->ServiceInfo.PMTPID, RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID, RecInf->ServiceInfo.VideoStreamType, VideoPID, HumaxHeader.Allgemein.AudioPID, TeletextPID);
 
           printf("    Start Time: %s\n", TimeStrTF(RecInf->RecHeaderInfo.StartTime, 0));
 
           if(p) *p = '\0';
           strncpy(FirstSvcName, HumaxHeader.Allgemein.Dateiname, sizeof(FirstSvcName));
           FirstSvcName[sizeof(FirstSvcName)-1] = '\0';
+// manuelle Ausnahme (IMGARTENEDEN2_0601112255.vid):
+if(VideoPID == 660 && TeletextPID == 130 && ExtractTeletext && DoStrip) RemoveTeletext = TRUE;
         }
         else if (i == 2)  // Header 2: Original-Dateiname
         {
@@ -236,118 +342,64 @@ bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecI
             strncpy(RecInf->ServiceInfo.ServiceName, HumaxHeader.Allgemein.Dateiname, sizeof(RecInf->ServiceInfo.ServiceName));
             RecInf->ServiceInfo.ServiceName[sizeof(RecInf->ServiceInfo.ServiceName)-1] = '\0';
           }
+          else
+            printf("    Assertion error: Humax rec name without sender!\n");
         }
-        if (HumaxHeader.ZusInfoID == HumaxBookmarksID)  // Header 3: Bookmarks
+        else if (HumaxHeader.ZusInfoID == HumaxBookmarksID)  // Header 3: Bookmarks
         {
           tHumaxBlock_Bookmarks* HumaxBookmarks = (tHumaxBlock_Bookmarks*)HumaxHeader.ZusInfos;
           RecInf->BookmarkInfo.NrBookmarks = HumaxBookmarks->Anzahl;
           for (j = 0; j < HumaxBookmarks->Anzahl; j++)
             RecInf->BookmarkInfo.Bookmarks[j] = (dword) ((long long)HumaxBookmarks->Items[j] * 32768 / 9024);
         }
-        else if (HumaxHeader.ZusInfoID == HumaxTonSpurenID)  // Header 4: Tonspuren
+        if ((i == 4) || (HumaxHeader.ZusInfoID == HumaxTonSpurenID))  // Header 4: Tonspuren
         {
-          tHumaxBlock_Tonspuren* HumaxTonspuren = (tHumaxBlock_Tonspuren*)HumaxHeader.ZusInfos;
-
-          for (j = -1; j <= HumaxTonspuren->Anzahl; j++)
+          AudioPIDs[0].pid = HumaxHeader.Allgemein.AudioPID;
+          AudioPIDs[0].sorted = TRUE;
+          
+          if (HumaxHeader.ZusInfoID == HumaxTonSpurenID)
           {
-            tTSAudioDesc *Desc    = NULL;
-
-            Elem = (tElemStream*) &Packet->Data[Offset];
-            Elem->Reserved1       = 7;
-            Elem->Reserved2       = 0xf;
-            Offset                += sizeof(tElemStream);
-
-            if (j < 0)
+            tHumaxBlock_Tonspuren* HumaxTonspuren = (tHumaxBlock_Tonspuren*)HumaxHeader.ZusInfos;
+            for (j = 0; j < HumaxTonspuren->Anzahl; j++)
             {
-              Elem->stream_type     = STREAM_VIDEO_MPEG2;
-              Elem->ESPID1          = VideoPID / 256;
-              Elem->ESPID2          = VideoPID % 256;
-              Elem->ESInfoLen1      = 0;
-              Elem->ESInfoLen2      = 0;
-            }
-            else if (j < HumaxTonspuren->Anzahl)
-            {
-              Elem->ESPID1          = HumaxTonspuren->Items[j].PID / 256;
-              Elem->ESPID2          = HumaxTonspuren->Items[j].PID % 256;
-              Elem->ESInfoLen1      = 0;
-              if ((j >= 1) && (strstr(HumaxTonspuren->Items[j].Name, "AC") != NULL || strstr(HumaxTonspuren->Items[j].Name, "ac") != NULL))   // (strstr(HumaxTonspuren->Items[j].Name, "2ch") == 0) && (strstr(HumaxTonspuren->Items[j].Name, "mis") == 0) && (strstr(HumaxTonspuren->Items[j].Name, "fra") == 0)
+              if (HumaxTonspuren->Items[j].PID == AudioPIDs[0].pid)
               {
-                tTSAC3Desc *Desc0   = (tTSAC3Desc*) &Packet->Data[Offset];
-
-                if (HumaxTonspuren->Items[j].PID == RecInf->ServiceInfo.AudioPID)
+                strncpy(AudioPIDs[0].desc, HumaxTonspuren->Items[j].Name, 3);
+                if ((j >= 1) && (strncmp(AudioPIDs[0].desc, "AC", 2) != 0 || strncmp(AudioPIDs[0].desc, "ac", 2) != 0))   // (strstr(AudioPIDs[k].desc, "2ch") == 0) && (strstr(AudioPIDs[k].desc, "mis") == 0) && (strstr(AudioPIDs[k].desc, "fra") == 0)
                 {
                   RecInf->ServiceInfo.AudioStreamType = STREAM_AUDIO_MPEG4_AC3_PLUS;
                   RecInf->ServiceInfo.AudioTypeFlag = 1;
                 }
-
-                Elem->stream_type   = STREAM_AUDIO_MPEG4_AC3_PLUS;  // STREAM_AUDIO_MPEG4_AC3;
-                Elem->ESInfoLen2    = sizeof(tTSAC3Desc) + sizeof(tTSAudioDesc);
-//                strcpy(&Packet->Data[Offset], "\x05\x04" "AC-3" "\x0A\x04" "deu");
-                Desc0->DescrTag     = DESC_AC3;
-                Desc0->DescrLength  = 1;
-                Desc                = (tTSAudioDesc*) &Packet->Data[Offset + sizeof(tTSAC3Desc)];
               }
               else
               {
-                Desc = (tTSAudioDesc*) &Packet->Data[Offset];
-                Elem->stream_type   = STREAM_AUDIO_MPEG2;
-                Elem->ESInfoLen2    = sizeof(tTSAudioDesc);
-//                strcpy(&Packet->Data[Offset], "\x0A\x04" "deu");
-              }
-              if (Desc)
-              {
-                Desc->DescrTag      = DESC_Audio;
-                Desc->DescrLength   = 4;
-                strncpy(Desc->LanguageCode, HumaxTonspuren->Items[j].Name, 3);
-              }
-              printf("    Audio Track %d: PID=%d, Type=0x%x (%s) \n", j, HumaxTonspuren->Items[j].PID, Elem->stream_type, HumaxTonspuren->Items[j].Name);
-
-              if (NrContinuityPIDs < MAXCONTINUITYPIDS)
-              {
-                for (k = 1; k < NrContinuityPIDs; k++)
+                for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0) && (AudioPIDs[k].pid != HumaxTonspuren->Items[j].PID); k++);
+                if (k < MAXCONTINUITYPIDS)
                 {
-                  if (ContinuityPIDs[k] == HumaxTonspuren->Items[j].PID)
-                    break;
+                  AudioPIDs[k].pid = HumaxTonspuren->Items[j].PID;
+                  AudioPIDs[k].sorted = TRUE;
+                  strncpy(AudioPIDs[k].desc, HumaxTonspuren->Items[j].Name, 3);
                 }
-                if (k >= NrContinuityPIDs)
-                  ContinuityPIDs[NrContinuityPIDs++] = HumaxTonspuren->Items[j].PID;
               }
+              AddContinuityPids(HumaxTonspuren->Items[j].PID, FALSE);
             }
-            else
-            {
-              tTSTtxDesc *Desc = (tTSTtxDesc*) &Packet->Data[Offset];
-
-              Elem->stream_type     = 6;
-              Elem->ESPID1          = HumaxHeader.Allgemein.TeletextPID / 256;
-              Elem->ESPID2          = HumaxHeader.Allgemein.TeletextPID % 256;
-              Elem->ESInfoLen1      = 0;
-              Elem->ESInfoLen2      = 7;
-
-//              strcpy(&Packet->Data[Offset], "V" "\x05" "deu" "\x09");
-              Desc->DescrTag        = DESC_Teletext;
-              Desc->DescrLength     = 5;
-              memcpy(Desc->LanguageCode, "deu", 3); 
-              Desc->TtxType         = 1;
-              Desc->TtxMagazine     = 1;
-            }
-            Offset                += Elem->ESInfoLen2;
-            PMT->SectionLen2      += sizeof(tElemStream) + Elem->ESInfoLen2;
           }
+          if(!*AudioPIDs[0].desc) strncpy(AudioPIDs[0].desc, "deu", 3);
         }
       }
     }
   }
+  RecInf->ServiceInfo.ServiceID = GetSidFromMap(VideoPID, 0 /*GetMinimalAudioPID(AudioPIDs)*/, 0, RecInf->ServiceInfo.ServiceName, &RecInf->ServiceInfo.PMTPID);
+  if (!RecInf->ServiceInfo.PMTPID)
+    RecInf->ServiceInfo.PMTPID = (HumaxHeader.Allgemein.AudioPID != 256) ? 256 : 100;
+  AddContinuityPids(TeletextPID, FALSE);
 
-  PMT->PCRPID1          = VideoPID / 256;
-  PMT->PCRPID2          = VideoPID % 256;
-  CRC                   = (dword*) &Packet->Data[Offset];
-//  *CRC                  = rocksoft_crc((byte*)PMT, (int)CRC - (int)PMT);   // CRC: 0x0043710d  (0xb3ad75b7?)
-//  *CRC                  = crc32m((byte*)PMT, (int)CRC - (int)PMT);         // CRC: 0x0043710d  (0xb3ad75b7?)
-  *CRC                  = crc32m_tab((byte*)PMT, (byte*)CRC - (byte*)PMT);     // CRC: 0x0043710d  (0xb3ad75b7?)
-  Offset               += 4;
-  memset(&Packet->Data[Offset], 0xff, 184 - Offset);
-
-  if(NrContinuityPIDs < MAXCONTINUITYPIDS && TeletextPID != 0xffff)  ContinuityPIDs[NrContinuityPIDs++] = TeletextPID;
+  for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0) && (AudioPIDs[k].pid != TeletextPID); k++);
+  if (k < MAXCONTINUITYPIDS)
+  {
+    AudioPIDs[k].pid = TeletextPID;
+    AudioPIDs[k].sorted = TRUE;
+  }
 
 //  fseeko64(fIn, FilePos, SEEK_SET);
   if (!ret)

@@ -99,106 +99,11 @@ typedef struct
 #pragma pack(pop)
 
 
-typedef struct
-{
-  byte TableID;
-  byte SectionLen1:4;    // first 2 bits are 0
-  byte Reserved1:2;      // = 0x03 (all 1)
-  byte Private:1;        // = 0
-  byte SectionSyntax:1;  // = 1
-  byte SectionLen2;
-  byte TS_ID1;
-  byte TS_ID2;
-  byte CurNextInd:1;
-  byte VersionNr:5;
-  byte Reserved2:2;      // = 0x03 (all 1)
-  byte SectionNr;
-  byte LastSection;
-
-//  for i = 0 to N  {
-    word ProgramNr1:8;
-    word ProgramNr2:8;
-    word PMTPID1:5;  // oder NetworkPID, falls ProgramNr==0
-    word Reserved111:3;
-    word PMTPID2:8;  // oder NetworkPID, falls ProgramNr==0
-//  }
-  dword CRC32;
-} tTSPAT;
-
-
-typedef struct
-{
-  byte DescrTag;
-  byte DescrLength;
-//  char Name[4];          // without terminating 0
-  byte Reserved:4;
-  byte asvc_flag:1;
-  byte mainid_flag:1;
-  byte bsid_flag:1;
-  byte component_type_flag:1;
-} tTSAC3Desc;            // Ist das richtig??
-
-typedef struct
-{
-  byte DescrTag;
-  byte DescrLength;
-  char LanguageCode[3]; // without terminating 0
-  byte AudioType;
-} tTSAudioDesc;
-
-typedef struct
-{
-  byte DescrTag;
-  byte DescrLength;
-  char LanguageCode[3];  // without terminating 0
-  byte TtxMagazine:1;    // = 1
-  byte Unknown2:2;       // = 0
-  byte TtxType:2;        // 1 = initial Teletext page
-  byte Unknown:3;        // unknown
-  byte FirstPage;
-} tTSTtxDesc;
-
-/*typedef struct
-{
-  byte stream_type;
-  byte ESPID1:5;
-  byte Reserved1:3;      // = 0x03 (all 1)
-  byte ESPID2;
-  byte ESInfoLen1:4;
-  byte Reserved2:4;      // = 0x07 (all 1)
-  byte ESInfoLen2;
-} tElemStream;
-
-typedef struct
-{
-  byte TableID;
-  byte SectionLen1:4;    // first 2 bits are 0
-  byte Reserved1:2;      // = 0x03 (all 1)
-  byte Private:1;        // = 0
-  byte SectionSyntax:1;  // = 1
-  byte SectionLen2;
-  byte ProgramNr1;
-  byte ProgramNr2;
-  byte CurNextInd:1;
-  byte VersionNr:5;
-  byte Reserved2:2;      // = 0x03 (all 1)
-  byte SectionNr;
-  byte LastSection;
-
-  word PCRPID1:5;
-  word Reserved3:3;      // = 0x07 (all 1)
-  word PCRPID2:8;
-
-  word ProgInfoLen1:4;   // first 2 bits are 0
-  word Reserved4:4;      // = 0x0F (all 1)
-  word ProgInfoLen2:8;
-  // ProgInfo (of length ProgInfoLen1*256 + ProgInfoLen2)
-  // Elementary Streams (of remaining SectionLen)
-} tTSPMT; */
-
-
 dword crc32m_tab(const unsigned char *buf, size_t len);
+word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *InOutServiceName, word *const OutPMTPID);
+bool GetPidsFromMap(word ServiceID, word *const OutPMTPID, word *const OutVidPID, word *const OutAudPID, word *const OutTtxPID, word *const OutSubtPID);
+
 bool SaveHumaxHeader(char *const VidFileName, char *const OutFileName);
-bool LoadHumaxHeader(FILE *fIn, byte *const PATPMTBuf, TYPE_RecHeader_TMSS *RecInf);
+bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf);
 
 #endif

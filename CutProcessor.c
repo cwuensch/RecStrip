@@ -369,8 +369,8 @@ void CutImportFromBM(const char *RecFile, dword Bookmarks[], dword NrBookmarks)
       SegmentMarker[i].Percent = 0;
       SegmentMarker[i].pCaption = NULL;
     }
-    SegmentMarker[NrSegmentMarker-1].Position = TimeStamps[NrTimeStamps-1].Position;
-    SegmentMarker[NrSegmentMarker-1].Timems = TimeStamps[NrTimeStamps-1].Timems;
+    SegmentMarker[NrSegmentMarker-1].Position = RecFileSize;
+    SegmentMarker[NrSegmentMarker-1].Timems = (TimeStamps) ? TimeStamps[NrTimeStamps-1].Timems : 0;
 
     if(TimeStamps) free(TimeStamps);
   }

@@ -1,6 +1,7 @@
 #ifndef __REBUILDINFH__
 #define __REBUILDINFH__
 
+// PAT/PMT: https://www.etsi.org/deliver/etsi_en/300400_300499/300468/01.11.01_60/en_300468v011101p.pdf
 typedef enum
 {
   TABLE_PAT              = 0x00,
@@ -11,13 +12,15 @@ typedef enum
 
 typedef enum
 {
-  DESC_Audio             = 0x0A,
+  DESC_AudioLang         = 0x0A,  // 10
+  DESC_StreamIdentifier  = 'R',  // 0x52
   DESC_EITShortEvent     = 'M',  // 0x4d
   DESC_EITExtEvent       = 'N',  // 0x4e
   DESC_Service           = 'H',  // 0x48
   DESC_Teletext          = 'V',  // 0x56
   DESC_Subtitle          = 'Y',  // 0x59
-  DESC_AC3               = 0x6A
+  DESC_AC3               = 'j',  // 0x6A
+  DESC_Extension         = 0x7F
 } DescrTags;
 
 typedef enum
@@ -44,9 +47,38 @@ typedef enum
   FR_RESERVED            = 9
 } FrameRates;
 
+
+#pragma pack(push, 1)
+
 typedef struct
 {
-  byte TableID;
+  byte TableID;          // TABLE_PAT = 0x00
+  byte SectionLen1:4;    // first 2 bits are 0
+  byte Reserved1:2;      // = 0x03 (all 1)
+  byte Private:1;        // = 0
+  byte SectionSyntax:1;  // = 1
+  byte SectionLen2;
+  byte TS_ID1;
+  byte TS_ID2;
+  byte CurNextInd:1;
+  byte VersionNr:5;
+  byte Reserved2:2;      // = 0x03 (all 1)
+  byte SectionNr;
+  byte LastSection;
+
+//  for i = 0 to N  {
+    word ProgramNr1:8;
+    word ProgramNr2:8;
+    word PMTPID1:5;  // oder NetworkPID, falls ProgramNr==0
+    word Reserved111:3;
+    word PMTPID2:8;  // oder NetworkPID, falls ProgramNr==0
+//  }
+  dword CRC32;
+} tTSPAT;
+
+typedef struct
+{
+  byte TableID;          // TABLE_PMT = 0x02
   byte SectionLen1:4;    // first 2 bits are 0
   byte Reserved1:2;      // = 0x03 (all 1)
   byte Private:1;        // = 0
@@ -73,6 +105,18 @@ typedef struct
 
 typedef struct
 {
+  byte DescrTag;
+  byte DescrLength;
+} tTSDesc;
+typedef struct
+{
+  byte DescrTag;
+  byte DescrLength;
+  byte Data[1];
+} tTSDesc2;
+
+typedef struct
+{
   byte stream_type;
   byte ESPID1:5;
   byte Reserved1:3;      // = 0x03 (all 1)
@@ -82,10 +126,74 @@ typedef struct
   byte ESInfoLen2;
 } tElemStream;
 
+typedef struct
+{
+  byte DescrTag;         // DESC_StreamIdentifier = 'R' = 0x52
+  byte DescrLength;
+  byte ComponentTag;
+} tTSStreamDesc;
 
 typedef struct
 {
-  byte TableID;
+  byte DescrTag;         // DESC_AudioLang = 0x0A = 10
+  byte DescrLength;
+  char LanguageCode[3];  // without terminating 0
+  byte AudioFlag;        // 0=normal, 1=clean effects, 2=hearing impaired
+} tTSAudioDesc;
+
+typedef struct
+{
+  byte DescrTag;          // DESC_Extension = 0x7F
+  byte DescrLength;
+  byte DescrTagExt;      // 0x06 = Supplementary audio descriptor
+  byte language_code_present:1;
+  byte reserved:1;
+  byte editorial_classification:5;  // 0=main audio, 1=audio description for vis. imp., 2=clean audio for hear. imp., 3=spoken subtitles
+  byte mix_type:1;       // 1=independent stream, 0=supplementary stream to be mixed
+  char LanguageCode[3];  // without terminating 0
+} tTSSupplAudioDesc;
+
+typedef struct
+{
+  byte DescrTag;         // DESC_AC3 = 'j' = 0x6A
+  byte DescrLength;
+//  char Name[4];        // without terminating 0
+  byte Reserved:4;
+  byte asvc_flag:1;
+  byte mainid_flag:1;
+  byte bsid_flag:1;
+  byte component_type_flag:1;
+} tTSAC3Desc;            // Ist das richtig??
+
+typedef struct
+{
+  byte DescrTag;         // DESC_Teletext = 'V' = 0x56
+  byte DescrLength;
+  struct
+  {
+    char LanguageCode[3];  // without terminating 0
+    byte magazine_nr:3;    // = 1
+    byte teletext_type:5;  // 1 = initial Teletext page, 2 = subtitles page
+    byte page_nr;          // = 0
+  } __attribute__((packed)) ttx[1];
+} tTSTtxDesc;
+
+typedef struct
+{
+  byte DescrTag;         // DESC_Subtitle = 'Y' = 0x59
+  byte DescrLength;
+  char LanguageCode[3];  // without terminating 0
+  byte subtitling_type;
+  byte composition_page_id1;
+  byte composition_page_id2;
+  byte ancillary_page_id1;
+  byte ancillary_page_id2;
+} tTSSubtDesc;
+
+
+typedef struct
+{
+  byte TableID;          // TABLE_SDT = 0x42
   byte SectionLen1:4;    // first 2 bits are 0
   byte Reserved1:2;      // = 0x03 (all 1)
   byte Private:1;        // = 1
@@ -132,7 +240,7 @@ typedef struct
 
 typedef struct
 {
-  byte TableID;
+  byte TableID;          // TABLE_EIT = 0x4e
   byte SectionLen1:4;    // first 2 bits are 0
   byte Reserved1:2;      // = 0x03 (all 1)
   byte Private:1;        // = 1
@@ -199,12 +307,6 @@ typedef struct
 //  char Text[];
 } tExtEvtDesc;
 
-typedef struct
-{
-  byte DescrTag;
-  byte DescrLength;
-  // Data of length DescrLength
-} tTSDesc;
 
 // siehe: http://stnsoft.com/DVD/mpeghdrs.html
 typedef struct
@@ -239,11 +341,72 @@ typedef struct
   byte                  NonIntraMatrix:3;
 } tSequenceHeader;
 
+// siehe: https://en.wikipedia.org/wiki/MPEG_elementary_stream
+typedef struct
+{
+  byte                  StartCode1;       // StartCode: 0xFFF (12 bits)
+
+  byte                  CRCprotection:1;  // 0=CRC-protected, 1=no-protection
+  byte                  Layer:2;          // 3=Layer1, 2=Layer2, 1=Layer3
+  byte                  MpegVersion:1;    // 1=MPEG1, 0=MPEG2
+  byte                  StartCode2:4;
+
+  byte                  Private:1;
+  byte                  Padding:1;
+  byte                  SamplingFreq:2;   // 0=44.1 kHz, 1=48 kHz, 2=32 kHz
+  byte                  BitrateIndex:4;
+
+  byte                  Emphasis:2;
+  byte                  Original:1;       // 0=copy, 1=original
+  byte                  Copyright:1;      // 0=none, 1=yes
+  byte                  ModeExtension:2;
+  byte                  Mode:2;           // 0=Stereo, 1=Joint Stereo, 2=Dual Channel, 3=Single Channel
+} __attribute__((packed)) tAudioHeader;
+
+// siehe: http://stnsoft.com/DVD/dtshdr.html
+typedef struct
+{
+  byte                  StartCode[4];       // StartCode: 0x7FFE8001 (32 bits)
+
+  byte                  nblks1:1;
+  byte                  cpf:1;
+  byte                  shrt:5;
+  byte                  ftype:1;
+
+  byte                  fsize1:2;
+  byte                  nblks2:6;
+
+  byte                  fsize2;
+
+	byte                  amode1:4;
+  byte                  fsize3:4;
+
+  byte                  rate1:2;
+  byte                  sfreq:4;
+	byte                  amode2:2;
+
+  byte                  hdcd:1;
+  byte                  auxf:1;
+  byte                  timef:1;
+  byte                  dynf:1;
+  byte                  mix:1;
+  byte                  rate2:3;
+} tDTSHeader;
+
+typedef struct
+{
+  byte                  data_identifier;       // 0x10 = Teletext
+  byte                  data_unit_id;          // 0x02 = Teletext non-subtitle, 0x03 = Teletext subtitle
+  byte                  data_unit_length;
+} tTtxHeader;
+#pragma pack(pop)
+
 
 #define                 EPGBUFFERSIZE 4097
 
 //extern FILE            *fIn;  // dirty Hack
 extern long long        FirstFilePCR, LastFilePCR;
+extern dword            FirstFilePTS, LastFilePTS;
 extern int              VideoHeight, VideoWidth;
 extern double           VideoFPS, VideoDAR;
 //extern int              TtxTimeZone;
@@ -252,8 +415,12 @@ time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec, bool convertToUTC);
 tPVRTime Unix2TFTime(time_t UnixTimeStamp, byte *const outSec, bool convertToLocal);
 tPVRTime EPG2TFTime(tPVRTime TFTimeStamp, int *const out_timeoffset);
 tPVRTime AddTimeSec(tPVRTime pvrTime, byte pvrTimeSec, byte *const outSec, int addSeconds);
+word GetMinimalAudioPID(tAudioTrack AudioPIDs[]);
 void InitInfStruct(TYPE_RecHeader_TMSS *RecInf);
 bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf);
-bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf);
+//bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf);
+
+void SortAudioPIDs(tAudioTrack AudioPIDs[]);
+void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPID, word VideoPID, word PCRPID, tAudioTrack AudioPIDs[], bool PATonly);
 
 #endif
