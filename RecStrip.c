@@ -1848,7 +1848,6 @@ int main(int argc, const char* argv[])
       InfProcessor_Free();
       free(PendingBuf); PendingBuf = NULL;
       if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
-      if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
       printf("\nRecStrip finished. No files to process.\n");
       TRACEEXIT;
       exit(0);
@@ -2040,7 +2039,7 @@ int main(int argc, const char* argv[])
       int NrTimeStamps, p;
       tTimeStamp2 *TimeStamps = NULL;
 
-      NavLoad(RecFileIn, &NrTimeStamps, PACKETSIZE);  // Erzeugt Fehlermeldung, wenn nav-File nicht existiert!
+      TimeStamps = NavLoad(RecFileIn, &NrTimeStamps, PACKETSIZE);  // Erzeugt Fehlermeldung, wenn nav-File nicht existiert!
       fprintf(stderr, "{");
 
       for (p = 0; p < (int)BookmarkInfo->NrBookmarks; p++)

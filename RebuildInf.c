@@ -246,7 +246,7 @@ void InitInfStruct(TYPE_RecHeader_TMSS *RecInf)
 }
 
 // see https://www.etsi.org/deliver/etsi_en/300400_300499/300468/01.11.01_60/en_300468v011101p.pdf
-bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf)
+static bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf)
 {
   tTSPMT               *PMT = (tTSPMT*)PSBuffer;
   char                  LangCode[4];
@@ -314,7 +314,7 @@ printf("\n  ELEMENT: Type=%hhu, PID=%hd, Length=%d\n", Elem->stream_type, PID, E
         case STREAM_VIDEO_MPEG1:
         case STREAM_VIDEO_MPEG2:
         {
-int DescrLength = ElemLength;
+          int DescrLength = ElemLength;
           VideoFound = TRUE;
           RecInf->ServiceInfo.ServiceType = 0;  // SVC_TYPE_Tv
           if(RecInf->ServiceInfo.VideoStreamType == 0xff)

@@ -1380,7 +1380,7 @@ TAP_PrintNet("Achtung! I-Frame an %llu hat denselben Timestamp wie sein Vorgänge
     TimeStamps = (tTimeStamp2*) realloc(TimeStampBuffer, NrTimeStamps * sizeof(tTimeStamp2));
     if(!TimeStamps) TimeStamps = TimeStampBuffer;
   }
-  *OutNrTimeStamps = NrTimeStamps;
+  if(OutNrTimeStamps) *OutNrTimeStamps = NrTimeStamps;
 
   TRACEEXIT;
   return(TimeStamps);
