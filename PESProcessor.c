@@ -173,6 +173,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
       //Erste Daten kopieren
       memset(PSBuffer->pBuffer, 0, PSBuffer->BufferSize);
       memcpy(PSBuffer->pBuffer, &Packet->Data[Start+RemainingBytes], 184-Start-RemainingBytes);
+      PSBuffer->curSectionLen = ((tTSTableHeader*)(PSBuffer->pBuffer))->SectionLen1 * 256 + ((tTSTableHeader*)(PSBuffer->pBuffer))->SectionLen2;
       PSBuffer->pBuffer += (184-Start-RemainingBytes);
       PSBuffer->BufferPtr += (184-Start-RemainingBytes);
     }
@@ -195,6 +196,22 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
       }
     }
 
+    // Wenn Table-Packet und komplette Länge des Pakets ausgelesen -> dann schon jetzt als valid markieren
+    if (PSBuffer->TablePacket && (PSBuffer->BufferPtr >= PSBuffer->curSectionLen + 3))
+    {
+      //Puffer mit den abfragbaren Daten markieren
+      PSBuffer->ValidBuffer = (PSBuffer->ValidBuffer % 2) + 1;  // 0 und 2 -> 1, 1 -> 2
+      PSBuffer->ValidBufLen = PSBuffer->curSectionLen + 3;
+
+      //Neuen Puffer aktivieren
+      switch(PSBuffer->ValidBuffer)
+      {
+        case 0:
+        case 2: PSBuffer->pBuffer = PSBuffer->Buffer1; break;
+        case 1: PSBuffer->pBuffer = PSBuffer->Buffer2; break;
+      }
+      PSBuffer->BufferPtr = 0;
+    }
     PSBuffer->LastCCCounter = Packet->ContinuityCount;
   }
   TRACEEXIT;
@@ -212,5 +229,6 @@ void PSBuffer_DropCurBuffer(tPSBuffer *PSBuffer)
   memset(PSBuffer->pBuffer, 0, PSBuffer->BufferSize);
   PSBuffer->BufferPtr = 0;
   PSBuffer->LastCCCounter = 255;
+  PSBuffer->curSectionLen = 0;
   TRACEEXIT;
 }

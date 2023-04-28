@@ -145,7 +145,7 @@ long long               NrDroppedZeroStuffing=0;
 static long long        NrDroppedFillerNALU=0, NrDroppedAdaptation=0, NrDroppedNullPid=0, NrDroppedEPGPid=0, NrDroppedTxtPid=0, NrScrambledPackets=0, CurScrambledPackets=0, NrIgnoredPackets=0;
 static dword            LastPCR = 0, LastTimeStamp = 0, CurTimeStep = 1200;
 static signed char      ContinuityCtrs[MAXCONTINUITYPIDS];
-static bool             ResumeSet = FALSE;
+static bool             ResumeSet = FALSE, AfterFirstEPGPacks = FALSE;
 
 // Continuity Statistik
 static tContinuityError FileDefect[MAXCONTINUITYPIDS];
@@ -754,6 +754,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
   }
 
   PMTatStart = FALSE;
+  AfterFirstEPGPacks = FALSE;
   for (k = 0; k < MAXCONTINUITYPIDS; k++)
   {
     ContinuityPIDs[k] = (word) -1;
@@ -2451,6 +2452,12 @@ int main(int argc, const char* argv[])
             while (BookmarkInfo && (j > 0))
               DeleteBookmark(--j);
 
+            // Positionen anpassen
+            PositionOffset = CurrentPosition;
+            CutTimeOffset = SegmentMarker[CurSeg].Timems;
+            NewStartTimeOffset = SegmentMarker[CurSeg].Timems;
+            NewDurationMS = (SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems);
+
             // neue Output-Files öffnen
             GetNextFreeCutName(RecFileIn, RecFileOut, OutDir);
             if (!OpenOutputFiles())
@@ -2478,12 +2485,6 @@ int main(int argc, const char* argv[])
 
             // Caption in inf schreiben
             SetInfEventText(SegmentMarker[CurSeg].pCaption);
-
-            // Positionen anpassen
-            PositionOffset = CurrentPosition;
-            CutTimeOffset = SegmentMarker[CurSeg].Timems;
-            NewStartTimeOffset = SegmentMarker[CurSeg].Timems;
-            NewDurationMS = (SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems);
           }
           NrCopiedSegments++;
           NrSegments++;
@@ -2614,10 +2615,13 @@ int main(int argc, const char* argv[])
           }
 
           // Remove EPG stream
-          else if (RemoveEPGStream && (CurPID == 0x12))
+          else if (CurPID == 0x12 && RemoveEPGStream)
           {
-            NrDroppedEPGPid++;
-            DropCurPacket = TRUE;
+            if (!PMTatStart || AfterFirstEPGPacks || (CurPosBlocks > 0) || (CurBlockBytes >= 10*(unsigned int)PACKETSIZE))
+            {
+              NrDroppedEPGPid++;
+              DropCurPacket = TRUE;
+            }
           }
 
           // STRIPPEN
@@ -2748,6 +2752,15 @@ int main(int argc, const char* argv[])
           else if (ExtractTeletext)
           {
             GetPCRms(&Buffer[4], &global_timestamp);
+          }
+
+          // Nach Übernahme der ersten EPG-Packs, EPG-Counter zurücksetzen
+          if (!AfterFirstEPGPacks && (CurPID != 0) && (CurPID != ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID) && (CurPID != 18))
+          {
+            AfterFirstEPGPacks = TRUE;
+            for (k = 0; k < NrContinuityPIDs; k++)
+              if (ContinuityPIDs[k] == 18)
+                { ContinuityCtrs[k] = -1; break; }
           }
 
           // NAV BERECHNEN UND PAKET AUSGEBEN
