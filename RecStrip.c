@@ -700,6 +700,40 @@ static void AddBookmark(dword BookmarkIndex, dword BlockNr)
   TRACEEXIT;
 }
 
+void OutputHeaderPacks(byte TimeCode[])
+{
+  int k, l;
+
+  if ((HumaxSource || EycosSource || MedionMode==1 || (WriteDescPackets && (CurrentPosition > (2+NrEPGPacks)*PACKETSIZE || !PMTatStart))) && fOut /*&& DoMerge != 1*/)
+  {
+    ((tTSPacket*) &PATPMTBuf[4])->ContinuityCount += 1;  // PAT Continuity Counter setzen
+
+    for (k = 0; (PATPMTBuf[4 + k*192] == 'G'); k++)
+    {
+      for (l = 1; l <= k; l++)
+        ((tTSPacket*) &PATPMTBuf[4 + l*192])->ContinuityCount += l;  // PMT Continuity Counter setzen
+      if (OutPacketSize == 192)
+        memcpy(&PATPMTBuf[k*192], TimeCode, 4);
+      if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + k*192], OutPacketSize, 1, fOut))
+        PositionOffset -= OutPacketSize;
+    }
+    if (MedionMode == 1)
+      SimpleMuxer_DoEITOutput();
+    else if (WriteDescPackets && EPGPacks)
+    {
+      for (k = 0; k < NrEPGPacks; k++)
+      {
+        for (l = 0; l <= k; l++)
+          ((tTSPacket*) &EPGPacks[4 + l*192])->ContinuityCount += l;  // PMT Continuity Counter setzen
+        if (OutPacketSize == 192)
+          memcpy(&EPGPacks[k*192], TimeCode, 4);
+        if (fwrite(&EPGPacks[((OutPacketSize==192) ? 0 : 4) + k*192], OutPacketSize, 1, fOut))
+          PositionOffset -= OutPacketSize;
+      }
+    }
+  }
+}
+
 
 // --------------------------------------------------
 // *****  Öffnen / Schließen der Output-Files  *****
@@ -962,7 +996,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
 static bool OpenOutputFiles(void)
 {
   unsigned long long OutFileSize = 0;
-  int k;
+  int k = 0;
   TRACEENTER;
 
   // ggf. Output-File öffnen
@@ -1096,8 +1130,9 @@ SONST
   }
 
   // Header-Pakete ausgeben
-  if ((HumaxSource || EycosSource || MedionMode==1 || (WriteDescPackets && (CurrentPosition >= 384 || !PMTatStart))) && fOut /*&& DoMerge != 1*/)
-  {
+  OutputHeaderPacks((byte*) &k);
+//  if ((HumaxSource || EycosSource || MedionMode==1 || (WriteDescPackets && (CurrentPosition >= 384 || !PMTatStart))) && fOut /*&& DoMerge != 1*/)
+/*  {
     for (k = 0; (PATPMTBuf[4 + k*192] == 'G'); k++)
       if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + k*192], OutPacketSize, 1, fOut))
         PositionOffset -= OutPacketSize;
@@ -1109,7 +1144,7 @@ SONST
         if (fwrite(&EPGPacks[((OutPacketSize==192) ? 0 : 4) + k*192], OutPacketSize, 1, fOut))
           PositionOffset -= OutPacketSize;
     }
-  }
+  } */
   printf("\n");
   TRACEEXIT;
   return TRUE;
@@ -1238,40 +1273,6 @@ static bool CloseOutputFiles(void)
 
   TRACEEXIT;
   return TRUE;
-}
-
-void OutputHeaderPacks(byte TimeCode[])
-{
-  int k, l;
-
-  if ((HumaxSource || EycosSource || MedionMode==1 || (WriteDescPackets && (CurrentPosition >= 384 || !PMTatStart))) && fOut /*&& DoMerge != 1*/)
-  {
-    ((tTSPacket*) &PATPMTBuf[4])->ContinuityCount += 1;  // PAT Continuity Counter setzen
-
-    for (k = 0; (PATPMTBuf[4 + k*192] == 'G'); k++)
-    {
-      for (l = 1; l <= k; l++)
-        ((tTSPacket*) &PATPMTBuf[4 + l*192])->ContinuityCount += l;  // PMT Continuity Counter setzen
-      if (OutPacketSize == 192)
-        memcpy(&PATPMTBuf[k*192], TimeCode, 4);
-      if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + k*192], OutPacketSize, 1, fOut))
-        PositionOffset -= OutPacketSize;
-    }
-    if (MedionMode == 1)
-      SimpleMuxer_DoEITOutput();
-    else if (WriteDescPackets && EPGPacks)
-    {
-      for (k = 0; k < NrEPGPacks; k++)
-      {
-        for (l = 0; l <= k; l++)
-          ((tTSPacket*) &EPGPacks[4 + l*192])->ContinuityCount += l;  // PMT Continuity Counter setzen
-        if (OutPacketSize == 192)
-          memcpy(&EPGPacks[k*192], TimeCode, 4);
-        if (fwrite(&EPGPacks[((OutPacketSize==192) ? 0 : 4) + k*192], OutPacketSize, 1, fOut))
-          PositionOffset -= OutPacketSize;
-      }
-    }
-  }
 }
 
 
@@ -2475,7 +2476,8 @@ int main(int argc, const char* argv[])
             NewDurationMS += (SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems);
 
             // Header-Pakete ausgeben 2 (experimentell!)
-            OutputHeaderPacks(&Buffer[0]);
+            if (CurrentPosition-PositionOffset > (2 + NrEPGPacks) * OutPacketSize)
+              OutputHeaderPacks(&Buffer[0]);
           }
           else if (DoCut == 2)
           {
