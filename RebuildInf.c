@@ -1013,6 +1013,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   }
 
   FirstFilePCR = 0; LastFilePCR = 0; FirstFilePTS = 0; LastFilePTS = 0; FirstFilePTSOK = FALSE; LastFilePTSOK = FALSE;
+  memset (PATPMTBuf, 0, 4*192 + 5);
 
   rewind(fIn);
   if (!HumaxSource && !EycosSource)
@@ -1560,11 +1561,11 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               }
             }
           }
-          if(((PMTatStart && !DoInfFix && !DoFixPMT)                                              || (EITOK && SDTOK)) && (TtxOK || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
+          if(((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT)                                              || (EITOK && SDTOK)) && (TtxOK || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
             break;
           p += PACKETSIZE;
         }
-        if(((PMTatStart && !DoInfFix && !DoFixPMT) || HumaxSource || EycosSource || MedionMode==1 || (EITOK && SDTOK)) && (TtxOK || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
+        if(((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT) || HumaxSource || EycosSource || MedionMode==1 || (EITOK && SDTOK)) && (TtxOK || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
         {
           ret = TRUE;
           break;
