@@ -633,7 +633,7 @@ printf("  TS: EventDesc = %s\n", &RecInf->EventInfo.EventNameDescription[NameLen
         }
         strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, min(ExtEPGTextLen, (int)sizeof(RecInf->ExtEventInfo.Text)));
         RecInf->ExtEventInfo.TextLength = ExtEPGTextLen;
-printf("  TS: EPGExtEvent = %s\n", ExtEPGText);
+printf("  TS: EPGExtEvt = %s\n", ExtEPGText);
 
         if (DoInfoOnly)
         {

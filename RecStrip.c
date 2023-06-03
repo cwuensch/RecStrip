@@ -1099,7 +1099,7 @@ SONST
   }
 
   // Header-Pakete ausgeben
-  if ((HumaxSource || EycosSource || MedionMode==1 || (WriteDescPackets && (CurrentPosition >= 384 || !PMTatStart))) && fOut /*&& DoMerge != 1*/)
+  if ((HumaxSource || EycosSource || MedionMode==1 || (WriteDescPackets && (CurrentPosition >= 384 || !PMTatStart))) && fOut && DoMerge != 1)
   {
 //    DoOutputHeaderPacks = TRUE;
     for (k = 0; (PATPMTBuf[4 + k*192] == 'G'); k++)
@@ -1120,12 +1120,15 @@ SONST
   return TRUE;
 }
 
-static void CloseInputFiles(bool SetStripFlags, bool SetStartTime)
+static void CloseInputFiles(bool PrintErrors, bool SetStripFlags, bool SetStartTime)
 {
   TRACEENTER;
 
-  PrintFileDefect();
-  printf("\nTSCheck: %d continuity errors found.\n", NrContErrsInFile);
+  if (PrintErrors)
+  {
+    PrintFileDefect();
+    printf("\nTSCheck: %d continuity errors found.\n", NrContErrsInFile);
+  }
 
   if (fIn)
   {
@@ -1884,7 +1887,7 @@ int main(int argc, const char* argv[])
       CutTimeOffset = -(int)LastTimems;
     if(ExtractTeletext) last_timestamp = -CutTimeOffset;
     NewStartTimeOffset = 0;
-    CloseInputFiles(FALSE, FALSE);
+    CloseInputFiles(FALSE, FALSE, FALSE);
   }
 
   // Input-Files öffnen
@@ -1903,7 +1906,7 @@ int main(int argc, const char* argv[])
   if (!VideoPID || VideoPID == (word)-1)
   {
     printf("Warning: No video PID determined.\n");
-/*    CloseInputFiles(FALSE, FALSE);
+/*    CloseInputFiles(FALSE, FALSE, FALSE);
     CutProcessor_Free();
     InfProcessor_Free();
     free(PendingBuf); PendingBuf = NULL;
@@ -2313,8 +2316,8 @@ int main(int argc, const char* argv[])
 
       // neues Bookmark an Schnittstelle setzen
       if (DoCut == 1 || DoMerge)
-        if (CurrentPosition-PositionOffset > 0)
-          AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + 9023));
+        if (CurrentPosition-PositionOffset > 4512)
+          AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + 4512 /*9023 - 2 - ((MedionMode != 1) ? NrEPGPacks : EPGLen/183)*/));
     }
 
     while (fIn)
@@ -2349,7 +2352,7 @@ int main(int argc, const char* argv[])
           // aktuelle Output-Files schließen
           if (!CloseOutputFiles())
           {
-            CloseInputFiles(FALSE, FALSE);
+            CloseInputFiles(TRUE, FALSE, FALSE);
             CutProcessor_Free();
             InfProcessor_Free();
             free(PendingBuf); PendingBuf = NULL;
@@ -2432,8 +2435,8 @@ int main(int argc, const char* argv[])
             // neues Bookmark an Schnittstelle setzen
             if (DoCut == 1 || (DoMerge && CurrentPosition == 0))
 //              if ((CurrentPosition-PositionOffset > 0) && (CurrentPosition + 3*9024*BlocksOneSecond < (long long)RecFileSize))
-              if ((CurrentPosition-PositionOffset > 0) && (CurPosBlocks + 3*BlocksOneSecond < RecFileBlocks))
-                AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + 9023));
+              if ((CurrentPosition-PositionOffset > 4512) && (CurPosBlocks + 3*BlocksOneSecond < RecFileBlocks))
+                AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + 4512 /*9023 - 2 - ((MedionMode != 1) ? NrEPGPacks : EPGLen/183)*/));
           }
 
           if (DoCut == 1)
@@ -2712,15 +2715,15 @@ int main(int argc, const char* argv[])
                 DeleteBookmark(j);
               else
               {
-                BookmarkInfo->Bookmarks[j] -= (dword)(PositionOffset / 9024);  // CalcBlockSize(PositionOffset)
+                BookmarkInfo->Bookmarks[j] -= (dword)((PositionOffset + 4512) / 9024);  // CalcBlockSize(PositionOffset)
                 j++;
               }
             }
 
             if (!ResumeSet && (DoMerge != 1) && (CurPosBlocks >= BookmarkInfo->Resume))
             {
-              if (PositionOffset / 9024 <= BookmarkInfo->Resume)
-                BookmarkInfo->Resume -= (dword)(PositionOffset / 9024);  // CalcBlockSize(PositionOffset)
+              if ((PositionOffset + 4512) / 9024 <= BookmarkInfo->Resume)
+                BookmarkInfo->Resume -= (dword)((PositionOffset + 4512) / 9024);  // CalcBlockSize(PositionOffset)
               else
                 BookmarkInfo->Resume = 0;
               ResumeSet = TRUE;
@@ -2995,7 +2998,7 @@ int main(int argc, const char* argv[])
 
     if (DoMerge && (curInputFile < NrInputFiles-1))
     {
-      CloseInputFiles(TRUE, FALSE);
+      CloseInputFiles(TRUE, TRUE, FALSE);
 
       // nächstes Input-File aus Parameter-String ermitteln
       strncpy(RecFileIn, argv[curInputFile+1], sizeof(RecFileIn));
@@ -3052,7 +3055,7 @@ int main(int argc, const char* argv[])
 
   if ((fOut || (DoCut != 2)) && !CloseOutputFiles())
   {
-    CloseInputFiles(FALSE, FALSE);
+    CloseInputFiles(TRUE, FALSE, FALSE);
     CutProcessor_Free();
     InfProcessor_Free();
     free(PendingBuf); PendingBuf = NULL;
@@ -3060,7 +3063,7 @@ int main(int argc, const char* argv[])
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
     exit(10);
   }
-  CloseInputFiles(TRUE, (!*RecFileOut));
+  CloseInputFiles(TRUE, TRUE, (!*RecFileOut));
 
   CutProcessor_Free();
   InfProcessor_Free();
