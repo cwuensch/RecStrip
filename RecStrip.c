@@ -400,7 +400,7 @@ static bool PrintFileDefect()
   if (FileDefect[0].PID || FileDefect[GetPidId(18)].PID)
   {
     // CONTINUITY ERROR:  Nr.  Position(Prozent)  { PID;  Position }
-    printf("TS Check: Continuity Error:\t%d.\t%.2f%%", NrContErrsInFile, (double)FileDefect[0].Position*100/RecFileSize);
+    printf("TS Check: Continuity Error:\t%d.\t%.2f%%", NrContErrsInFile+1, (double)FileDefect[0].Position*100/RecFileSize);
     for (i = 0; i < NrContinuityPIDs; i++)
       printf("\t%hd\t%lld", FileDefect[i].PID, FileDefect[i].Position);
     printf("\n");
@@ -418,17 +418,19 @@ void AddContinuityPids(word newPID, bool first)
   {
     for (k = 1; (k < NrContinuityPIDs) && (ContinuityPIDs[k] != newPID); k++);
     
-    if (first)
+    if (k >= NrContinuityPIDs)
     {
-      if (NrContinuityPIDs < MAXCONTINUITYPIDS)
-        NrContinuityPIDs++;
-      for (k = NrContinuityPIDs-1; k > 1; k--)
-        ContinuityPIDs[k] = ContinuityPIDs[k-1];
-      ContinuityPIDs[1] = newPID;
-    }
-    else
-      if (k >= NrContinuityPIDs)
+      if (first)
+      {
+        if (NrContinuityPIDs < MAXCONTINUITYPIDS)
+          NrContinuityPIDs++;
+        for (k = NrContinuityPIDs-1; k > 1; k--)
+          ContinuityPIDs[k] = ContinuityPIDs[k-1];
+        ContinuityPIDs[1] = newPID;
+      }
+      else
         ContinuityPIDs[NrContinuityPIDs++] = newPID;
+    }
   }
 }
 
@@ -1126,7 +1128,8 @@ static void CloseInputFiles(bool PrintErrors, bool SetStripFlags, bool SetStartT
 
   if (PrintErrors)
   {
-    PrintFileDefect();
+    if (PrintFileDefect())
+      NrContErrsInFile++;
     printf("\nTSCheck: %d continuity errors found.\n", NrContErrsInFile);
   }
 
@@ -2361,7 +2364,7 @@ int main(int argc, const char* argv[])
             exit(10);
           }
 
-          NrPackets += (SegmentMarker[1].Position / PACKETSIZE);
+          NrPackets += (SegmentMarker[1].Position / OutPacketSize);
           NrSegmentMarker = NrSegmentMarker_bak;
           SegmentMarker[1] = LastSegmentMarker_bak;
           if (BookmarkInfo)
@@ -2994,6 +2997,8 @@ int main(int argc, const char* argv[])
       }
     }
 //    NrPackets += ((RecFileSize + PACKETSIZE-1) / PACKETSIZE);
+    if ((DoCut == 2) && (NrSegmentMarker == 2) /* && (CurrentPosition + PACKETSIZE > SegmentMarker[1].Position) */)
+      NrPackets += (CurrentPosition-PositionOffset) / OutPacketSize;  // (SegmentMarker[1].Position / OutPacketSize);
     NrScrambledPackets += CurScrambledPackets;
 
     if (DoMerge && (curInputFile < NrInputFiles-1))
@@ -3064,7 +3069,7 @@ int main(int argc, const char* argv[])
     exit(10);
   }
   CloseInputFiles(TRUE, TRUE, (!*RecFileOut));
-
+  
   CutProcessor_Free();
   InfProcessor_Free();
   free(PendingBuf); PendingBuf = NULL;
@@ -3078,7 +3083,7 @@ int main(int argc, const char* argv[])
 
   {
     long long NrDroppedAll = NrDroppedFillerNALU + NrDroppedZeroStuffing + NrDroppedAdaptation + NrDroppedNullPid + NrDroppedEPGPid + NrDroppedTxtPid + (RemoveScrambled ? NrScrambledPackets : 0);
-    if(DoCut!=2) NrPackets = (CurrentPosition-PositionOffset) / OutPacketSize;
+    if(DoCut != 2) NrPackets = (CurrentPosition-PositionOffset) / OutPacketSize;
     NrPackets += NrDroppedAll;
     if (NrPackets > 0)
       printf("\nPackets: %lld, FillerNALUs: %lld (%lld%%), ZeroByteStuffing: %lld (%lld%%), AdaptationFields: %lld (%lld%%), NullPackets: %lld (%lld%%), EPG: %lld (%lld%%), Teletext: %lld (%lld%%), Scrambled: %lld (%lld%%), Dropped (all): %lld (%lld%%)\n", NrPackets, NrDroppedFillerNALU, NrDroppedFillerNALU*100/NrPackets, NrDroppedZeroStuffing, NrDroppedZeroStuffing*100/NrPackets, NrDroppedAdaptation, NrDroppedAdaptation*100/NrPackets, NrDroppedNullPid, NrDroppedNullPid*100/NrPackets, NrDroppedEPGPid, NrDroppedEPGPid*100/NrPackets, NrDroppedTxtPid, NrDroppedTxtPid*100/NrPackets, NrScrambledPackets, NrScrambledPackets*100/NrPackets, NrDroppedAll, NrDroppedAll*100/NrPackets);
