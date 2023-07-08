@@ -395,12 +395,18 @@ static int GetPidId(word PID)
 
 static bool PrintFileDefect()
 {
+  double percent = 0.0;
   int i;
   TRACEENTER;
   if (FileDefect[0].PID || FileDefect[GetPidId(18)].PID)
   {
     // CONTINUITY ERROR:  Nr.  Position(Prozent)  { PID;  Position }
-    printf("TS Check: Continuity Error:\t%d.\t%.2f%%", NrContErrsInFile+1, (double)FileDefect[0].Position*100/RecFileSize);
+    for (i = 0; i < NrContinuityPIDs; i++)
+    {
+      if (FileDefect[i].Position > 0)
+        { percent = (double)FileDefect[i].Position*100/RecFileSize; break; }
+    }
+    printf("TS Check: Continuity Error:\t%d.\t%.2f%%", NrContErrsInFile+1, percent);
     for (i = 0; i < NrContinuityPIDs; i++)
       printf("\t%hd\t%lld", FileDefect[i].PID, FileDefect[i].Position);
     printf("\n");
