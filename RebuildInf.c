@@ -298,7 +298,9 @@ static bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf)
 //    if (ElemLength > 0)  // Ist das nötig??
     {
 
+#if defined(_WIN32) && defined(_DEBUG)
 printf("\n  ELEMENT: Type=%hhu, PID=%hd, Length=%d\n", Elem->stream_type, PID, ElemLength);
+#endif
 
       switch (Elem->stream_type)
       {
@@ -331,7 +333,9 @@ printf("\n  ELEMENT: Type=%hhu, PID=%hd, Length=%d\n", Elem->stream_type, PID, E
               while (DescrLength > 0)
               {
                 tTSDesc2* Desc = (tTSDesc2*) &PSBuffer[ElemPt + sizeof(tElemStream)];
+#if defined(_WIN32) && defined(_DEBUG)
 printf("    DESC: Type=TSDesc, Size=%d, Len=%hhu, Tag=0x%02hhx (%c), Data=0x%02hhx\n", sizeof(tTSDesc), Desc->DescrLength, Desc->DescrTag, (Desc->DescrTag > 0x20 ? Desc->DescrTag : ' '), Desc->Data[0]);
+#endif
 //                if (Desc->DescrTag == DESC_StreamIdentifier)
 //                  VideoStreamTag = Desc->Data[0];
                 DescrPt     += (Desc->DescrLength + sizeof(tTSDesc));
@@ -364,20 +368,22 @@ printf("    DESC: Type=TSDesc, Size=%d, Len=%hhu, Tag=0x%02hhx (%c), Data=0x%02h
                 // Teletext
                 tTSTtxDesc* Desc3 = (tTSTtxDesc*) Desc;
                 int i;
+#if defined(_WIN32) && defined(_DEBUG)
 printf("    DESC: Type=Teletext, Size=%d, Len=%hhu, Data=0x%02hhx, Lang=%.3s", sizeof(tTSDesc), Desc->DescrLength, (byte)Desc->LanguageCode[0], (Desc->DescrTag=='V' || Desc->DescrTag=='Y' || Desc->DescrTag==0x0a ? Desc->LanguageCode : ""));
+#endif
                 if ((TeletextPID == (word)-1) /* || (strncmp(Desc->LanguageCode, "deu", 3) == 0 || strncmp(Desc->LanguageCode, "ger", 3) == 0) */)
                 {
                   TeletextPID = PID;
-                  printf("\n  TS: TeletxtPID=%hd [%.3s]", TeletextPID, LangCode);
+                  printf("\n  TS: TeletextPID=%hd [%.3s]", TeletextPID, Desc->LanguageCode);
                 }
                 streamType = 1;
                 for (i = 0; i < Desc->DescrLength / 5; i++)
                 {
                   if (Desc3->ttx[i].teletext_type == 1)
-                    printf(", InitPage=%hu", Desc3->ttx[i].page_nr);
+                    printf(", InitPage=%hx", Desc3->ttx[i].magazine_nr << 8 | Desc3->ttx[i].page_nr);
                   else if (Desc3->ttx[i].teletext_type == 2)
                   {
-                    printf(", SubtPage=%hu", Desc3->ttx[i].page_nr);
+                    printf(", SubtPage=%hu", Desc3->ttx[i].magazine_nr << 8 | Desc3->ttx[i].page_nr);
                     DescType = Desc3->ttx[i].page_nr + 1;  // plus 1, because 0 = unset
 //                    if(!TeletextPage) TeletextPage = Desc3->ttx[i].page_nr;
                   }
@@ -389,11 +395,13 @@ printf("    DESC: Type=Teletext, Size=%d, Len=%hhu, Data=0x%02hhx, Lang=%.3s", s
               else if (Desc->DescrTag == DESC_Subtitle)
               {
                 // DVB-Subtitles
+#if defined(_WIN32) && defined(_DEBUG)
 printf("    DESC: Type=Subtitle, Size=%d, Len=%hhu, Data=0x%02hhx, Lang=%.3s\n", sizeof(tTSDesc), Desc->DescrLength, (byte)Desc->LanguageCode[0], (Desc->DescrTag=='V' || Desc->DescrTag=='Y' || Desc->DescrTag==0x0a ? Desc->LanguageCode : ""));
+#endif
                 if ((SubtitlesPID == (word)-1) /* || (strncmp(Desc->LanguageCode, "deu", 3) == 0 || strncmp(Desc->LanguageCode, "ger", 3) == 0) */)
                 {
                   SubtitlesPID = PID;
-                  printf("\n  TS: SubtitlesPID=%hd [%.3s]", SubtitlesPID, LangCode);
+                  printf("\n  TS: SubtitlesPID=%hd [%.3s]", SubtitlesPID, Desc->LanguageCode);
                 }
                 streamType = 2;
                 DescType = Desc->subtitling_type + 1;  // plus 1, because 0 = unset
@@ -419,7 +427,9 @@ printf("    DESC: Type=Subtitle, Size=%d, Len=%hhu, Data=0x%02hhx, Lang=%.3s\n",
           }
           if (PID == 0) break;
           // sonst fortsetzen mit Audio (fall-through)
+#if defined(_WIN32) && defined(_DEBUG)
 printf("    -> No Teletext/Subtitle track detected! Analysing audio instead...\n");  // fall-through
+#endif
         }
 
         //case STREAM_AUDIO_MP3:  //Ignored because it crashes with STREAM_VIDEO_MPEG1
@@ -439,7 +449,9 @@ printf("    -> No Teletext/Subtitle track detected! Analysing audio instead...\n
           {
             tTSDesc2* Desc = (tTSDesc2*) &PSBuffer[DescrPt];
 
+#if defined(_WIN32) && defined(_DEBUG)
 printf("    DESC: Type=TSDesc, Size=%d, Len=%hhu, Tag=0x%02hhx (%c), Data=0x%02hhx, Lang=%.3s\n", sizeof(tTSDesc), Desc->DescrLength, Desc->DescrTag, (Desc->DescrTag > 0x20 ? Desc->DescrTag : ' '), Desc->Data[0], (Desc->DescrTag==0xa ? (char*)Desc->Data : ""));
+#endif
             if (Desc->DescrTag == DESC_StreamIdentifier)
               StreamTag = Desc->Data[0];
             else if (Desc->DescrTag == DESC_AC3)
@@ -621,7 +633,7 @@ printf("  TS: EventDesc = %s\n", &RecInf->EventInfo.EventNameDescription[NameLen
         }
         strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, min(ExtEPGTextLen, (int)sizeof(RecInf->ExtEventInfo.Text)));
         RecInf->ExtEventInfo.TextLength = ExtEPGTextLen;
-printf("  TS: EPGExtEvent = %s\n", ExtEPGText);
+printf("  TS: EPGExtEvt = %s\n", ExtEPGText);
 
         if (DoInfoOnly)
         {
@@ -1001,6 +1013,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   }
 
   FirstFilePCR = 0; LastFilePCR = 0; FirstFilePTS = 0; LastFilePTS = 0; FirstFilePTSOK = FALSE; LastFilePTSOK = FALSE;
+  memset (PATPMTBuf, 0, 4*192 + 5);
 
   rewind(fIn);
   if (!HumaxSource && !EycosSource)
@@ -1018,7 +1031,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       RecInf->ServiceInfo.AudioStreamType = STREAM_AUDIO_MPEG2;
 
       // Read first 500 kB of Video PES
-      if ((ReadBytes = fread(Buffer, 1, 524288, fIn)))
+      if ((ReadBytes = (int)fread(Buffer, 1, 524288, fIn)))
       {
         int p = 0;
         while (p < 524000)
@@ -1027,7 +1040,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             p++;
           if (!FirstFilePTSOK && GetPTS(&Buffer[p], NULL, &FirstFilePTS))
           {
-            if (FindPictureHeader(&Buffer[p], min(200, &Buffer[ReadBytes]-&Buffer[p]), &FrameType))
+            if (FindPictureHeader(&Buffer[p], min(200, (int)(&Buffer[ReadBytes]-&Buffer[p])), &FrameType))
               if (FrameType == 1)  // nur von I-Frame nehmen
               {
                 FirstFilePCR = (long long)FirstFilePTS * 600;
@@ -1053,7 +1066,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 
       // Read last 500 kB of Video PES
       fseeko64(fIn, -524288, SEEK_END);
-      if ((ReadBytes = fread(Buffer, 1, 524288, fIn)) == 524288)
+      if ((ReadBytes = (int)fread(Buffer, 1, 524288, fIn)) == 524288)
       {
         int p = ReadBytes - 14;
         while (p >= 0)
@@ -1062,7 +1075,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             p--;
           if (GetPTS(&Buffer[p], NULL, &LastFilePTS) && !LastFilePTSOK)
           {
-            if (FindPictureHeader(&Buffer[p], min(200, &Buffer[ReadBytes]-&Buffer[p]), &FrameType))
+            if (FindPictureHeader(&Buffer[p], min(200, (int)(&Buffer[ReadBytes]-&Buffer[p])), &FrameType))
               if (FrameType == 1 || FrameType == 2)  // nur von I- oder P-Frame nehmen
               {
                 LastFilePCR = (long long)LastFilePTS * 600;
@@ -1135,7 +1148,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           if(TtxOK)
           {
             TtxPCR = TtxPCR / 45;
-            printf("  TS: TeletxtPID=%hd\n", TeletextPID);
+            printf("  TS: TeletextPID=%hd\n", TeletextPID);
             break;
           }
           p++;
@@ -1160,7 +1173,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           int EITLen = *(int*)(&p[4]);
           tTSEIT *EIT = (tTSEIT*)(&p[8]);
           RecInf->ServiceInfo.ServiceID = (EIT->ServiceID1 * 256 | EIT->ServiceID2);
-          if ((EITOK = AnalyseEIT(&p[8], p-Buffer, RecInf->ServiceInfo.ServiceID, RecInf)))
+          if ((EITOK = AnalyseEIT(&p[8], (int)(p-Buffer), RecInf->ServiceInfo.ServiceID, RecInf)))
           {
             EPGLen = 0;
             if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
@@ -1205,6 +1218,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   if (MedionMode != 1)
   {
     PMTPID = 0;
+    PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE, TRUE, FALSE);
     for (d = 0; d < 10; d++)
     {
       // Read the first 512/504 TS packets
@@ -1277,7 +1291,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       ReadBytes = (int)fread(Buffer, 1, (HumaxSource ? 3*32768 : 512*PACKETSIZE), fIn);
       if(ReadBytes < (HumaxSource ? 3*32768 : 512*PACKETSIZE))
       {
-        printf("  Failed to read %d x %d TS bytes from the middle.\n", d, (HumaxSource ? 3*32768 : 512*PACKETSIZE));
+        printf("  Failed to read %d x %d TS bytes from the rec file.\n", d, (HumaxSource ? 3*32768 : 512*PACKETSIZE));
         free(Buffer);
         TRACEEXIT;
         return FALSE;
@@ -1291,8 +1305,10 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         if (((packet1->PID1 * 256 + packet1->PID2 == 0) && (packet1->Data[0] == 0) && (packet1->Data[1] == TABLE_PAT)) && ((packet2->Data[0] == 0) && (packet2->Data[1] == TABLE_PMT) && ((packet2->Data[2] & 0xFC) == 0xB0)))
         {
           PMTPID = packet2->PID1 * 256 + packet2->PID2;
+          printf("  TS: PMTPID=%hd", PMTPID);
           PMTatStart = TRUE;
         }
+        else continue;
       }
 
       Offset = FindNextPacketStart(Buffer, ReadBytes);
@@ -1311,14 +1327,17 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 
               for (i = 0; i < (int)sizeof(PMTMask); i++)
                 if((p[i] & ANDMask[i]) != PMTMask[i])
-                  { ok = FALSE;  break; }
+                  { ok = FALSE; break; }
 
               if (ok)
               {
                 word NewPMT = ((p[1] << 8) | p[2]) & 0x1fff;
-                if (!PMTPID || NewPMT < PMTPID)   // dirty hack: Falls mehrere PMTs in der Aufnahme vorhanden, nimm die kleinste (kann bei ORF passieren, da auf der höchsten PMT-PID auch die CAT übertragen wird)
+                if (!PMTPID || NewPMT < PMTPID)  // dirty hack: Falls mehrere PMTs in der Aufnahme vorhanden, nimm die kleinste (kann bei ORF passieren, da auf der höchsten PMT-PID auch die CAT übertragen wird)
+                {
                   PMTPID = NewPMT;
-//                break;
+                  printf("  TS: PMTPID=%hd", PMTPID);
+                }
+                break;
               }
 
               p += PACKETSIZE;
@@ -1328,16 +1347,16 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           if(PMTPID)
           {
             RecInf->ServiceInfo.PMTPID = PMTPID;
-            printf("  TS: PMTPID=%hd", PMTPID);
 
             //Analyse the PMT
-            PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE, TRUE, TRUE);
+            if (PMTBuffer.PID != PMTPID)
+              PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE, TRUE, TRUE);
 
-            p = &Buffer[Offset + PACKETOFFSET];
+//            p = &Buffer[Offset + PACKETOFFSET];
             while (p <= &Buffer[ReadBytes-188])
             {
               PSBuffer_ProcessTSPacket(&PMTBuffer, (tTSPacket*)p, FilePos + (p-Buffer));
-              if (PMTBuffer.ValidBuffer != LastPMTBuffer)
+              if ((PMTBuffer.ValidBuffer != LastPMTBuffer) || (PMTatStart && (PMTBuffer.BufferPtr > 0) && ((((tTSPacket*)p)->PID1)*256 + (((tTSPacket*)p)->PID2) != PMTPID) && (p < &Buffer[10*PACKETSIZE])))
               {
                 if(!PMTBuffer.ErrorFlag) break;
                 PMTBuffer.ErrorFlag = FALSE;
@@ -1346,38 +1365,41 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               p += PACKETSIZE;
             }
 
-            if ((PMTOK = AnalysePMT((PMTBuffer.ValidBuffer==2) ? PMTBuffer.Buffer2 : PMTBuffer.Buffer1, (PMTBuffer.ValidBuffer) ? PMTBuffer.ValidBufLen : PMTBuffer.BufferPtr, RecInf)))
+            if (PMTBuffer.ValidBuffer || (d < 0 || d == 10))
             {
-              byte *pBuffer = (PMTBuffer.ValidBuffer==2) ? PMTBuffer.Buffer2 : PMTBuffer.Buffer1;
-              int BufLen = (PMTBuffer.ValidBuffer) ? PMTBuffer.ValidBufLen : PMTBuffer.BufferPtr;
-              int k = 0;
-
-              memset(&PATPMTBuf[192], 0, 3 * 192 + 5);
-              for (k = 0; (k == 0) || (k < 3 && 183 + (k-1)*184 < BufLen); k++)
+              if ((PMTOK = AnalysePMT((PMTBuffer.ValidBuffer==2) ? PMTBuffer.Buffer2 : PMTBuffer.Buffer1, (PMTBuffer.ValidBuffer ? PMTBuffer.ValidBufLen : PMTBuffer.BufferPtr), RecInf)))
               {
-                tTSPacket* packet = (tTSPacket*) &PATPMTBuf[4 + (k+1)*192];
-                packet->SyncByte = 'G';
-                packet->PID1 = PMTPID / 256;
-                packet->PID2 = PMTPID & 0xff;
-                packet->Payload_Exists = 1;
-                packet->Payload_Unit_Start = (k == 0) ? 1 : 0;
-                packet->ContinuityCount = k;
-                memset(packet->Data, 0xff, 184);
-                if (k == 0)
+                byte *pBuffer = (PMTBuffer.ValidBuffer==2) ? PMTBuffer.Buffer2 : PMTBuffer.Buffer1;
+                int BufLen = (PMTBuffer.ValidBuffer) ? PMTBuffer.ValidBufLen : PMTBuffer.BufferPtr;
+                int k = 0;
+
+                memset(&PATPMTBuf[192], 0, 3 * 192 + 5);
+                for (k = 0; (k == 0) || (k < 3 && 183 + (k-1)*184 < BufLen); k++)
                 {
-                  packet->Data[0] = 0;
-                  memcpy(&packet->Data[1], &pBuffer[0], min(BufLen, 183));
+                  tTSPacket* packet = (tTSPacket*) &PATPMTBuf[4 + (k+1)*192];
+                  packet->SyncByte = 'G';
+                  packet->PID1 = PMTPID / 256;
+                  packet->PID2 = PMTPID & 0xff;
+                  packet->Payload_Exists = 1;
+                  packet->Payload_Unit_Start = (k == 0) ? 1 : 0;
+                  packet->ContinuityCount = k;
+                  memset(packet->Data, 0xff, 184);
+                  if (k == 0)
+                  {
+                    packet->Data[0] = 0;
+                    memcpy(&packet->Data[1], &pBuffer[0], min(BufLen, 183));
+                  }
+                  else
+                    memcpy(packet->Data, &pBuffer[183 + (k-1)*184], min(BufLen - 183 + (k-1)*184, 184));
                 }
-                else
-                  memcpy(packet->Data, &pBuffer[183 + (k-1)*184], min(BufLen - 183 + (k-1)*184, 184));
               }
             }
-            PSBuffer_Reset(&PMTBuffer);
           }
         }
       }
       if(PMTPID && PMTOK) break;
     }
+    PSBuffer_Reset(&PMTBuffer);
     if (!RecInf->ServiceInfo.PMTPID)
     {
       printf("  Failed to locate a PMT packet.\n");
@@ -1431,13 +1453,14 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           if (!EITOK)
           {
             PSBuffer_ProcessTSPacket(&EITBuffer, (tTSPacket*)p, FilePos + i*HumaxHeaderIntervall + (p-Buffer));
-            if(EITBuffer.ValidBuffer != LastEITBuffer)
+            if ((EITBuffer.ValidBuffer != LastEITBuffer) || (PMTatStart && (i==0) && (EITBuffer.BufferPtr > 0) && ((((tTSPacket*)p)->PID1)*256 + (((tTSPacket*)p)->PID2) != 18) && (p < &Buffer[10*PACKETSIZE])))
             {
               byte *pBuffer = (EITBuffer.ValidBuffer==2) ? EITBuffer.Buffer2 : EITBuffer.Buffer1;
-              if ((EITOK = !EITBuffer.ErrorFlag && AnalyseEIT(pBuffer, EITBuffer.ValidBufLen, RecInf->ServiceInfo.ServiceID, RecInf)))
+              int EITLen = EITBuffer.ValidBufLen ? EITBuffer.ValidBufLen : EITBuffer.BufferPtr;
+              if ((EITOK = !EITBuffer.ErrorFlag && AnalyseEIT(pBuffer, EITLen, RecInf->ServiceInfo.ServiceID, RecInf)))
               {
                 int k;
-                NrEPGPacks = ((EITBuffer.ValidBufLen + 182) / 184);
+                NrEPGPacks = ((EITLen + 182) / 184);
 
                 if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
                 if (NrEPGPacks && ((EPGPacks = (byte*)malloc(NrEPGPacks * 192))))
@@ -1455,10 +1478,14 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                     if (k == 0)
                     {
                       packet->Data[0] = 0;
-                      memcpy(&packet->Data[1], &pBuffer[0], min(EITBuffer.ValidBufLen, 183));
+                      memcpy(&packet->Data[1], &pBuffer[0], min(EITLen, 183));
+                      EITLen -= min(EITLen, 183);
                     }
                     else
-                      memcpy(packet->Data, &pBuffer[183 + (k-1)*184], min(EITBuffer.ValidBufLen - 183 + (k-1)*184, 184));
+                    {
+                      memcpy(packet->Data, &pBuffer[183 + (k-1)*184], min(EITLen, 184));
+                      EITLen -= min(EITLen, 184);
+                    }
                   }
                 }
               }
@@ -1538,11 +1565,11 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               }
             }
           }
-          if((PMTatStart                                                || (EITOK && SDTOK)) && (TtxOK || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((!DoInfoOnly && PMTPID) || VidOK))
+          if(((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT)                                              || (EITOK && SDTOK)) && (TtxOK || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
             break;
           p += PACKETSIZE;
         }
-        if(((PMTatStart || HumaxSource || EycosSource || MedionMode==1) || (EITOK && SDTOK)) && (TtxOK || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((!DoInfoOnly && PMTPID) || VidOK))
+        if(((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT) || HumaxSource || EycosSource || MedionMode==1 || (EITOK && SDTOK)) && (TtxOK || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
         {
           ret = TRUE;
           break;
@@ -1585,7 +1612,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         int PacksRead, k = 0;
         tTSPacket *curPacket;
         fseeko64(fIn, FilePos, SEEK_SET);  // Hier auf 0 setzen (?)
-        PacksRead = fread(Buffer, PACKETSIZE, 32, fIn) / PACKETSIZE;
+        PacksRead = (int)fread(Buffer, PACKETSIZE, 32, fIn) / PACKETSIZE;
 
         memset(PATPMTBuf, 0, 4*192 + 5);
 

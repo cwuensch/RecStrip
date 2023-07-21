@@ -464,7 +464,10 @@ jobs:
       with:
         name: RecStrip_Linux
         path: ${{ github.workspace }}
-    
+
+    - name: Set permissions
+      run: chmod a+x ${{ github.workspace }}/RecStrip*
+
 ## Use this form of test, if i386-C-libraries in container should be outdated
 #    - name: Copy StripTest from Docker container
 #      run: |
@@ -473,7 +476,6 @@ jobs:
 #        docker run --rm -v ${{ github.workspace }}/StripTest:/host --entrypoint=/bin/bash cwuensch/striptest:${{ matrix.test }}_neu -c "cp -aH /StripTest/* /host/"
 #        sudo chown -R $(id -u):$(id -g) ${{ github.workspace }}/StripTest/*
 #        chmod a+x ${{ github.workspace }}/StripTest/RunTest.sh
-#        chmod a+x ${{ github.workspace }}/RecStrip*
 #
 #    - name: Perform test (on runner)
 #      working-directory: ${{ github.workspace }}/StripTest

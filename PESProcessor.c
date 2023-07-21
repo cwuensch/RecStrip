@@ -79,6 +79,7 @@ void PSBuffer_DropCurBuffer(tPSBuffer *PSBuffer)
   PSBuffer->BufferPtr = 0;
 //  PSBuffer->NewPCR = 0;
   PSBuffer->LastCCCounter = 255;
+  PSBuffer->curSectionLen = 0;
   TRACEEXIT;
 }
 
@@ -161,6 +162,8 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet, long long 
       if(PSBuffer->LastCCCounter != 255)
       {
         printf("  PESProcessor: TS continuity mismatch (PID=%hd, pos=%lld, expect=%hhu, found=%hhu)\n", PSBuffer->PID, FilePosition, ((PSBuffer->LastCCCounter + 1) % 16), Packet->ContinuityCount);
+        if (PSBuffer->PID == VideoPID)
+          AddContinuityError(PSBuffer->PID, FilePosition, ((PSBuffer->LastCCCounter + 1) % 16), Packet->ContinuityCount);
         if (PSBuffer->IgnoreContErrors)
           PSBuffer_StartNewBuffer(PSBuffer, FALSE, TRUE);
         else
@@ -268,6 +271,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet, long long 
         //Erste Daten kopieren
         memset(PSBuffer->pBuffer, 0, PSBuffer->BufferSize);
         memcpy(PSBuffer->pBuffer, &Packet->Data[Start+RemainingBytes], 184-Start-RemainingBytes);
+        PSBuffer->curSectionLen = ((tTSTableHeader*)(PSBuffer->pBuffer))->SectionLen1 * 256 + ((tTSTableHeader*)(PSBuffer->pBuffer))->SectionLen2;
         PSBuffer->pBuffer += (184-Start-RemainingBytes);
         PSBuffer->BufferPtr += (184-Start-RemainingBytes);
         PSBuffer->NewPayloadStart = PESStart;
@@ -293,6 +297,22 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet, long long 
       }
     }
 
+    // Wenn Table-Packet und komplette Länge des Pakets ausgelesen -> dann schon jetzt als valid markieren
+    if (PSBuffer->TablePacket && (PSBuffer->BufferPtr >= PSBuffer->curSectionLen + 3))
+    {
+      //Puffer mit den abfragbaren Daten markieren
+      PSBuffer->ValidBuffer = (PSBuffer->ValidBuffer % 2) + 1;  // 0 und 2 -> 1, 1 -> 2
+      PSBuffer->ValidBufLen = PSBuffer->curSectionLen + 3;
+
+      //Neuen Puffer aktivieren
+      switch(PSBuffer->ValidBuffer)
+      {
+        case 0:
+        case 2: PSBuffer->pBuffer = PSBuffer->Buffer1; break;
+        case 1: PSBuffer->pBuffer = PSBuffer->Buffer2; break;
+      }
+      PSBuffer->BufferPtr = 0;
+    }
     PSBuffer->LastCCCounter = Packet->ContinuityCount;
   }
   TRACEEXIT;
@@ -367,7 +387,7 @@ bool PESMuxer_NextTSPacket(tTSPacket *const outPacket, int *const PESBufLen)
     TRACEEXIT;
     return FALSE;
   }
-
+  
   if (FirstPacket)
   {
     memset(outPacket, 0, 12);

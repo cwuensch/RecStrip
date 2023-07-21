@@ -1,6 +1,6 @@
 /*
   RecStrip for Topfield PVR
-  (C) 2016-2022 Christian Wünsch
+  (C) 2016-2023 Christian Wünsch
 
   Based on Naludump 0.1.1 by Udo Richter
   Concepts from NaluStripper (Marten Richter)
@@ -146,7 +146,7 @@ long long               NrDroppedFillerNALU=0, NrDroppedZeroStuffing=0;
 static long long        NrDroppedAdaptation=0, NrDroppedNullPid=0, NrDroppedEPGPid=0, NrDroppedTxtPid=0, NrScrambledPackets=0, CurScrambledPackets=0, NrIgnoredPackets=0;
 static dword            LastPCR = 0, LastTimeStamp = 0, CurTimeStep = 1200;
 static signed char      ContinuityCtrs[MAXCONTINUITYPIDS];
-static bool             ResumeSet = FALSE;
+static bool             ResumeSet = FALSE, AfterFirstEPGPacks = FALSE, DoOutputHeaderPacks = FALSE;
 
 // Continuity Statistik
 static tContinuityError FileDefect[MAXCONTINUITYPIDS];
@@ -394,19 +394,28 @@ static int GetPidId(word PID)
   return -1;
 }
 
-static void PrintFileDefect()
+static bool PrintFileDefect()
 {
+  double percent = 0.0;
   int i;
   TRACEENTER;
-  if (FileDefect[0].PID != 0)
+  if (FileDefect[0].PID || FileDefect[GetPidId(18)].PID)
   {
     // CONTINUITY ERROR:  Nr.  Position(Prozent)  { PID;  Position }
-    printf("TS Check: Continuity Error:\t%d.\t%.2f%%", NrContErrsInFile, (double)FileDefect[0].Position*100/RecFileSize);
+    for (i = 0; i < NrContinuityPIDs; i++)
+    {
+      if (FileDefect[i].Position > 0)
+        { percent = (double)FileDefect[i].Position*100/RecFileSize; break; }
+    }
+    printf("TS Check: Continuity Error:\t%d.\t%.2f%%", NrContErrsInFile+1, percent);
     for (i = 0; i < NrContinuityPIDs; i++)
       printf("\t%hd\t%lld", FileDefect[i].PID, FileDefect[i].Position);
     printf("\n");
+    TRACEEXIT;
+    return TRUE;
   }
   TRACEEXIT;
+  return FALSE;
 }
 
 void AddContinuityPids(word newPID, bool first)
@@ -416,17 +425,19 @@ void AddContinuityPids(word newPID, bool first)
   {
     for (k = 1; (k < NrContinuityPIDs) && (ContinuityPIDs[k] != newPID); k++);
     
-    if (first)
+    if (k >= NrContinuityPIDs)
     {
-      if (NrContinuityPIDs < MAXCONTINUITYPIDS)
-        NrContinuityPIDs++;
-      for (k = NrContinuityPIDs-1; k > 1; k--)
-        ContinuityPIDs[k] = ContinuityPIDs[k-1];
-      ContinuityPIDs[1] = newPID;
-    }
-    else
-      if (k >= NrContinuityPIDs)
+      if (first)
+      {
+        if (NrContinuityPIDs < MAXCONTINUITYPIDS)
+          NrContinuityPIDs++;
+        for (k = NrContinuityPIDs-1; k > 1; k--)
+          ContinuityPIDs[k] = ContinuityPIDs[k-1];
+        ContinuityPIDs[1] = newPID;
+      }
+      else
         ContinuityPIDs[NrContinuityPIDs++] = newPID;
+    }
   }
 }
 
@@ -438,11 +449,11 @@ void AddContinuityError(word CurPID, long long CurrentPosition, byte CountShould
   // add error to array
   if ((PidID = GetPidId(CurPID)) >= 0)
   {
-    if (FileDefect[PidID].PID || (LastContErrPos == 0) || (CurrentPosition - LastContErrPos > CONT_MAXDIST))
+    if ((FileDefect[PidID].PID && CurPID != 18) || (LastContErrPos == 0) || (CurrentPosition - LastContErrPos > CONT_MAXDIST))
     {
       // neuer Fehler
-      PrintFileDefect();
-      NrContErrsInFile++;
+      if (PrintFileDefect())
+        NrContErrsInFile++;
       memset(FileDefect, 0, MAXCONTINUITYPIDS * sizeof(tContinuityError));
     }
     FileDefect[PidID].PID         = CurPID;
@@ -755,6 +766,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
   }
 
   PMTatStart = FALSE;
+  AfterFirstEPGPacks = FALSE;
   for (k = 0; k < MAXCONTINUITYPIDS; k++)
   {
     ContinuityPIDs[k] = (word) -1;
@@ -969,7 +981,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
 static bool OpenOutputFiles(void)
 {
   unsigned long long OutFileSize = 0;
-  int i;
+  int k = 0;
   TRACEENTER;
 
   // ggf. Output-File öffnen
@@ -1102,32 +1114,38 @@ SONST
       printf("\nTeletext output: %s", TeletextOut);
   }
 
-  // Header-Pakete ausgeben (experimentell!)
-  if ((HumaxSource || EycosSource || MedionMode==1 || (WriteDescPackets && (CurrentPosition >= 384 || !PMTatStart))) && fOut /*&& DoMerge != 1*/)
+  // Header-Pakete ausgeben
+  if ((HumaxSource || EycosSource || MedionMode==1 || (WriteDescPackets && (CurrentPosition >= 384 || !PMTatStart))) && fOut && DoMerge != 1)
   {
-    for (i = 0; (PATPMTBuf[4 + i*192] == 'G'); i++)
-      if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + i*192], OutPacketSize, 1, fOut))
+//    DoOutputHeaderPacks = TRUE;
+    for (k = 0; (PATPMTBuf[4 + k*192] == 'G'); k++)
+      if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + k*192], OutPacketSize, 1, fOut))
         PositionOffset -= OutPacketSize;
     if (MedionMode == 1)
       SimpleMuxer_DoEITOutput();
     else if (WriteDescPackets && EPGPacks)
     {
-      for (i = 0; i < NrEPGPacks; i++)
-        if (fwrite(&EPGPacks[((OutPacketSize==192) ? 0 : 4) + i*192], OutPacketSize, 1, fOut))
+      for (k = 0; k < NrEPGPacks; k++)
+        if (fwrite(&EPGPacks[((OutPacketSize==192) ? 0 : 4) + k*192], OutPacketSize, 1, fOut))
           PositionOffset -= OutPacketSize;
     }
   }
+  AfterFirstEPGPacks = FALSE;
   printf("\n");
   TRACEEXIT;
   return TRUE;
 }
 
-static void CloseInputFiles(bool SetStripFlags, bool SetStartTime)
+static void CloseInputFiles(bool PrintErrors, bool SetStripFlags, bool SetStartTime)
 {
   TRACEENTER;
 
-  PrintFileDefect();
-  printf("\nTSCheck: %d continuity errors found.\n", NrContErrsInFile);
+  if (PrintErrors)
+  {
+    if (PrintFileDefect())
+      NrContErrsInFile++;
+    printf("\nTSCheck: %d continuity errors found.\n", NrContErrsInFile);
+  }
 
   if (fIn)
   {
@@ -1142,7 +1160,6 @@ static void CloseInputFiles(bool SetStripFlags, bool SetStartTime)
   }
   CloseNavFileIn();
   if(MedionMode == 1) SimpleMuxer_Close();
-  if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
   if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
 
   TRACEEXIT;
@@ -1265,7 +1282,7 @@ FILE *fDbg;
     setvbuf(stdout, NULL, _IOLBF, 4096);  // zeilenweises Buffering, auch bei Ausgabe in Datei
   #endif
   printf("\nRecStrip for Topfield PVR " VERSION "\n");
-  printf("(C) 2016-2022 Christian Wuensch\n");
+  printf("(C) 2016-2023 Christian Wuensch\n");
   printf("- based on Naludump 0.1.1 by Udo Richter -\n");
   printf("- based on MovieCutter 3.6 -\n");
   printf("- portions of Mpeg2cleaner (S. Poeschel), RebuildNav (Firebird) & TFTool (jkIT)\n");
@@ -1809,7 +1826,6 @@ FILE *fDbg;
     TRACEEXIT;
     exit(2);
   }
-  memset(PATPMTBuf, 0, 4*192 + 5);
   
   if(DoMerge != 1) PESMuxer_StartNewFile();
 
@@ -1886,7 +1902,7 @@ FILE *fDbg;
       CutTimeOffset = -(int)LastTimems;
     if(ExtractTeletext) last_timestamp = -CutTimeOffset;
     NewStartTimeOffset = 0;
-    CloseInputFiles(FALSE, FALSE);
+    CloseInputFiles(FALSE, FALSE, FALSE);
   }
 
   // Input-Files öffnen
@@ -1905,7 +1921,7 @@ FILE *fDbg;
   if (!VideoPID || VideoPID == (word)-1)
   {
     printf("Warning: No video PID determined.\n");
-/*    CloseInputFiles(FALSE, FALSE);
+/*    CloseInputFiles(FALSE, FALSE, FALSE);
     CutProcessor_Free();
     InfProcessor_Free();
     PSBuffer_Reset(&VideoBuffer);
@@ -1951,7 +1967,7 @@ FILE *fDbg;
           if (fread(PATPMTBuf, 1, 4*192, fPMT) >= 2*192)
           {
             for (k = 0; k < 4; k++)
-              ((tTSPacket*)(&PATPMTBuf[k*192 + 4]))->ContinuityCount = (k==0 ? k : k-1);
+              ((tTSPacket*)(&PATPMTBuf[k*192 + 4]))->ContinuityCount = (k==0 ? 0 : k-1);
             ((tTSPMT*)(&PATPMTBuf[201]))->CurNextInd = 1;
             ((tTSPMT*)(&PATPMTBuf[201]))->VersionNr = 1;
 //            ((tTSPMT*)(&PATPMTBuf[200 + (((tTSPacket*)(&PATPMTBuf[196]))->Adapt_Field_Exists ? PATPMTBuf[200] : 0) + 1]))->CurNextInd = 1;
@@ -2293,7 +2309,7 @@ FILE *fDbg;
 
   if(!RebuildNav && *RecFileOut && HasNavIn)  SetFirstPacketAfterBreak();
 
-#ifdef _DEBUG
+#if defined(_WIN32) && defined(_DEBUG)
 {
   char DbgFile[FBLIB_DIR_SIZE];
   snprintf(DbgFile, sizeof(DbgFile), "%s_Debug.txt", RecFileIn);
@@ -2323,8 +2339,8 @@ FILE *fDbg;
 
       // neues Bookmark an Schnittstelle setzen
       if (DoCut == 1 || DoMerge)
-        if (CurrentPosition-PositionOffset > 0)
-          AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + 9023));
+        if (CurrentPosition-PositionOffset > 4512)
+          AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + 4512 /*9023 - 2 - ((MedionMode != 1) ? NrEPGPacks : EPGLen/183)*/));
     }
 
     while (fIn)
@@ -2373,7 +2389,7 @@ FILE *fDbg;
               // aktuelle Output-Files schließen
               if (!CloseOutputFiles())
               {
-                CloseInputFiles(FALSE, FALSE);
+                CloseInputFiles(TRUE, FALSE, FALSE);
                 CutProcessor_Free();
                 InfProcessor_Free();
                 PSBuffer_Reset(&VideoBuffer);
@@ -2382,7 +2398,7 @@ FILE *fDbg;
                 exit(10);
               }
 
-              NrPackets += (SegmentMarker[1].Position / PACKETSIZE);
+              NrPackets += (SegmentMarker[1].Position / OutPacketSize);
               NrSegmentMarker = NrSegmentMarker_bak;
               SegmentMarker[1] = LastSegmentMarker_bak;
               if (BookmarkInfo)
@@ -2463,8 +2479,8 @@ FILE *fDbg;
                 // neues Bookmark an Schnittstelle setzen
                 if (DoCut == 1 || (DoMerge && CurrentPosition == 0))
 //                  if ((CurrentPosition-PositionOffset > 0) && (CurrentPosition + 3*9024*BlocksOneSecond < (long long)RecFileSize))
-                  if ((CurrentPosition-PositionOffset > 0) && (CurPosBlocks + 3*BlocksOneSecond < RecFileBlocks))
-                    AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + 9023));
+                  if ((CurrentPosition-PositionOffset > 4512) && (CurPosBlocks + 3*BlocksOneSecond < RecFileBlocks))
+                    AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + 4512 /*9023 - 2 - ((MedionMode != 1) ? NrEPGPacks : EPGLen/183)*/));
               }
 
               if (DoCut == 1)
@@ -2473,6 +2489,11 @@ FILE *fDbg;
                 if (NewStartTimeOffset < 0)
                   NewStartTimeOffset = SegmentMarker[CurSeg].Timems;
                 NewDurationMS += (SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems);
+
+                // Header-Pakete ausgeben 2 (experimentell)
+                if (CurrentPosition-PositionOffset > (2 + NrEPGPacks) * OutPacketSize)
+                  DoOutputHeaderPacks = TRUE;
+                AfterFirstEPGPacks = FALSE;
               }
               else if (DoCut == 2)
               {
@@ -2485,6 +2506,12 @@ FILE *fDbg;
                 }
                 while (BookmarkInfo && (j > 0))
                   DeleteBookmark(--j);
+
+                // Positionen anpassen
+                PositionOffset = CurrentPosition;
+                CutTimeOffset = SegmentMarker[CurSeg].Timems;
+                NewStartTimeOffset = SegmentMarker[CurSeg].Timems;
+                NewDurationMS = (SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems);
 
                 // neue Output-Files öffnen
                 GetNextFreeCutName(RecFileIn, RecFileOut, OutDir);
@@ -2514,12 +2541,6 @@ FILE *fDbg;
 
                 // Caption in inf schreiben
                 SetInfEventText(SegmentMarker[CurSeg].pCaption);
-
-                // Positionen anpassen
-                PositionOffset = CurrentPosition;
-                CutTimeOffset = SegmentMarker[CurSeg].Timems;
-                NewStartTimeOffset = SegmentMarker[CurSeg].Timems;
-                NewDurationMS = (SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems);
               }
               NrCopiedSegments++;
               NrSegments++;
@@ -2552,13 +2573,12 @@ FILE *fDbg;
         if (fOut && !MedionStrip && (PMTCounter >= 4998))
         {
           // Wiederhole PAT/PMT und EIT Information alle 5000 Pakete (verzichte darauf, wenn MedionStrip aktiv)
+//          DoOutputHeaderPacks = TRUE;
+          int NrPMTPacks = 0;
+          for (k = 1; (PATPMTBuf[4 + k*192] == 'G'); NrPMTPacks = k++);
           for (k = 0; (PATPMTBuf[4 + k*192] == 'G'); k++)
           {
-            int l;
-            ((tTSPacket*) &PATPMTBuf[4])->ContinuityCount += 1;  // PAT Continuity Counter setzen
-            for (l = 1; l <= k; l++)
-              ((tTSPacket*) &PATPMTBuf[4 + l*192])->ContinuityCount += l;  // PMT Continuity Counter setzen
-
+            ((tTSPacket*) &PATPMTBuf[4 + k*192])->ContinuityCount += (k==0) ? 1 : NrPMTPacks;  // PAT/PMT Continuity Counter setzen
             if (OutPacketSize == 192)
               fwrite(&Buffer[0], 4, 1, fOut);  // 4 Byte Timecode schreiben
             fwrite(&PATPMTBuf[4 + k*192], 188, 1, fOut);
@@ -2617,8 +2637,17 @@ FILE *fDbg;
           {
             if (Buffer[4] == 'G')
             {
-              if (DoStrip && (TsGetPID((tTSPacket*) &Buffer[4]) == VideoPID))
+              if (TsGetPID((tTSPacket*) &Buffer[4]) == VideoPID)
               {
+                // Nach Übernahme der ersten EPG-Packs, auch hier EPG-Counter zurücksetzen
+                if (!AfterFirstEPGPacks)
+                {
+                  AfterFirstEPGPacks = TRUE;
+                  for (k = 0; k < NrContinuityPIDs; k++)
+                    if (ContinuityPIDs[k] == 18)
+                      { ContinuityCtrs[k] = -1; break; }
+                }
+                
                 if (((tTSPacket*) &Buffer[4])->Scrambling_Ctrl >= 2)
                 {
                   CurScrambledPackets++;
@@ -2737,10 +2766,13 @@ FILE *fDbg;
           }
 
           // Remove EPG stream
-          else if (RemoveEPGStream && (CurPID == 0x12))
+          else if (CurPID == 0x12 && RemoveEPGStream)
           {
-            NrDroppedEPGPid++;
-            DropCurPacket = TRUE;
+            if (!PMTatStart || AfterFirstEPGPacks || (CurPosBlocks > 0) || (CurBlockBytes >= 10*(int)PACKETSIZE))
+            {
+              NrDroppedEPGPid++;
+              DropCurPacket = TRUE;
+            }
           }
 
           // Remove Null Packets and empty Adaptation Fields
@@ -2782,15 +2814,15 @@ FILE *fDbg;
                   DeleteBookmark(j);
                 else
                 {
-                  BookmarkInfo->Bookmarks[j] -= (dword)(PositionOffset / 9024);  // CalcBlockSize(PositionOffset)
+                  BookmarkInfo->Bookmarks[j] -= (dword)((PositionOffset + 4512) / 9024);  // CalcBlockSize(PositionOffset)
                   j++;
                 }
               }
 
               if (!ResumeSet && (DoMerge != 1) && (CurPosBlocks >= BookmarkInfo->Resume))
               {
-                if (PositionOffset / 9024 <= BookmarkInfo->Resume)
-                  BookmarkInfo->Resume -= (dword)(PositionOffset / 9024);  // CalcBlockSize(PositionOffset)
+                if ((PositionOffset + 4521) / 9024 <= BookmarkInfo->Resume)
+                  BookmarkInfo->Resume -= (dword)((PositionOffset + 4512) / 9024);  // CalcBlockSize(PositionOffset)
                 else
                   BookmarkInfo->Resume = 0;
                 ResumeSet = TRUE;
@@ -2835,6 +2867,48 @@ FILE *fDbg;
           else if (ExtractTeletext)
           {
             GetPCRms(&Buffer[4], &global_timestamp);
+          }
+
+          // Nach Übernahme der ersten EPG-Packs, EPG-Counter zurücksetzen
+          if (!AfterFirstEPGPacks && (CurPID != 0) && (CurPID != ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID) && (CurPID != 18))
+          {
+            AfterFirstEPGPacks = TRUE;
+            for (k = 0; k < NrContinuityPIDs; k++)
+              if (ContinuityPIDs[k] == 18)
+                { ContinuityCtrs[k] = -1; break; }
+          }
+
+          // Header-Pakete ausgeben 2 (experimentell!)
+          if (DoOutputHeaderPacks)
+          {
+            int NrPMTPacks = 0;
+
+            if ((HumaxSource || EycosSource || MedionMode==1 || (WriteDescPackets && (CurrentPosition > (2+NrEPGPacks)*PACKETSIZE || !PMTatStart))) && fOut /*&& DoMerge != 1*/)
+            {
+              for (k = 1; (PATPMTBuf[4 + k*192] == 'G'); NrPMTPacks = k++);
+              for (k = 0; (PATPMTBuf[4 + k*192] == 'G'); k++)
+              {
+                ((tTSPacket*) &PATPMTBuf[4 + k*192])->ContinuityCount += ((k==0) ? 1 : NrPMTPacks);  // PAT/PMT Continuity Counter setzen
+                if (OutPacketSize == 192)
+                  memcpy(&PATPMTBuf[k*192], (byte*)&Buffer[0], 4);
+                if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + k*192], OutPacketSize, 1, fOut))
+                  PositionOffset -= OutPacketSize;
+              }
+              if (MedionMode == 1)
+                SimpleMuxer_DoEITOutput();
+              else if (WriteDescPackets && EPGPacks)
+              {
+                for (k = 0; k < NrEPGPacks; k++)
+                {
+                  ((tTSPacket*) &EPGPacks[4 + k*192])->ContinuityCount += NrEPGPacks;  // PMT Continuity Counter setzen
+                  if (OutPacketSize == 192)
+                    memcpy(&EPGPacks[k*192], &Buffer[0], 4);
+                  if (fwrite(&EPGPacks[((OutPacketSize==192) ? 0 : 4) + k*192], OutPacketSize, 1, fOut))
+                    PositionOffset -= OutPacketSize;
+                }
+              }
+            }
+            DoOutputHeaderPacks = FALSE;
           }
 
           // NAV BERECHNEN UND PAKET AUSGEBEN
@@ -2896,18 +2970,18 @@ FILE *fDbg;
             if (!DoStrip) PMTCounter++;
             if (fOut && !DoStrip && (PMTCounter >= 29))
             {
+              // Wiederhole PAT/PMT und EIT Information (außer wenn Strip aktiv)
+              DoOutputHeaderPacks = TRUE;
+/*              int NrPMTPacks = 0;
+              for (k = 1; (PATPMTBuf[4 + k*192] == 'G'); NrPMTPacks = k++);
               for (k = 0; (PATPMTBuf[4 + k*192] == 'G'); k++)
               {
-                int l;
-                ((tTSPacket*) &PATPMTBuf[4])->ContinuityCount += 1;  // PAT Continuity Counter setzen
-                for (l = 1; l <= k; l++)
-                  ((tTSPacket*) &PATPMTBuf[4 + l*192])->ContinuityCount += l;  // PMT Continuity Counter setzen
-
+                ((tTSPacket*) &PATPMTBuf[4 + k*192])->ContinuityCount += (k==0) ? 1 : NrPMTPacks;  // PAT/PMT Continuity Counter setzen
                 if (OutPacketSize == 192)
                   fwrite(&Buffer[0], 4, 1, fOut);  // 4 Byte Timecode schreiben
                 fwrite(&PATPMTBuf[4 + k*192], 188, 1, fOut);
                 PositionOffset -= OutPacketSize;
-              }
+              } */
               PMTCounter = 0;
             }
           }
@@ -3015,11 +3089,13 @@ FILE *fDbg;
       }
     }
 //    NrPackets += ((RecFileSize + PACKETSIZE-1) / PACKETSIZE);
+    if ((DoCut == 2) && (NrSegmentMarker == 2) /* && (CurrentPosition + PACKETSIZE > SegmentMarker[1].Position) */)
+      NrPackets += (CurrentPosition-PositionOffset) / OutPacketSize;  // (SegmentMarker[1].Position / OutPacketSize);
     NrScrambledPackets += CurScrambledPackets;
 
     if (DoMerge && (curInputFile < NrInputFiles-1))
     {
-      CloseInputFiles(TRUE, FALSE);
+      CloseInputFiles(TRUE, TRUE, FALSE);
 
       // nächstes Input-File aus Parameter-String ermitteln
       strncpy(RecFileIn, argv[curInputFile+1], sizeof(RecFileIn));
@@ -3053,6 +3129,9 @@ FILE *fDbg;
         exit(5);
       }
 
+      // Header-Pakete ausgeben 3 (experimentell!)
+      DoOutputHeaderPacks = TRUE;
+
       if (DoCut && NrSegments == 0)
       {
         NrCopiedSegments = 1; NrSegments = 1;
@@ -3076,7 +3155,7 @@ FILE *fDbg;
 
   if ((fOut || (DoCut != 2)) && !CloseOutputFiles())
   {
-    CloseInputFiles(FALSE, FALSE);
+    CloseInputFiles(TRUE, FALSE, FALSE);
     CutProcessor_Free();
     InfProcessor_Free();
     PSBuffer_Reset(&VideoBuffer);
@@ -3084,7 +3163,7 @@ FILE *fDbg;
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
     exit(10);
   }
-  CloseInputFiles(TRUE, (!*RecFileOut));
+  CloseInputFiles(TRUE, TRUE, (!*RecFileOut));
 
   CutProcessor_Free();
   InfProcessor_Free();
