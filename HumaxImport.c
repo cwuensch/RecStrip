@@ -16,6 +16,9 @@
 #include "TtxProcessor.h"
 #include "HumaxHeader.h"
 
+#ifdef _MSC_VER
+  #define strncasecmp _strnicmp
+#endif
 
 static const dword crc_table[] = {
   0x00000000, 0x04C11DB7, 0x09823B6E, 0x0D4326D9,
@@ -171,11 +174,11 @@ bool GetPidsFromMap(word ServiceID, word *const OutPMTPID, word *const OutVidPID
   return FALSE;
 } */
 
-word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *InOutServiceName, word *const OutPMTPID)
+word GetSidFromMap(word VidPID, word AudPID, word TtxPID, bool UseHumaxMap, char *InOutServiceName, word *const OutPMTPID)
 {
-  FILE *fMap;
+  FILE *fMap, *fMap2;
   char LineBuf[100], SenderFound[32], PidsFound[20], LangFound[20];
-  char *pPid, *pLng, *p;
+  char *pPid, *pLng, *p = NULL;
   word Sid, PPid, VPid, APid = 0, TPid = 0, SPid = 0, curPid;
   int APidStr = 0, ALangStr = 0, k;
   word CandidateFound = 0, PMTFound = 0;
@@ -186,9 +189,36 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *InOutServiceName
   else LineBuf[0] = 0;
 
   strncat(LineBuf, "SenderMap.txt", sizeof(LineBuf) - (p ? (p-LineBuf+1) : 0));
-  
+
   if ((fMap = fopen(LineBuf, "rb")))
   {
+    // bei Humax: zuerst Sender aus Dateinamen ermitteln
+    if (HumaxSource && UseHumaxMap && InOutServiceName)
+    {
+      if(p) p[1] = '\0'; else LineBuf[0] = '\0';
+      strncat(LineBuf, "HumaxMap.txt", sizeof(LineBuf) - (p ? (p-LineBuf+1) : 0));
+      if ((fMap2 = fopen(LineBuf, "rb")))
+      {
+        int len;
+        if ((p = strrchr(RecFileIn, '/'))) p++;
+        else if ((p = strrchr(RecFileIn, '\\'))) p++;
+        else p = RecFileIn;
+        len = strlen(p);
+        while (fgets(LineBuf, sizeof(LineBuf), fMap2) != 0)
+        {
+          if (strncmp(LineBuf, p, len) == 0)
+          {
+            // Remove line breaks in the end
+            k = (int)strlen(LineBuf);
+            while (k && (LineBuf[k-1] == '\r' || LineBuf[k-1] == '\n' || LineBuf[k-1] == ';'))
+              LineBuf[--k] = '\0';
+            strncpy(InOutServiceName, &LineBuf[len+1], sizeof(((TYPE_Service_Info*)NULL)->ServiceName));
+          }
+        }
+        fclose(fMap2);
+      }
+    }
+
     while (fgets(LineBuf, sizeof(LineBuf), fMap) != 0)
     {
       if(LineBuf[0] == '#') continue;
@@ -203,7 +233,7 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *InOutServiceName
         APid = (word) strtol(&LineBuf[APidStr], NULL, 10);
         p = strrchr(LineBuf, ';') + 1;
         if ((VPid == VidPID) && ((APid == AudPID) || !AudPID || AudPID == (word)-1) && ((TPid == TtxPID) || !TtxPID || TtxPID == (word)-1)
-         && ((VidPID != 101 && VidPID != 201 && VidPID != 401 && VidPID != 601) || (*InOutServiceName && ((strncmp(p, InOutServiceName, 2) == 0) || (strncmp(p, "Das", 3)==0 && strncmp(InOutServiceName, "ARD", 3)==0) || (strncmp(p, "BR", 2)==0 && strncmp(InOutServiceName, "Bay", 3)==0)))))
+         && ((VidPID != 101 && VidPID != 201 && VidPID != 401 && VidPID != 501 && VidPID != 601) || (InOutServiceName && *InOutServiceName && ((strncasecmp(p, InOutServiceName, 2) == 0) || (strncmp(p, "Das", 3)==0 && strncmp(InOutServiceName, "ARD", 3)==0) || (strncmp(p, "BR", 2)==0 && strncmp(InOutServiceName, "Bay", 3)==0)))))
         {
           strncpy(SenderFound, p, sizeof(SenderFound));
           SenderFound[sizeof(SenderFound)-1] = '\0';
@@ -389,7 +419,7 @@ if(VideoPID == 660 && TeletextPID == 130 && ExtractTeletext && DoStrip) RemoveTe
       }
     }
   }
-  RecInf->ServiceInfo.ServiceID = GetSidFromMap(VideoPID, 0 /*GetMinimalAudioPID(AudioPIDs)*/, 0, RecInf->ServiceInfo.ServiceName, &RecInf->ServiceInfo.PMTPID);
+  RecInf->ServiceInfo.ServiceID = GetSidFromMap(VideoPID, 0 /*GetMinimalAudioPID(AudioPIDs)*/, 0, FALSE, RecInf->ServiceInfo.ServiceName, &RecInf->ServiceInfo.PMTPID);  // erster Versuch - ohne Humax Map, Teletext folgt
   if (!RecInf->ServiceInfo.PMTPID)
     RecInf->ServiceInfo.PMTPID = (HumaxHeader.Allgemein.AudioPID != 256) ? 256 : 100;
   AddContinuityPids(TeletextPID, FALSE);
