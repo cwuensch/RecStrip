@@ -1948,7 +1948,7 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPid, word Vid
 
   Offset               += Elem->ESInfoLen2;
   PMT->SectionLen2     += sizeof(tElemStream) + Elem->ESInfoLen2;
-  printf("  Video Track: PID=%d, %s, Type=0x%x\n", VideoPID, (isHDVideo ? "HD" : "SD"), Elem->stream_type);
+  printf("  Video Track:    PID=%d, %s, Type=0x%x\n", VideoPID, (isHDVideo ? "HD" : "SD"), Elem->stream_type);
 
   // Sortiere Audio-PIDs
 //  SortAudioPIDs(AudioPIDs);
@@ -1981,21 +1981,21 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPid, word Vid
         Elem->ESInfoLen2   += (sizeof(tTSAC3Desc) + sizeof(tTSAudioDesc));
         Desc1->DescrTag     = DESC_AC3;
         Desc1->DescrLength  = 1;
-        printf("  Audio Track %d: PID=%d, AC3, Type=0x%x", (k + 1), AudioPIDs[k].pid, Elem->stream_type);
+        printf("  Audio Track %d:  PID=%d, AC3, Type=0x%x", (k + 1), AudioPIDs[k].pid, Elem->stream_type);
       }
       else if (AudioPIDs[k].type <= 4)
       {
         Desc = (tTSAudioDesc*) &Packet->Data[Offset + sizeof(tTSStreamDesc)];
         Elem->stream_type   = AudioPIDs[k].type;  // (AudioPIDs[k].type <= 1) ? ((AudioPIDs[k].type == 1) ? STREAM_AUDIO_MPEG1 : STREAM_AUDIO_MPEG2) : AudioPIDs[k].type;
         Elem->ESInfoLen2   += sizeof(tTSAudioDesc);
-        printf("  Audio Track %d: PID=%d, MPEG, Type=0x%x", (k + 1), AudioPIDs[k].pid, Elem->stream_type);
+        printf("  Audio Track %d:  PID=%d, MPEG-%s, Type=0x%x", (k + 1), AudioPIDs[k].pid, (Elem->stream_type==STREAM_AUDIO_MPEG1 ? "1" : (Elem->stream_type==STREAM_AUDIO_MPEG2 ? "2" : "?")), Elem->stream_type);
       }
       else
       {
         Desc = (tTSAudioDesc*) &Packet->Data[Offset + sizeof(tTSStreamDesc)];
         Elem->stream_type   = AudioPIDs[k].type;
         Elem->ESInfoLen2   += sizeof(tTSAudioDesc);
-        printf("  Audio Track %d: PID=%d, Unknown Type: 0x%x", (k + 1), AudioPIDs[k].pid, Elem->stream_type);
+        printf("  Audio Track %d:  PID=%d, Unknown Type: 0x%x", (k + 1), AudioPIDs[k].pid, Elem->stream_type);
       }
       if (Desc)
       {
@@ -2118,7 +2118,7 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPid, word Vid
       Offset                 += Elem->ESInfoLen2;
       PMT->SectionLen2       += sizeof(tElemStream) + Elem->ESInfoLen2;
       if(AudioPIDs[k].pid == SubtitlesPID) SubtitlesDone = TRUE;
-      printf("  Subtitles Track: PID=%d [%.3s]\n", AudioPIDs[k].pid, subtDesc->LanguageCode);
+      printf("  Subtitle Track: PID=%d [%.3s]\n", AudioPIDs[k].pid, subtDesc->LanguageCode);
     }
   }
 

@@ -181,7 +181,7 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, bool UseHumaxMap, char
   char *pPid, *pLng, *p = NULL;
   word Sid, PPid, VPid, APid = 0, TPid = 0, SPid = 0, curPid;
   int APidStr = 0, ALangStr = 0, k;
-  word CandidateFound = 0, PMTFound = 0;
+  word CandidateFound = FALSE, SidFound = 0, PMTFound = 0;
   strncpy(LineBuf, ExePath, sizeof(LineBuf));
 
   if ((p = strrchr(LineBuf, '/'))) p[1] = '\0';
@@ -228,11 +228,12 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, bool UseHumaxMap, char
       while (k && (LineBuf[k-1] == '\r' || LineBuf[k-1] == '\n' || LineBuf[k-1] == ';'))
         LineBuf[--k] = '\0';
 
+      APidStr = 0; ALangStr = 0; APid = 0; TPid = 0; SPid = 0;
       if (sscanf(LineBuf, "%hu ; %hu ; %hu ; %n %*19[^;] ; %n %*19[^;] ; %hu ; %hu ; %*70[^;\r\n]", &Sid, &PPid, &VPid, &APidStr, &ALangStr, &TPid, &SPid) >= 3)
       {
-        APid = (word) strtol(&LineBuf[APidStr], NULL, 10);
+        if(APidStr) APid = (word) strtol(&LineBuf[APidStr], NULL, 10);
         p = strrchr(LineBuf, ';') + 1;
-        if ((VPid == VidPID) && ((APid == AudPID) || !AudPID || AudPID == (word)-1) && ((TPid == TtxPID) || !TtxPID || TtxPID == (word)-1)
+        if ((VPid == VidPID) && ((APid == AudPID) || !AudPID || AudPID == (word)-1) && ((TPid == TtxPID) || !TtxPID || TtxPID == (word)-1 || !TPid)
          && ((VidPID != 101 && VidPID != 201 && VidPID != 401 && VidPID != 501 && VidPID != 601) || (InOutServiceName && *InOutServiceName && ((strncasecmp(p, InOutServiceName, 2) == 0) || (strncmp(p, "Das", 3)==0 && strncmp(InOutServiceName, "ARD", 3)==0) || (strncmp(p, "BR", 2)==0 && strncmp(InOutServiceName, "Bay", 3)==0)))))
         {
           strncpy(SenderFound, p, sizeof(SenderFound));
@@ -244,7 +245,8 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, bool UseHumaxMap, char
           if(CandidateFound) printf("\n");
           printf("  Found ServiceID in Map: SID=%hu (%s), PMTPid=%hu", Sid, SenderFound, PPid);
           if(CandidateFound) { printf(" (ambiguous) -> skipping\n"); return 1; }
-          CandidateFound = Sid;
+          SidFound = Sid;
+          CandidateFound = TRUE;
         }
         else if (CandidateFound)  // Nutzt aus, dass die SenderMap nach VideoPID sortiert ist
         {
@@ -269,7 +271,7 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, bool UseHumaxMap, char
           if(OutPMTPID && (!*OutPMTPID || *OutPMTPID==256)) *OutPMTPID = PMTFound;
           if(InOutServiceName && !*InOutServiceName) strncpy(InOutServiceName, SenderFound, sizeof(((TYPE_Service_Info*)NULL)->ServiceName));
           fclose(fMap);
-          return CandidateFound;
+          return SidFound;
         }
       }
     }
