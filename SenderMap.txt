@@ -1,9 +1,15 @@
 #SvcID;PMTPID;VidPID;AudPIDs;AudioDesc;TtxPID;SubtPID;ServiceName
+# ! bis 08/2007 (bis Humax-4)
 28202;100;101;102;;104;;Das Erste
-28723;0;101;102;;104;;EinsPlus
-899;98;101;102;;104;;kabel eins
+# ! ab 09/2007 (ab Humax-5 + von Humax-4: LEOPARDSEEBA?_070910*, FELIXUNDDIEW1_0709230553)
 28106;100;101;102/103/106;deu/mis/deu;104;105;Das Erste
 28310;100;101;102/103;deu/mis;104;505;WDR Münster
+# bis 2008 (alle Humax)
+28203;0;101;102;;104;;EinsPlus
+# ab 2009
+#28723;0;101;102;;104;;EinsPlus
+# bis 2006 (alle Humax)
+899;98;101;102;;104;;kabel eins
 28006;100;110;120/121/122/125;deu/mis/mul/deu;130;131;ZDF
 12003;44;163;104/106;deu/deu;105;110;RTL Television
 12040;45;165;120;deu;65;66;SuperRTL
@@ -17,9 +23,13 @@
 17500;96;255;256/259;deu/deu;32;;SAT1
 28108;300;301;302/303;deu/mis;304;;hr fernsehen
 28008;300;310;320/321/322/325;deu/mis/mul/deu;330;331;KiKa
+# ! bis 02/2007 (bis Humax-4)
+28109;400;401;402/403;deu/fra;404;;arte
+# ! ab 10/2008 (ab Humax-5)
 28724;400;401;402/403;deu/fra;404;;arte
 28330;400;401;402;;;;MDR
 13002;500;500;501;;;;ORF2
+# ab 03/2008 (ab Humax-5)
 28725;500;501;502;deu;;;Phoenix
 0;500;501;502;deu;504;;RBB Brandenburg
 17501;97;511;512/515;deu/deu;33;;ProSieben
@@ -28,8 +38,10 @@
 28011;600;610;620/621/622/625;deu/mis/mul/deu;630;631;ZDFinfo
 28014;650;660;670/671/672/675;deu/mis/mul/deu;680;681;ZDFdoku
 28487;0;701;702;;;;BRalpha
-17502;98;767;768;deu;34;;kabel eins
+# ab 2009
+#17502;98;767;768;deu;34;;kabel eins
 28113;800;801;802/803/806;deu/mis/deu;804;;SWR BW
+# bis 01/2008 (bis Humax-4)
 28114;500;901;902;;;;Phoenix
 51;99;1535;1536;deu;38;;Tele 5
 28396;1600;1601;1602/1606;ger/ger;;;EinsFestival HD
@@ -40,6 +52,8 @@
 28230;3000;2901;2902/2903;deu/mis;2904;2905;MDR Thüringen
 28231;3100;3101;3102/3103/3106;deu/mis/deu;3104;;SWR Fernsehen RP
 10301;5100;5101;5102/5103/5107/5106;deu/mis/qks/deu;5104;5105;Das Erste HD
+# ab 2013
 10302;5110;5111;5112/5113/5116/5117;deu/fra/mul/mis;5114;5115;arte HD
+# bis 2012
 11120;6200;6210;6221/6222;deu/fra;6230;;arte HD
 11150;6500;6510;6520/6521/6523/6522;deu/mis/mul/deu;6530;6531;3sat HD
