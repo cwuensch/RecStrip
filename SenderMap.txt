@@ -1,9 +1,9 @@
 #SvcID;PMTPID;VidPID;AudPIDs;AudioDesc;TtxPID;SubtPID;ServiceName
 28202;100;101;102;;104;;Das Erste
-28723;0;101;102;;104;;EinsPlus
-899;98;101;102;;104;;kabel eins
 28106;100;101;102/103/106;deu/mis/deu;104;105;Das Erste
 28310;100;101;102/103;deu/mis;104;505;WDR Münster
+28723;0;101;102;;104;;EinsPlus
+899;98;101;102;;104;;kabel eins
 28006;100;110;120/121/122/125;deu/mis/mul/deu;130;131;ZDF
 12003;44;163;104/106;deu/deu;105;110;RTL Television
 12040;45;165;120;deu;65;66;SuperRTL

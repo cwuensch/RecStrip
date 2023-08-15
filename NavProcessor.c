@@ -1394,13 +1394,13 @@ dword NavGetPosTimeStamp(tTimeStamp2 TimeStamps[], int NrTimeStamps, long long F
   if (TimeStamps)
   {
     // Search the TimeStamp-Array in forward direction
-    while((LastTimeStamp->Position < FilePosition) && (LastTimeStamp < TimeStamps + NrTimeStamps-1))
+    while ((LastTimeStamp->Position < FilePosition) && (LastTimeStamp < TimeStamps + NrTimeStamps-1))
       LastTimeStamp++;
-    if(LastTimeStamp->Position > FilePosition)
+    if ((LastTimeStamp > TimeStamps) && (LastTimeStamp->Position > FilePosition))
       LastTimeStamp--;
 
     TRACEEXIT;
-    return LastTimeStamp->Timems;
+    return LastTimeStamp->Timems;  // (LastTimeStamp->Position <= FilePosition) ? LastTimeStamp->Timems : 0;
   }
   else
   {

@@ -819,8 +819,8 @@ static bool AnalyseAudio(byte *PSBuffer, int BufSize, word pid, tAudioTrack *con
         const float AC3Sampling[] = {48, 44.1f, 32, 0};
         const short AC3Bitrates[] = {32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, 448, 512, 576, 640};
 
-//        if (AudioTrack)
-//          AudioTrack->mode = STREAM_AUDIO_MPEG4_AC3_PLUS;
+        if (AudioTrack && !AudioTrack->type)
+          AudioTrack->type = STREAM_AUDIO_MPEG4_AC3_PLUS;
 
         printf("  TS: PID=%d, AudioType: AC3 @ %.1f kHz, %hd kbit/s", pid, AC3Sampling[(PSBuffer[p] & 0xc0)], ((PSBuffer[p] & 0x3f) < 38) ? AC3Bitrates[(PSBuffer[p] & 0x3f) / 2] : -1);
         if(*AudioTrack->desc) printf(" [%s]\n", AudioTrack->desc); else printf("\n");
@@ -835,8 +835,8 @@ static bool AnalyseAudio(byte *PSBuffer, int BufSize, word pid, tAudioTrack *con
 
         tDTSHeader *DTSHeader = (tDTSHeader*) &PSBuffer[p-4];
         byte rate = DTSHeader->rate1 << 3 | DTSHeader->rate2;
-//        if (AudioTrack)
-//          AudioTrack->mode = STREAM_AUDIO_MPEG4_DTS;
+        if (AudioTrack && !AudioTrack->type)
+          AudioTrack->type = STREAM_AUDIO_MPEG4_DTS;
 
         printf("  TS: PID=%d, AudioType: DTS @ %.1f kHz, %hd kbit/s", pid, DTSSampling[DTSHeader->sfreq], ((rate == 0x0F) ? 768 : ((rate == 0x18) ? 1536 : 0)));
         if(*AudioTrack->desc) printf(" [%s]\n", AudioTrack->desc); else printf("\n");
@@ -1641,7 +1641,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         printf ("  Failed to get service name from SDT.\n");
       if (!RecInf->ServiceInfo.ServiceID || RecInf->ServiceInfo.ServiceID==1 || !RecInf->ServiceInfo.PMTPID || !*RecInf->ServiceInfo.ServiceName)
       {
-        RecInf->ServiceInfo.ServiceID = GetSidFromMap(VideoPID, 0 /*GetMinimalAudioPID(AudioPIDs)*/, TeletextPID, TRUE, RecInf->ServiceInfo.ServiceName, &RecInf->ServiceInfo.PMTPID);  // zweiter Versuch, ggf. überschreiben
+        RecInf->ServiceInfo.ServiceID = GetSidFromMap(VideoPID, 0 /*GetMinimalAudioPID(AudioPIDs)*/, TeletextPID, RecInf->ServiceInfo.ServiceName, &RecInf->ServiceInfo.PMTPID);  // zweiter Versuch, ggf. überschreiben
         if(!RecInf->ServiceInfo.ServiceID) RecInf->ServiceInfo.ServiceID = 1;
         if(!RecInf->ServiceInfo.PMTPID) RecInf->ServiceInfo.PMTPID = 100;
       }
