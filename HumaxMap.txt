@@ -1,4 +1,4 @@
-﻿#Dateiname	Sender
+#Dateiname	Sender
 360DieGeoRepo_0408110219.vid	arte
 DieGlorieuses_0406171358.vid	arte
 DurchswildeKo_0410010920.vid	WDR Köln
