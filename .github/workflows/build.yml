@@ -549,6 +549,7 @@ jobs:
     - name: Create zip archive
       run: |
         cd ${{ github.workspace }}/RecStrip_Synology
+        ls -la
         zip -9 -r ${{ github.workspace }}/RecStrip_Synology.zip RecStrip* SenderMap.txt
 
     - name: Upload release binaries
