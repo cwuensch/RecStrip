@@ -77,6 +77,86 @@ static dword crc32m(const unsigned char *buf, size_t len)
   return crc;
 } */
 
+static bool FindExePath(const char* CalledExe, char *const OutExePath, int OutputSize) 
+{
+  char findyourself_save_pwd[FBLIB_DIR_SIZE];
+  char findyourself_save_argv0[FBLIB_DIR_SIZE];
+  char findyourself_save_path[FBLIB_DIR_SIZE];
+  char findyourself_path_separator='/';
+  char findyourself_path_separator_as_string[2]="/";
+  char findyourself_path_list_separator[8]=":;";  // could be ":; "
+  char findyourself_debug=0;
+
+  getcwd(findyourself_save_pwd, sizeof(findyourself_save_pwd));
+  strcpy(findyourself_save_path, getenv("PATH"));
+
+
+
+  char newpath[PATH_MAX+256];
+  char newpath2[PATH_MAX+256];
+
+  assert(findyourself_initialized);
+  result[0]=0;
+
+  if(findyourself_save_argv0[0]==findyourself_path_separator) {
+    if(findyourself_debug) printf("  absolute path\n");
+     realpath(findyourself_save_argv0, newpath);
+     if(findyourself_debug) printf("  newpath=\"%s\"\n", newpath);
+     if(!access(newpath, F_OK)) {
+        strncpy(result, newpath, size_of_result);
+        result[size_of_result-1]=0;
+        return(0);
+     } else {
+    perror("access failed 1");
+      }
+  } else if( strchr(findyourself_save_argv0, findyourself_path_separator )) {
+    if(findyourself_debug) printf("  relative path to pwd\n");
+    strncpy(newpath2, findyourself_save_pwd, sizeof(newpath2));
+    newpath2[sizeof(newpath2)-1]=0;
+    strncat(newpath2, findyourself_path_separator_as_string, sizeof(newpath2));
+    newpath2[sizeof(newpath2)-1]=0;
+    strncat(newpath2, findyourself_save_argv0, sizeof(newpath2));
+    newpath2[sizeof(newpath2)-1]=0;
+    realpath(newpath2, newpath);
+    if(findyourself_debug) printf("  newpath=\"%s\"\n", newpath);
+    if(!access(newpath, F_OK)) {
+        strncpy(result, newpath, size_of_result);
+        result[size_of_result-1]=0;
+        return(0);
+     } else {
+    perror("access failed 2");
+      }
+  } else {
+    if(findyourself_debug) printf("  searching $PATH\n");
+    char *saveptr;
+    char *pathitem;
+    for(pathitem=strtok_r(findyourself_save_path, findyourself_path_list_separator,  &saveptr); pathitem; pathitem=strtok_r(NULL, findyourself_path_list_separator, &saveptr) ) {
+       if(findyourself_debug>=2) printf("pathitem=\"%s\"\n", pathitem);
+       strncpy(newpath2, pathitem, sizeof(newpath2));
+       newpath2[sizeof(newpath2)-1]=0;
+       strncat(newpath2, findyourself_path_separator_as_string, sizeof(newpath2));
+       newpath2[sizeof(newpath2)-1]=0;
+       strncat(newpath2, findyourself_save_argv0, sizeof(newpath2));
+       newpath2[sizeof(newpath2)-1]=0;
+       realpath(newpath2, newpath);
+       if(findyourself_debug) printf("  newpath=\"%s\"\n", newpath);
+      if(!access(newpath, F_OK)) {
+          strncpy(result, newpath, size_of_result);
+          result[size_of_result-1]=0;
+          return(0);
+      }
+    } // end for
+    perror("access failed 3");
+
+  } // end else
+  // if we get here, we have tried all three methods on argv[0] and still haven't succeeded.   Include fallback methods here.
+  return(1);
+
+
+
+  strncpy(OutExePath, CalledExe, OutputSize);
+}
+
 
 bool GetPidsFromMap(word ServiceID, word *const OutPMTPID, word *const OutVidPID, word *const OutAudPID, word *const OutTtxPID, word *const OutSubtPID)
 {
@@ -84,7 +164,8 @@ bool GetPidsFromMap(word ServiceID, word *const OutPMTPID, word *const OutVidPID
   char LineBuf[FBLIB_DIR_SIZE], *pPid, *pLng, *NameStr, *p;
   word Sid, PPid, VPid, APid=0, TPid=0, SPid=0;
   int APidStr = 0, ALangStr = 0, k;
-  strncpy(LineBuf, ExePath, sizeof(LineBuf));
+//  strncpy(LineBuf, ExePath, sizeof(LineBuf));
+  FindExePath(ExePath, LineBuf, sizeof(LineBuf));
 
   if ((p = strrchr(LineBuf, '/'))) p[1] = '\0';
   else if ((p = strrchr(LineBuf, '\\'))) p[1] = '\0';
@@ -182,7 +263,8 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *InOutServiceName
   word Sid, PPid, VPid, APid = 0, TPid = 0, SPid = 0, curPid;
   int APidStr = 0, ALangStr = 0, k;
   word CandidateFound = FALSE, SidFound = 0, PMTFound = 0;
-  strncpy(LineBuf, ExePath, sizeof(LineBuf));
+//  strncpy(LineBuf, ExePath, sizeof(LineBuf));
+  FindExePath(ExePath, LineBuf, sizeof(LineBuf));
 
   if ((p = strrchr(LineBuf, '/'))) p[1] = '\0';
   else if ((p = strrchr(LineBuf, '\\'))) p[1] = '\0';

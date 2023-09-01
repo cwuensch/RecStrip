@@ -259,6 +259,8 @@ static time_t HDD_GetFileDateTime(char const *AbsFileName)
         localtime_s(&timeinfo, &Result);
         localtime_s(&timeinfo_sys, &now);
         Result -= (3600 * (timeinfo_sys.tm_isdst - timeinfo.tm_isdst));  // Windows-eigene DST-Korrektur ausgleichen
+        Result += _timezone - (timeinfo.tm_isdst ? 3600 : 0);           // Windows-Datum (local) in UTC umwandeln
+        Result3+= _timezone - (timeinfo.tm_isdst ? 3600 : 0);
 if (Result3 != Result)
   printf("ASSERTION ERROR! Windows API date (%llu) does not match 'correct' stat date (%llu).\n", Result3, Result);
       }
@@ -1822,6 +1824,7 @@ int main(int argc, const char* argv[])
     TRACEEXIT;
     exit(2);
   }
+  memset(PATPMTBuf, 0, 4*192 + 5);
 
   // Pending Buffer initialisieren
   if (DoStrip)
@@ -2106,7 +2109,7 @@ int main(int argc, const char* argv[])
 
         for (k = 0; (PATPMTBuf[4 + k*192] == 'G'); k++)
         {
-          if (fread(PMTPacket, OutPacketSize, 1, fOut) >= 2*192)
+          if (fread(PMTPacket, OutPacketSize, 1, fOut) == 1)
           {
 /*            int m;
             for (m = 0; m < OutPacketSize; m++) {
@@ -2181,6 +2184,12 @@ int main(int argc, const char* argv[])
         if ((fread(&RecHeaderInfo_out, sizeof(TYPE_RecHeader_Info), 1, fInfOut)) && (fread(&ServiceInfo_out, sizeof(TYPE_Service_Info), 1, fInfOut))
           && ((strncmp(RecHeaderInfo_out.Magic, "TFrc", 4) == 0) && (RecHeaderInfo_out.Version == 0x8000)))
         {
+          if (*RecHeader->ServiceInfo.ServiceName && (strncmp(ServiceInfo_out.ServiceName, RecHeader->ServiceInfo.ServiceName, sizeof(ServiceInfo_out.ServiceName)) != 0))
+          {
+            printf("INF FIX (%s): Fixing ServiceName %s -> %s\n", (DoFixPMT ? "output" : "source"), ServiceInfo_out.ServiceName, RecHeader->ServiceInfo.ServiceName);
+            strncpy(ServiceInfo_out.ServiceName, RecHeader->ServiceInfo.ServiceName, sizeof(ServiceInfo_out.ServiceName));
+            InfModified = TRUE;
+          }
           if (RecHeader->ServiceInfo.ServiceID && (ServiceInfo_out.ServiceID != RecHeader->ServiceInfo.ServiceID))
           {
             printf("INF FIX (%s): Fixing ServiceID %hu -> %hu\n", (DoFixPMT ? "output" : "source"), ServiceInfo_out.ServiceID, RecHeader->ServiceInfo.ServiceID);
