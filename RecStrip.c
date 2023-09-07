@@ -2155,7 +2155,7 @@ int main(int argc, const char* argv[])
   {
     char                  NavFileIn[FBLIB_DIR_SIZE];
     time_t                RecDate;
-    bool                  InfModified = FALSE;
+    bool                  InfModified = FALSE, BookmarkFix = FALSE;
 
     snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf", RecFileOut);
     snprintf(NavFileOut, sizeof(NavFileOut), "%s.nav", RecFileOut);
@@ -2177,6 +2177,7 @@ int main(int argc, const char* argv[])
       FILE                 *fInfOut;
       TYPE_RecHeader_Info   RecHeaderInfo_out;
       TYPE_Service_Info     ServiceInfo_out;
+      TYPE_Bookmark_Info    BookmarkInfo_out;
       TYPE_RecHeader_TMSS*  RecHeader = ((TYPE_RecHeader_TMSS*)InfBuffer);
 
       if ((fInfOut = fopen(InfFileOut, "rb")))
@@ -2214,13 +2215,39 @@ int main(int argc, const char* argv[])
             ServiceInfo_out.AudioTypeFlag = RecHeader->ServiceInfo.AudioTypeFlag;
             InfModified = TRUE;
           }
+
+          if (fseek(fInfOut, sizeof(TYPE_RecHeader_Info) + sizeof(TYPE_Service_Info) + sizeof(TYPE_Event_Info) + sizeof(TYPE_ExtEvent_Info) + sizeof(TYPE_TpInfo_TMSS))
+           && fread(&BookmarkInfo_out, sizeof(TYPE_Bookmark_Info), 1, fInfOut)
+           && (BookmarkInfo_out.NrBookmarks > 0) && (BookmarkInfo_out.NrBookmarks <= NRBOOKMARKS)
+           && (RecHeader->BookmarkInfo.NrBookmarks > 0))
+          {
+            printf("INF FIX (%s): Fixing Bookmarks nr=%hu -> nr=%hu\n", (DoFixPMT ? "output" : "source"), BookmarkInfo_out.NrBookmarks, RecHeader->BookmarkInfo.NrBookmarks);
+            for (n = 0; n < RecHeader->BookmarkInfo.NrBookmarks; n++)
+              BookmarkInfo_out.Bookmarks[n] = RecHeader->BookmarkInfo.Bookmarks[n];
+            BookmarkInfo_out.NrBookmarks = RecHeader->BookmarkInfo.NrBookmarks;
+
+            if (NrSegmentMarker > 2)
+            {
+              printf("INF FIX (%s): Fixing SegmentMarker in (%s) inf.\n", (DoFixPMT ? "output" : "source"));
+              CutEncodeToBM(BookmarkInfo_out.Bookmarks, BookmarkInfo_out.NrBookmarks);
+            }
+            BookmarkFix = TRUE;
+          }
         }
         fclose(fInfOut);
       }   
-      if (InfModified && ((fInfOut = fopen(InfFileOut, "r+b"))))
+      if ((InfModified || BookmarkFix) && ((fInfOut = fopen(InfFileOut, "r+b"))))
       {
-        fseek(fInfOut, sizeof(TYPE_RecHeader_Info), SEEK_SET);
-        fwrite(&ServiceInfo_out, 1, sizeof(TYPE_Service_Info), fInfOut);
+        if (InfModified)
+        {
+          fseek(fInfOut, sizeof(TYPE_RecHeader_Info), SEEK_SET);
+          fwrite(&ServiceInfo_out, 1, sizeof(TYPE_Service_Info), fInfOut);
+        }
+        if (BookmarkFix)
+        {
+          fseek(fInfOut, sizeof(TYPE_RecHeader_Info) + sizeof(TYPE_Service_Info) + sizeof(TYPE_Event_Info) + sizeof(TYPE_ExtEvent_Info) + sizeof(TYPE_TpInfo_TMSS));
+          fwrite(&BookmarkInfo_out, 1, sizeof(TYPE_Bookmark_Info), fInfOut);
+        }
         fclose(fInfOut);
       }
     }

@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <limits.h>
 #include <string.h>
 #include "type.h"
 #include "RecStrip.h"
@@ -15,6 +16,17 @@
 #include "RebuildInf.h"
 #include "TtxProcessor.h"
 #include "HumaxHeader.h"
+
+#include <sys/stat.h>
+#ifdef _WIN32
+  #define PATH_SEPARATOR "\\"
+  #define PATH_DELIMITER ";"
+  #define PATH_MAX FBLIB_DIR_SIZE
+#else
+  #include <unistd.h>
+  #define PATH_SEPATATOR "/"
+  #define PATH_DELIMITER ":"
+#endif
 
 #ifdef _MSC_VER
   #define strncasecmp _strnicmp
@@ -77,84 +89,55 @@ static dword crc32m(const unsigned char *buf, size_t len)
   return crc;
 } */
 
+static bool GetRealPath(const char* RelativePath, char *const OutAbsPath, int OutputSize)
+{
+  #ifdef _WIN32
+    _fullpath(OutAbsPath, RelativePath, OutputSize);
+  #else
+  {
+    char *FullPath = realpath(RelativePath, NULL);
+    strncpy(OutAbsPath, FullPath, OutputSize);
+    free(FullPath);
+  }
+  #endif
+}
+
 static bool FindExePath(const char* CalledExe, char *const OutExePath, int OutputSize) 
 {
-  char findyourself_save_pwd[FBLIB_DIR_SIZE];
-  char findyourself_save_argv0[FBLIB_DIR_SIZE];
-  char findyourself_save_path[FBLIB_DIR_SIZE];
-  char findyourself_path_separator='/';
-  char findyourself_path_separator_as_string[2]="/";
-  char findyourself_path_list_separator[8]=":;";  // could be ":; "
-  char findyourself_debug=0;
+  struct stat statbuf;
+  char* p;
+  bool ret = TRUE;
 
-  getcwd(findyourself_save_pwd, sizeof(findyourself_save_pwd));
-  strcpy(findyourself_save_path, getenv("PATH"));
+  GetRealPath(CalledExe, OutExePath, OutputSize);
 
+  // Is CalledExe a valid path?
+  if (stat(CalledExe, &statbuf) != 0)
+  {
+    char CurPath[PATH_MAX];
+    char *pPathItem;
 
+    // First, copy the PATH environment variable
+    char *pPath = getenv("PATH");
+    char *PathVar = (char*) malloc(strlen(pPath) + 1);
+    strcpy(PathVar, pPath);
 
-  char newpath[PATH_MAX+256];
-  char newpath2[PATH_MAX+256];
+    // Prepend each item of PATH variable before CalledExe
+    for (pPathItem = strtok(PathVar, PATH_DELIMITER); pPathItem; pPathItem = strtok(NULL, PATH_DELIMITER))
+    {
+      snprintf(CurPath, sizeof(CurPath), "%s" PATH_SEPARATOR "%s", pPathItem, CalledExe);
+      if (stat(CurPath, &statbuf) == 0)
+        { GetRealPath(CurPath, OutExePath, OutputSize); break; }
+    }
+    free(PathVar);
+    if(!pPathItem) ret = FALSE;
+  }
 
-  assert(findyourself_initialized);
-  result[0]=0;
+  // Remove Exe file name from path
+  if ((p = strrchr(OutExePath, '/'))) p[0] = '\0';
+  else if ((p = strrchr(OutExePath, '\\'))) p[0] = '\0';
+  else OutExePath[0] = '.';
 
-  if(findyourself_save_argv0[0]==findyourself_path_separator) {
-    if(findyourself_debug) printf("  absolute path\n");
-     realpath(findyourself_save_argv0, newpath);
-     if(findyourself_debug) printf("  newpath=\"%s\"\n", newpath);
-     if(!access(newpath, F_OK)) {
-        strncpy(result, newpath, size_of_result);
-        result[size_of_result-1]=0;
-        return(0);
-     } else {
-    perror("access failed 1");
-      }
-  } else if( strchr(findyourself_save_argv0, findyourself_path_separator )) {
-    if(findyourself_debug) printf("  relative path to pwd\n");
-    strncpy(newpath2, findyourself_save_pwd, sizeof(newpath2));
-    newpath2[sizeof(newpath2)-1]=0;
-    strncat(newpath2, findyourself_path_separator_as_string, sizeof(newpath2));
-    newpath2[sizeof(newpath2)-1]=0;
-    strncat(newpath2, findyourself_save_argv0, sizeof(newpath2));
-    newpath2[sizeof(newpath2)-1]=0;
-    realpath(newpath2, newpath);
-    if(findyourself_debug) printf("  newpath=\"%s\"\n", newpath);
-    if(!access(newpath, F_OK)) {
-        strncpy(result, newpath, size_of_result);
-        result[size_of_result-1]=0;
-        return(0);
-     } else {
-    perror("access failed 2");
-      }
-  } else {
-    if(findyourself_debug) printf("  searching $PATH\n");
-    char *saveptr;
-    char *pathitem;
-    for(pathitem=strtok_r(findyourself_save_path, findyourself_path_list_separator,  &saveptr); pathitem; pathitem=strtok_r(NULL, findyourself_path_list_separator, &saveptr) ) {
-       if(findyourself_debug>=2) printf("pathitem=\"%s\"\n", pathitem);
-       strncpy(newpath2, pathitem, sizeof(newpath2));
-       newpath2[sizeof(newpath2)-1]=0;
-       strncat(newpath2, findyourself_path_separator_as_string, sizeof(newpath2));
-       newpath2[sizeof(newpath2)-1]=0;
-       strncat(newpath2, findyourself_save_argv0, sizeof(newpath2));
-       newpath2[sizeof(newpath2)-1]=0;
-       realpath(newpath2, newpath);
-       if(findyourself_debug) printf("  newpath=\"%s\"\n", newpath);
-      if(!access(newpath, F_OK)) {
-          strncpy(result, newpath, size_of_result);
-          result[size_of_result-1]=0;
-          return(0);
-      }
-    } // end for
-    perror("access failed 3");
-
-  } // end else
-  // if we get here, we have tried all three methods on argv[0] and still haven't succeeded.   Include fallback methods here.
-  return(1);
-
-
-
-  strncpy(OutExePath, CalledExe, OutputSize);
+  return ret;
 }
 
 
@@ -164,14 +147,10 @@ bool GetPidsFromMap(word ServiceID, word *const OutPMTPID, word *const OutVidPID
   char LineBuf[FBLIB_DIR_SIZE], *pPid, *pLng, *NameStr, *p;
   word Sid, PPid, VPid, APid=0, TPid=0, SPid=0;
   int APidStr = 0, ALangStr = 0, k;
+
 //  strncpy(LineBuf, ExePath, sizeof(LineBuf));
   FindExePath(ExePath, LineBuf, sizeof(LineBuf));
-
-  if ((p = strrchr(LineBuf, '/'))) p[1] = '\0';
-  else if ((p = strrchr(LineBuf, '\\'))) p[1] = '\0';
-  else LineBuf[0] = 0;
-
-  strncat(LineBuf, "/SenderMap.txt", sizeof(LineBuf) - (p ? (p-LineBuf+1) : 0));
+  strncat(LineBuf, PATH_SEPARATOR "SenderMap.txt", sizeof(LineBuf) - strlen(LineBuf));
   
   if ((fMap = fopen(LineBuf, "r")))
   {
@@ -263,14 +242,10 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *InOutServiceName
   word Sid, PPid, VPid, APid = 0, TPid = 0, SPid = 0, curPid;
   int APidStr = 0, ALangStr = 0, k;
   word CandidateFound = FALSE, SidFound = 0, PMTFound = 0;
+
 //  strncpy(LineBuf, ExePath, sizeof(LineBuf));
   FindExePath(ExePath, LineBuf, sizeof(LineBuf));
-
-  if ((p = strrchr(LineBuf, '/'))) p[1] = '\0';
-  else if ((p = strrchr(LineBuf, '\\'))) p[1] = '\0';
-  else LineBuf[0] = 0;
-
-  strncat(LineBuf, "SenderMap.txt", sizeof(LineBuf) - (p ? (p-LineBuf+1) : 0));
+  strncat(LineBuf, PATH_SEPARATOR "SenderMap.txt", sizeof(LineBuf) - strlen(LineBuf));
 
   if ((fMap = fopen(LineBuf, "rb")))
   {
