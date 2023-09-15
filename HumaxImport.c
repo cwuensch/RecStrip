@@ -19,12 +19,14 @@
 
 #include <sys/stat.h>
 #ifdef _WIN32
+  #undef PATH_SEPARATOR
   #define PATH_SEPARATOR "\\"
   #define PATH_DELIMITER ";"
   #define PATH_MAX FBLIB_DIR_SIZE
 #else
   #include <unistd.h>
-  #define PATH_SEPATATOR "/"
+  #undef PATH_SEPARATOR
+  #define PATH_SEPARATOR "/"
   #define PATH_DELIMITER ":"
 #endif
 
@@ -92,12 +94,13 @@ static dword crc32m(const unsigned char *buf, size_t len)
 static bool GetRealPath(const char* RelativePath, char *const OutAbsPath, int OutputSize)
 {
   #ifdef _WIN32
-    _fullpath(OutAbsPath, RelativePath, OutputSize);
+    return (_fullpath(OutAbsPath, RelativePath, OutputSize) != NULL);
   #else
   {
     char *FullPath = realpath(RelativePath, NULL);
-    strncpy(OutAbsPath, FullPath, OutputSize);
+    bool ret = (strncpy(OutAbsPath, FullPath, OutputSize) != NULL);
     free(FullPath);
+    return ret;
   }
   #endif
 }
