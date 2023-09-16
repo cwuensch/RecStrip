@@ -127,8 +127,8 @@ dword                   NavDurationMS = 0, NavFrames = 0;
 int                     NewStartTimeOffset = -1;
 
 // Lokale Variablen
-static char             InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], InfFileFirstIn[FBLIB_DIR_SIZE], InfFileOld[FBLIB_DIR_SIZE], NavFileOut[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE], TeletextOut[FBLIB_DIR_SIZE];
-static bool             HasNavIn, HasNavOld;
+static char             InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], InfFileFirstIn[FBLIB_DIR_SIZE], /*InfFileOld[FBLIB_DIR_SIZE],*/ NavFileOut[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE], TeletextOut[FBLIB_DIR_SIZE];
+static bool             HasNavIn, HasNavOld, HasInfOld;
 static FILE            *fIn = NULL;
 static FILE            *fOut = NULL;
 static byte            *PendingBuf = NULL;
@@ -1015,14 +1015,15 @@ SONST
   SONST
     -> inf = NULL */
 
-  InfFileOld[0] = '\0';
+  HasInfOld = FALSE;
   if (*RecFileOut)
   {
     if (RebuildInf || *InfFileIn)
     {  
       if (DoMerge == 1)
       {
-        snprintf(InfFileOld, sizeof(InfFileOld), "%s.inf", RecFileOut);
+        HasInfOld = TRUE;
+        snprintf(InfFileIn, sizeof(InfFileIn), "%s.inf", RecFileOut);  // *CW: InfFileIn wird für die Backup-inf verwendet (statt InfFileOld), um Speicher zu sparen
         snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf_new", RecFileOut);
       }
       else
@@ -1038,8 +1039,9 @@ SONST
     {
 //      RebuildInf = TRUE;
       if(!*InfFileIn) WriteCutInf = TRUE;
-      InfFileIn[0] = '\0';
-      snprintf(InfFileOld, sizeof(InfFileOld), "%s.inf", RecFileIn);
+//      InfFileIn[0] = '\0';  // *CW: Zeile entfernt damit InfFileIn für DoInfFix zur Verfügung steht (vorheriger Grund der Zeile unbekannt)
+      HasInfOld = TRUE;
+      snprintf(InfFileIn, sizeof(InfFileIn), "%s.inf", RecFileIn);
       snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf_new", RecFileIn);
     }
     else
@@ -1245,13 +1247,13 @@ static bool CloseOutputFiles(void)
     rename(NavFileOld, NavFileBak);
     rename(NavFileOut, NavFileOld);
   }
-  if (*InfFileOld)
+  if (HasInfOld)
   {
     char InfFileBak[FBLIB_DIR_SIZE];
-    snprintf(InfFileBak, sizeof(InfFileBak), "%s_bak", InfFileOld);
+    snprintf(InfFileBak, sizeof(InfFileBak), "%s_bak", InfFileIn);
     remove(InfFileBak);
-    rename(InfFileOld, InfFileBak);
-    rename(InfFileOut, InfFileOld);
+    rename(InfFileIn, InfFileBak);
+    rename(InfFileOut, InfFileIn);
   }
 
   TRACEEXIT;
@@ -2172,7 +2174,7 @@ int main(int argc, const char* argv[])
       printf("No fix of (%s) inf necessary.\n", (DoFixPMT ? "output" : "source"));
 
     // Prüfe/Repariere ServiceID, ServiceName, AudioTypes und Bookmarks in der inf
-    if (DoInfFix && (DoFixPMT ? *InfFileIn : *InfFileOut))
+    if (DoInfFix && (DoFixPMT ? *InfFileOut : *InfFileIn))
     {
       FILE                 *fInfOut, *fInfIn;
       char                  InfFileStripped[FBLIB_DIR_SIZE];
@@ -2181,7 +2183,7 @@ int main(int argc, const char* argv[])
       TYPE_Bookmark_Info    BookmarkInfo_out;
       TYPE_RecHeader_TMSS*  RecHeader = ((TYPE_RecHeader_TMSS*)InfBuffer);
 
-      if ((fInfOut = fopen((DoFixPMT ? InfFileIn : InfFileOut), "rb")))
+      if ((fInfOut = fopen((DoFixPMT ? InfFileOut : InfFileIn), "rb")))
       {
         if ((fread(&RecHeaderInfo_out, sizeof(TYPE_RecHeader_Info), 1, fInfOut)) && (fread(&ServiceInfo_out, sizeof(TYPE_Service_Info), 1, fInfOut))
           && ((strncmp(RecHeaderInfo_out.Magic, "TFrc", 4) == 0) && (RecHeaderInfo_out.Version == 0x8000)))
@@ -2250,7 +2252,7 @@ int main(int argc, const char* argv[])
             {
               int Start = 0, End = 0, End_out = 0;
 
-              if (fseek(fInfIn, sizeof(TYPE_RecHeader_Info) + sizeof(TYPE_Service_Info) + sizeof(TYPE_Event_Info) + sizeof(TYPE_ExtEvent_Info) + sizeof(TYPE_TpInfo_TMSS), SEEK_SET)
+              if ((fseek(fInfIn, sizeof(TYPE_RecHeader_Info) + sizeof(TYPE_Service_Info) + sizeof(TYPE_Event_Info) + sizeof(TYPE_ExtEvent_Info) + sizeof(TYPE_TpInfo_TMSS), SEEK_SET) == 0)
                && fread(BookmarkInfo, sizeof(TYPE_Bookmark_Info), 1, fInfIn))
               {
                 if ((BookmarkInfo->NrBookmarks > 0) && (BookmarkInfo->NrBookmarks <= NRBOOKMARKS))
@@ -2270,7 +2272,7 @@ int main(int argc, const char* argv[])
               fclose(fInfIn);
 
               // Read current Bookmarks and SegmentMarkers from to-be-fixed inf (optional)
-              if (fseek(fInfOut, sizeof(TYPE_RecHeader_Info) + sizeof(TYPE_Service_Info) + sizeof(TYPE_Event_Info) + sizeof(TYPE_ExtEvent_Info) + sizeof(TYPE_TpInfo_TMSS), SEEK_SET)
+              if ((fseek(fInfOut, sizeof(TYPE_RecHeader_Info) + sizeof(TYPE_Service_Info) + sizeof(TYPE_Event_Info) + sizeof(TYPE_ExtEvent_Info) + sizeof(TYPE_TpInfo_TMSS), SEEK_SET) == 0)
                && fread(&BookmarkInfo_out, sizeof(TYPE_Bookmark_Info), 1, fInfOut))
               {
                 // If to-be-fixed inf has Bookmarks -> compare if they match with stripped inf (and fix if necessary)
@@ -2319,7 +2321,7 @@ int main(int argc, const char* argv[])
       }
 
       // Write the actual fixes to inf
-      if ((InfModified || BookmarkFix) && ((fInfOut = fopen((DoFixPMT ? InfFileIn : InfFileOut), "r+b"))))
+      if ((InfModified || BookmarkFix) && ((fInfOut = fopen((DoFixPMT ? InfFileOut : InfFileIn), "r+b"))))
       {
         if (InfModified)
         {
@@ -2329,7 +2331,7 @@ int main(int argc, const char* argv[])
         if (BookmarkFix)
         {
           fseek(fInfOut, sizeof(TYPE_RecHeader_Info) + sizeof(TYPE_Service_Info) + sizeof(TYPE_Event_Info) + sizeof(TYPE_ExtEvent_Info) + sizeof(TYPE_TpInfo_TMSS), SEEK_SET);
-          fwrite(BookmarkInfo, 1, (BookmarkFix>=2) ? sizeof(TYPE_Bookmark_Info) : BookmarkInfo->NrBookmarks+1, fInfOut);
+          fwrite(BookmarkInfo, 1, (BookmarkFix>=2) ? sizeof(TYPE_Bookmark_Info) : (BookmarkInfo->NrBookmarks+1) * 4, fInfOut);
         }
         fclose(fInfOut);
       }
