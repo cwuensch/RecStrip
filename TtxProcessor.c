@@ -577,11 +577,19 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
         for (k = 0; ((k < nrpages) && (pages[k] != page)); k++);
         if ((k >= nrpages) && (nrpages < 8))
         {
-          if (page==0x150 || (page==0x777 && config.page!=0x150) || ((page==0x149 || page==0x160 || page==0x571) && config.page!=0x150 && config.page!=0x777) || config.page==0) {
-            config.page = page;
-            printf("  TTX: Trying to extract subtitles from page %03x\n\n", config.page);
-          }
-          else
+          const uint16_t pageprio[] = { 0x160, 0x150, 0x777, 0x149, 0x571 };
+
+//          if (config.page==0 || page==0x160 || (config.page!=0x160 && (page==0x150 || (config.page!=0x150 && (page==0x777 || page==0x149 || (config.page!=0x777 && config.page!=0x149 && (page==0x571 || config.page!=0x571))))))) {
+//          if (config.page==0 || page==0x160 || (page==0x150 && config.page!=0x160) || ((page==0x777 || page==0x149) && config.page!=0x160 && config.page!=0x150) || (page==0x157 && config.page!=0x160 && config.page!=0x150 && config.page!=0x777 && config.page!=0x149)) {
+//          if (config.page==0 || page==pageprio[0] || (page==pageprio[1] && config.page!=pageprio[0]) || ((page==pageprio[2] || page==pageprio[3]) && config.page!=pageprio[0] && config.page!=pageprio[1]) || (page==pageprio[4] && config.page!=pageprio[0] && config.page!=pageprio[1] && config.page!=pageprio[2] && config.page!=pageprio[3])) {
+
+          for (k = 0; k < 5 && (config.page != pageprio[k]); k++)
+            if (config.page == 0 || page == pageprio[k]) {
+              config.page = page;
+              printf("  TTX: Trying to extract subtitles from page %03x\n\n", config.page);
+              break;
+            }
+          if (page != config.page)
             printf("  TTX: Additional subtitle page: %03x\n\n", page);
           pages[nrpages++] = page;
         }

@@ -105,13 +105,15 @@ static bool GetRealPath(const char* RelativePath, char *const OutAbsPath, int Ou
   #endif
 }
 
-static bool FindExePath(const char* CalledExe, char *const OutExePath, int OutputSize) 
+bool FindExePath(const char* CalledExe, char *const OutExePath, int OutputSize) 
 {
   struct stat statbuf;
   char* p;
   bool ret = TRUE;
 
+printf("1");
   GetRealPath(CalledExe, OutExePath, OutputSize);
+printf("2");
 
   // Is CalledExe a valid path?
   if (stat(CalledExe, &statbuf) != 0)
@@ -122,16 +124,25 @@ static bool FindExePath(const char* CalledExe, char *const OutExePath, int Outpu
     // First, copy the PATH environment variable
     char *pPath = getenv("PATH");
     char *PathVar = (char*) malloc(strlen(pPath) + 1);
+printf("3");
     strcpy(PathVar, pPath);
+printf("4");
 
-    // Prepend each item of PATH variable before CalledExe
-    for (pPathItem = strtok(PathVar, PATH_DELIMITER); pPathItem; pPathItem = strtok(NULL, PATH_DELIMITER))
+    if (PathVar)
     {
-      snprintf(CurPath, sizeof(CurPath), "%s" PATH_SEPARATOR "%s", pPathItem, CalledExe);
-      if (stat(CurPath, &statbuf) == 0)
-        { GetRealPath(CurPath, OutExePath, OutputSize); break; }
+      // Prepend each item of PATH variable before CalledExe
+      for (pPathItem = strtok(PathVar, PATH_DELIMITER); pPathItem; pPathItem = strtok(NULL, PATH_DELIMITER))
+      {
+printf("4");
+        snprintf(CurPath, sizeof(CurPath), "%s" PATH_SEPARATOR "%s", pPathItem, CalledExe);
+        if (stat(CurPath, &statbuf) == 0)
+          { printf("5"); GetRealPath(CurPath, OutExePath, OutputSize); break; }
+      }
+printf("6");
+      free(PathVar);
+printf("7");
     }
-    free(PathVar);
+printf("8");
     if(!pPathItem) ret = FALSE;
   }
 
@@ -139,6 +150,8 @@ static bool FindExePath(const char* CalledExe, char *const OutExePath, int Outpu
   if ((p = strrchr(OutExePath, '/'))) p[0] = '\0';
   else if ((p = strrchr(OutExePath, '\\'))) p[0] = '\0';
   else OutExePath[0] = '.';
+printf("9");
+printf("\n");
 
   return ret;
 }
