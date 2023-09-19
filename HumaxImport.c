@@ -22,6 +22,7 @@
   #undef PATH_SEPARATOR
   #define PATH_SEPARATOR "\\"
   #define PATH_DELIMITER ";"
+  #define S_IFLNK 0
   #define PATH_MAX FBLIB_DIR_SIZE
 #else
   #include <unistd.h>
@@ -97,9 +98,14 @@ static bool GetRealPath(const char* RelativePath, char *const OutAbsPath, int Ou
     return (_fullpath(OutAbsPath, RelativePath, OutputSize) != NULL);
   #else
   {
-    char *FullPath = realpath(RelativePath, NULL);
-    bool ret = (strncpy(OutAbsPath, FullPath, OutputSize) != NULL);
-    free(FullPath);
+    bool ret = FALSE;
+    char *FullPath;
+    if ((FullPath = realpath(RelativePath, NULL)))
+    {
+      ret = (strncpy(OutAbsPath, FullPath, OutputSize) != NULL);
+      OutAbsPath[OutputSize-1] = '\0';
+      free(FullPath);
+    }
     return ret;
   }
   #endif
@@ -107,7 +113,7 @@ static bool GetRealPath(const char* RelativePath, char *const OutAbsPath, int Ou
 
 bool FindExePath(const char* CalledExe, char *const OutExePath, int OutputSize) 
 {
-  FILE *f;
+  struct stat statbuf;
   char *p;
   bool ret = TRUE;
 
@@ -116,37 +122,39 @@ printf("1");
 printf("\n%s\n", CalledExe);
 
   // Is CalledExe a valid path?
-  if ((f = fopen(CalledExe, "rb")) == NULL)
+  if ((stat(CalledExe, &statbuf) != 0) || (statbuf.st_mode & (S_IFREG | S_IFLNK) == 0))
   {
-    char CurPath[PATH_MAX];
-    char *pPathItem;
+    char *PathVar, *pPathItem;
 
     // First, copy the PATH environment variable
     char *pPath = getenv("PATH");
-    char *PathVar = (char*) malloc(strlen(pPath) + 1);
+    if (pPath && *pPath)
+    {
+      char *CurPath = (char*) malloc(PATH_MAX);
+      if (CurPath && (PathVar = (char*) malloc(strlen(pPath) + 1)))
+      {
 printf("3");
-    strcpy(PathVar, pPath);
+        strcpy(PathVar, pPath);
 printf("\n%s\n", PathVar);
 
-    if (PathVar)
-    {
-      // Prepend each item of PATH variable before CalledExe
-      for (pPathItem = strtok(PathVar, PATH_DELIMITER); pPathItem; pPathItem = strtok(NULL, PATH_DELIMITER))
-      {
+        // Prepend each item of PATH variable before CalledExe
+        for (pPathItem = strtok(PathVar, PATH_DELIMITER); pPathItem; pPathItem = strtok(NULL, PATH_DELIMITER))
+        {
 printf("4");
-        snprintf(CurPath, sizeof(CurPath), "%s" PATH_SEPARATOR "%s", pPathItem, CalledExe);
+          snprintf(CurPath, sizeof(CurPath), "%s" PATH_SEPARATOR "%s", pPathItem, CalledExe);
 printf("\n%s\n", CurPath);
-        if ((f = fopen(CalledExe, "rb")) != NULL)
-          { printf("5"); fclose(f); GetRealPath(CurPath, OutExePath, OutputSize); printf("\n%s\n", OutExePath); break; }
-      }
+          if ((stat(CalledExe, &statbuf) == 0) && (statbuf.st_mode & (S_IFREG | S_IFLNK) != 0))
+            { printf("5"); GetRealPath(CurPath, OutExePath, OutputSize); printf("\n%s\n", OutExePath); break; }
+        }
 printf("6");
-      free(PathVar);
+        free(PathVar);
+      }
+      if(CurPath) free(CurPath);
 printf("7");
     }
 printf("8");
     if(!pPathItem) ret = FALSE;
   }
-  else fclose(f);
 
   // Remove Exe file name from path
   if ((p = strrchr(OutExePath, '/'))) p[0] = '\0';

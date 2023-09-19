@@ -2302,7 +2302,7 @@ printf("FindExePath: ");
                   End_out = NRBOOKMARKS - 1;
                 if (End_out && (BookmarkInfo_out.Bookmarks[End_out - 1] > 0) && (NrSegmentMarker > 2))
                 {
-                  if ((End_out != End) || (BookmarkInfo_out.Bookmarks[End_out - 1] != NrSegmentMarker) || (End_out - NrSegmentMarker - 5 != Start))
+                  if ((End_out != End) || ((int)BookmarkInfo_out.Bookmarks[End_out - 1] != NrSegmentMarker) || (End_out - NrSegmentMarker - 5 != Start))
                   {
                     printf("INF FIX (%s): Rewriting SegmentMarker area %u -> %u\n", (DoFixPMT ? "output" : "source"), BookmarkInfo_out.Bookmarks[End_out - 1], NrSegmentMarker);
                     BookmarkFix = 2;
