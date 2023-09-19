@@ -118,11 +118,12 @@ bool FindExePath(const char* CalledExe, char *const OutExePath, int OutputSize)
   bool ret = TRUE;
 
 printf("1");
-  GetRealPath(CalledExe, OutExePath, OutputSize);
-printf("\n%s\n", CalledExe);
+  if (!GetRealPath(CalledExe, OutExePath, OutputSize))
+    strncpy(OutExePath, CalledExe, OutputSize);
+printf("\n%s\n", OutExePath);
 
   // Is CalledExe a valid path?
-  if ((stat(CalledExe, &statbuf) != 0) || (statbuf.st_mode & (S_IFREG | S_IFLNK) == 0))
+  if ((stat(CalledExe, &statbuf) != 0) || ((statbuf.st_mode & S_IFMT != S_IFREG) && (statbuf.st_mode & S_IFMT != S_IFLNK)))
   {
     char *PathVar, *pPathItem;
 
@@ -141,9 +142,9 @@ printf("\n%s\n", PathVar);
         for (pPathItem = strtok(PathVar, PATH_DELIMITER); pPathItem; pPathItem = strtok(NULL, PATH_DELIMITER))
         {
 printf("4");
-          snprintf(CurPath, sizeof(CurPath), "%s" PATH_SEPARATOR "%s", pPathItem, CalledExe);
+          snprintf(CurPath, PATH_MAX, "%s" PATH_SEPARATOR "%s", pPathItem, CalledExe);
 printf("\n%s\n", CurPath);
-          if ((stat(CalledExe, &statbuf) == 0) && (statbuf.st_mode & (S_IFREG | S_IFLNK) != 0))
+          if ((stat(CalledExe, &statbuf) == 0) && (statbuf.st_mode & S_IFMT == S_IFREG) || (statbuf.st_mode & S_IFMT == S_IFLNK))
             { printf("5"); GetRealPath(CurPath, OutExePath, OutputSize); printf("\n%s\n", OutExePath); break; }
         }
 printf("6");
@@ -155,6 +156,8 @@ printf("7");
 printf("8");
     if(!pPathItem) ret = FALSE;
   }
+
+  printf("\nst_mode = %hu\n", statbuf.st_mode);
 
   // Remove Exe file name from path
   if ((p = strrchr(OutExePath, '/'))) p[0] = '\0';
