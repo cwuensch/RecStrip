@@ -1295,6 +1295,7 @@ int main(int argc, const char* argv[])
     time_t curTime = time(NULL);
     struct tm timeinfo;
     char ExePath[FBLIB_DIR_SIZE];
+printf("FindExePath: ");
     if (FindExePath(argv[0], ExePath, sizeof(ExePath)))
       printf("Executable path: %s\n", ExePath);
     #ifdef _WIN32

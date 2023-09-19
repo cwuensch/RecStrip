@@ -107,16 +107,16 @@ static bool GetRealPath(const char* RelativePath, char *const OutAbsPath, int Ou
 
 bool FindExePath(const char* CalledExe, char *const OutExePath, int OutputSize) 
 {
-  struct stat statbuf;
-  char* p;
+  FILE *f;
+  char *p;
   bool ret = TRUE;
 
 printf("1");
   GetRealPath(CalledExe, OutExePath, OutputSize);
-printf("2");
+printf("\n%s\n", CalledExe);
 
   // Is CalledExe a valid path?
-  if (stat(CalledExe, &statbuf) != 0)
+  if ((f = fopen(CalledExe, "rb")) == NULL)
   {
     char CurPath[PATH_MAX];
     char *pPathItem;
@@ -126,7 +126,7 @@ printf("2");
     char *PathVar = (char*) malloc(strlen(pPath) + 1);
 printf("3");
     strcpy(PathVar, pPath);
-printf("4");
+printf("\n%s\n", PathVar);
 
     if (PathVar)
     {
@@ -135,8 +135,9 @@ printf("4");
       {
 printf("4");
         snprintf(CurPath, sizeof(CurPath), "%s" PATH_SEPARATOR "%s", pPathItem, CalledExe);
-        if (stat(CurPath, &statbuf) == 0)
-          { printf("5"); GetRealPath(CurPath, OutExePath, OutputSize); break; }
+printf("\n%s\n", CurPath);
+        if ((f = fopen(CalledExe, "rb")) != NULL)
+          { printf("5"); fclose(f); GetRealPath(CurPath, OutExePath, OutputSize); printf("\n%s\n", OutExePath); break; }
       }
 printf("6");
       free(PathVar);
@@ -145,6 +146,7 @@ printf("7");
 printf("8");
     if(!pPathItem) ret = FALSE;
   }
+  else fclose(f);
 
   // Remove Exe file name from path
   if ((p = strrchr(OutExePath, '/'))) p[0] = '\0';
