@@ -111,19 +111,19 @@ static bool GetRealPath(const char* RelativePath, char *const OutAbsPath, int Ou
   #endif
 }
 
-bool FindExePath(const char* CalledExe, char *const OutExePath, int OutputSize) 
+bool FindExePath(const char* CalledExe, char *const OutExePath, int OutputSize)
 {
   struct stat statbuf;
   char *p;
   bool ret = TRUE;
-
+  
   if (!GetRealPath(CalledExe, OutExePath, OutputSize))
     strncpy(OutExePath, CalledExe, OutputSize);
 
   // Is CalledExe a valid path?
   if ((stat(CalledExe, &statbuf) != 0) || (((statbuf.st_mode & S_IFMT) != S_IFREG) && ((statbuf.st_mode & S_IFMT) != S_IFLNK)))
   {
-    char *PathVar, *pPathItem;
+    char *PathVar, *pPathItem = NULL;
 
     // First, copy the PATH environment variable
     char *pPath = getenv("PATH");
@@ -149,9 +149,9 @@ bool FindExePath(const char* CalledExe, char *const OutExePath, int OutputSize)
   }
 
   // Remove Exe file name from path
-  if ((p = strrchr(OutExePath, '/'))) p[0] = '\0';
-  else if ((p = strrchr(OutExePath, '\\'))) p[0] = '\0';
-  else OutExePath[0] = '.';
+  if ((p = strrchr(OutExePath, '/'))) p[1] = '\0';
+  else if ((p = strrchr(OutExePath, '\\'))) p[1] = '\0';
+  else strcpy(OutExePath, "." PATH_SEPARATOR);
   return ret;
 }
 
@@ -165,7 +165,7 @@ bool GetPidsFromMap(word ServiceID, word *const OutPMTPID, word *const OutVidPID
 
 //  strncpy(LineBuf, ExePath, sizeof(LineBuf));
   FindExePath(ExePath, LineBuf, sizeof(LineBuf));
-  strncat(LineBuf, PATH_SEPARATOR "SenderMap.txt", sizeof(LineBuf) - strlen(LineBuf));
+  strncat(LineBuf, "SenderMap.txt", sizeof(LineBuf) - strlen(LineBuf));
   
   if ((fMap = fopen(LineBuf, "r")))
   {
@@ -260,7 +260,7 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *InOutServiceName
 
 //  strncpy(LineBuf, ExePath, sizeof(LineBuf));
   FindExePath(ExePath, LineBuf, sizeof(LineBuf));
-  strncat(LineBuf, PATH_SEPARATOR "SenderMap.txt", sizeof(LineBuf) - strlen(LineBuf));
+  strncat(LineBuf, "SenderMap.txt", sizeof(LineBuf) - strlen(LineBuf));
 
   if ((fMap = fopen(LineBuf, "rb")))
   {

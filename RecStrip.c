@@ -1292,12 +1292,12 @@ int main(int argc, const char* argv[])
 
 #ifndef LINUX
   {
-    char ExePath[FBLIB_DIR_SIZE];
+    char RealExePath[FBLIB_DIR_SIZE];
     struct tm timeinfo;
     time_t curTime = time(NULL);
 
-    if (FindExePath(argv[0], ExePath, sizeof(ExePath)))
-      printf("Executable path: %s\n", ExePath);
+    if (FindExePath(argv[0], RealExePath, sizeof(RealExePath)))
+      printf("\nExecutable path: %s\n", RealExePath);
     #ifdef _WIN32
       localtime_s(&timeinfo, &curTime);
       _tzset();
@@ -1952,7 +1952,6 @@ int main(int argc, const char* argv[])
     {
       FILE *fPMT = NULL;
       char ServiceString[128], *p;
-      int n = 0;
 
       strncpy(ServiceString, ExePath, sizeof(ServiceString) - 1);
       ServiceString[sizeof(ServiceString) - 1] = '\0';
