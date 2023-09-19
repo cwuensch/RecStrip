@@ -117,13 +117,11 @@ bool FindExePath(const char* CalledExe, char *const OutExePath, int OutputSize)
   char *p;
   bool ret = TRUE;
 
-printf("1");
   if (!GetRealPath(CalledExe, OutExePath, OutputSize))
     strncpy(OutExePath, CalledExe, OutputSize);
-printf("\n%s\n", OutExePath);
 
   // Is CalledExe a valid path?
-  if ((stat(CalledExe, &statbuf) != 0) || ((statbuf.st_mode & S_IFMT != S_IFREG) && (statbuf.st_mode & S_IFMT != S_IFLNK)))
+  if ((stat(CalledExe, &statbuf) != 0) || (((statbuf.st_mode & S_IFMT) != S_IFREG) && ((statbuf.st_mode & S_IFMT) != S_IFLNK)))
   {
     char *PathVar, *pPathItem;
 
@@ -134,38 +132,26 @@ printf("\n%s\n", OutExePath);
       char *CurPath = (char*) malloc(PATH_MAX);
       if (CurPath && (PathVar = (char*) malloc(strlen(pPath) + 1)))
       {
-printf("3");
         strcpy(PathVar, pPath);
-printf("\n%s\n", PathVar);
 
         // Prepend each item of PATH variable before CalledExe
         for (pPathItem = strtok(PathVar, PATH_DELIMITER); pPathItem; pPathItem = strtok(NULL, PATH_DELIMITER))
         {
-printf("4");
           snprintf(CurPath, PATH_MAX, "%s" PATH_SEPARATOR "%s", pPathItem, CalledExe);
-printf("\n%s\n", CurPath);
-          if ((stat(CalledExe, &statbuf) == 0) && (statbuf.st_mode & S_IFMT == S_IFREG) || (statbuf.st_mode & S_IFMT == S_IFLNK))
-            { printf("5"); GetRealPath(CurPath, OutExePath, OutputSize); printf("\n%s\n", OutExePath); break; }
+          if ((stat(CurPath, &statbuf) == 0) && (((statbuf.st_mode & S_IFMT) == S_IFREG) || ((statbuf.st_mode & S_IFMT) == S_IFLNK)))
+            { GetRealPath(CurPath, OutExePath, OutputSize); break; }
         }
-printf("6");
         free(PathVar);
       }
       if(CurPath) free(CurPath);
-printf("7");
     }
-printf("8");
     if(!pPathItem) ret = FALSE;
   }
-
-  printf("\nst_mode = %hu\n", statbuf.st_mode);
 
   // Remove Exe file name from path
   if ((p = strrchr(OutExePath, '/'))) p[0] = '\0';
   else if ((p = strrchr(OutExePath, '\\'))) p[0] = '\0';
   else OutExePath[0] = '.';
-printf("9");
-printf("\n");
-
   return ret;
 }
 
