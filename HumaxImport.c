@@ -21,14 +21,14 @@
 #ifdef _WIN32
   #undef PATH_SEPARATOR
   #define PATH_SEPARATOR "\\"
-  #define PATH_DELIMITER ";"
+  #define PATH_DELIMITER ';'
   #define S_IFLNK 0
   #define PATH_MAX FBLIB_DIR_SIZE
 #else
   #include <unistd.h>
   #undef PATH_SEPARATOR
   #define PATH_SEPARATOR "/"
-  #define PATH_DELIMITER ":"
+  #define PATH_DELIMITER ':'
 #endif
 
 #ifdef _MSC_VER
@@ -114,38 +114,41 @@ static bool GetRealPath(const char* RelativePath, char *const OutAbsPath, int Ou
 bool FindExePath(const char* CalledExe, char *const OutExePath, int OutputSize)
 {
   struct stat statbuf;
-  char *p;
-  bool ret = TRUE;
-  
+  char *curPath, *pPath, *p;
+  bool WinExe = FALSE, ret = TRUE;
+
   if (!GetRealPath(CalledExe, OutExePath, OutputSize))
     strncpy(OutExePath, CalledExe, OutputSize);
 
-  // Is CalledExe a valid path?
-  if ((stat(CalledExe, &statbuf) != 0) || (((statbuf.st_mode & S_IFMT) != S_IFREG) && ((statbuf.st_mode & S_IFMT) != S_IFLNK)))
-  {
-    char *PathVar, *pPathItem = NULL;
-
-    // First, copy the PATH environment variable
-    char *pPath = getenv("PATH");
-    if (pPath && *pPath)
+  // Under Windows, check if ".exe" needs to be appended
+  #ifdef _WIN32
+    if((strlen(CalledExe) <= 4) || (strncasecmp(&CalledExe[strlen(CalledExe) - 4], ".exe", 4) != 0))
     {
-      char *CurPath = (char*) malloc(PATH_MAX);
-      if (CurPath && (PathVar = (char*) malloc(strlen(pPath) + 1)))
-      {
-        strcpy(PathVar, pPath);
-
-        // Prepend each item of PATH variable before CalledExe
-        for (pPathItem = strtok(PathVar, PATH_DELIMITER); pPathItem; pPathItem = strtok(NULL, PATH_DELIMITER))
-        {
-          snprintf(CurPath, PATH_MAX, "%s" PATH_SEPARATOR "%s", pPathItem, CalledExe);
-          if ((stat(CurPath, &statbuf) == 0) && (((statbuf.st_mode & S_IFMT) == S_IFREG) || ((statbuf.st_mode & S_IFMT) == S_IFLNK)))
-            { GetRealPath(CurPath, OutExePath, OutputSize); break; }
-        }
-        free(PathVar);
-      }
-      if(CurPath) free(CurPath);
+      if ((int)strlen(OutExePath) + 4 < OutputSize)  strcat(OutExePath, ".exe");
+      WinExe = TRUE;
     }
-    if(!pPathItem) ret = FALSE;
+  #endif
+
+  // Is CalledExe a valid file?
+  if ((stat(OutExePath, &statbuf) != 0) || (((statbuf.st_mode & S_IFMT) != S_IFREG) && ((statbuf.st_mode & S_IFMT) != S_IFLNK)))
+  {
+    ret = FALSE;
+    // First, get the PATH environment variable
+    if ((pPath = getenv("PATH")) && *pPath && ((curPath = (char*) malloc(PATH_MAX))))
+    {
+      curPath[PATH_MAX - 1] = '\0';
+      // Prepend each item of PATH variable before CalledExe
+      for (p = strchr(pPath, PATH_DELIMITER); pPath && *pPath; (pPath = p) && (p = strchr(++pPath, PATH_DELIMITER)))
+      {
+        int len = min((p ? p - pPath : (int)strlen(pPath)), PATH_MAX-1);
+        strncpy(curPath, pPath, len);
+        snprintf(&curPath[len], PATH_MAX - len, (WinExe ? PATH_SEPARATOR "%s.exe" : PATH_SEPARATOR "%s"), CalledExe);
+
+        if ((stat(curPath, &statbuf) == 0) && (((statbuf.st_mode & S_IFMT) == S_IFREG) || ((statbuf.st_mode & S_IFMT) == S_IFLNK)))
+          { GetRealPath(curPath, OutExePath, OutputSize); ret = TRUE; break; }
+      }
+      free(curPath);
+    }
   }
 
   // Remove Exe file name from path
