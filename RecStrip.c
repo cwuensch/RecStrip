@@ -2245,7 +2245,7 @@ int main(int argc, const char* argv[])
           }
 
           // If Stripped inf provided -> read Bookmark and SegmentMarker area from stripped inf
-          if (argc > 0)
+          if (argc > 1)
           {
             if (strstr(argv[1], ".inf"))
               strncpy(InfFileStripped, argv[1], sizeof(InfFileStripped));

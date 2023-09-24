@@ -140,7 +140,7 @@ bool FindExePath(const char* CalledExe, char *const OutExePath, int OutputSize)
       // Prepend each item of PATH variable before CalledExe
       for (p = strchr(pPath, PATH_DELIMITER); pPath && *pPath; (pPath = p) && (p = strchr(++pPath, PATH_DELIMITER)))
       {
-        int len = min((p ? p - pPath : (int)strlen(pPath)), PATH_MAX-1);
+        int len = min((p ? (int)(p - pPath) : (int)strlen(pPath)), PATH_MAX-1);
         strncpy(curPath, pPath, len);
         snprintf(&curPath[len], PATH_MAX - len, (WinExe ? PATH_SEPARATOR "%s.exe" : PATH_SEPARATOR "%s"), CalledExe);
 
@@ -168,7 +168,7 @@ bool GetPidsFromMap(word ServiceID, word *const OutPMTPID, word *const OutVidPID
 
 //  strncpy(LineBuf, ExePath, sizeof(LineBuf));
   FindExePath(ExePath, LineBuf, sizeof(LineBuf));
-  strncat(LineBuf, "SenderMap.txt", sizeof(LineBuf) - strlen(LineBuf));
+  strncat(LineBuf, "SenderMap.txt", sizeof(LineBuf) - strlen(LineBuf) - 1);
   
   if ((fMap = fopen(LineBuf, "r")))
   {
@@ -263,15 +263,16 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *InOutServiceName
 
 //  strncpy(LineBuf, ExePath, sizeof(LineBuf));
   FindExePath(ExePath, LineBuf, sizeof(LineBuf));
-  strncat(LineBuf, "SenderMap.txt", sizeof(LineBuf) - strlen(LineBuf));
+  k = (int)strlen(LineBuf);
+  strncpy(&LineBuf[k], "SenderMap.txt", (int)sizeof(LineBuf) - k - 1);
+  LineBuf[sizeof(LineBuf) - 1] = '\0';
 
   if ((fMap = fopen(LineBuf, "rb")))
   {
     // bei Humax: zuerst Sender aus Dateinamen ermitteln
     if (HumaxSource && InOutServiceName)
     {
-      if(p) p[1] = '\0'; else LineBuf[0] = '\0';
-      strncat(LineBuf, "HumaxMap.txt", sizeof(LineBuf) - (p ? (p-LineBuf+1) : 0));
+      strncpy(&LineBuf[k], "HumaxMap.txt", (int)sizeof(LineBuf) - k - 1);
       if ((fMap2 = fopen(LineBuf, "rb")))
       {
         int len;
