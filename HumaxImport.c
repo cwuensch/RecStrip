@@ -317,11 +317,11 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *InOutServiceName
           strncpy(PidsFound, &LineBuf[APidStr], sizeof(PidsFound));
           if ((p = strchr(PidsFound, ';'))) p[0] = '\0';
           strncpy(LangFound, &LineBuf[ALangStr], sizeof(LangFound));
-          PMTFound = PPid;
           if(CandidateFound) printf("\n");
           printf("  Found ServiceID in Map: SID=%hu (%s), PMTPid=%hu", Sid, SenderFound, PPid);
           if(CandidateFound) { printf(" (ambiguous) -> skipping\n"); return 1; }
           SidFound = Sid;
+          PMTFound = PPid;
           CandidateFound = TRUE;
         }
         else if (CandidateFound)  // Nutzt aus, dass die SenderMap nach VideoPID sortiert ist
