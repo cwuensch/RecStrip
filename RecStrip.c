@@ -2450,7 +2450,7 @@ int main(int argc, const char* argv[])
       // neues Bookmark an Schnittstelle setzen
       if (DoCut == 1 || DoMerge)
         if (CurrentPosition-PositionOffset > 4512)
-          AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + 4512 /*9023 - 2 - ((MedionMode != 1) ? NrEPGPacks : EPGLen/183)*/));
+          AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + 9023 - ((2 - ((MedionMode != 1) ? NrEPGPacks : EPGLen/183)) * OutPacketSize) /* + 4512 */ ));
     }
 
     while (fIn)
@@ -2569,7 +2569,7 @@ int main(int argc, const char* argv[])
             if (DoCut == 1 || (DoMerge && CurrentPosition == 0))
 //              if ((CurrentPosition-PositionOffset > 0) && (CurrentPosition + 3*9024*BlocksOneSecond < (long long)RecFileSize))
               if ((CurrentPosition-PositionOffset > 4512) && (CurPosBlocks + 3*BlocksOneSecond < RecFileBlocks))
-                AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + 4512 /*9023 - 2 - ((MedionMode != 1) ? NrEPGPacks : EPGLen/183)*/));
+                AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + ((9023 - 2 - ((MedionMode != 1) ? NrEPGPacks : EPGLen/183)) * OutPacketSize) /* + 4512 */ ));
           }
 
           if (DoCut == 1)
