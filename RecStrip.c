@@ -259,8 +259,8 @@ static time_t HDD_GetFileDateTime(char const *AbsFileName)
         localtime_s(&timeinfo, &Result);
         localtime_s(&timeinfo_sys, &now);
         Result -= (3600 * (timeinfo_sys.tm_isdst - timeinfo.tm_isdst));  // Windows-eigene DST-Korrektur ausgleichen
-        Result += _timezone - (timeinfo.tm_isdst ? 3600 : 0);           // Windows-Datum (local) in UTC umwandeln
-        Result3+= _timezone - (timeinfo.tm_isdst ? 3600 : 0);
+//        Result += _timezone - (timeinfo.tm_isdst ? 3600 : 0);           // Windows-Datum (local) in UTC umwandeln
+//        Result3+= _timezone - (timeinfo.tm_isdst ? 3600 : 0);
 if (Result3 != Result)
   printf("ASSERTION ERROR! Windows API date (%llu) does not match 'correct' stat date (%llu).\n", Result3, Result);
       }
@@ -2450,7 +2450,7 @@ int main(int argc, const char* argv[])
       // neues Bookmark an Schnittstelle setzen
       if (DoCut == 1 || DoMerge)
         if (CurrentPosition-PositionOffset > 4512)
-          AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + 9023 - ((2 - ((MedionMode != 1) ? NrEPGPacks : EPGLen/183)) * OutPacketSize) /* + 4512 */ ));
+          AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + 9023 - ((2 + ((MedionMode != 1) ? NrEPGPacks : EPGLen/183)) * OutPacketSize) /* + 4512 */ ));
     }
 
     while (fIn)
@@ -2569,7 +2569,7 @@ int main(int argc, const char* argv[])
             if (DoCut == 1 || (DoMerge && CurrentPosition == 0))
 //              if ((CurrentPosition-PositionOffset > 0) && (CurrentPosition + 3*9024*BlocksOneSecond < (long long)RecFileSize))
               if ((CurrentPosition-PositionOffset > 4512) && (CurPosBlocks + 3*BlocksOneSecond < RecFileBlocks))
-                AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + ((9023 - 2 - ((MedionMode != 1) ? NrEPGPacks : EPGLen/183)) * OutPacketSize) /* + 4512 */ ));
+                AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + 9023 - ((2 + ((MedionMode != 1) ? NrEPGPacks : EPGLen/183)) * OutPacketSize) /* + 4512 */ ));
           }
 
           if (DoCut == 1)
@@ -2832,6 +2832,7 @@ int main(int argc, const char* argv[])
           while ((i < NrSegmentMarker) && (CurrentPosition >= SegmentMarker[i].Position))
           {
             SegmentMarker[i].Position -= PositionOffset;
+            if (SegmentMarker[i].Position < 9024) SegmentMarker[i].Position = 0;
             if (i > 0 && !SegmentMarker[i].Timems)
               pOutNextTimeStamp = &SegmentMarker[i].Timems;
             SegmentMarker[i].Timems -= CutTimeOffset;
@@ -2848,15 +2849,15 @@ int main(int argc, const char* argv[])
                 DeleteBookmark(j);
               else
               {
-                BookmarkInfo->Bookmarks[j] -= (dword)((PositionOffset + 4512) / 9024);  // CalcBlockSize(PositionOffset)
+                BookmarkInfo->Bookmarks[j] -= (dword)((PositionOffset + 9023) / 9024);  // CalcBlockSize(PositionOffset)
                 j++;
               }
             }
 
             if (!ResumeSet && (DoMerge != 1) && (CurPosBlocks >= BookmarkInfo->Resume))
             {
-              if ((PositionOffset + 4512) / 9024 <= BookmarkInfo->Resume)
-                BookmarkInfo->Resume -= (dword)((PositionOffset + 4512) / 9024);  // CalcBlockSize(PositionOffset)
+              if ((PositionOffset + 9023) / 9024 <= BookmarkInfo->Resume)
+                BookmarkInfo->Resume -= (dword)((PositionOffset + 9023) / 9024);  // CalcBlockSize(PositionOffset)
               else
                 BookmarkInfo->Resume = 0;
               ResumeSet = TRUE;
