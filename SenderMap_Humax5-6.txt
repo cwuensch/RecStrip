@@ -1,13 +1,13 @@
 #SvcID;PMTPID;VidPID;AudPIDs;AudioDesc;TtxPID;SubtPID;ServiceName
 # ! bis 08/2007 (bis Humax-4)
-28202;100;101;102;;104;;Das Erste
+#28202;100;101;102;;104;;Das Erste
 # ! ab 09/2007 (ab Humax-5 + von Humax-4: LEOPARDSEEBA?_070910*, FELIXUNDDIEW1_0709230553)
 28106;100;101;102/103/106;deu/mis/deu;104;105;Das Erste
 28310;100;101;102/103;deu/mis;104;505;WDR Münster
 # bis 2008 (alle Humax)
 28203;100;101;102;;104;;EinsPlus
 # ab 2009
-28723;100;101;102;;104;;EinsPlus
+#28723;100;101;102;;104;;EinsPlus
 # bis 2006 (alle Humax)
 899;98;101;102;;104;;kabel eins
 28006;100;110;120/121/122/125;deu/mis/mul/deu;130;131;ZDF
@@ -21,10 +21,11 @@
 28722;200;201;202;deu;;;EinsFestival
 28007;200;210;220/221/222/225;deu/mis/mul/deu;230;231;3sat
 17500;96;255;256/259;deu/deu;32;;SAT1
+17501;97;255;256/259;deu/deu;32;;ProSieben
 28108;300;301;302/303;deu/mis;304;;hr fernsehen
 28008;300;310;320/321/322/325;deu/mis/mul/deu;330;331;KiKa
 # ! bis 02/2007 (bis Humax-4)
-28109;400;401;402/403;deu/fra;404;;arte
+#28109;400;401;402/403;deu/fra;404;;arte
 # ! ab 10/2008 (ab Humax-5)
 28724;400;401;402/403;deu/fra;404;;arte
 28330;400;401;402;;;;MDR
@@ -39,10 +40,10 @@
 28014;650;660;670/671/672/675;deu/mis/mul/deu;680;681;ZDFdoku
 28487;700;701;702;;;;BRalpha
 # ab 2009
-17502;98;767;768;deu;34;;kabel eins
+#17502;98;767;768;deu;34;;kabel eins
 28113;800;801;802/803/806;deu/mis/deu;804;;SWR BW
 # bis 01/2008 (bis Humax-4)
-28114;500;901;902;;;;Phoenix
+#28114;500;901;902;;;;Phoenix
 51;99;1535;1536;deu;38;;Tele 5
 28396;1600;1601;1602/1606;ger/ger;;;EinsFestival HD
 17500;96;1791;1792;;;;SAT1

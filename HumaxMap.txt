@@ -1,0 +1,45 @@
+#Dateiname	Sender
+360DieGeoRepo_0408110219.vid	arte
+DieGlorieuses_0406171358.vid	arte
+DurchswildeKo_0410010920.vid	WDR Köln
+FaszinationWi_0411041930.vid	BR
+Felixunddiewi_0409271444.vid	BR
+ GalapagosHter_0402191858.vid	arte
+Geheimnisvoll_0409281429.vid	WDR
+Mallorcaswild_0410171538.vid	WDR Köln
+Meereswelten_0402201328.vid	mdr
+SUEDSEEIMPRES_0408291234.vid	mdr
+TiereinGefahr_0402201548.vid	RBB
+UnserblauerPl_0408172215.vid	rbb
+
+360DieGeoRepo_0501161521.vid	arte
+Galileo_0505180738.vid	ProSieben
+ LexiTVWissenf_0505260758.vid	mdr
+NANO_0501031129.vid	mdr
+TIERHOCHVIER5_0502041410.vid	WDR
+ Urviecher_0501250823.vid	WDR
+
+ABENTEUERZOO3_0512111314.vid	mdr
+DIEDSCHUNGEL1_0602022015.vid	arte
+ HierundHeute_0511251443.vid	WDR
+IMBANNVONEBB1_0606121004.vid	BR
+KADIRDERBAUM1_0606240859.vid	arte
+KADIRDERBAUM2_0606240921.vid	arte
+MrmelTV_0510051409.vid	BR
+REVOLUTIONAM1_0603131859.vid	arte
+REVOLUTIONAM2_0603211720.vid	arte
+ TIERKINDER_0601021153.vid	BR
+
+COIBATROPENI2_0702271709.vid	arte
+ EurekaTV_0703141434.vid	BR
+GANZSCHOENW23_0703051425.vid	arte
+ naturexclusiv_0706251028.vid	BR
+
+AufnachEuropa_0811200923.vid	arte
+DieDschungelH_0806190923.vid	arte
+Dieunglaublic_0807200824.vid	arte
+Dieunglaublic_0808170824.vid	arte
+ UNTERWEGSZUD1_0810120729.vid	Phoenix
+ UNTERWEGSZUD2_0810120807.vid	Phoenix
+
+REIFEPRUEFUNG_1112221814.vid	arte

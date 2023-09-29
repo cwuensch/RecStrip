@@ -819,8 +819,8 @@ static bool AnalyseAudio(byte *PSBuffer, int BufSize, word pid, tAudioTrack *con
         const float AC3Sampling[] = {48, 44.1f, 32, 0};
         const short AC3Bitrates[] = {32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, 448, 512, 576, 640};
 
-//        if (AudioTrack)
-//          AudioTrack->mode = STREAM_AUDIO_MPEG4_AC3_PLUS;
+        if (AudioTrack && !AudioTrack->type)
+          AudioTrack->type = STREAM_AUDIO_MPEG4_AC3_PLUS;
 
         printf("  TS: PID=%d, AudioType: AC3 @ %.1f kHz, %hd kbit/s", pid, AC3Sampling[(PSBuffer[p] & 0xc0)], ((PSBuffer[p] & 0x3f) < 38) ? AC3Bitrates[(PSBuffer[p] & 0x3f) / 2] : -1);
         if(*AudioTrack->desc) printf(" [%s]\n", AudioTrack->desc); else printf("\n");
@@ -835,8 +835,8 @@ static bool AnalyseAudio(byte *PSBuffer, int BufSize, word pid, tAudioTrack *con
 
         tDTSHeader *DTSHeader = (tDTSHeader*) &PSBuffer[p-4];
         byte rate = DTSHeader->rate1 << 3 | DTSHeader->rate2;
-//        if (AudioTrack)
-//          AudioTrack->mode = STREAM_AUDIO_MPEG4_DTS;
+        if (AudioTrack && !AudioTrack->type)
+          AudioTrack->type = STREAM_AUDIO_MPEG4_DTS;
 
         printf("  TS: PID=%d, AudioType: DTS @ %.1f kHz, %hd kbit/s", pid, DTSSampling[DTSHeader->sfreq], ((rate == 0x0F) ? 768 : ((rate == 0x18) ? 1536 : 0)));
         if(*AudioTrack->desc) printf(" [%s]\n", AudioTrack->desc); else printf("\n");
@@ -1197,7 +1197,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 
     if (RecInf->ServiceInfo.ServiceID != 1)
       GetPidsFromMap(RecInf->ServiceInfo.ServiceID, &RecInf->ServiceInfo.PMTPID, &VideoPID, 0, &TeletextPID, NULL);
-    if(!RecInf->ServiceInfo.PMTPID) RecInf->ServiceInfo.PMTPID = 100;
+    if(!RecInf->ServiceInfo.ServiceID) RecInf->ServiceInfo.ServiceID = 1;
+    if(!RecInf->ServiceInfo.PMTPID) RecInf->ServiceInfo.PMTPID = 256;
     printf("  TS: SID=%hu, PCRPID=%hd, PMTPID=%hd\n", RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID, RecInf->ServiceInfo.PMTPID);
 
     AudioPIDs[1].streamType = 1;
@@ -1645,9 +1646,9 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         printf ("  Failed to get service name from SDT.\n");
       if (!RecInf->ServiceInfo.ServiceID || RecInf->ServiceInfo.ServiceID==1 || !RecInf->ServiceInfo.PMTPID || !*RecInf->ServiceInfo.ServiceName)
       {
-        RecInf->ServiceInfo.ServiceID = GetSidFromMap(VideoPID, 0 /*GetMinimalAudioPID(AudioPIDs)*/, TeletextPID, RecInf->ServiceInfo.ServiceName, &RecInf->ServiceInfo.PMTPID);
+        RecInf->ServiceInfo.ServiceID = GetSidFromMap(VideoPID, 0 /*GetMinimalAudioPID(AudioPIDs)*/, TeletextPID, RecInf->ServiceInfo.ServiceName, &RecInf->ServiceInfo.PMTPID);  // zweiter Versuch, ggf. überschreiben
         if(!RecInf->ServiceInfo.ServiceID) RecInf->ServiceInfo.ServiceID = 1;
-        if(!RecInf->ServiceInfo.PMTPID) RecInf->ServiceInfo.PMTPID = 100;
+        if(!RecInf->ServiceInfo.PMTPID) RecInf->ServiceInfo.PMTPID = 256;
       }
       if(!EITOK && PMTatStart && (EITBuffer.ValidBuffer == 0) && (LastEITBuffer == 0))
         EITOK = !EITBuffer.ErrorFlag && AnalyseEIT(EITBuffer.Buffer1, EITBuffer.BufferPtr, RecInf->ServiceInfo.ServiceID, RecInf);  // Versuche EIT trotzdem zu parsen (bei gestrippten Aufnahmen gibt es kein Folge-Paket, das den Payload_Unit_Start auslöst)
@@ -1952,7 +1953,7 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPid, word Vid
 
   Offset               += Elem->ESInfoLen2;
   PMT->SectionLen2     += sizeof(tElemStream) + Elem->ESInfoLen2;
-  printf("  Video Track: PID=%d, %s, Type=0x%x\n", VideoPID, (isHDVideo ? "HD" : "SD"), Elem->stream_type);
+  printf("  Video Track:    PID=%d, %s, Type=0x%x\n", VideoPID, (isHDVideo ? "HD" : "SD"), Elem->stream_type);
 
   // Sortiere Audio-PIDs
 //  SortAudioPIDs(AudioPIDs);
@@ -1985,21 +1986,21 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPid, word Vid
         Elem->ESInfoLen2   += (sizeof(tTSAC3Desc) + sizeof(tTSAudioDesc));
         Desc1->DescrTag     = DESC_AC3;
         Desc1->DescrLength  = 1;
-        printf("  Audio Track %d: PID=%d, AC3, Type=0x%x", (k + 1), AudioPIDs[k].pid, Elem->stream_type);
+        printf("  Audio Track %d:  PID=%d, AC3, Type=0x%x", (k + 1), AudioPIDs[k].pid, Elem->stream_type);
       }
       else if (AudioPIDs[k].type <= 4)
       {
         Desc = (tTSAudioDesc*) &Packet->Data[Offset + sizeof(tTSStreamDesc)];
         Elem->stream_type   = AudioPIDs[k].type;  // (AudioPIDs[k].type <= 1) ? ((AudioPIDs[k].type == 1) ? STREAM_AUDIO_MPEG1 : STREAM_AUDIO_MPEG2) : AudioPIDs[k].type;
         Elem->ESInfoLen2   += sizeof(tTSAudioDesc);
-        printf("  Audio Track %d: PID=%d, MPEG, Type=0x%x", (k + 1), AudioPIDs[k].pid, Elem->stream_type);
+        printf("  Audio Track %d:  PID=%d, MPEG-%s, Type=0x%x", (k + 1), AudioPIDs[k].pid, (Elem->stream_type==STREAM_AUDIO_MPEG1 ? "1" : (Elem->stream_type==STREAM_AUDIO_MPEG2 ? "2" : "?")), Elem->stream_type);
       }
       else
       {
         Desc = (tTSAudioDesc*) &Packet->Data[Offset + sizeof(tTSStreamDesc)];
         Elem->stream_type   = AudioPIDs[k].type;
         Elem->ESInfoLen2   += sizeof(tTSAudioDesc);
-        printf("  Audio Track %d: PID=%d, Unknown Type: 0x%x", (k + 1), AudioPIDs[k].pid, Elem->stream_type);
+        printf("  Audio Track %d:  PID=%d, Unknown Type: 0x%x", (k + 1), AudioPIDs[k].pid, Elem->stream_type);
       }
       if (Desc)
       {
@@ -2122,7 +2123,7 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPid, word Vid
       Offset                 += Elem->ESInfoLen2;
       PMT->SectionLen2       += sizeof(tElemStream) + Elem->ESInfoLen2;
       if(AudioPIDs[k].pid == SubtitlesPID) SubtitlesDone = TRUE;
-      printf("  Subtitles Track: PID=%d [%.3s]\n", AudioPIDs[k].pid, subtDesc->LanguageCode);
+      printf("  Subtitle Track: PID=%d [%.3s]\n", AudioPIDs[k].pid, subtDesc->LanguageCode);
     }
   }
 

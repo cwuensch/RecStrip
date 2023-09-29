@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <limits.h>
 #include <string.h>
 #include "type.h"
 #include "RecStrip.h"
@@ -16,6 +17,23 @@
 #include "TtxProcessor.h"
 #include "HumaxHeader.h"
 
+#include <sys/stat.h>
+#ifdef _WIN32
+  #undef PATH_SEPARATOR
+  #define PATH_SEPARATOR "\\"
+  #define PATH_DELIMITER ';'
+  #define S_IFLNK 0
+  #define PATH_MAX FBLIB_DIR_SIZE
+#else
+  #include <unistd.h>
+  #undef PATH_SEPARATOR
+  #define PATH_SEPARATOR "/"
+  #define PATH_DELIMITER ':'
+#endif
+
+#ifdef _MSC_VER
+  #define strncasecmp _strnicmp
+#endif
 
 static const dword crc_table[] = {
   0x00000000, 0x04C11DB7, 0x09823B6E, 0x0D4326D9,
@@ -74,6 +92,72 @@ static dword crc32m(const unsigned char *buf, size_t len)
   return crc;
 } */
 
+static bool GetRealPath(const char* RelativePath, char *const OutAbsPath, int OutputSize)
+{
+  #ifdef _WIN32
+    return (_fullpath(OutAbsPath, RelativePath, OutputSize) != NULL);
+  #else
+  {
+    bool ret = FALSE;
+    char *FullPath;
+    if ((FullPath = realpath(RelativePath, NULL)))
+    {
+      ret = (strncpy(OutAbsPath, FullPath, OutputSize) != NULL);
+      OutAbsPath[OutputSize-1] = '\0';
+      free(FullPath);
+    }
+    return ret;
+  }
+  #endif
+}
+
+bool FindExePath(const char* CalledExe, char *const OutExePath, int OutputSize)
+{
+  struct stat statbuf;
+  char *curPath, *pPath, *p;
+  bool WinExe = FALSE, ret = TRUE;
+
+  if (!GetRealPath(CalledExe, OutExePath, OutputSize))
+    strncpy(OutExePath, CalledExe, OutputSize);
+
+  // Under Windows, check if ".exe" needs to be appended
+  #ifdef _WIN32
+    if((strlen(CalledExe) <= 4) || (strncasecmp(&CalledExe[strlen(CalledExe) - 4], ".exe", 4) != 0))
+    {
+      if ((int)strlen(OutExePath) + 4 < OutputSize)  strcat(OutExePath, ".exe");
+      WinExe = TRUE;
+    }
+  #endif
+
+  // Is CalledExe a valid file?
+  if ((stat(OutExePath, &statbuf) != 0) || (((statbuf.st_mode & S_IFMT) != S_IFREG) && ((statbuf.st_mode & S_IFMT) != S_IFLNK)))
+  {
+    ret = FALSE;
+    // First, get the PATH environment variable
+    if ((pPath = getenv("PATH")) && *pPath && ((curPath = (char*) malloc(PATH_MAX))))
+    {
+      curPath[PATH_MAX - 1] = '\0';
+      // Prepend each item of PATH variable before CalledExe
+      for (p = strchr(pPath, PATH_DELIMITER); pPath && *pPath; (pPath = p) && (p = strchr(++pPath, PATH_DELIMITER)))
+      {
+        int len = min((p ? (int)(p - pPath) : (int)strlen(pPath)), PATH_MAX-1);
+        strncpy(curPath, pPath, len);
+        snprintf(&curPath[len], PATH_MAX - len, (WinExe ? PATH_SEPARATOR "%s.exe" : PATH_SEPARATOR "%s"), CalledExe);
+
+        if ((stat(curPath, &statbuf) == 0) && (((statbuf.st_mode & S_IFMT) == S_IFREG) || ((statbuf.st_mode & S_IFMT) == S_IFLNK)))
+          { GetRealPath(curPath, OutExePath, OutputSize); ret = TRUE; break; }
+      }
+      free(curPath);
+    }
+  }
+
+  // Remove Exe file name from path
+  if ((p = strrchr(OutExePath, '/'))) p[1] = '\0';
+  else if ((p = strrchr(OutExePath, '\\'))) p[1] = '\0';
+  else strcpy(OutExePath, "." PATH_SEPARATOR);
+  return ret;
+}
+
 
 bool GetPidsFromMap(word ServiceID, word *const OutPMTPID, word *const OutVidPID, word *const OutAudPID, word *const OutTtxPID, word *const OutSubtPID)
 {
@@ -81,13 +165,10 @@ bool GetPidsFromMap(word ServiceID, word *const OutPMTPID, word *const OutVidPID
   char LineBuf[FBLIB_DIR_SIZE], *pPid, *pLng, *NameStr, *p;
   word Sid, PPid, VPid, APid=0, TPid=0, SPid=0;
   int APidStr = 0, ALangStr = 0, k;
-  strncpy(LineBuf, ExePath, sizeof(LineBuf));
 
-  if ((p = strrchr(LineBuf, '/'))) p[1] = '\0';
-  else if ((p = strrchr(LineBuf, '\\'))) p[1] = '\0';
-  else LineBuf[0] = 0;
-
-  strncat(LineBuf, "/SenderMap.txt", sizeof(LineBuf) - (p ? (p-LineBuf+1) : 0));
+//  strncpy(LineBuf, ExePath, sizeof(LineBuf));
+  FindExePath(ExePath, LineBuf, sizeof(LineBuf));
+  strncat(LineBuf, "SenderMap.txt", sizeof(LineBuf) - strlen(LineBuf) - 1);
   
   if ((fMap = fopen(LineBuf, "r")))
   {
@@ -173,22 +254,47 @@ bool GetPidsFromMap(word ServiceID, word *const OutPMTPID, word *const OutVidPID
 
 word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *InOutServiceName, word *const OutPMTPID)
 {
-  FILE *fMap;
+  FILE *fMap, *fMap2;
   char LineBuf[100], SenderFound[32], PidsFound[20], LangFound[20];
-  char *pPid, *pLng, *p;
+  char *pPid, *pLng, *p = NULL;
   word Sid, PPid, VPid, APid = 0, TPid = 0, SPid = 0, curPid;
   int APidStr = 0, ALangStr = 0, k;
-  word CandidateFound = 0, PMTFound = 0;
-  strncpy(LineBuf, ExePath, sizeof(LineBuf));
+  word CandidateFound = FALSE, SidFound = 0, PMTFound = 0;
 
-  if ((p = strrchr(LineBuf, '/'))) p[1] = '\0';
-  else if ((p = strrchr(LineBuf, '\\'))) p[1] = '\0';
-  else LineBuf[0] = 0;
+//  strncpy(LineBuf, ExePath, sizeof(LineBuf));
+  FindExePath(ExePath, LineBuf, sizeof(LineBuf));
+  k = (int)strlen(LineBuf);
+  strncpy(&LineBuf[k], "SenderMap.txt", (int)sizeof(LineBuf) - k - 1);
+  LineBuf[sizeof(LineBuf) - 1] = '\0';
 
-  strncat(LineBuf, "SenderMap.txt", sizeof(LineBuf) - (p ? (p-LineBuf+1) : 0));
-  
   if ((fMap = fopen(LineBuf, "rb")))
   {
+    // bei Humax: zuerst Sender aus Dateinamen ermitteln
+    if (HumaxSource && InOutServiceName)
+    {
+      strncpy(&LineBuf[k], "HumaxMap.txt", (int)sizeof(LineBuf) - k - 1);
+      if ((fMap2 = fopen(LineBuf, "rb")))
+      {
+        int len;
+        if ((p = strrchr(RecFileIn, '/'))) p++;
+        else if ((p = strrchr(RecFileIn, '\\'))) p++;
+        else p = RecFileIn;
+        len = (int)strlen(p);
+        while (fgets(LineBuf, sizeof(LineBuf), fMap2) != 0)
+        {
+          if (strncmp(LineBuf, p, len) == 0)
+          {
+            // Remove line breaks in the end
+            k = (int)strlen(LineBuf);
+            while (k && (LineBuf[k-1] == '\r' || LineBuf[k-1] == '\n' || LineBuf[k-1] == ';'))
+              LineBuf[--k] = '\0';
+            strncpy(InOutServiceName, &LineBuf[len+1], sizeof(((TYPE_Service_Info*)NULL)->ServiceName));
+          }
+        }
+        fclose(fMap2);
+      }
+    }
+
     while (fgets(LineBuf, sizeof(LineBuf), fMap) != 0)
     {
       if(LineBuf[0] == '#') continue;
@@ -198,23 +304,25 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *InOutServiceName
       while (k && (LineBuf[k-1] == '\r' || LineBuf[k-1] == '\n' || LineBuf[k-1] == ';'))
         LineBuf[--k] = '\0';
 
+      APidStr = 0; ALangStr = 0; APid = 0; TPid = 0; SPid = 0;
       if (sscanf(LineBuf, "%hu ; %hu ; %hu ; %n %*19[^;] ; %n %*19[^;] ; %hu ; %hu ; %*70[^;\r\n]", &Sid, &PPid, &VPid, &APidStr, &ALangStr, &TPid, &SPid) >= 3)
       {
-        APid = (word) strtol(&LineBuf[APidStr], NULL, 10);
+        if(APidStr) APid = (word) strtol(&LineBuf[APidStr], NULL, 10);
         p = strrchr(LineBuf, ';') + 1;
-        if ((VPid == VidPID) && ((APid == AudPID) || !AudPID || AudPID == (word)-1) && ((TPid == TtxPID) || !TtxPID || TtxPID == (word)-1)
-         && ((VidPID != 101 && VidPID != 201 && VidPID != 401 && VidPID != 601) || (*InOutServiceName && ((strncmp(p, InOutServiceName, 2) == 0) || (strncmp(p, "Das", 3)==0 && strncmp(InOutServiceName, "ARD", 3)==0) || (strncmp(p, "BR", 2)==0 && strncmp(InOutServiceName, "Bay", 3)==0)))))
+        if ((VPid == VidPID) && ((APid == AudPID) || !AudPID || AudPID == (word)-1) && ((TPid == TtxPID) || !TtxPID || TtxPID == (word)-1 || !TPid)
+         && ((VidPID != 101 && VidPID != 201 && VidPID != 255 && VidPID != 401 && VidPID != 501 && VidPID != 601) || (InOutServiceName && *InOutServiceName && ((strncasecmp(p, InOutServiceName, 2) == 0) || (strncmp(p, "Das", 3)==0 && strncmp(InOutServiceName, "ARD", 3)==0) || (strncmp(p, "BR", 2)==0 && strncmp(InOutServiceName, "Bay", 3)==0)))))
         {
           strncpy(SenderFound, p, sizeof(SenderFound));
           SenderFound[sizeof(SenderFound)-1] = '\0';
           strncpy(PidsFound, &LineBuf[APidStr], sizeof(PidsFound));
           if ((p = strchr(PidsFound, ';'))) p[0] = '\0';
           strncpy(LangFound, &LineBuf[ALangStr], sizeof(LangFound));
-          PMTFound = PPid;
           if(CandidateFound) printf("\n");
           printf("  Found ServiceID in Map: SID=%hu (%s), PMTPid=%hu", Sid, SenderFound, PPid);
           if(CandidateFound) { printf(" (ambiguous) -> skipping\n"); return 1; }
-          CandidateFound = Sid;
+          SidFound = Sid;
+          PMTFound = PPid;
+          CandidateFound = TRUE;
         }
         else if (CandidateFound)  // Nutzt aus, dass die SenderMap nach VideoPID sortiert ist
         {
@@ -236,10 +344,10 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *InOutServiceName
             pLng = (pLng && pLng[3] == '/') ? pLng + 4 : NULL;
           }
 
-          if(OutPMTPID && (!*OutPMTPID || *OutPMTPID==256)) *OutPMTPID = PMTFound;
+          if(OutPMTPID && (!*OutPMTPID || *OutPMTPID==100 || *OutPMTPID==256)) *OutPMTPID = PMTFound;
           if(InOutServiceName && !*InOutServiceName) strncpy(InOutServiceName, SenderFound, sizeof(((TYPE_Service_Info*)NULL)->ServiceName));
           fclose(fMap);
-          return CandidateFound;
+          return SidFound;
         }
       }
     }
@@ -389,7 +497,7 @@ if(VideoPID == 660 && TeletextPID == 130 && ExtractTeletext && DoStrip) RemoveTe
       }
     }
   }
-  RecInf->ServiceInfo.ServiceID = GetSidFromMap(VideoPID, 0 /*GetMinimalAudioPID(AudioPIDs)*/, 0, RecInf->ServiceInfo.ServiceName, &RecInf->ServiceInfo.PMTPID);
+  RecInf->ServiceInfo.ServiceID = GetSidFromMap(VideoPID, 0 /*GetMinimalAudioPID(AudioPIDs)*/, 0, RecInf->ServiceInfo.ServiceName, &RecInf->ServiceInfo.PMTPID);  // erster Versuch - ohne Humax Map, Teletext folgt
   if (!RecInf->ServiceInfo.PMTPID)
     RecInf->ServiceInfo.PMTPID = (HumaxHeader.Allgemein.AudioPID != 256) ? 256 : 100;
   AddContinuityPids(TeletextPID, FALSE);

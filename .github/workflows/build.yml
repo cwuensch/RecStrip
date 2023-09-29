@@ -520,20 +520,19 @@ jobs:
     - name: Prepare code
       run: |
         cp -R Synology/* .
-        mkdir -p target
 
     - name: Compile code in container
       run: |
         docker run --privileged --name SynoBuild -v ${{ github.workspace }}/..:/toolkit/source:ro cwuensch/synobuild:${{ matrix.platform }}_${{ matrix.version }} -I RecStrip
-        echo "docker cp SynoBuild:/toolkit/build_env/ds.${{ matrix.platform }}-${{ matrix.version }}/source/RecStrip/RecStrip ${{ github.workspace }}/target/RecStrip_${{ matrix.platform }}"
-        docker cp SynoBuild:/toolkit/build_base/source/RecStrip/RecStrip ${{ github.workspace }}/target/RecStrip_${{ matrix.platform }}
+        echo "docker cp SynoBuild:/toolkit/build_env/ds.${{ matrix.platform }}-${{ matrix.version }}/source/RecStrip/RecStrip ${{ github.workspace }}/RecStrip_${{ matrix.platform }}"
+        docker cp SynoBuild:/toolkit/build_base/source/RecStrip/RecStrip ${{ github.workspace }}/RecStrip_${{ matrix.platform }}
         
     - name: Copy build artefact
       uses: actions/upload-artifact@v2
       with:
         name: RecStrip_Synology
         path: |
-          ${{ github.workspace }}/target/RecStrip_${{ matrix.platform }}
+          ${{ github.workspace }}/RecStrip_${{ matrix.platform }}
           ${{ github.workspace }}/SenderMap.txt
 
   synoupload:
@@ -549,6 +548,7 @@ jobs:
     - name: Create zip archive
       run: |
         cd ${{ github.workspace }}/RecStrip_Synology
+        ls -la
         zip -9 -r ${{ github.workspace }}/RecStrip_Synology.zip RecStrip* SenderMap.txt
 
     - name: Upload release binaries

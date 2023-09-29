@@ -127,8 +127,8 @@ int                     NewStartTimeOffset = -1;
 dword                   TimeStepPerFrame = 0;
 
 // Lokale Variablen
-static char             InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], InfFileFirstIn[FBLIB_DIR_SIZE], InfFileOld[FBLIB_DIR_SIZE], NavFileOut[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE], TeletextOut[FBLIB_DIR_SIZE];
-static bool             HasNavIn, HasNavOld;
+static char             InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], InfFileFirstIn[FBLIB_DIR_SIZE], /*InfFileOld[FBLIB_DIR_SIZE],*/ NavFileOut[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE], TeletextOut[FBLIB_DIR_SIZE];
+static bool             HasNavIn, HasNavOld, HasInfOld;
 static FILE            *fIn = NULL;
 static FILE            *fOut = NULL;
 static tPSBuffer        VideoBuffer;
@@ -260,6 +260,8 @@ static time_t HDD_GetFileDateTime(char const *AbsFileName)
         localtime_s(&timeinfo, &Result);
         localtime_s(&timeinfo_sys, &now);
         Result -= (3600 * (timeinfo_sys.tm_isdst - timeinfo.tm_isdst));  // Windows-eigene DST-Korrektur ausgleichen
+//        Result += _timezone - (timeinfo.tm_isdst ? 3600 : 0);           // Windows-Datum (local) in UTC umwandeln
+//        Result3+= _timezone - (timeinfo.tm_isdst ? 3600 : 0);
 if (Result3 != Result)
   printf("ASSERTION ERROR! Windows API date (%llu) does not match 'correct' stat date (%llu).\n", Result3, Result);
       }
@@ -1021,14 +1023,15 @@ SONST
   SONST
     -> inf = NULL */
 
-  InfFileOld[0] = '\0';
+  HasInfOld = FALSE;
   if (*RecFileOut)
   {
     if (RebuildInf || *InfFileIn)
     {  
       if (DoMerge == 1)
       {
-        snprintf(InfFileOld, sizeof(InfFileOld), "%s.inf", RecFileOut);
+        HasInfOld = TRUE;
+        snprintf(InfFileIn, sizeof(InfFileIn), "%s.inf", RecFileOut);  // *CW: InfFileIn wird für die Backup-inf verwendet (statt InfFileOld), um Speicher zu sparen
         snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf_new", RecFileOut);
       }
       else
@@ -1044,8 +1047,9 @@ SONST
     {
 //      RebuildInf = TRUE;
       if(!*InfFileIn) WriteCutInf = TRUE;
-      InfFileIn[0] = '\0';
-      snprintf(InfFileOld, sizeof(InfFileOld), "%s.inf", RecFileIn);
+//      InfFileIn[0] = '\0';  // *CW: Zeile entfernt damit InfFileIn für DoInfFix zur Verfügung steht (vorheriger Grund der Zeile unbekannt)
+      HasInfOld = TRUE;
+      snprintf(InfFileIn, sizeof(InfFileIn), "%s.inf", RecFileIn);
       snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf_new", RecFileIn);
     }
     else
@@ -1245,13 +1249,13 @@ static bool CloseOutputFiles(void)
     rename(NavFileOld, NavFileBak);
     rename(NavFileOut, NavFileOld);
   }
-  if (*InfFileOld)
+  if (HasInfOld)
   {
     char InfFileBak[FBLIB_DIR_SIZE];
-    snprintf(InfFileBak, sizeof(InfFileBak), "%s_bak", InfFileOld);
+    snprintf(InfFileBak, sizeof(InfFileBak), "%s_bak", InfFileIn);
     remove(InfFileBak);
-    rename(InfFileOld, InfFileBak);
-    rename(InfFileOut, InfFileOld);
+    rename(InfFileIn, InfFileBak);
+    rename(InfFileOut, InfFileIn);
   }
 
   TRACEEXIT;
@@ -1292,8 +1296,12 @@ FILE *fDbg;
 
 #ifndef LINUX
   {
-    time_t curTime = time(NULL);
+    char RealExePath[FBLIB_DIR_SIZE];
     struct tm timeinfo;
+    time_t curTime = time(NULL);
+
+    if (FindExePath(argv[0], RealExePath, sizeof(RealExePath)))
+      printf("\nExecutable path: %s\n", RealExePath);
     #ifdef _WIN32
       localtime_s(&timeinfo, &curTime);
       _tzset();
@@ -1826,7 +1834,7 @@ FILE *fDbg;
     TRACEEXIT;
     exit(2);
   }
-  
+  memset(PATPMTBuf, 0, 4*192 + 5);
   if(DoMerge != 1) PESMuxer_StartNewFile();
 
   // Video Buffer initialisieren
@@ -1949,7 +1957,6 @@ FILE *fDbg;
     {
       FILE *fPMT = NULL;
       char ServiceString[128], *p;
-      int n = 0;
 
       strncpy(ServiceString, ExePath, sizeof(ServiceString) - 1);
       ServiceString[sizeof(ServiceString) - 1] = '\0';
@@ -2112,7 +2119,7 @@ FILE *fDbg;
 
         for (k = 0; (PATPMTBuf[4 + k*192] == 'G'); k++)
         {
-          if (fread(PMTPacket, OutPacketSize, 1, fOut) >= 2*192)
+          if (fread(PMTPacket, OutPacketSize, 1, fOut) == 1)
           {
 /*            int m;
             for (m = 0; m < OutPacketSize; m++) {
@@ -2158,13 +2165,13 @@ FILE *fDbg;
   {
     char                  NavFileIn[FBLIB_DIR_SIZE];
     time_t                RecDate;
-    bool                  InfModified = FALSE;
+    bool                  InfModified = FALSE, BookmarkFix = FALSE;
 
     snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf", RecFileOut);
     snprintf(NavFileOut, sizeof(NavFileOut), "%s.nav", RecFileOut);
     RecDate = TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE);
 
-    // Prüfe/Repariere Startzeit in der inf
+    // Prüfe/Repariere (nur!) Startzeit in der inf
     if ((DoInfFix == 2) && (DoFixPMT ? *InfFileOut : *InfFileIn))
     {
       printf("INF FIX (%s): Changing StartTime to: %s\n", (DoFixPMT ? "output" : "source"), TimeStrTF(OrigStartTime, OrigStartSec));
@@ -2174,19 +2181,27 @@ FILE *fDbg;
     else if (!DoFixPMT)
       printf("No fix of (%s) inf necessary.\n", (DoFixPMT ? "output" : "source"));
 
-    // Prüfe/Repariere ServiceID und AudioTypes in der inf
-    if (DoFixPMT && *InfFileOut)
+    // Prüfe/Repariere ServiceID, ServiceName, AudioTypes und Bookmarks in der inf
+    if (DoInfFix && (DoFixPMT ? *InfFileOut : *InfFileIn))
     {
-      FILE                 *fInfOut;
+      FILE                 *fInfOut, *fInfIn;
+      char                  InfFileStripped[FBLIB_DIR_SIZE];
       TYPE_RecHeader_Info   RecHeaderInfo_out;
       TYPE_Service_Info     ServiceInfo_out;
+      TYPE_Bookmark_Info    BookmarkInfo_out;
       TYPE_RecHeader_TMSS*  RecHeader = ((TYPE_RecHeader_TMSS*)InfBuffer);
 
-      if ((fInfOut = fopen(InfFileOut, "rb")))
+      if ((fInfOut = fopen((DoFixPMT ? InfFileOut : InfFileIn), "rb")))
       {
         if ((fread(&RecHeaderInfo_out, sizeof(TYPE_RecHeader_Info), 1, fInfOut)) && (fread(&ServiceInfo_out, sizeof(TYPE_Service_Info), 1, fInfOut))
           && ((strncmp(RecHeaderInfo_out.Magic, "TFrc", 4) == 0) && (RecHeaderInfo_out.Version == 0x8000)))
         {
+          if (*RecHeader->ServiceInfo.ServiceName && (strncmp(ServiceInfo_out.ServiceName, RecHeader->ServiceInfo.ServiceName, sizeof(ServiceInfo_out.ServiceName)) != 0))
+          {
+            printf("INF FIX (%s): Fixing ServiceName %s -> %s\n", (DoFixPMT ? "output" : "source"), ServiceInfo_out.ServiceName, RecHeader->ServiceInfo.ServiceName);
+            strncpy(ServiceInfo_out.ServiceName, RecHeader->ServiceInfo.ServiceName, sizeof(ServiceInfo_out.ServiceName));
+            InfModified = TRUE;
+          }
           if (RecHeader->ServiceInfo.ServiceID && (ServiceInfo_out.ServiceID != RecHeader->ServiceInfo.ServiceID))
           {
             printf("INF FIX (%s): Fixing ServiceID %hu -> %hu\n", (DoFixPMT ? "output" : "source"), ServiceInfo_out.ServiceID, RecHeader->ServiceInfo.ServiceID);
@@ -2197,6 +2212,28 @@ FILE *fDbg;
           {
             printf("INF FIX (%s): Fixing PMTPID %hu -> %hu\n", (DoFixPMT ? "output" : "source"), ServiceInfo_out.PMTPID, RecHeader->ServiceInfo.PMTPID);
             ServiceInfo_out.PMTPID = RecHeader->ServiceInfo.PMTPID;
+            InfModified = TRUE;
+          }
+
+          if (!MedionMode)
+          {
+            /* if (RecHeader->ServiceInfo.VideoPID && (ServiceInfo_out.VideoPID != RecHeader->ServiceInfo.VideoPID))
+            {
+              printf("INF FIX (%s): Fixing VideoPID %hu -> %hu\n", (DoFixPMT ? "output" : "source"), ServiceInfo_out.VideoPID, RecHeader->ServiceInfo.VideoPID);
+              ServiceInfo_out.VideoPID = RecHeader->ServiceInfo.VideoPID;
+              InfModified = TRUE;
+            } */
+            if (RecHeader->ServiceInfo.AudioPID && (ServiceInfo_out.AudioPID != RecHeader->ServiceInfo.AudioPID))
+            {
+              printf("INF FIX (%s): Fixing AudioPID %hu -> %hu\n", (DoFixPMT ? "output" : "source"), ServiceInfo_out.AudioPID, RecHeader->ServiceInfo.AudioPID);
+              ServiceInfo_out.AudioPID = RecHeader->ServiceInfo.AudioPID;
+              InfModified = TRUE;
+            }
+          }
+          if (RecHeader->ServiceInfo.VideoStreamType && (RecHeader->ServiceInfo.VideoStreamType != 0xff) && (ServiceInfo_out.VideoStreamType != RecHeader->ServiceInfo.VideoStreamType))
+          {
+            printf("INF FIX (%s): Fixing VideoStreamType %hhu -> %hhu\n", (DoFixPMT ? "output" : "source"), ServiceInfo_out.VideoStreamType, RecHeader->ServiceInfo.VideoStreamType);
+            ServiceInfo_out.VideoStreamType = RecHeader->ServiceInfo.VideoStreamType;
             InfModified = TRUE;
           }
           if (RecHeader->ServiceInfo.AudioStreamType && (RecHeader->ServiceInfo.AudioStreamType != 0xff) && (ServiceInfo_out.AudioStreamType != RecHeader->ServiceInfo.AudioStreamType))
@@ -2211,18 +2248,104 @@ FILE *fDbg;
             ServiceInfo_out.AudioTypeFlag = RecHeader->ServiceInfo.AudioTypeFlag;
             InfModified = TRUE;
           }
+
+          // If Stripped inf provided -> read Bookmark and SegmentMarker area from stripped inf
+          if (argc > 1)
+          {
+            if (strstr(argv[1], ".inf"))
+              strncpy(InfFileStripped, argv[1], sizeof(InfFileStripped));
+            else
+              snprintf(InfFileStripped, sizeof(InfFileStripped), "%s.inf", argv[1]);
+            if ((fInfIn = fopen(InfFileStripped, "rb")))
+            {
+              int Start = 0, End = 0, End_out = 0;
+
+              if ((fseek(fInfIn, sizeof(TYPE_RecHeader_Info) + sizeof(TYPE_Service_Info) + sizeof(TYPE_Event_Info) + sizeof(TYPE_ExtEvent_Info) + sizeof(TYPE_TpInfo_TMSS), SEEK_SET) == 0)
+               && fread(BookmarkInfo, sizeof(TYPE_Bookmark_Info), 1, fInfIn))
+              {
+                if ((BookmarkInfo->NrBookmarks > 0) && (BookmarkInfo->NrBookmarks <= NRBOOKMARKS))
+                  printf("Read %u Bookmarks from stripped inf.\n", BookmarkInfo->NrBookmarks);
+
+                if (BookmarkInfo->Bookmarks[NRBOOKMARKS - 2] == 0x8E0A4247)
+                  End = NRBOOKMARKS - 2;
+                else if (BookmarkInfo->Bookmarks[NRBOOKMARKS - 1] == 0x8E0A4247)
+                  End = NRBOOKMARKS - 1;
+                if (End && (BookmarkInfo->Bookmarks[End - 1] > 0))
+                {
+                  NrSegmentMarker = BookmarkInfo->Bookmarks[End - 1];
+                  Start = End - NrSegmentMarker - 5;
+                  printf("Read %u SegmentMarker from stripped inf.\n", NrSegmentMarker);
+                }
+              }
+              fclose(fInfIn);
+
+              // Read current Bookmarks and SegmentMarkers from to-be-fixed inf (optional)
+              if ((fseek(fInfOut, sizeof(TYPE_RecHeader_Info) + sizeof(TYPE_Service_Info) + sizeof(TYPE_Event_Info) + sizeof(TYPE_ExtEvent_Info) + sizeof(TYPE_TpInfo_TMSS), SEEK_SET) == 0)
+               && fread(&BookmarkInfo_out, sizeof(TYPE_Bookmark_Info), 1, fInfOut))
+              {
+                // If to-be-fixed inf has Bookmarks -> compare if they match with stripped inf (and fix if necessary)
+                if ((BookmarkInfo_out.NrBookmarks > 0) && (BookmarkInfo_out.NrBookmarks <= NRBOOKMARKS) && (BookmarkInfo->NrBookmarks > 0))
+                {
+                  if (BookmarkInfo_out.NrBookmarks != BookmarkInfo->NrBookmarks)
+                  {
+                    printf("INF FIX (%s): Fixing number of bookmarks %u -> %u\n", (DoFixPMT ? "output" : "source"), BookmarkInfo_out.NrBookmarks, BookmarkInfo->NrBookmarks);
+                    BookmarkFix = 1;
+                  }
+                  for (k = 0; k < (int)BookmarkInfo->NrBookmarks; k++)
+                    if (BookmarkInfo_out.Bookmarks[k] != BookmarkInfo->Bookmarks[k])
+                    {
+                      printf("INF FIX (%s): Fixing Bookmark %d: %u -> %u\n", (DoFixPMT ? "output" : "source"), k+1, BookmarkInfo_out.Bookmarks[k], BookmarkInfo->Bookmarks[k]);
+                      BookmarkFix = 1;
+                    }
+                }
+
+                // If to-be-fixed inf has SegmentMarkers -> compare if they match with stripped inf (and fix if necessary)
+                if (BookmarkInfo_out.Bookmarks[NRBOOKMARKS - 2] == 0x8E0A4247)
+                  End_out = NRBOOKMARKS - 2;
+                else if (BookmarkInfo_out.Bookmarks[NRBOOKMARKS - 1] == 0x8E0A4247)
+                  End_out = NRBOOKMARKS - 1;
+                if (End_out && (BookmarkInfo_out.Bookmarks[End_out - 1] > 0) && (NrSegmentMarker > 2))
+                {
+                  if ((End_out != End) || ((int)BookmarkInfo_out.Bookmarks[End_out - 1] != NrSegmentMarker) || (End_out - NrSegmentMarker - 5 != Start))
+                  {
+                    printf("INF FIX (%s): Rewriting SegmentMarker area %u -> %u\n", (DoFixPMT ? "output" : "source"), BookmarkInfo_out.Bookmarks[End_out - 1], NrSegmentMarker);
+                    BookmarkFix = 2;
+                  }
+                  else
+                  {
+                    for (k = 0; k < NrSegmentMarker; k++)
+                      if (BookmarkInfo_out.Bookmarks[Start + k] != BookmarkInfo->Bookmarks[Start + k])
+                      {
+                        printf("INF FIX (%s): Fixing Segment %d: %u -> %u\n", (DoFixPMT ? "output" : "source"), k+1, BookmarkInfo_out.Bookmarks[Start + k], BookmarkInfo->Bookmarks[Start + k]);
+                        BookmarkFix = 2;
+                      }
+                  }
+                }
+              }
+            }
+          }
         }
         fclose(fInfOut);
-      }   
-      if (InfModified && ((fInfOut = fopen(InfFileOut, "r+b"))))
+      }
+
+      // Write the actual fixes to inf
+      if ((InfModified || BookmarkFix) && ((fInfOut = fopen((DoFixPMT ? InfFileOut : InfFileIn), "r+b"))))
       {
-        fseek(fInfOut, sizeof(TYPE_RecHeader_Info), SEEK_SET);
-        fwrite(&ServiceInfo_out, 1, sizeof(TYPE_Service_Info), fInfOut);
+        if (InfModified)
+        {
+          fseek(fInfOut, sizeof(TYPE_RecHeader_Info), SEEK_SET);
+          fwrite(&ServiceInfo_out, 1, sizeof(TYPE_Service_Info), fInfOut);
+        }
+        if (BookmarkFix)
+        {
+          fseek(fInfOut, sizeof(TYPE_RecHeader_Info) + sizeof(TYPE_Service_Info) + sizeof(TYPE_Event_Info) + sizeof(TYPE_ExtEvent_Info) + sizeof(TYPE_TpInfo_TMSS), SEEK_SET);
+          fwrite(BookmarkInfo, 1, (BookmarkFix>=2) ? sizeof(TYPE_Bookmark_Info) : (BookmarkInfo->NrBookmarks+1) * 4, fInfOut);
+        }
         fclose(fInfOut);
       }
     }
 
-    if (DoInfFix == 2 || RecFileTimeStamp != RecDate || InfModified)
+    if (DoInfFix == 2 || RecFileTimeStamp != RecDate || InfModified || BookmarkFix)
     {
       printf("INF FIX (%s): Changing file timestamp to: %s\n", (DoFixPMT ? "output" : "source"), TimeStrTF(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
       snprintf(NavFileIn, sizeof(NavFileIn), "%s.nav", RecFileIn);
@@ -2340,7 +2463,7 @@ FILE *fDbg;
       // neues Bookmark an Schnittstelle setzen
       if (DoCut == 1 || DoMerge)
         if (CurrentPosition-PositionOffset > 4512)
-          AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + 4512 /*9023 - 2 - ((MedionMode != 1) ? NrEPGPacks : EPGLen/183)*/));
+          AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + 9023 - ((2 + ((MedionMode != 1) ? NrEPGPacks : EPGLen/183)) * OutPacketSize) /* + 4512 */ ));
     }
 
     while (fIn)
@@ -2480,7 +2603,7 @@ FILE *fDbg;
                 if (DoCut == 1 || (DoMerge && CurrentPosition == 0))
 //                  if ((CurrentPosition-PositionOffset > 0) && (CurrentPosition + 3*9024*BlocksOneSecond < (long long)RecFileSize))
                   if ((CurrentPosition-PositionOffset > 4512) && (CurPosBlocks + 3*BlocksOneSecond < RecFileBlocks))
-                    AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + 4512 /*9023 - 2 - ((MedionMode != 1) ? NrEPGPacks : EPGLen/183)*/));
+                    AddBookmark(j++, CalcBlockSize(CurrentPosition-PositionOffset + 9023 - ((2 + ((MedionMode != 1) ? NrEPGPacks : EPGLen/183)) * OutPacketSize) /* + 4512 */ ));
               }
 
               if (DoCut == 1)
@@ -2797,6 +2920,7 @@ FILE *fDbg;
             while ((i < NrSegmentMarker) && (CurrentPosition >= SegmentMarker[i].Position))
             {
               SegmentMarker[i].Position -= PositionOffset;
+              if (SegmentMarker[i].Position < 9024) SegmentMarker[i].Position = 0;
               if (i > 0 && !SegmentMarker[i].Timems)
                 pOutNextTimeStamp = &SegmentMarker[i].Timems;
               if(i == 0)  SegmentMarker[i].Position = 0;
@@ -2814,15 +2938,15 @@ FILE *fDbg;
                   DeleteBookmark(j);
                 else
                 {
-                  BookmarkInfo->Bookmarks[j] -= (dword)((PositionOffset + 4512) / 9024);  // CalcBlockSize(PositionOffset)
+                  BookmarkInfo->Bookmarks[j] -= (dword)((PositionOffset + 9023) / 9024);  // CalcBlockSize(PositionOffset)
                   j++;
                 }
               }
 
               if (!ResumeSet && (DoMerge != 1) && (CurPosBlocks >= BookmarkInfo->Resume))
               {
-                if ((PositionOffset + 4521) / 9024 <= BookmarkInfo->Resume)
-                  BookmarkInfo->Resume -= (dword)((PositionOffset + 4512) / 9024);  // CalcBlockSize(PositionOffset)
+                if ((PositionOffset + 9023) / 9024 <= BookmarkInfo->Resume)
+                  BookmarkInfo->Resume -= (dword)((PositionOffset + 9023) / 9024);  // CalcBlockSize(PositionOffset)
                 else
                   BookmarkInfo->Resume = 0;
                 ResumeSet = TRUE;

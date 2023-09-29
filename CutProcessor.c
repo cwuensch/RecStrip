@@ -27,7 +27,11 @@ typedef struct
 
 
 // Globale Variablen
-int                     OutCutVersion = 3;
+#ifdef LINUX
+  int                   OutCutVersion = 3;  // für Topfield TMS
+#else
+  int                   OutCutVersion = 4;  // vormals: 3
+#endif
 static const bool       WriteCutFile = TRUE;
 bool                    WriteCutInf = FALSE;
 
@@ -293,7 +297,7 @@ static bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
 
     if (ret)
     {
-      OutCutVersion = Version;
+      OutCutVersion = max(OutCutVersion, Version);
       if (NrSegmentMarker != SavedNrSegments)
         printf("CutFileDecodeTxt: Invalid number of segments read (%d of %d)!\n", NrSegmentMarker, SavedNrSegments);
     }
@@ -559,6 +563,8 @@ bool CutFileLoad(const char *AbsCutName)
         ResetSegmentMarkers();
     }
   }
+  else
+    Version = OutCutVersion;
 
 
   // sonst schaue in der inf
@@ -617,7 +623,7 @@ bool CutFileLoad(const char *AbsCutName)
     for (i = 0; i < NrSegmentMarker; i++)
     {
       MSecToTimeString(SegmentMarker[i].Timems, TimeStamp);
-      if (OutCutVersion >= 4)
+      if (Version >= 4)
         ret = (printf("  %3d ;  %c  ; %13lld ;%14s ;  %5.1f%% ; %s\n", i, (SegmentMarker[i].Selected ? '*' : '-'), SegmentMarker[i].Position, TimeStamp, SegmentMarker[i].Percent, (SegmentMarker[i].pCaption ? SegmentMarker[i].pCaption : "")) > 0) && ret;
       else
         ret = (printf("  %3d ;  %c  ; %10u ;%14s ;  %5.1f%% ; %s\n", i, (SegmentMarker[i].Selected ? '*' : '-'), (dword)(SegmentMarker[i].Position/9024), TimeStamp, SegmentMarker[i].Percent, (SegmentMarker[i].pCaption ? SegmentMarker[i].pCaption : "")) > 0) && ret;
