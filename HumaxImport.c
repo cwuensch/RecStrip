@@ -138,7 +138,7 @@ bool FindExePath(const char* CalledExe, char *const OutExePath, int OutputSize)
     {
       curPath[PATH_MAX - 1] = '\0';
       // Prepend each item of PATH variable before CalledExe
-      for (p = strchr(pPath, PATH_DELIMITER); pPath && *pPath; (pPath = p) && (p = strchr(++pPath, PATH_DELIMITER)))
+      for (p = strchr(pPath, PATH_DELIMITER); pPath && *pPath; ((pPath = p)) && ((p = strchr(++pPath, PATH_DELIMITER))))
       {
         int len = min((p ? (int)(p - pPath) : (int)strlen(pPath)), PATH_MAX-1);
         strncpy(curPath, pPath, len);
@@ -310,7 +310,7 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *InOutServiceName
         if(APidStr) APid = (word) strtol(&LineBuf[APidStr], NULL, 10);
         p = strrchr(LineBuf, ';') + 1;
         if ((VPid == VidPID) && ((APid == AudPID) || !AudPID || AudPID == (word)-1) && ((TPid == TtxPID) || !TtxPID || TtxPID == (word)-1 || !TPid)
-         && ((VidPID != 101 && VidPID != 201 && VidPID != 255 && VidPID != 401 && VidPID != 501 && VidPID != 601) || (InOutServiceName && *InOutServiceName && ((strncasecmp(p, InOutServiceName, 2) == 0) || (strncmp(p, "Das", 3)==0 && strncmp(InOutServiceName, "ARD", 3)==0) || (strncmp(p, "BR", 2)==0 && strncmp(InOutServiceName, "Bay", 3)==0)))))
+         && ((VidPID != 101 && VidPID != 201 && VidPID != 255 && VidPID != 401 && VidPID != 501 && VidPID != 511 && VidPID != 601) || (InOutServiceName && *InOutServiceName && ((strncasecmp(p, InOutServiceName, 2) == 0) || (strncmp(p, "Das", 3)==0 && strncmp(InOutServiceName, "ARD", 3)==0) || (strncmp(p, "BR", 2)==0 && strncmp(InOutServiceName, "Bay", 3)==0)))))
         {
           strncpy(SenderFound, p, sizeof(SenderFound));
           SenderFound[sizeof(SenderFound)-1] = '\0';
@@ -345,7 +345,7 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *InOutServiceName
           }
 
           if(OutPMTPID && (!*OutPMTPID || *OutPMTPID==100 || *OutPMTPID==256)) *OutPMTPID = PMTFound;
-          if(InOutServiceName && !*InOutServiceName) strncpy(InOutServiceName, SenderFound, sizeof(((TYPE_Service_Info*)NULL)->ServiceName));
+          if(InOutServiceName /*&& !*InOutServiceName*/) strncpy(InOutServiceName, SenderFound, sizeof(((TYPE_Service_Info*)NULL)->ServiceName));
           fclose(fMap);
           return SidFound;
         }
