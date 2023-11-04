@@ -501,14 +501,6 @@ static int GetPacketSize(FILE *RecFile, int *OutOffset)
     fseeko64(RecFile, 9024, SEEK_SET);
     if (fread(Buffer, 1, 5573, RecFile) == 5573)
     {
-      char *p = strrchr(RecFileIn, '.');
-      if (p && strcmp(p, ".vid") == 0)
-        HumaxSource = TRUE;
-      else if (p && strcmp(p, ".trp") == 0)
-        EycosSource = TRUE;
-      else if (p && strcmp(p, ".TS4") == 0)
-        isHDVideo = TRUE;
-
       PACKETSIZE = 188;
       PACKETOFFSET = 0;
       Offset = FindNextPacketStart(Buffer, 5573);
@@ -737,6 +729,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
   tSegmentMarker2      *SegmentMarker_bak = SegmentMarker;
   int                   NrSegmentMarker_bak = NrSegmentMarker;
   int                   k;
+  char                 *p;
 
   TRACEENTER;
 //  CurrentStartTime = 0;
@@ -778,6 +771,21 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
   memset(FileDefect, 0, MAXCONTINUITYPIDS * sizeof(tContinuityError));
   NrContErrsInFile = 0;
   LastContErrPos = 0;
+
+  // Detektion Sonderformate
+  p = strrchr(RecFileIn, '.');
+  if (p && strcmp(p, ".vid") == 0)
+    HumaxSource = TRUE;
+  else if (p && strcmp(p, ".trp") == 0)
+    EycosSource = TRUE;
+  else if (p && strcmp(p, ".TS4") == 0)
+    isHDVideo = TRUE;
+  else if (p && !MedionMode && strcmp(p, ".pes") == 0)
+  {
+    p = strrchr(RecFileIn, '_');
+    if (p && strcmp(p, "_video.pes") == 0)
+      MedionMode = 1;
+  }
 
   // Spezialanpassung Medion
   if (MedionMode)
@@ -2191,6 +2199,13 @@ int main(int argc, const char* argv[])
         if ((fread(&RecHeaderInfo_out, sizeof(TYPE_RecHeader_Info), 1, fInfOut)) && (fread(&ServiceInfo_out, sizeof(TYPE_Service_Info), 1, fInfOut))
           && ((strncmp(RecHeaderInfo_out.Magic, "TFrc", 4) == 0) && (RecHeaderInfo_out.Version == 0x8000)))
         {
+          if ((RecHeaderInfo_out.StartTime != OrigStartTime) || (OrigStartSec && (RecHeaderInfo_out.StartTimeSec != OrigStartSec)))
+          {
+            printf("INF FIX (%s): Fixing StartTime to %s\n", (DoFixPMT ? "output" : "source"), TimeStrTF(OrigStartTime, OrigStartSec));
+            RecHeaderInfo_out.StartTime = OrigStartTime;
+            RecHeaderInfo_out.StartTimeSec = OrigStartSec;
+            InfModified = TRUE;
+          }
           if (*RecHeader->ServiceInfo.ServiceName && (strncmp(ServiceInfo_out.ServiceName, RecHeader->ServiceInfo.ServiceName, sizeof(ServiceInfo_out.ServiceName)) != 0))
           {
             printf("INF FIX (%s): Fixing ServiceName %s -> %s\n", (DoFixPMT ? "output" : "source"), ServiceInfo_out.ServiceName, RecHeader->ServiceInfo.ServiceName);
@@ -2231,7 +2246,7 @@ int main(int argc, const char* argv[])
             ServiceInfo_out.VideoStreamType = RecHeader->ServiceInfo.VideoStreamType;
             InfModified = TRUE;
           }
-          if (RecHeader->ServiceInfo.AudioStreamType && (RecHeader->ServiceInfo.AudioStreamType != 0xff) && (ServiceInfo_out.AudioStreamType != RecHeader->ServiceInfo.AudioStreamType))
+          if (/*RecHeader->ServiceInfo.AudioStreamType &&*/ (RecHeader->ServiceInfo.AudioStreamType != 0xff) && (ServiceInfo_out.AudioStreamType != RecHeader->ServiceInfo.AudioStreamType))
           {
             printf("INF FIX (%s): Fixing AudioStreamType %hhu -> %hhu\n", (DoFixPMT ? "output" : "source"), ServiceInfo_out.AudioStreamType, RecHeader->ServiceInfo.AudioStreamType);
             ServiceInfo_out.AudioStreamType = RecHeader->ServiceInfo.AudioStreamType;

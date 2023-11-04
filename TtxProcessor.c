@@ -471,6 +471,19 @@ static void process_page(teletext_page_t *page) {
     // white is default as stated in ETS 300 706, chapter 12.2
     // black(0), red(1), green(2), yellow(3), blue(4), magenta(5), cyan(6), white(7)
 
+/*{
+  char dbgstr[44]; int k;
+  if (page->text[row][0])
+  {
+    for (k = 0; k < 40; k++)
+      if(page->text[row][k] >= 20) ucs2_to_utf8(&dbgstr[k], page->text[row][k]);
+      else dbgstr[k] = ' ';
+//      dbgstr[k] = (char)page->text[row][k];
+    dbgstr[40] = '\0';
+    printf("      new line: %s\n", dbgstr);
+  }
+}*/
+
     for (col = 0; col <= col_stop; col++) {
       // v is just a shortcut
       uint16_t v = page->text[row][col];
@@ -630,6 +643,7 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
     if (page_buffer.tainted == YES) {
       // it would be nice, if subtitle hides on previous video frame, so we contract 40 ms (1 frame @25 fps)
       page_buffer.hide_timestamp = timestamp - 40;
+//printf ("    new page\n");
       process_page(&page_buffer);
     }
 
@@ -915,6 +929,9 @@ void process_pes_packet(uint8_t *buffer, uint16_t size) {
   i = 7;
   if (optional_pes_header_included == YES) i += 2 + optional_pes_header_length;
   i++;
+
+//printf ("new packet\n");
+
   while (i <= pes_packet_length - 6) {
     uint8_t data_unit_id = buffer[i++];
     uint8_t data_unit_len = buffer[i++];
@@ -925,6 +942,8 @@ void process_pes_packet(uint8_t *buffer, uint16_t size) {
         // reverse endianess (via lookup table), ETS 300 706, chapter 7.1
         uint8_t j;
         for (j = 0; j < data_unit_len; j++) buffer[i + j] = REVERSE_8[buffer[i + j]];
+
+//printf("  new payload\n");
 
         // FIXME: This explicit type conversion could be a problem some day -- do not need to be platform independant
         process_telx_packet((data_unit_t)data_unit_id, (teletext_packet_payload_t *)&buffer[i], last_timestamp);

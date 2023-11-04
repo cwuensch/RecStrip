@@ -998,7 +998,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   int                   AudOK = 0;
   byte                 *p;
   long long             FilePos = 0;
-  bool                  ret = TRUE;
+  bool                  ret = FALSE;
 
   const byte            ANDMask[7] = {0xFF, 0xC0, 0x00, 0xD0, 0xFF, 0xFF, 0xFC};
   const byte            PMTMask[7] = {0x47, 0x40, 0x00, 0x10, 0x00, 0x02, 0xB0};
@@ -1123,6 +1123,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             } */
             AudioPIDs[0].scanned = 1;
             strncpy(AudioPIDs[0].desc, "deu", 3);
+            if(VidOK) ret = TRUE;
             break;
           }
           p++;
@@ -1562,14 +1563,22 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               }
             }
           }
-          if(((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT)                                              || (EITOK && SDTOK)) && (TtxOK || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
+          if(((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT)                                                    || (EITOK && SDTOK)) && (TtxOK || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
             break;
           p += PACKETSIZE;
         }
-        if(((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT) || HumaxSource || EycosSource || MedionMode==1 || (EITOK && SDTOK)) && (TtxOK || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
+        if(((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT) || (/*HumaxSource || EycosSource ||*/ MedionMode==1) || (EITOK && SDTOK)) && (TtxOK || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
         {
           ret = TRUE;
           break;
+        }
+        if ((HumaxSource || EycosSource) && !ret)
+        {
+          int k;
+          ret = TRUE;
+          for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0); k++)
+            if (!AudioPIDs[k].scanned) ret = FALSE;
+          if(ret) break;
         }
         if(HumaxSource)
           fseeko64(fIn, +HumaxHeaderLaenge, SEEK_CUR);
@@ -2034,7 +2043,7 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPid, word Vid
       PMT->SectionLen2     += sizeof(tElemStream) + Elem->ESInfoLen2;
     }
 
-    else if (AudioPIDs[k].streamType == 1)
+    else if ((AudioPIDs[k].streamType == 1) /* && !RemoveTeletext */)
     {
       // Teletext-PID
       tTSTtxDesc *ttxDesc;
@@ -2123,13 +2132,13 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPid, word Vid
     }
   }
 
-  if (((TeletextPID != (word)-1) && !TeletextDone) || ((SubtitlesPID != (word)-1) && !SubtitlesDone))
+  if (((TeletextPID != (word)-1) && !TeletextDone && !RemoveTeletext) || ((SubtitlesPID != (word)-1) && !SubtitlesDone))
     printf("ASSERTION ERROR! TeletextPID was not included in PMT since not found in AudioPIDs!\n");
 
   CRC                   = (dword*) &Packet->Data[Offset];
-//  *CRC                  = rocksoft_crc((byte*)PMT, (int)CRC - (int)PMT);   // CRC: 0x0043710d  (0xb3ad75b7?)
-//  *CRC                  = crc32m((byte*)PMT, (int)CRC - (int)PMT);         // CRC: 0x0043710d  (0xb3ad75b7?)
-  *CRC                  = crc32m_tab((byte*)PMT, (byte*)CRC - (byte*)PMT);     // CRC: 0x0043710d  (0xb3ad75b7?)
+//  *CRC                  = rocksoft_crc((byte*)PMT, (int)CRC - (int)PMT);    // CRC: 0x0043710d  (0xb3ad75b7?)
+//  *CRC                  = crc32m((byte*)PMT, (int)CRC - (int)PMT);          // CRC: 0x0043710d  (0xb3ad75b7?)
+  *CRC                  = crc32m_tab((byte*)PMT, (byte*)CRC - (byte*)PMT);    // CRC: 0x0043710d  (0xb3ad75b7?)
   Offset               += 4;
   memset(&Packet->Data[Offset], 0xff, 184 - Offset);
 
