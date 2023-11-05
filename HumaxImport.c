@@ -498,8 +498,6 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     }
   }
   RecInf->ServiceInfo.ServiceID = GetSidFromMap(VideoPID, 0 /*GetMinimalAudioPID(AudioPIDs)*/, 0, RecInf->ServiceInfo.ServiceName, &RecInf->ServiceInfo.PMTPID);  // erster Versuch - ohne Humax Map, Teletext folgt
-  if(!RecInf->ServiceInfo.ServiceID)
-    RecInf->ServiceInfo.ServiceID = 1;
   if (!RecInf->ServiceInfo.PMTPID)
     RecInf->ServiceInfo.PMTPID = (HumaxHeader.Allgemein.AudioPID != 256) ? 256 : 100;
   AddContinuityPids(TeletextPID, FALSE);

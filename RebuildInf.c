@@ -1403,12 +1403,12 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       printf("  Failed to locate a PMT packet.\n");
       RecInf->ServiceInfo.ServiceID = 1;
       WriteDescPackets = TRUE;
-      ret = FALSE;
+//      ret = FALSE;
     }
 
 
     //If we're here, it should be possible to find the associated EPG event
-    if (RecInf->ServiceInfo.ServiceID)
+//    if (RecInf->ServiceInfo.ServiceID)
     {
       word TeletextPID_PMT = TeletextPID;
       bool HasTeletext = FALSE;
