@@ -994,7 +994,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   dword                 TtxPCR = 0, dPCR = 0, dPTS = 0;
   int                   Offset, ReadBytes, d, i;
   bool                  EITOK = FALSE, SDTOK = FALSE, TtxFound = FALSE, TtxOK = FALSE, VidOK = FALSE;
-  bool                  FirstFilePTSOK = FALSE, LastFilePTSOK = FALSE;
+  bool                  FirstFilePTSOK = FALSE, LastFilePTSOK = FALSE, AllPidsScanned = FALSE;
   int                   AudOK = 0;
   byte                 *p;
   long long             FilePos = 0;
@@ -1567,18 +1567,17 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             break;
           p += PACKETSIZE;
         }
-        if(((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT) || (/*HumaxSource || EycosSource ||*/ MedionMode==1) || (EITOK && SDTOK)) && (TtxOK || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
+        if ((HumaxSource || EycosSource) && !AllPidsScanned)
+        {
+          int k;
+          AllPidsScanned = TRUE;
+          for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0) && AllPidsScanned; k++)
+            if (!AudioPIDs[k].scanned) AllPidsScanned = FALSE;
+        }
+        if(((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT) || (/*HumaxSource || EycosSource ||*/ AllPidsScanned || MedionMode==1) || (EITOK && SDTOK)) && (TtxOK || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
         {
           ret = TRUE;
           break;
-        }
-        if ((HumaxSource || EycosSource) && !ret)
-        {
-          int k;
-          ret = TRUE;
-          for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0); k++)
-            if (!AudioPIDs[k].scanned) ret = FALSE;
-          if(ret) break;
         }
         if(HumaxSource)
           fseeko64(fIn, +HumaxHeaderLaenge, SEEK_CUR);
