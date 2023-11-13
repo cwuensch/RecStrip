@@ -786,6 +786,9 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     if (p && strcmp(p, "_video.pes") == 0)
       MedionMode = 1;
   }
+#ifndef LINUX
+  if (HumaxSource || EycosSource)  OutCutVersion = 4;
+#endif
 
   // Spezialanpassung Medion
   if (MedionMode)
@@ -915,7 +918,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     }
 
     // ggf. cut-File einlesen
-    if (NrSegmentMarker <= 2 || !EycosSource)
+    if (NrSegmentMarker <= 2 || (!EycosSource && !HumaxSource))
     {
       GetFileNameFromRec(RecFileIn, ".cut", CutFileIn);
       printf("\nCut file: %s\n", CutFileIn);
@@ -1209,14 +1212,6 @@ static bool CloseOutputFiles(void)
     fOut = NULL;
   }
 
-  if (HumaxSource && *CutFileOut && BookmarkInfo && BookmarkInfo->NrBookmarks)
-  {
-    CutImportFromBM(RecFileOut, BookmarkInfo->Bookmarks, BookmarkInfo->NrBookmarks);
-    SegmentMarker[NrSegmentMarker-1].Position = CurrentPosition - PositionOffset;
-    if(NewDurationMS)
-      SegmentMarker[NrSegmentMarker-1].Timems = NewDurationMS;
-  }
-
   if (EycosSource && (NrSegmentMarker > 2))
   {
     // SegmentMarker aus TimeStamps importieren (weil Eycos die Bookmarks scheinbar in Millisekunden speichert)
@@ -1309,11 +1304,13 @@ int main(int argc, const char* argv[])
     #ifdef _WIN32
       localtime_s(&timeinfo, &curTime);
       _tzset();
-      printf("\nLocal timezone: %s%s (GMT%+ld)\n", _tzname[0], (timeinfo.tm_isdst ? " + DST" : ""), -_timezone/3600 + timeinfo.tm_isdst);
+      printf("\nExecution time: %s (local)\n", TimeStr(curTime));
+      printf("Local timezone: %s%s (GMT%+ld)\n", _tzname[0], (timeinfo.tm_isdst ? " + DST" : ""), -_timezone/3600 + timeinfo.tm_isdst);
     #else
       localtime_r(&curTime, &timeinfo);
       tzset();
-      printf("\nLocal timezone: %s%s (GMT%+ld)\n", tzname[0], (timeinfo.tm_isdst ? " + DST" : ""), -timezone/3600 + timeinfo.tm_isdst);
+      printf("\nExecution time: %s (local)\n", TimeStr(curTime));
+      printf("Local timezone: %s%s (GMT%+ld)\n", tzname[0], (timeinfo.tm_isdst ? " + DST" : ""), -timezone/3600 + timeinfo.tm_isdst);
     #endif
   }
 #endif
@@ -1761,6 +1758,9 @@ int main(int argc, const char* argv[])
     { MedionStrip = TRUE; DoStrip = FALSE; }
 //  if (ExtractTeletext && DoStrip)
 //    { RemoveTeletext = TRUE; }
+  #ifndef LINUX
+    if (DoStrip || DoMerge || RemoveEPGStream || RemoveTeletext || OutPacketSize)  OutCutVersion = 4;
+  #endif
 
   if (!ret)
   {
@@ -2343,6 +2343,8 @@ int main(int argc, const char* argv[])
       {
         if (InfModified)
         {
+          fseek(fInfOut, 0, SEEK_SET);
+          fwrite(&RecHeaderInfo_out, 1, 12, fInfOut);
           fseek(fInfOut, sizeof(TYPE_RecHeader_Info), SEEK_SET);
           fwrite(&ServiceInfo_out, 1, sizeof(TYPE_Service_Info), fInfOut);
         }

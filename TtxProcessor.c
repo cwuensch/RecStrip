@@ -279,7 +279,7 @@ static void timestamp_to_srttime(uint32_t timestamp, char *buffer) {
   sprintf(buffer, "%02hu:%02hhu:%02hhu,%03hu", h, m, s, u);
 }
 
-/*char* TimeStr(time_t UnixTimeStamp)
+char* TimeStr(time_t UnixTimeStamp)
 {
   static char TS[26];
   struct tm timeinfo;
@@ -292,7 +292,7 @@ static void timestamp_to_srttime(uint32_t timestamp, char *buffer) {
     #elif defined(_WIN32)
       localtime_s(&timeinfo, &UnixTimeStamp);
     #else
-      localtime_r(UnixTimeStamp, &timeinfo);
+      localtime_r(&UnixTimeStamp, &timeinfo);
     #endif
     strftime(TS, sizeof(TS), "%a %d %b %Y %H:%M:%S", &timeinfo);
   }
@@ -301,7 +301,7 @@ static void timestamp_to_srttime(uint32_t timestamp, char *buffer) {
 
 #ifdef LINUX
   #define TimeStr_UTC TimeStr
-#else */
+#else
 static char* TimeStr_UTC(time_t UnixTimeStamp)
 {
   static char TS[26];
@@ -319,7 +319,7 @@ static char* TimeStr_UTC(time_t UnixTimeStamp)
   }
   return TS;
 }
-//#endif
+#endif
 
 char* TimeStrTF(tPVRTime TFTimeStamp, byte TFTimeSec)
 {

@@ -271,6 +271,7 @@ if (HOUR(RecInf->RecHeaderInfo.StartTime) != EycosEvent.EvtStartHour || MINUTE(R
     tEycosIdxEntry EycosIdx;
     size_t ReadOk = fread(&EycosIdx, sizeof(tEycosIdxEntry), 1, fIdx);
 
+    printf("    Bookmarks: %s", (EycosHeader.NrBookmarks == 0) ? "-" : "");
     for (j = 1; j < NrSegmentMarker-1 && ReadOk; j++)
     {
       while ((EycosIdx.Timems + 100 < SegmentMarker[j].Timems) && ReadOk)
@@ -279,9 +280,11 @@ if (HOUR(RecInf->RecHeaderInfo.StartTime) != EycosEvent.EvtStartHour || MINUTE(R
       {
         SegmentMarker[j].Position = EycosIdx.PacketNr * 188;
         BookmarkInfo->Bookmarks[BookmarkInfo->NrBookmarks++] = (dword)(EycosIdx.PacketNr / 48);
+        printf((j > 0) ? ", %llu (%u:%02u:%02u,%03u)" : "%llu (%u:%02u:%02u,%03u)", SegmentMarker[j].Position, SegmentMarker[j].Timems/3600000, SegmentMarker[j].Timems/60000 % 60, SegmentMarker[j].Timems/1000 % 60, SegmentMarker[j].Timems % 1000);
       }
     }
     fclose(fIdx);
+    printf("\n");
   }
 
 //  fseeko64(fIn, FilePos, SEEK_SET);

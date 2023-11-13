@@ -341,10 +341,11 @@ int ProcessTSPacket(unsigned char *Packet, long long FilePosition)
     sPayloadInfo Info;
     bool DropThisPayload = FALSE;
     int Offset = TsPayloadOffset(TSPacket);
+    int Remaining = TS_SIZE - Offset;
 
     if (isHDVideo)
     {
-      ProcessPayload_HD(&Packet[Offset], TS_SIZE - Offset, TSPacket->Payload_Unit_Start, &Info);
+      ProcessPayload_HD(&Packet[Offset], Remaining, TSPacket->Payload_Unit_Start, &Info);
 
       if (DropAllPayload && !Info.DropAllPayloadBytes)
       {
@@ -382,7 +383,7 @@ int ProcessTSPacket(unsigned char *Packet, long long FilePosition)
       }
     }
     else
-      ProcessPayload_SD(Packet + Offset, TS_SIZE - Offset, TSPacket->Payload_Unit_Start, &Info);
+      ProcessPayload_SD(Packet + Offset, Remaining, TSPacket->Payload_Unit_Start, &Info);
 
     if (DropThisPayload)
     {
@@ -396,7 +397,7 @@ int ProcessTSPacket(unsigned char *Packet, long long FilePosition)
       }
     }
 
-    if (Info.ZerosOnly && !TSPacket->Adapt_Field_Exists && (isHDVideo || SliceState) /*&& LastEndNulls>0*/)
+    if (Info.ZerosOnly && (!TSPacket->Adapt_Field_Exists /*|| TSPacket->Data[1]==0*/) && (isHDVideo || SliceState) /*&& LastEndNulls>0*/)
     {
 //printf("Potential zero-byte-stuffing at position %lld", FilePosition);
       if (LastEndNulls >= 3 || PendingPacket)  // wenn 3 Nullen am Ende -> dann darf FolgePaket ohne anfangen
@@ -417,7 +418,7 @@ int ProcessTSPacket(unsigned char *Packet, long long FilePosition)
     {
       if (PendingPacket)
       {
-        if (Packet[Offset]==0 && (Packet[Offset+1]==0 || LastEndNulls>=2) && (Packet[Offset+2]==0 || LastEndNulls>=1))
+        if (Remaining && Packet[Offset]==0 && ((Remaining>=2 && Packet[Offset+1]==0) || LastEndNulls>=2) && ((Remaining>=3 && Packet[Offset+2]==0) || LastEndNulls))
         {
 //printf("PENDING PACKET --> confirmed by next packet!\n");
         }

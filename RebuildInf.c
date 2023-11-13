@@ -1563,7 +1563,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               }
             }
           }
-          if(((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT)                                                    || (EITOK && SDTOK)) && (TtxOK || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
+          if(((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT)                                                                      || (EITOK && SDTOK)) && (TtxOK || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
             break;
           p += PACKETSIZE;
         }
@@ -1576,8 +1576,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         }
         if(((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT) || (/*HumaxSource || EycosSource ||*/ AllPidsScanned || MedionMode==1) || (EITOK && SDTOK)) && (TtxOK || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
         {
-          ret = TRUE;
-          break;
+//          ret = TRUE;
+//          break;
         }
         if(HumaxSource)
           fseeko64(fIn, +HumaxHeaderLaenge, SEEK_CUR);
@@ -1622,7 +1622,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         memset(PATPMTBuf, 0, 4*192 + 5);
 
         curPacket = (tTSPacket*)&Buffer[PACKETOFFSET];
-        for (k = 0; (curPacket->PID1 * 256 + curPacket->PID2 == 0) || (curPacket->PID1 * 256 + curPacket->PID2 == PMTPID); k++)
+        for (k = 0; k < PacksRead && ((curPacket->PID1 * 256 + curPacket->PID2 == 0) || (curPacket->PID1 * 256 + curPacket->PID2 == PMTPID)); k++)
         {
           memcpy(&PATPMTBuf[((PACKETSIZE==192) ? 0 : 4) + k*192], &Buffer[k*PACKETSIZE], PACKETSIZE);
           curPacket = (tTSPacket*)&Buffer[PACKETOFFSET + (k+1)*PACKETSIZE];
@@ -2131,7 +2131,7 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPid, word Vid
     }
   }
 
-  if (((TeletextPID != (word)-1) && !TeletextDone && !RemoveTeletext) || ((SubtitlesPID != (word)-1) && !SubtitlesDone))
+  if (((TeletextPID && TeletextPID != (word)-1) && !TeletextDone && !RemoveTeletext) || ((SubtitlesPID != (word)-1) && !SubtitlesDone))
     printf("ASSERTION ERROR! TeletextPID was not included in PMT since not found in AudioPIDs!\n");
 
   CRC                   = (dword*) &Packet->Data[Offset];

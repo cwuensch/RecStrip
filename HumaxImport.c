@@ -15,6 +15,7 @@
 #include "RecHeader.h"
 #include "RebuildInf.h"
 #include "TtxProcessor.h"
+#include "CutProcessor.h"
 #include "HumaxHeader.h"
 
 #include <sys/stat.h>
@@ -138,9 +139,9 @@ bool FindExePath(const char* CalledExe, char *const OutExePath, int OutputSize)
     {
       curPath[PATH_MAX - 1] = '\0';
       // Prepend each item of PATH variable before CalledExe
-      for (p = strchr(pPath, PATH_DELIMITER); pPath && *pPath; ((pPath = p)) && ((p = strchr(++pPath, PATH_DELIMITER))))
+      for (p = strchr(pPath, PATH_DELIMITER); pPath && *pPath; p = strchr(((pPath = p+1)), PATH_DELIMITER))
       {
-        int len = min((p ? (int)(p - pPath) : (int)strlen(pPath)), PATH_MAX-1);
+        int len = min(((p) ? (int)(p - pPath) : (int)strlen(pPath)), PATH_MAX-1);
         strncpy(curPath, pPath, len);
         snprintf(&curPath[len], PATH_MAX - len, (WinExe ? PATH_SEPARATOR "%s.exe" : PATH_SEPARATOR "%s"), CalledExe);
 
@@ -392,7 +393,7 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 {
   tHumaxHeader          HumaxHeader;
   char                  FirstSvcName[32];
-  int                   i, j, k;
+  int                   i, j, k, n=0;
   bool                  ret = TRUE;
 
   TRACEENTER;
@@ -457,8 +458,13 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         {
           tHumaxBlock_Bookmarks* HumaxBookmarks = (tHumaxBlock_Bookmarks*)HumaxHeader.ZusInfos;
           RecInf->BookmarkInfo.NrBookmarks = HumaxBookmarks->Anzahl;
+          printf("    Bookmarks: %s", (HumaxBookmarks->Anzahl == 0) ? "-" : "");
           for (j = 0; j < HumaxBookmarks->Anzahl; j++)
-            RecInf->BookmarkInfo.Bookmarks[j] = (dword) ((long long)HumaxBookmarks->Items[j] * 32768 / 9024);
+          {
+            RecInf->BookmarkInfo.Bookmarks[n++] = (dword) ((long long)HumaxBookmarks->Items[j] * 32768 / 9024);
+            printf((j > 0) ? ", %u" : "%u", HumaxBookmarks->Items[j]);
+          }
+          printf("\n");
         }
         if ((i == 4) || (HumaxHeader.ZusInfoID == HumaxTonSpurenID))  // Header 4: Tonspuren
         {
@@ -508,6 +514,8 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     AudioPIDs[k].pid = TeletextPID;
     AudioPIDs[k].sorted = TRUE;
   }
+
+  CutImportFromBM(NULL, RecInf->BookmarkInfo.Bookmarks, RecInf->BookmarkInfo.NrBookmarks);
 
 //  fseeko64(fIn, FilePos, SEEK_SET);
   if (!ret)
