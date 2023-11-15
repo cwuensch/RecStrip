@@ -21,7 +21,7 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
 
     - name: Use VS 2017 project
       run: mv -Force RecStrip_VS/RecStrip_2017.vcxproj RecStrip_VS/RecStrip.vcxproj
@@ -44,7 +44,7 @@ jobs:
         move "RecStrip_VS\x64\Release\RecStrip.exe" "RecStrip_VS\RecStrip_x64.exe"
 
     - name: Copy build artefact
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: RecStrip_VS2017
         path: |
@@ -69,7 +69,7 @@ jobs:
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
 
     - name: Compile code in container
       run: |
@@ -86,7 +86,7 @@ jobs:
         move "RecStrip_VS\x64\Release\RecStrip.exe" "RecStrip_VS\RecStrip_x64.exe"
 
     - name: Copy build artefact
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: RecStrip_Windows
         path: |
@@ -112,7 +112,7 @@ jobs:
       run: sudo apt-get install -y gcc-mingw-w64
 
     - name: Checkout repository and submodules
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
 #      with:
 #        submodules: recursive
 
@@ -137,7 +137,7 @@ jobs:
         mv RecStrip.exe RecStrip_x64.exe
 
     - name: Copy build artefact
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: RecStrip_MinGW
         path: |
@@ -163,7 +163,7 @@ jobs:
 
     steps:
     - name: Download VS2010
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
       with:
         repository: cwuensch/VS2010
         ref: minimal
@@ -288,7 +288,7 @@ jobs:
 
 
     - name: Checkout repository
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
       
     - name: Build x86
       shell: cmd
@@ -323,7 +323,7 @@ jobs:
         move "${{ github.workspace }}\RecStrip_VS\x64\Release\RecStrip.exe" "${{ github.workspace }}\RecStrip_VS\RecStrip_x64.exe"
 
     - name: Copy build artefact
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: RecStrip_Windows_new
         path: |
@@ -348,7 +348,7 @@ jobs:
 
     steps:
     - name: Checkout repository and submodules
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
 #      with:
 #        submodules: recursive
 
@@ -361,7 +361,7 @@ jobs:
         args: make
 
     - name: Copy build artefact
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: RecStrip_TMS
         path: ${{ github.workspace }}/RecStrip
@@ -384,7 +384,7 @@ jobs:
 
     steps:
     - name: Checkout repository and submodules
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
 #      with:
 #        submodules: recursive
 
@@ -416,7 +416,7 @@ jobs:
         make
 
     - name: Copy build artefact
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: RecStrip_Linux
         path: |
@@ -460,7 +460,7 @@ jobs:
         fi
 
     - name: Get compiled binaries
-      uses: actions/download-artifact@master
+      uses: actions/download-artifact@v3
       with:
         name: RecStrip_Linux
         path: ${{ github.workspace }}
@@ -513,7 +513,7 @@ jobs:
 
     steps:
     - name: Checkout repository and submodules
-      uses: actions/checkout@v2
+      uses: actions/checkout@v4
 #      with:
 #        submodules: recursive
 
@@ -528,7 +528,7 @@ jobs:
         docker cp SynoBuild:/toolkit/build_base/source/RecStrip/RecStrip ${{ github.workspace }}/RecStrip_${{ matrix.platform }}
         
     - name: Copy build artefact
-      uses: actions/upload-artifact@v2
+      uses: actions/upload-artifact@v3
       with:
         name: RecStrip_Synology
         path: |
@@ -543,7 +543,7 @@ jobs:
 
     steps:
     - name: Download artifact
-      uses: actions/download-artifact@v2
+      uses: actions/download-artifact@v3
 
     - name: Create zip archive
       run: |

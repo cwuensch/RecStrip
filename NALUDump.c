@@ -397,7 +397,7 @@ int ProcessTSPacket(unsigned char *Packet, long long FilePosition)
       }
     }
 
-    if (Info.ZerosOnly && (!TSPacket->Adapt_Field_Exists /*|| TSPacket->Data[1]==0*/) && (isHDVideo || SliceState) /*&& LastEndNulls>0*/)
+    if (Info.ZerosOnly && (!TSPacket->Adapt_Field_Exists || TSPacket->Data[1]==0) && (isHDVideo || SliceState) /*&& LastEndNulls>0*/)
     {
 //printf("Potential zero-byte-stuffing at position %lld", FilePosition);
       if (LastEndNulls >= 3 || PendingPacket)  // wenn 3 Nullen am Ende -> dann darf FolgePaket ohne anfangen

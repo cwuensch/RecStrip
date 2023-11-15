@@ -847,7 +847,7 @@ static bool AnalyseAudio(byte *PSBuffer, int BufSize, word pid, tAudioTrack *con
       {
         tTtxHeader *ttxHeader = (tTtxHeader*) &PSBuffer[p];
         if ((ttxHeader->data_identifier == 0x10)  // = EBU data EN 300 472 (teletext)
-          && (ttxHeader->data_unit_id == 0x02 || ttxHeader->data_unit_id == 0x03))  // = EBU Teletext (non-subtitle) data / DATA_UNIT_EBU_TELETEXT_SUBTITLE / DATA_UNIT_EBU_TELETEXT_NONSUBTITLE
+         /* && (ttxHeader->data_unit_id == 0x02 || ttxHeader->data_unit_id == 0x03) */)  // = EBU Teletext (non-subtitle) data / DATA_UNIT_EBU_TELETEXT_SUBTITLE / DATA_UNIT_EBU_TELETEXT_NONSUBTITLE
         {
           printf("  TS: PID=%d, Teletext stream", pid);
           if (AudioTrack)
@@ -986,7 +986,6 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   byte                 *Buffer = NULL;
   int                   LastPMTBuffer = 0, LastEITBuffer = 0, LastTtxBuffer = 0;
   byte                  FrameType = 0;
-  tTSPacket            *curPacket = NULL;
   tPESHeader           *curPESPacket = NULL;
   word                  PMTPID = 0;
   tPVRTime              TtxTime = 0;
@@ -1219,6 +1218,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 
   if (MedionMode != 1)
   {
+    tTSPacket          *curPacket = NULL;
+    word                curPID = 0;
     PMTPID = 0;
     PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE);
     for (d = 0; d < 10; d++)
@@ -1353,8 +1354,11 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 //            p = &Buffer[Offset + PACKETOFFSET];
             while (p <= &Buffer[ReadBytes-188])
             {
-              PSBuffer_ProcessTSPacket(&PMTBuffer, (tTSPacket*)p);
-              if ((PMTBuffer.ValidBuffer != LastPMTBuffer) || (PMTatStart && (PMTBuffer.BufferPtr > 0) && ((((tTSPacket*)p)->PID1)*256 + (((tTSPacket*)p)->PID2) != PMTPID) && (p < &Buffer[10*PACKETSIZE])))
+              curPacket = (tTSPacket*)p;
+              curPID = (curPacket->PID1 *256) + curPacket->PID2;
+              if (curPID == PMTPID)
+                PSBuffer_ProcessTSPacket(&PMTBuffer, (tTSPacket*)p);
+              if ((PMTBuffer.ValidBuffer != LastPMTBuffer) || (PMTatStart && (PMTBuffer.BufferPtr > 0) && (curPID != PMTPID) && (p < &Buffer[10*PACKETSIZE])))
               {
                 if(!PMTBuffer.ErrorFlag) break;
                 PMTBuffer.ErrorFlag = FALSE;
@@ -1425,9 +1429,11 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 
         while (p <= &Buffer[ReadBytes-188])
         {
+          curPacket = (tTSPacket*)p;
+          curPID = (curPacket->PID1 *256) + curPacket->PID2;
           if (PATPMTBuf[4] != 'G')
           {
-            if ((((tTSPacket*) p)->PID1 == 0) && (((tTSPacket*) p)->PID2 == 0) && (((tTSPacket*) p)->Payload_Unit_Start))
+            if ((curPID == 0) && curPacket->Payload_Unit_Start)
             {
               tTSPacket* packet = (tTSPacket*) &PATPMTBuf[4];
               memcpy(packet, p, 188);
@@ -1437,9 +1443,9 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 //              ((tTSPAT*) packet->Data)->PMTPID2 = PMTPID & 0xff;
             }
           }
-          if (!SDTOK)
+          if (!SDTOK && (curPID == 0x0011))
           {
-            PSBuffer_ProcessTSPacket(&PMTBuffer, (tTSPacket*)p);
+            PSBuffer_ProcessTSPacket(&PMTBuffer, curPacket);
             if(PMTBuffer.ValidBuffer != LastPMTBuffer)
             {
               byte* pBuffer = (PMTBuffer.ValidBuffer==2) ? PMTBuffer.Buffer2 : PMTBuffer.Buffer1;
@@ -1448,10 +1454,10 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               LastPMTBuffer = PMTBuffer.ValidBuffer;
             }
           }
-          if (!EITOK)
+          if (!EITOK && (curPID == 18))
           {
-            PSBuffer_ProcessTSPacket(&EITBuffer, (tTSPacket*)p);
-            if ((EITBuffer.ValidBuffer != LastEITBuffer) || (PMTatStart && (i==0) && (EITBuffer.BufferPtr > 0) && ((((tTSPacket*)p)->PID1)*256 + (((tTSPacket*)p)->PID2) != 18) && (p < &Buffer[10*PACKETSIZE])))
+            PSBuffer_ProcessTSPacket(&EITBuffer, curPacket);
+            if ((EITBuffer.ValidBuffer != LastEITBuffer) || (PMTatStart && (i==0) && (EITBuffer.BufferPtr > 0) && (curPID != 18) && (p < &Buffer[10*PACKETSIZE])))
             {
               byte *pBuffer = (EITBuffer.ValidBuffer==2) ? EITBuffer.Buffer2 : EITBuffer.Buffer1;
               int EITLen = EITBuffer.ValidBufLen ? EITBuffer.ValidBufLen : EITBuffer.BufferPtr;
@@ -1491,27 +1497,23 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               LastEITBuffer = EITBuffer.ValidBuffer;
             }
           }
-          if (TeletextPID != 0xffff && !TtxOK)
+          if (!TtxOK && (TeletextPID != 0xffff) && (curPID == TeletextPID))
           {
-            if (!TtxFound)
+            PSBuffer_ProcessTSPacket(&TtxBuffer, curPacket);
+            if(TtxBuffer.ValidBuffer != LastTtxBuffer)
             {
-              PSBuffer_ProcessTSPacket(&TtxBuffer, (tTSPacket*)p);
-              if(TtxBuffer.ValidBuffer != LastTtxBuffer)
-              {
-                byte *pBuffer = (TtxBuffer.ValidBuffer==2) ? TtxBuffer.Buffer2 : TtxBuffer.Buffer1;
+              byte *pBuffer = (TtxBuffer.ValidBuffer==2) ? TtxBuffer.Buffer2 : TtxBuffer.Buffer1;
 // IDEE: Hier vielleicht den Teletext-String in EventNameDescription schreiben, FALLS Länge größer ist als EventNameLength und !EITOK
-                TtxFound = !TtxBuffer.ErrorFlag && AnalyseTtx(pBuffer, TtxBuffer.ValidBufLen, &TtxTime, &TtxTimeSec, &TtxTimeZone, ((SDTOK || (HumaxSource && *RecInf->ServiceInfo.ServiceName)) ? NULL : RecInf->ServiceInfo.ServiceName), sizeof(RecInf->ServiceInfo.ServiceName));
-                TtxBuffer.ErrorFlag = FALSE;
-                LastTtxBuffer = TtxBuffer.ValidBuffer;
-              }
+              TtxFound = !TtxBuffer.ErrorFlag && AnalyseTtx(pBuffer, TtxBuffer.ValidBufLen, &TtxTime, &TtxTimeSec, &TtxTimeZone, ((SDTOK || (HumaxSource && *RecInf->ServiceInfo.ServiceName)) ? NULL : RecInf->ServiceInfo.ServiceName), sizeof(RecInf->ServiceInfo.ServiceName));
+              TtxBuffer.ErrorFlag = FALSE;
+              LastTtxBuffer = TtxBuffer.ValidBuffer;
             }
           }
           if(TtxFound && !TtxOK)
             TtxOK = (GetPCRms(p, &TtxPCR) && TtxPCR != 0);
           if (!VidOK)
           {
-            tTSPacket *curPacket = (tTSPacket*)p;
-            if ((!PMTPID || ((curPacket->PID1 * 256 + curPacket->PID2) == VideoPID)) && curPacket->Payload_Unit_Start)
+            if ((!PMTPID || (curPID == VideoPID)) && curPacket->Payload_Unit_Start)
             {
               if (curPacket->Adapt_Field_Exists)
                 VidOK = AnalyseVideo((byte*)&curPacket->Data + curPacket->Data[0] + 1, sizeof(curPacket->Data) - curPacket->Data[0] - 1, (curPacket->PID1 * 256 | curPacket->PID2), &VideoHeight, &VideoWidth, &VideoFPS, &VideoDAR);
@@ -1523,7 +1525,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                 RecInf->ServiceInfo.ServiceType = 0;  // SVC_TYPE_Tv
                 if(RecInf->ServiceInfo.VideoStreamType == 0xff)
                 {
-                  VideoPID = (curPacket->PID1 * 256 | curPacket->PID2);
+                  VideoPID = curPID;
                   RecInf->ServiceInfo.VideoPID = VideoPID;
                   RecInf->ServiceInfo.PCRPID = VideoPID;
                   RecInf->ServiceInfo.VideoStreamType = (isHDVideo ? STREAM_VIDEO_MPEG4_H264 : STREAM_VIDEO_MPEG2);
@@ -1533,8 +1535,6 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             }
           }
           {
-            tTSPacket *curPacket = (tTSPacket*)p;
-            word curPID = curPacket->PID1 * 256 | curPacket->PID2;
             if (curPID && (curPID != VideoPID) && (curPID != 18) && (curPID != TeletextPID || !HasTeletext) && curPacket->Payload_Unit_Start)
             {
               int k;
@@ -1576,8 +1576,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         }
         if(((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT) || (/*HumaxSource || EycosSource ||*/ AllPidsScanned || MedionMode==1) || (EITOK && SDTOK)) && (TtxOK || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
         {
-//          ret = TRUE;
-//          break;
+          ret = TRUE;
+          break;
         }
         if(HumaxSource)
           fseeko64(fIn, +HumaxHeaderLaenge, SEEK_CUR);
