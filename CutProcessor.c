@@ -30,7 +30,7 @@ typedef struct
 #ifdef LINUX
   int                   OutCutVersion = 3;  // für Topfield TMS
 #else
-  int                   OutCutVersion = 4;  // vormals: 3
+  int                   OutCutVersion = 3;  // vormals: 3
 #endif
 static const bool       WriteCutFile = TRUE;
 bool                    WriteCutInf = FALSE;

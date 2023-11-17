@@ -15,6 +15,7 @@
 #include "RecHeader.h"
 #include "RebuildInf.h"
 #include "TtxProcessor.h"
+#include "CutProcessor.h"
 #include "HumaxHeader.h"
 
 #include <sys/stat.h>
@@ -138,9 +139,9 @@ bool FindExePath(const char* CalledExe, char *const OutExePath, int OutputSize)
     {
       curPath[PATH_MAX - 1] = '\0';
       // Prepend each item of PATH variable before CalledExe
-      for (p = strchr(pPath, PATH_DELIMITER); pPath && *pPath; (pPath = p) && (p = strchr(++pPath, PATH_DELIMITER)))
+      for (p = strchr(pPath, PATH_DELIMITER); pPath && *pPath; p = strchr(((pPath = p+1)), PATH_DELIMITER))
       {
-        int len = min((p ? (int)(p - pPath) : (int)strlen(pPath)), PATH_MAX-1);
+        int len = min(((p) ? (int)(p - pPath) : (int)strlen(pPath)), PATH_MAX-1);
         strncpy(curPath, pPath, len);
         snprintf(&curPath[len], PATH_MAX - len, (WinExe ? PATH_SEPARATOR "%s.exe" : PATH_SEPARATOR "%s"), CalledExe);
 
@@ -310,7 +311,7 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *InOutServiceName
         if(APidStr) APid = (word) strtol(&LineBuf[APidStr], NULL, 10);
         p = strrchr(LineBuf, ';') + 1;
         if ((VPid == VidPID) && ((APid == AudPID) || !AudPID || AudPID == (word)-1) && ((TPid == TtxPID) || !TtxPID || TtxPID == (word)-1 || !TPid)
-         && ((VidPID != 101 && VidPID != 201 && VidPID != 255 && VidPID != 401 && VidPID != 501 && VidPID != 601) || (InOutServiceName && *InOutServiceName && ((strncasecmp(p, InOutServiceName, 2) == 0) || (strncmp(p, "Das", 3)==0 && strncmp(InOutServiceName, "ARD", 3)==0) || (strncmp(p, "BR", 2)==0 && strncmp(InOutServiceName, "Bay", 3)==0)))))
+         && ((VidPID != 101 && VidPID != 201 && VidPID != 255 && VidPID != 401 && VidPID != 501 && VidPID != 511 && VidPID != 601) || (InOutServiceName && *InOutServiceName && ((strncasecmp(p, InOutServiceName, 2) == 0) || (strncmp(p, "Das", 3)==0 && strncmp(InOutServiceName, "ARD", 3)==0) || (strncmp(p, "BR", 2)==0 && strncmp(InOutServiceName, "Bay", 3)==0)))))
         {
           strncpy(SenderFound, p, sizeof(SenderFound));
           SenderFound[sizeof(SenderFound)-1] = '\0';
@@ -345,7 +346,7 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *InOutServiceName
           }
 
           if(OutPMTPID && (!*OutPMTPID || *OutPMTPID==100 || *OutPMTPID==256)) *OutPMTPID = PMTFound;
-          if(InOutServiceName && !*InOutServiceName) strncpy(InOutServiceName, SenderFound, sizeof(((TYPE_Service_Info*)NULL)->ServiceName));
+          if(InOutServiceName /*&& !*InOutServiceName*/) strncpy(InOutServiceName, SenderFound, sizeof(((TYPE_Service_Info*)NULL)->ServiceName));
           fclose(fMap);
           return SidFound;
         }
@@ -392,7 +393,7 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 {
   tHumaxHeader          HumaxHeader;
   char                  FirstSvcName[32];
-  int                   i, j, k;
+  int                   i, j, k, n=0;
   bool                  ret = TRUE;
 
   TRACEENTER;
@@ -438,8 +439,8 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           if(p) *p = '\0';
           strncpy(FirstSvcName, HumaxHeader.Allgemein.Dateiname, sizeof(FirstSvcName));
           FirstSvcName[sizeof(FirstSvcName)-1] = '\0';
-// manuelle Ausnahme (IMGARTENEDEN2_0601112255.vid):
-if(VideoPID == 660 && TeletextPID == 130 && ExtractTeletext && DoStrip) RemoveTeletext = TRUE;
+// manuelle Ausnahme (IMGARTENEDEN2_0601112255.vid), da falscher Teletext bei ZDFdoku:
+//if(VideoPID == 660 && TeletextPID == 130 && ExtractTeletext && DoStrip) RemoveTeletext = TRUE;
         }
         else if (i == 2)  // Header 2: Original-Dateiname
         {
@@ -457,8 +458,13 @@ if(VideoPID == 660 && TeletextPID == 130 && ExtractTeletext && DoStrip) RemoveTe
         {
           tHumaxBlock_Bookmarks* HumaxBookmarks = (tHumaxBlock_Bookmarks*)HumaxHeader.ZusInfos;
           RecInf->BookmarkInfo.NrBookmarks = HumaxBookmarks->Anzahl;
+          printf("    Bookmarks: %s", (HumaxBookmarks->Anzahl == 0) ? "-" : "");
           for (j = 0; j < HumaxBookmarks->Anzahl; j++)
-            RecInf->BookmarkInfo.Bookmarks[j] = (dword) ((long long)HumaxBookmarks->Items[j] * 32768 / 9024);
+          {
+            RecInf->BookmarkInfo.Bookmarks[n++] = (dword) ((long long)HumaxBookmarks->Items[j] * 32768 / 9024);
+            printf((j > 0) ? ", %u" : "%u", HumaxBookmarks->Items[j]);
+          }
+          printf("\n");
         }
         if ((i == 4) || (HumaxHeader.ZusInfoID == HumaxTonSpurenID))  // Header 4: Tonspuren
         {
@@ -508,6 +514,8 @@ if(VideoPID == 660 && TeletextPID == 130 && ExtractTeletext && DoStrip) RemoveTe
     AudioPIDs[k].pid = TeletextPID;
     AudioPIDs[k].sorted = TRUE;
   }
+
+  CutImportFromBM(NULL, RecInf->BookmarkInfo.Bookmarks, RecInf->BookmarkInfo.NrBookmarks);
 
 //  fseeko64(fIn, FilePos, SEEK_SET);
   if (!ret)

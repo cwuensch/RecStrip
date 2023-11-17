@@ -502,14 +502,6 @@ static int GetPacketSize(FILE *RecFile, int *OutOffset)
     fseeko64(RecFile, 9024, SEEK_SET);
     if (fread(Buffer, 1, 5573, RecFile) == 5573)
     {
-      char *p = strrchr(RecFileIn, '.');
-      if (p && strcmp(p, ".vid") == 0)
-        HumaxSource = TRUE;
-      else if (p && strcmp(p, ".trp") == 0)
-        EycosSource = TRUE;
-      else if (p && strcmp(p, ".TS4") == 0)
-        isHDVideo = TRUE;
-
       PACKETSIZE = 188;
       PACKETOFFSET = 0;
       Offset = FindNextPacketStart(Buffer, 5573);
@@ -738,6 +730,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
   tSegmentMarker2      *SegmentMarker_bak = SegmentMarker;
   int                   NrSegmentMarker_bak = NrSegmentMarker;
   int                   k;
+  char                 *p;
 
   TRACEENTER;
 //  CurrentStartTime = 0;
@@ -779,6 +772,24 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
   memset(FileDefect, 0, MAXCONTINUITYPIDS * sizeof(tContinuityError));
   NrContErrsInFile = 0;
   LastContErrPos = 0;
+
+  // Detektion Sonderformate
+  p = strrchr(RecFileIn, '.');
+  if (p && strcmp(p, ".vid") == 0)
+    HumaxSource = TRUE;
+  else if (p && strcmp(p, ".trp") == 0)
+    EycosSource = TRUE;
+  else if (p && strcmp(p, ".TS4") == 0)
+    isHDVideo = TRUE;
+  else if (p && !MedionMode && strcmp(p, ".pes") == 0)
+  {
+    p = strrchr(RecFileIn, '_');
+    if (p && strcmp(p, "_video.pes") == 0)
+      MedionMode = 1;
+  }
+#ifndef LINUX
+  if (HumaxSource || EycosSource)  OutCutVersion = 4;
+#endif
 
   // Spezialanpassung Medion
   if (MedionMode)
@@ -915,7 +926,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     }
 
     // ggf. cut-File einlesen
-    if (NrSegmentMarker <= 2 || !EycosSource)
+    if (NrSegmentMarker <= 2 || (!EycosSource && !HumaxSource))
     {
       GetFileNameFromRec(RecFileIn, ".cut", CutFileIn);
       printf("\nCut file: %s\n", CutFileIn);
@@ -1203,14 +1214,6 @@ static bool CloseOutputFiles(void)
     fOut = NULL;
   }
 
-  if (HumaxSource && *CutFileOut && BookmarkInfo && BookmarkInfo->NrBookmarks)
-  {
-    CutImportFromBM(RecFileOut, BookmarkInfo->Bookmarks, BookmarkInfo->NrBookmarks);
-    SegmentMarker[NrSegmentMarker-1].Position = CurrentPosition - PositionOffset;
-    if(NewDurationMS)
-      SegmentMarker[NrSegmentMarker-1].Timems = NewDurationMS;
-  }
-
   if (EycosSource && (NrSegmentMarker > 2))
   {
     // SegmentMarker aus TimeStamps importieren (weil Eycos die Bookmarks scheinbar in Millisekunden speichert)
@@ -1305,11 +1308,13 @@ FILE *fDbg;
     #ifdef _WIN32
       localtime_s(&timeinfo, &curTime);
       _tzset();
-      printf("\nLocal timezone: %s%s (GMT%+ld)\n", _tzname[0], (timeinfo.tm_isdst ? " + DST" : ""), -_timezone/3600 + timeinfo.tm_isdst);
+      printf("\nExecution time: %s (local)\n", TimeStr(curTime));
+      printf("Local timezone: %s%s (GMT%+ld)\n", _tzname[0], (timeinfo.tm_isdst ? " + DST" : ""), -_timezone/3600 + timeinfo.tm_isdst);
     #else
       localtime_r(&curTime, &timeinfo);
       tzset();
-      printf("\nLocal timezone: %s%s (GMT%+ld)\n", tzname[0], (timeinfo.tm_isdst ? " + DST" : ""), -timezone/3600 + timeinfo.tm_isdst);
+      printf("\nExecution time: %s (local)\n", TimeStr(curTime));
+      printf("Local timezone: %s%s (GMT%+ld)\n", tzname[0], (timeinfo.tm_isdst ? " + DST" : ""), -timezone/3600 + timeinfo.tm_isdst);
     #endif
   }
 #endif
@@ -1757,6 +1762,9 @@ FILE *fDbg;
     { MedionStrip = TRUE; DoStrip = FALSE; }
 //  if (ExtractTeletext && DoStrip)
 //    { RemoveTeletext = TRUE; }
+  #ifndef LINUX
+    if (DoStrip || DoMerge || RemoveEPGStream || RemoveTeletext || OutPacketSize)  OutCutVersion = 4;
+  #endif
 
   if (!ret)
   {
@@ -2196,6 +2204,13 @@ FILE *fDbg;
         if ((fread(&RecHeaderInfo_out, sizeof(TYPE_RecHeader_Info), 1, fInfOut)) && (fread(&ServiceInfo_out, sizeof(TYPE_Service_Info), 1, fInfOut))
           && ((strncmp(RecHeaderInfo_out.Magic, "TFrc", 4) == 0) && (RecHeaderInfo_out.Version == 0x8000)))
         {
+          if ((RecHeaderInfo_out.StartTime != OrigStartTime) || (OrigStartSec && (RecHeaderInfo_out.StartTimeSec != OrigStartSec)))
+          {
+            printf("INF FIX (%s): Fixing StartTime to %s\n", (DoFixPMT ? "output" : "source"), TimeStrTF(OrigStartTime, OrigStartSec));
+            RecHeaderInfo_out.StartTime = OrigStartTime;
+            RecHeaderInfo_out.StartTimeSec = OrigStartSec;
+            InfModified = TRUE;
+          }
           if (*RecHeader->ServiceInfo.ServiceName && (strncmp(ServiceInfo_out.ServiceName, RecHeader->ServiceInfo.ServiceName, sizeof(ServiceInfo_out.ServiceName)) != 0))
           {
             printf("INF FIX (%s): Fixing ServiceName %s -> %s\n", (DoFixPMT ? "output" : "source"), ServiceInfo_out.ServiceName, RecHeader->ServiceInfo.ServiceName);
@@ -2236,7 +2251,7 @@ FILE *fDbg;
             ServiceInfo_out.VideoStreamType = RecHeader->ServiceInfo.VideoStreamType;
             InfModified = TRUE;
           }
-          if (RecHeader->ServiceInfo.AudioStreamType && (RecHeader->ServiceInfo.AudioStreamType != 0xff) && (ServiceInfo_out.AudioStreamType != RecHeader->ServiceInfo.AudioStreamType))
+          if (/*RecHeader->ServiceInfo.AudioStreamType &&*/ (RecHeader->ServiceInfo.AudioStreamType != 0xff) && (ServiceInfo_out.AudioStreamType != RecHeader->ServiceInfo.AudioStreamType))
           {
             printf("INF FIX (%s): Fixing AudioStreamType %hhu -> %hhu\n", (DoFixPMT ? "output" : "source"), ServiceInfo_out.AudioStreamType, RecHeader->ServiceInfo.AudioStreamType);
             ServiceInfo_out.AudioStreamType = RecHeader->ServiceInfo.AudioStreamType;
@@ -2333,6 +2348,8 @@ FILE *fDbg;
       {
         if (InfModified)
         {
+          fseek(fInfOut, 0, SEEK_SET);
+          fwrite(&RecHeaderInfo_out, 1, 12, fInfOut);
           fseek(fInfOut, sizeof(TYPE_RecHeader_Info), SEEK_SET);
           fwrite(&ServiceInfo_out, 1, sizeof(TYPE_Service_Info), fInfOut);
         }
