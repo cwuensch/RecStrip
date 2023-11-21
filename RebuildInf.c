@@ -723,7 +723,7 @@ static bool AnalyseTtx(byte *PSBuffer, int BufSize, tPVRTime *const TtxTime, byt
                 strcat(programme, u);
               }
               rtrim(programme);
-              if(ServiceName)
+              if(ServiceName && !KeepHumaxSvcName)
               {
                 strncpy(ServiceName, programme, SvcNameLen-1);
                 ServiceName[SvcNameLen-1] = '\0';
@@ -1500,11 +1500,17 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           if (!TtxOK && (TeletextPID != 0xffff) && (curPID == TeletextPID))
           {
             PSBuffer_ProcessTSPacket(&TtxBuffer, curPacket);
-            if(TtxBuffer.ValidBuffer != LastTtxBuffer)
+            if (TtxBuffer.ValidBuffer != LastTtxBuffer)
             {
               byte *pBuffer = (TtxBuffer.ValidBuffer==2) ? TtxBuffer.Buffer2 : TtxBuffer.Buffer1;
 // IDEE: Hier vielleicht den Teletext-String in EventNameDescription schreiben, FALLS Länge größer ist als EventNameLength und !EITOK
-              TtxFound = !TtxBuffer.ErrorFlag && AnalyseTtx(pBuffer, TtxBuffer.ValidBufLen, &TtxTime, &TtxTimeSec, &TtxTimeZone, ((SDTOK || (HumaxSource && *RecInf->ServiceInfo.ServiceName)) ? NULL : RecInf->ServiceInfo.ServiceName), sizeof(RecInf->ServiceInfo.ServiceName));
+              TtxFound = !TtxBuffer.ErrorFlag && AnalyseTtx(pBuffer, TtxBuffer.ValidBufLen, &TtxTime, &TtxTimeSec, &TtxTimeZone, (!EITOK ? RecInf->EventInfo.EventNameDescription : ((!SDTOK && !KeepHumaxSvcName) ? RecInf->ServiceInfo.ServiceName : NULL)), sizeof(RecInf->ServiceInfo.ServiceName));
+              if (!EITOK && *RecInf->EventInfo.EventNameDescription)
+              {
+                RecInf->EventInfo.EventNameLength = (byte)strlen(RecInf->EventInfo.EventNameDescription);
+                if (!SDTOK && !KeepHumaxSvcName)
+                  strncpy(RecInf->ServiceInfo.ServiceName, RecInf->EventInfo.EventNameDescription, sizeof(RecInf->ServiceInfo.ServiceName));
+              }
               TtxBuffer.ErrorFlag = FALSE;
               LastTtxBuffer = TtxBuffer.ValidBuffer;
             }
@@ -1650,15 +1656,16 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         printf ("  Failed to get service name from SDT.\n");
       if (!RecInf->ServiceInfo.ServiceID || RecInf->ServiceInfo.ServiceID==1 || !RecInf->ServiceInfo.PMTPID || !*RecInf->ServiceInfo.ServiceName)
       {
-        RecInf->ServiceInfo.ServiceID = GetSidFromMap(VideoPID, 0 /*GetMinimalAudioPID(AudioPIDs)*/, TeletextPID, RecInf->ServiceInfo.ServiceName, &RecInf->ServiceInfo.PMTPID);  // zweiter Versuch, ggf. überschreiben
+        if (!KeepHumaxSvcName)
+          RecInf->ServiceInfo.ServiceID = GetSidFromMap(VideoPID, 0 /*GetMinimalAudioPID(AudioPIDs)*/, TeletextPID, RecInf->ServiceInfo.ServiceName, &RecInf->ServiceInfo.PMTPID, FALSE);  // zweiter Versuch, ggf. überschreiben
         if(!RecInf->ServiceInfo.ServiceID) RecInf->ServiceInfo.ServiceID = 1;
         if(!RecInf->ServiceInfo.PMTPID) RecInf->ServiceInfo.PMTPID = 256;
       }
-      if(!EITOK && PMTatStart && (EITBuffer.ValidBuffer == 0) && (LastEITBuffer == 0))
+      if (!EITOK && PMTatStart && (EITBuffer.ValidBuffer == 0) && (LastEITBuffer == 0))
         EITOK = !EITBuffer.ErrorFlag && AnalyseEIT(EITBuffer.Buffer1, EITBuffer.BufferPtr, RecInf->ServiceInfo.ServiceID, RecInf);  // Versuche EIT trotzdem zu parsen (bei gestrippten Aufnahmen gibt es kein Folge-Paket, das den Payload_Unit_Start auslöst)
-      if(!EITOK)
+      if (!EITOK)
         printf ("  Failed to get the EIT information.\n");
-      if(TeletextPID != 0xffff && !TtxOK)
+      if (TeletextPID != 0xffff && !TtxOK)
         printf ("  Failed to get start time from Teletext.\n");
       PSBuffer_Reset(&PMTBuffer);
       PSBuffer_Reset(&EITBuffer);
