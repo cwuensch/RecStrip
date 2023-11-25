@@ -2191,12 +2191,14 @@ int main(int argc, const char* argv[])
       char                  InfFileStripped[FBLIB_DIR_SIZE];
       TYPE_RecHeader_Info   RecHeaderInfo_out;
       TYPE_Service_Info     ServiceInfo_out;
+      TYPE_Event_Info       EventInfo_out;
+      TYPE_ExtEvent_Info    ExtEventInfo_out;
       TYPE_Bookmark_Info    BookmarkInfo_out;
       TYPE_RecHeader_TMSS*  RecHeader = ((TYPE_RecHeader_TMSS*)InfBuffer);
 
       if ((fInfOut = fopen((DoFixPMT ? InfFileOut : InfFileIn), "rb")))
       {
-        if ((fread(&RecHeaderInfo_out, sizeof(TYPE_RecHeader_Info), 1, fInfOut)) && (fread(&ServiceInfo_out, sizeof(TYPE_Service_Info), 1, fInfOut))
+        if ((fread(&RecHeaderInfo_out, sizeof(TYPE_RecHeader_Info), 1, fInfOut)) && (fread(&ServiceInfo_out, sizeof(TYPE_Service_Info), 1, fInfOut)) && (fread(&EventInfo_out, sizeof(TYPE_Event_Info), 1, fInfOut)) && (fread(&ExtEventInfo_out, sizeof(TYPE_ExtEvent_Info), 1, fInfOut))
           && ((strncmp(RecHeaderInfo_out.Magic, "TFrc", 4) == 0) && (RecHeaderInfo_out.Version == 0x8000)))
         {
           if ((RecHeaderInfo_out.StartTime != OrigStartTime) || (OrigStartSec && (RecHeaderInfo_out.StartTimeSec != OrigStartSec)))
@@ -2256,6 +2258,28 @@ int main(int argc, const char* argv[])
           {
             printf("INF FIX (%s): Fixing AudioTypeFlag %hu -> %hu\n", (DoFixPMT ? "output" : "source"), ServiceInfo_out.AudioTypeFlag, RecHeader->ServiceInfo.AudioTypeFlag);
             ServiceInfo_out.AudioTypeFlag = RecHeader->ServiceInfo.AudioTypeFlag;
+            InfModified = TRUE;
+          }
+
+          if ((RecHeader->EventInfo.StartTime != 0) && (RecHeader->EventInfo.StartTime != EventInfo_out.StartTime))
+          {
+            printf("INF FIX (%s): Fixing EventInfo ('%s')\n", (DoFixPMT ? "output" : "source"), RecHeader->EventInfo.EventNameDescription);
+            EventInfo_out.ServiceID       = RecHeader->EventInfo.ServiceID;
+            EventInfo_out.EventID         = RecHeader->EventInfo.EventID;
+            EventInfo_out.RunningStatus   = RecHeader->EventInfo.RunningStatus;
+            EventInfo_out.StartTime       = RecHeader->EventInfo.StartTime;
+            EventInfo_out.DurationHour    = RecHeader->EventInfo.DurationHour;
+            EventInfo_out.DurationMin     = RecHeader->EventInfo.DurationMin;
+            EventInfo_out.EventNameLength = RecHeader->EventInfo.EventNameLength;
+            strncpy(EventInfo_out.EventNameDescription, RecHeader->EventInfo.EventNameDescription, sizeof(EventInfo_out.EventNameDescription));
+            
+            if (RecHeader->ExtEventInfo.TextLength > 0)
+            {
+              ExtEventInfo_out.ServiceID  = RecHeader->ExtEventInfo.ServiceID;
+              ExtEventInfo_out.TextLength = RecHeader->ExtEventInfo.TextLength;
+              ExtEventInfo_out.NrItemizedPairs = RecHeader->ExtEventInfo.NrItemizedPairs;
+              strncpy(ExtEventInfo_out.Text, RecHeader->ExtEventInfo.Text, sizeof(ExtEventInfo_out.Text));
+            }
             InfModified = TRUE;
           }
 
@@ -2347,6 +2371,8 @@ int main(int argc, const char* argv[])
           fwrite(&RecHeaderInfo_out, 1, 12, fInfOut);
           fseek(fInfOut, sizeof(TYPE_RecHeader_Info), SEEK_SET);
           fwrite(&ServiceInfo_out, 1, sizeof(TYPE_Service_Info), fInfOut);
+          fwrite(&EventInfo_out, 1, sizeof(TYPE_Event_Info), fInfOut);
+          fwrite(&ExtEventInfo_out, 1, sizeof(TYPE_ExtEvent_Info), fInfOut);
         }
         if (BookmarkFix)
         {

@@ -1504,13 +1504,15 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             {
               byte *pBuffer = (TtxBuffer.ValidBuffer==2) ? TtxBuffer.Buffer2 : TtxBuffer.Buffer1;
 // IDEE: Hier vielleicht den Teletext-String in EventNameDescription schreiben, FALLS Länge größer ist als EventNameLength und !EITOK
-              TtxFound = !TtxBuffer.ErrorFlag && AnalyseTtx(pBuffer, TtxBuffer.ValidBufLen, &TtxTime, &TtxTimeSec, &TtxTimeZone, (!EITOK ? RecInf->EventInfo.EventNameDescription : ((!SDTOK && !KeepHumaxSvcName) ? RecInf->ServiceInfo.ServiceName : NULL)), sizeof(RecInf->ServiceInfo.ServiceName));
+
+              TtxFound = !TtxBuffer.ErrorFlag && AnalyseTtx(pBuffer, TtxBuffer.ValidBufLen, &TtxTime, &TtxTimeSec, &TtxTimeZone, ((!SDTOK && !KeepHumaxSvcName) ? RecInf->ServiceInfo.ServiceName : NULL), sizeof(RecInf->ServiceInfo.ServiceName));
+/*              TtxFound = !TtxBuffer.ErrorFlag && AnalyseTtx(pBuffer, TtxBuffer.ValidBufLen, &TtxTime, &TtxTimeSec, &TtxTimeZone, (!EITOK ? RecInf->EventInfo.EventNameDescription : ((!SDTOK && !KeepHumaxSvcName) ? RecInf->ServiceInfo.ServiceName : NULL)), sizeof(RecInf->ServiceInfo.ServiceName));
               if (!EITOK && *RecInf->EventInfo.EventNameDescription)
               {
                 RecInf->EventInfo.EventNameLength = (byte)strlen(RecInf->EventInfo.EventNameDescription);
                 if (!SDTOK && !KeepHumaxSvcName)
                   strncpy(RecInf->ServiceInfo.ServiceName, RecInf->EventInfo.EventNameDescription, sizeof(RecInf->ServiceInfo.ServiceName));
-              }
+              } */
               TtxBuffer.ErrorFlag = FALSE;
               LastTtxBuffer = TtxBuffer.ValidBuffer;
             }

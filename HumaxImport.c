@@ -316,7 +316,7 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *InOutServiceName
         if(APidStr) APid = (word) strtol(&LineBuf[APidStr], NULL, 10);
         p = strrchr(LineBuf, ';') + 1;
         if ((VPid == VidPID) && ((APid == AudPID) || !AudPID || AudPID == (word)-1) && ((TPid == TtxPID) || !TtxPID || TtxPID == (word)-1 || !TPid)
-          && ((VidPID != 101 && VidPID != 201 && VidPID != 255 && VidPID != 301 && VidPID != 401 && VidPID != 501 && VidPID != 511 && VidPID != 601) || (InOutServiceName && *InOutServiceName && ((strncasecmp(p, InOutServiceName, 2) == 0) || (strncmp(p, "Das", 3)==0 && strncmp(InOutServiceName, "ARD", 3)==0) || (strncmp(p, "BR", 2)==0 && strncmp(InOutServiceName, "Bay", 3)==0) || (strncmp(p, "hr", 2)==0 && strncmp(InOutServiceName, "hes", 3)==0)))))
+         && ((VidPID != 101 && VidPID != 201 && VidPID != 255 && VidPID != 301 && VidPID != 401 && VidPID != 501 && VidPID != 511 && VidPID != 601) || (InOutServiceName && *InOutServiceName && ((strncasecmp(p, InOutServiceName, 2) == 0) || (strncmp(p, "Das", 3)==0 && strncmp(InOutServiceName, "ARD", 3)==0) || (strncmp(p, "BR", 2)==0 && strncmp(InOutServiceName, "Bay", 3)==0) || (strncmp(p, "hr", 2)==0 && strncmp(InOutServiceName, "hes", 3)==0)))))
         {
           strncpy(SenderFound, p, sizeof(SenderFound));
           SenderFound[sizeof(SenderFound)-1] = '\0';
@@ -352,6 +352,7 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *InOutServiceName
 
           if(OutPMTPID && (!*OutPMTPID || *OutPMTPID==100 || *OutPMTPID==256)) *OutPMTPID = PMTFound;
           if(InOutServiceName /*&& !*InOutServiceName*/) strncpy(InOutServiceName, SenderFound, sizeof(((TYPE_Service_Info*)NULL)->ServiceName));
+          KeepHumaxSvcName = TRUE;
           fclose(fMap);
           return SidFound;
         }
@@ -360,6 +361,72 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *InOutServiceName
     fclose(fMap);
   }
   return 1;
+}
+
+bool GetEPGFromMap(char *VidFileName, word ServiceID, TYPE_Event_Info *OutEventInfo, TYPE_ExtEvent_Info *OutExtEventInfo)
+{
+  FILE *fMap;
+  word StartMJD;
+  byte StartHour, StartMin, DurationH, DurationM;
+  char DescStr[257];
+  int ExtDesc, k;
+  char *LineBuf = (char*) malloc(2048), *p;
+
+  if (LineBuf)
+  {
+    FindExePath(ExePath, LineBuf, 2048);
+    k = (int)strlen(LineBuf);
+    strncpy(&LineBuf[k], "EPGMap.txt", 2048 - k - 1);
+    LineBuf[2048 - 1] = '\0';
+
+    if ((fMap = fopen(LineBuf, "rb")))
+    {
+      int len;
+      if ((p = strrchr(VidFileName, '/'))) p++;
+      else if ((p = strrchr(VidFileName, '\\'))) p++;
+      else p = RecFileIn;
+      len = (int)strlen(p);
+      while (fgets(LineBuf, 2048, fMap) != 0)
+      {
+        if(LineBuf[0] == '#') continue;
+        if (strncmp(LineBuf, p, len) == 0)
+        {
+          StartMJD=0; StartHour=0; StartMin=0; DurationH=0; DurationM=0; DescStr[0]='\0'; ExtDesc = 0;
+          if (sscanf(LineBuf, "%*[^;] ; %hu ; %hhu:%hhu ; %hhu:%hhu ; %256[^;] ; %256[^;] ; %n", &StartMJD, &StartHour, &StartMin, &DurationH, &DurationM, &OutEventInfo->EventNameDescription, DescStr, &ExtDesc) >= 6)
+          {
+            OutEventInfo->ServiceID = ServiceID;
+            OutEventInfo->EventID = 1;
+            OutEventInfo->RunningStatus = 4;
+            OutEventInfo->StartTime = DATE(StartMJD, StartHour, StartMin);
+            OutEventInfo->DurationHour = DurationH;
+            OutEventInfo->DurationMin = DurationM;
+            OutEventInfo->EventNameLength = strlen(OutEventInfo->EventNameDescription);
+            if (OutEventInfo->EventNameLength + 2 < (int)sizeof(OutEventInfo->EventNameDescription))
+              strncpy(&OutEventInfo->EventNameDescription[OutEventInfo->EventNameLength + 1], DescStr, sizeof(OutEventInfo->EventNameDescription) - 1);
+
+            if (ExtDesc)
+            {
+              // Remove line breaks in the end
+              k = (int)strlen(LineBuf);
+              while (k && (LineBuf[k-1] == '\r' || LineBuf[k-1] == '\n' || LineBuf[k-1] == ';'))
+                LineBuf[--k] = '\0';
+              OutExtEventInfo->ServiceID = ServiceID;
+              strncpy(OutExtEventInfo->Text, &LineBuf[ExtDesc], sizeof(OutExtEventInfo->Text) - 1);
+              OutExtEventInfo->TextLength = strlen(OutExtEventInfo->Text);
+            }
+            printf("  Found EPGEvent in Map: Date=%s, Title=%s", TimeStrTF(OutEventInfo->StartTime, 0), OutEventInfo->EventNameDescription);
+
+            fclose(fMap);
+            free(LineBuf);
+            return TRUE;
+          }
+        }
+      }
+      fclose(fMap);
+    }
+    free(LineBuf);
+  }
+  return FALSE;
 }
 
 

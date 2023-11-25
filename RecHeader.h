@@ -86,7 +86,7 @@ typedef struct
   dword                 EventID;
   tPVRTime              StartTime;
   tPVRTime              EndTime;
-  byte                  RunningStatus;
+  byte                  RunningStatus;  // 0=undefined, 1=not running, 2=starts in a few seconds, 3=pausing, 4=running, 5=service off-air 
   byte                  EventNameLength;
   byte                  ParentalRate;
   char                  EventNameDescription[257];

@@ -105,6 +105,7 @@ dword crc32m_tab(const unsigned char *buf, size_t len);
 bool FindExePath(const char* CalledExe, char *const OutExePath, int OutputSize);
 word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *InOutServiceName, word *const OutPMTPID, bool UseHumaxMap);
 bool GetPidsFromMap(word ServiceID, word *const OutPMTPID, word *const OutVidPID, word *const OutAudPID, word *const OutTtxPID, word *const OutSubtPID);
+bool GetEPGFromMap(char *VidFileName, word ServiceID, TYPE_Event_Info *OutEventInfo, TYPE_ExtEvent_Info *OutExtEventInfo);
 
 bool SaveHumaxHeader(char *const VidFileName, char *const OutFileName);
 bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf);
