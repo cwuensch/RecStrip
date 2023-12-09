@@ -299,7 +299,7 @@ static bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf)
     {
 
 #if defined(_WIN32) && defined(_DEBUG)
-printf("\n  ELEMENT: Type=%hhu, PID=%hd, Length=%d\n", Elem->stream_type, PID, ElemLength);
+printf("\n\n  ELEMENT: Type=%hhu, PID=%hd, Length=%d", Elem->stream_type, PID, ElemLength);
 #endif
 
       switch (Elem->stream_type)
@@ -334,7 +334,7 @@ printf("\n  ELEMENT: Type=%hhu, PID=%hd, Length=%d\n", Elem->stream_type, PID, E
               {
                 tTSDesc2* Desc = (tTSDesc2*) &PSBuffer[ElemPt + sizeof(tElemStream)];
 #if defined(_WIN32) && defined(_DEBUG)
-printf("    DESC: Type=TSDesc, Size=%d, Len=%hhu, Tag=0x%02hhx (%c), Data=0x%02hhx\n", sizeof(tTSDesc), Desc->DescrLength, Desc->DescrTag, (Desc->DescrTag > 0x20 ? Desc->DescrTag : ' '), Desc->Data[0]);
+printf("\n    DESC: Type=TSDesc, Size=%d, Len=%hhu, Tag=0x%02hhx (%c), Data=0x%02hhx", sizeof(tTSDesc), Desc->DescrLength, Desc->DescrTag, (Desc->DescrTag > 0x20 ? Desc->DescrTag : ' '), Desc->Data[0]);
 #endif
 //                if (Desc->DescrTag == DESC_StreamIdentifier)
 //                  VideoStreamTag = Desc->Data[0];
@@ -369,7 +369,7 @@ printf("    DESC: Type=TSDesc, Size=%d, Len=%hhu, Tag=0x%02hhx (%c), Data=0x%02h
                 tTSTtxDesc* Desc3 = (tTSTtxDesc*) Desc;
                 int i;
 #if defined(_WIN32) && defined(_DEBUG)
-printf("    DESC: Type=Teletext, Size=%d, Len=%hhu, Data=0x%02hhx, Lang=%.3s", sizeof(tTSDesc), Desc->DescrLength, (byte)Desc->LanguageCode[0], (Desc->DescrTag=='V' || Desc->DescrTag=='Y' || Desc->DescrTag==0x0a ? Desc->LanguageCode : ""));
+printf("\n    DESC: Type=Teletext, Size=%d, Len=%hhu, Data=0x%02hhx, Lang=%.3s", sizeof(tTSDesc), Desc->DescrLength, (byte)Desc->LanguageCode[0], (Desc->DescrTag=='V' || Desc->DescrTag=='Y' || Desc->DescrTag==0x0a ? Desc->LanguageCode : ""));
 #endif
                 if ((TeletextPID == (word)-1) /* || (strncmp(Desc->LanguageCode, "deu", 3) == 0 || strncmp(Desc->LanguageCode, "ger", 3) == 0) */)
                 {
@@ -396,7 +396,7 @@ printf("    DESC: Type=Teletext, Size=%d, Len=%hhu, Data=0x%02hhx, Lang=%.3s", s
               {
                 // DVB-Subtitles
 #if defined(_WIN32) && defined(_DEBUG)
-printf("    DESC: Type=Subtitle, Size=%d, Len=%hhu, Data=0x%02hhx, Lang=%.3s\n", sizeof(tTSDesc), Desc->DescrLength, (byte)Desc->LanguageCode[0], (Desc->DescrTag=='V' || Desc->DescrTag=='Y' || Desc->DescrTag==0x0a ? Desc->LanguageCode : ""));
+printf("\n    DESC: Type=Subtitle, Size=%d, Len=%hhu, Data=0x%02hhx, Lang=%.3s", sizeof(tTSDesc), Desc->DescrLength, (byte)Desc->LanguageCode[0], (Desc->DescrTag=='V' || Desc->DescrTag=='Y' || Desc->DescrTag==0x0a ? Desc->LanguageCode : ""));
 #endif
                 if ((SubtitlesPID == (word)-1) /* || (strncmp(Desc->LanguageCode, "deu", 3) == 0 || strncmp(Desc->LanguageCode, "ger", 3) == 0) */)
                 {
@@ -428,7 +428,7 @@ printf("    DESC: Type=Subtitle, Size=%d, Len=%hhu, Data=0x%02hhx, Lang=%.3s\n",
           if (PID == 0) break;
           // sonst fortsetzen mit Audio (fall-through)
 #if defined(_WIN32) && defined(_DEBUG)
-printf("    -> No Teletext/Subtitle track detected! Analysing audio instead...\n");  // fall-through
+printf("\n    -> No Teletext/Subtitle track detected! Analysing audio instead...");  // fall-through
 #endif
         }
 
@@ -450,7 +450,7 @@ printf("    -> No Teletext/Subtitle track detected! Analysing audio instead...\n
             tTSDesc2* Desc = (tTSDesc2*) &PSBuffer[DescrPt];
 
 #if defined(_WIN32) && defined(_DEBUG)
-printf("    DESC: Type=TSDesc, Size=%d, Len=%hhu, Tag=0x%02hhx (%c), Data=0x%02hhx, Lang=%.3s\n", sizeof(tTSDesc), Desc->DescrLength, Desc->DescrTag, (Desc->DescrTag > 0x20 ? Desc->DescrTag : ' '), Desc->Data[0], (Desc->DescrTag==0xa ? (char*)Desc->Data : ""));
+printf("\n    DESC: Type=TSDesc, Size=%d, Len=%hhu, Tag=0x%02hhx (%c), Data=0x%02hhx, Lang=%.3s", sizeof(tTSDesc), Desc->DescrLength, Desc->DescrTag, (Desc->DescrTag > 0x20 ? Desc->DescrTag : ' '), Desc->Data[0], (Desc->DescrTag==0xa ? (char*)Desc->Data : ""));
 #endif
             if (Desc->DescrTag == DESC_StreamIdentifier)
               StreamTag = Desc->Data[0];
@@ -937,7 +937,8 @@ static bool AnalyseVideo(byte *PSBuffer, int BufSize, word pid, int *const VidHe
         *VidFPS = FrameRateValues[SeqHeader->FrameRate];
 //      Bitrate = (((SeqHeader->Bitrate1 << 8) + SeqHeader->Bitrate2) << 3) + SeqHeader->Bitrate3;
 
-//      isHDVideo = FALSE;
+      if ((SeqHeader->Height1 << 8) + SeqHeader->Height2 == 576)
+        isHDVideo = FALSE;
       printf("  TS: PID=%hd, VideoType: MPEG2, %dx%d @ %.3f fps, AspectRatio=%s (%.3f) -> SD\n", pid, VideoWidth, VideoHeight, VideoFPS, AspectRatioTexts[SeqHeader->AspectRatio], VideoDAR);
       TRACEEXIT;
       return (SeqHeader->AspectRatio > 0) && (SeqHeader->FrameRate > 0);
@@ -1222,53 +1223,17 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     word                curPID = 0;
     PMTPID = 0;
     PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE);
-    for (d = 0; d < 10; d++)
+
+/*    ReadBytes = (int)fread(Buffer, 1, 5760, fIn);
+    if(ReadBytes < 5760)
     {
-      // Read the first 512/504 TS packets
-      ReadBytes = (int)fread(Buffer, 1, (HumaxSource ? 3*32768 : 512*PACKETSIZE), fIn);
-      if(ReadBytes < (HumaxSource ? 3*32768 : 512*PACKETSIZE))
-      {
-        printf("  Failed to read the first %d x %d TS bytes.\n", d, (HumaxSource ? 3*32768 : 512*PACKETSIZE));
-        free(Buffer);
-        TRACEEXIT;
-        return FALSE;
-      }
-
-      Offset = FindNextPacketStart(Buffer, ReadBytes);
-      if (Offset >= 0)
-      {
-        p = &Buffer[Offset];
-        while ((p <= &Buffer[ReadBytes-16]) && (!FirstFilePCR || (DoInfoOnly && !FirstFilePTSOK)))
-        {
-          if (p[PACKETOFFSET] != 'G')
-          {
-            Offset = FindNextPacketStart(p, (int)(&Buffer[ReadBytes] - p));
-            if(Offset >= 0)  p += Offset;
-            else break;
-          }
-          //Find the first PCR (for duration calculation)
-          if(!FirstFilePCR) GetPCR(&p[PACKETOFFSET], &FirstFilePCR);
-
-          // Alternative: Find the first Video PTS
-          if (DoInfoOnly && !FirstFilePTSOK)
-          {
-            curPacket = (tTSPacket*) &p[PACKETOFFSET];
-            if ((curPacket->SyncByte == 'G') && (curPacket->PID1 * 256 + curPacket->PID2 == VideoPID) && (curPacket->Payload_Unit_Start))
-            {
-              curPESPacket = (tPESHeader*) &curPacket->Data[(curPacket->Adapt_Field_Exists) ? curPacket->Data[0] + 1 : 0];
-              GetPTS((byte*) curPESPacket, &FirstFilePTS, NULL);
-              if (!FirstFilePTSOK)
-              {
-                if (FindPictureHeader((byte*) curPESPacket, 184 - ((curPacket->Adapt_Field_Exists) ? curPacket->Data[0] + 1 : 0), &FrameType))
-                  if (FrameType == 1)  FirstFilePTSOK = TRUE;  // nur vom I-Frame nehmen
-              }
-            }
-          }
-          p += PACKETSIZE;
-        }
-      }
-      if(FirstFilePCR && (!DoInfoOnly || FirstFilePTSOK)) break;
+      printf("  Failed to read the first 5760 TS bytes.\n");
+      free(Buffer);
+      TRACEEXIT;
+      return FALSE;
     }
+    Offset = FindNextPacketStart(Buffer, ReadBytes); */
+
 
     for (d = (DoFixPMT ? 0 : -1); d < 10; d++)
     {
@@ -1277,7 +1242,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       if (d < 0)
       {
         // Versuche erst PMT am Anfang der Aufnahme zu finden (gestrippte Aufnahmen mit PMT/EPG nur in den ersten Paketen)
-        FilePos = 0 + Offset;
+        FilePos = 0;  //+ Offset;
         fseeko64(fIn, FilePos, SEEK_SET);
       }
       if (d == 0)
@@ -1303,8 +1268,11 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       // Wenn PMT direkt am Anfang, merken
       if (d < 0)
       {
-        tTSPacket *packet1 = (tTSPacket*) &Buffer[PACKETOFFSET];
-        tTSPacket *packet2 = (tTSPacket*) &Buffer[PACKETSIZE + PACKETOFFSET];
+        tTSPacket *packet1, *packet2;
+        Offset = FindNextPacketStart(Buffer, ReadBytes);
+        packet1 = (tTSPacket*) &Buffer[Offset + PACKETOFFSET];
+        packet2 = (tTSPacket*) &Buffer[Offset + PACKETSIZE + PACKETOFFSET];
+
         if (((packet1->PID1 * 256 + packet1->PID2 == 0) && (packet1->Data[0] == 0) && (packet1->Data[1] == TABLE_PAT)) && ((packet2->Data[0] == 0) && (packet2->Data[1] == TABLE_PMT) && ((packet2->Data[2] & 0xFC) == 0xB0)))
         {
           PMTPID = packet2->PID1 * 256 + packet2->PID2;
@@ -1675,6 +1643,56 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     }
 
 
+    //Read the first TS pakets to detect start PCR / PTS
+    fseeko64(fIn, 0, SEEK_SET);
+    for (d = 0; d < 10; d++)
+    {
+      // Read the first 512/504 TS packets
+      ReadBytes = (int)fread(Buffer, 1, (HumaxSource ? 3*32768 : 512*PACKETSIZE), fIn);
+      if(ReadBytes < (HumaxSource ? 3*32768 : 512*PACKETSIZE))
+      {
+        printf("  Failed to read the first %d x %d TS bytes.\n", d, (HumaxSource ? 3*32768 : 512*PACKETSIZE));
+        free(Buffer);
+        TRACEEXIT;
+        return FALSE;
+      }
+
+      Offset = FindNextPacketStart(Buffer, ReadBytes);
+      if (Offset >= 0)
+      {
+        p = &Buffer[Offset];
+        while ((p <= &Buffer[ReadBytes-16]) && (!FirstFilePCR || (DoInfoOnly && !FirstFilePTSOK)))
+        {
+          if (p[PACKETOFFSET] != 'G')
+          {
+            Offset = FindNextPacketStart(p, (int)(&Buffer[ReadBytes] - p));
+            if(Offset >= 0)  p += Offset;
+            else break;
+          }
+          //Find the first PCR (for duration calculation)
+          if(!FirstFilePCR) GetPCR(&p[PACKETOFFSET], &FirstFilePCR);
+
+          // Alternative: Find the first Video PTS
+          if (DoInfoOnly && !FirstFilePTSOK)
+          {
+            curPacket = (tTSPacket*) &p[PACKETOFFSET];
+            if ((curPacket->SyncByte == 'G') && (curPacket->PID1 * 256 + curPacket->PID2 == VideoPID) && (curPacket->Payload_Unit_Start))
+            {
+              curPESPacket = (tPESHeader*) &curPacket->Data[(curPacket->Adapt_Field_Exists) ? curPacket->Data[0] + 1 : 0];
+              GetPTS((byte*) curPESPacket, &FirstFilePTS, NULL);
+              if (!FirstFilePTSOK)
+              {
+                if (FindPictureHeader((byte*) curPESPacket, 184 - ((curPacket->Adapt_Field_Exists) ? curPacket->Data[0] + 1 : 0), &FrameType))
+                  if (FrameType == 1)  FirstFilePTSOK = TRUE;  // nur vom I-Frame nehmen
+              }
+            }
+          }
+          p += PACKETSIZE;
+        }
+      }
+      if(FirstFilePCR && (!DoInfoOnly || FirstFilePTSOK)) break;
+    }
+
     //Read the last RECBUFFERENTRIES TS pakets
 //    FilePos = FilePos + ((((RecFileSize-FilePos)/PACKETSIZE) - RECBUFFERENTRIES) * PACKETSIZE);
     if (EycosSource)
@@ -1777,9 +1795,9 @@ printf("  TS: FirstPCR  = %lld (%01u:%02u:%02u,%03u), Last: %lld (%01u:%02u:%02u
 //    RecInf->RecHeaderInfo.DurationSec = (dPTS / 1000) % 60;
 printf("  TS: FirstPTS  = %u (%01u:%02u:%02u,%03u), Last: %u (%01u:%02u:%02u,%03u)\n", FirstFilePTS, (FirstPTSms/3600000), (FirstPTSms/60000 % 60), (FirstPTSms/1000 % 60), (FirstPTSms % 1000), LastFilePTS, (LastPTSms/3600000), (LastPTSms/60000 % 60), (LastPTSms/1000 % 60), (LastPTSms % 1000));
   }
-printf("  TS: Duration  = %01u:%02u:%02u,%03u", (RecInf->RecHeaderInfo.DurationMin/60), (RecInf->RecHeaderInfo.DurationMin % 60), RecInf->RecHeaderInfo.DurationSec, (dPCR % 1000));
+printf("  TS: Duration  = %01u:%02u:%02u,%03u", dPCR / 3600000, (dPCR / 60000) % 60, (dPCR / 1000) % 60, dPCR % 1000);
 if (FirstFilePTSOK && LastFilePTSOK)
-  printf(" / %01u:%02u:%02u,%03u", (dPTS/3600000), (dPTS/60000 % 60), (dPTS/1000 % 60), (dPTS % 1000));
+  printf(" / %01u:%02u:%02u,%03u (PCR/PTS)", dPTS / 3600000, (dPTS / 60000) % 60, (dPTS / 1000) % 60, dPTS % 1000);
 printf("\n");
 
   if(TtxTime && TtxPCR)

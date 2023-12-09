@@ -15,6 +15,7 @@
 #include "CutProcessor.h"
 #include "RecStrip.h"
 #include "NavProcessor.h"
+#include "RebuildInf.h"
 
 typedef struct
 {
@@ -91,7 +92,14 @@ void AddDefaultSegmentMarker(void)
   ResetSegmentMarkers();
 //  SegmentMarker[0].Selected = TRUE;
   SegmentMarker[1].Position = RecFileSize;
-  SegmentMarker[1].Timems   = InfDuration * 1000;
+  if (NavDurationMS)
+    SegmentMarker[1].Timems = NavDurationMS;
+  else if (FirstFilePTS && LastFilePTS)
+    SegmentMarker[1].Timems = DeltaPCR((dword)(FirstFilePTS / 45), (dword)(LastFilePTS / 45));
+  else if (FirstFilePCR && LastFilePCR)
+    SegmentMarker[1].Timems = DeltaPCR((dword)(FirstFilePCR / 27000), (dword)(LastFilePCR / 27000));
+  else
+    SegmentMarker[1].Timems = InfDuration * 1000;
   SegmentMarker[1].Percent  = 100.0;
   NrSegmentMarker = 2;
 

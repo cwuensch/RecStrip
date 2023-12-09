@@ -284,7 +284,7 @@ dword FindPictureHeader(byte *Buffer, int BufferLen, byte *pFrameType)  // 1 = I
   int i;
 
   TRACEENTER;
-  for(i = 0; i < BufferLen - 6; i++)
+  for(i = 0; i < BufferLen - (isHDVideo ? 4 : 5); i++)
   {
     if((Buffer[i] == 0x00) && (Buffer[i + 1] == 0x00) && (Buffer[i + 2] == 0x01))
     {

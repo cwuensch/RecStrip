@@ -392,7 +392,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, TYPE_Event_Info *OutEventI
         if (strncmp(LineBuf, p, len) == 0)
         {
           StartMJD=0; StartHour=0; StartMin=0; DurationH=0; DurationM=0; DescStr[0]='\0'; ExtDesc = 0;
-          if (sscanf(LineBuf, "%*[^;] ; %hu ; %hhu:%hhu ; %hhu:%hhu ; %256[^;] ; %256[^;] ; %n", &StartMJD, &StartHour, &StartMin, &DurationH, &DurationM, &OutEventInfo->EventNameDescription, DescStr, &ExtDesc) >= 6)
+          if (sscanf(LineBuf, "%*[^;] ; %hu ; %hhu:%hhu ; %hhu:%hhu ; %256[^;] ; %256[^;] ; %n", &StartMJD, &StartHour, &StartMin, &DurationH, &DurationM, OutEventInfo->EventNameDescription, DescStr, &ExtDesc) >= 6)
           {
             OutEventInfo->ServiceID = ServiceID;
             OutEventInfo->EventID = 1;
@@ -400,7 +400,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, TYPE_Event_Info *OutEventI
             OutEventInfo->StartTime = DATE(StartMJD, StartHour, StartMin);
             OutEventInfo->DurationHour = DurationH;
             OutEventInfo->DurationMin = DurationM;
-            OutEventInfo->EventNameLength = strlen(OutEventInfo->EventNameDescription);
+            OutEventInfo->EventNameLength = (int)strlen(OutEventInfo->EventNameDescription);
             if (OutEventInfo->EventNameLength + 2 < (int)sizeof(OutEventInfo->EventNameDescription))
               strncpy(&OutEventInfo->EventNameDescription[OutEventInfo->EventNameLength + 1], DescStr, sizeof(OutEventInfo->EventNameDescription) - 1);
 
@@ -412,7 +412,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, TYPE_Event_Info *OutEventI
                 LineBuf[--k] = '\0';
               OutExtEventInfo->ServiceID = ServiceID;
               strncpy(OutExtEventInfo->Text, &LineBuf[ExtDesc], sizeof(OutExtEventInfo->Text) - 1);
-              OutExtEventInfo->TextLength = strlen(OutExtEventInfo->Text);
+              OutExtEventInfo->TextLength = (int)strlen(OutExtEventInfo->Text);
             }
             printf("  Found EPGEvent in Map: Date=%s, Title=%s", TimeStrTF(OutEventInfo->StartTime, 0), OutEventInfo->EventNameDescription);
 

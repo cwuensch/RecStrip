@@ -1966,7 +1966,7 @@ int main(int argc, const char* argv[])
       if ((p = strrchr(ServiceString, '/'))) p[1] = '\0';
       else if ((p = strrchr(ServiceString, '\\'))) p[1] = '\0';
       else ServiceString[0] = 0;
-      n = strlen(ServiceString);
+      n = (int)strlen(ServiceString);
 
       snprintf(&ServiceString[n], sizeof(ServiceString) - n, "pmts/%hu_%hd_%hd.pmt", ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, VideoPID, GetMinimalAudioPID(AudioPIDs));
       if (HDD_FileExist(ServiceString))
@@ -2027,8 +2027,19 @@ int main(int argc, const char* argv[])
 
     // Print out details to STDERR
     memset(EventName, 0, sizeof(EventName));
+
     if (NavDurationMS)
-      snprintf(DurationStr, sizeof(DurationStr), "%02u:%02u:%02u.%03u", NavDurationMS/3600000, NavDurationMS/60000 % 60, NavDurationMS/1000 % 60, NavDurationMS % 1000);
+      snprintf(DurationStr, sizeof(DurationStr), "%02u:%02u:%02u,%03u", NavDurationMS/3600000, NavDurationMS/60000 % 60, NavDurationMS/1000 % 60, NavDurationMS % 1000);
+    else if (FirstFilePTS && LastFilePTS)
+    {
+      dword dPTS = DeltaPCR((dword)(FirstFilePTS / 45), (dword)(LastFilePTS / 45));
+      snprintf(DurationStr, sizeof(DurationStr), "%02u:%02u:%02u,%03u", dPTS/3600000, dPTS/60000 % 60, dPTS/1000 % 60, dPTS % 1000);
+    }
+    else if (FirstFilePCR && LastFilePCR)
+    {
+      dword dPCR = DeltaPCR((dword)(FirstFilePCR / 27000), (dword)(LastFilePCR / 27000));
+      snprintf(DurationStr, sizeof(DurationStr), "%02u:%02u:%02u,%03u", dPCR/3600000, dPCR/60000 % 60, dPCR/1000 % 60, dPCR % 1000);
+    }
     else
       snprintf(DurationStr, sizeof(DurationStr), "%02hu:%02hu:%02hu", Inf_TMSS->RecHeaderInfo.DurationMin/60, Inf_TMSS->RecHeaderInfo.DurationMin % 60, Inf_TMSS->RecHeaderInfo.DurationSec);
     strncpy(EventName, Inf_TMSS->EventInfo.EventNameDescription, Inf_TMSS->EventInfo.EventNameLength);
