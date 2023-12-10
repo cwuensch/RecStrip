@@ -279,30 +279,43 @@ dword DeltaPCR(dword FirstPCR, dword SecondPCR)
   return 0;
 }*/
 
-dword FindPictureHeader(byte *Buffer, int BufferLen, byte *pFrameType)  // 1 = I-Frame, 2 = P-Frame, 3 = B-Frame (?)
+dword FindPictureHeader(byte *Buffer, int BufferLen, byte *pFrameType, int *pInOutEndNulls)  // 1 = I-Frame, 2 = P-Frame, 3 = B-Frame (?)
 {
-  int i;
+  int i, startcode = 0;
 
   TRACEENTER;
   for(i = 0; i < BufferLen - (isHDVideo ? 4 : 5); i++)
   {
-    if((Buffer[i] == 0x00) && (Buffer[i + 1] == 0x00) && (Buffer[i + 2] == 0x01))
+    if ( ((Buffer[i] == 0x00) && (Buffer[i + 1] == 0x00) && (Buffer[i + 2] == 0x01) && (startcode=i+3))
+      || ((i <= 2) && pInOutEndNulls
+        && ( ((i == 0) && pInOutEndNulls && (*pInOutEndNulls == 3))
+          || ((i == 1) && pInOutEndNulls && (*pInOutEndNulls == 2) && (Buffer[i] == 0x01) && (startcode=i+1))
+          || ((i == 2) && pInOutEndNulls && (*pInOutEndNulls == 1) && (Buffer[i] == 0x00) && (Buffer[i+1] == 0x01) && (startcode=i+2)) )) )
     {
-      if (isHDVideo && ((Buffer[i + 3] & 0x80) == 0x00))
+      if (isHDVideo && ((Buffer[startcode] & 0x80) == 0x00))
       {
         // MPEG4 picture header: 
-        if(pFrameType)  *pFrameType = ((Buffer[i + 4] >> 5) & 7) + 1;
+        if(pFrameType)  *pFrameType = ((Buffer[startcode + 1] >> 5) & 7) + 1;
         TRACEEXIT;
-        return i + 6;
+        return startcode + 3;
       }
-      else if (!isHDVideo && (Buffer[i + 3] == 0x00))
+      else if (!isHDVideo && (Buffer[startcode] == 0x00))
       {
         // MPEG2 picture header: http://dvdnav.mplayerhq.hu/dvdinfo/mpeghdrs.html#picture
-        if(pFrameType)  *pFrameType = (Buffer[i + 5] >> 3) & 0x03;
+        if(pFrameType)  *pFrameType = (Buffer[startcode + 2] >> 3) & 0x03;
         TRACEEXIT;
-        return i + 9;
+        return startcode + 6;
       }
     }
+  }
+  if(pFrameType) *pFrameType = 0;
+
+  if (pInOutEndNulls)
+  {
+    if (Buffer[BufferLen-3] == 0 && Buffer[BufferLen-2] == 0 && Buffer[BufferLen-1] == 1) *pInOutEndNulls = 3;
+    else if (Buffer[BufferLen-2] == 0 && Buffer[BufferLen-1] == 0) *pInOutEndNulls = 2;
+    else if (Buffer[BufferLen-1] == 0) *pInOutEndNulls = 1;
+    else *pInOutEndNulls = 0;
   }
   TRACEEXIT;
   return 0;

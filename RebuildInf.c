@@ -1040,7 +1040,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             p++;
           if (!FirstFilePTSOK && GetPTS(&Buffer[p], NULL, &FirstFilePTS))
           {
-            if (FindPictureHeader(&Buffer[p], min(200, (int)(&Buffer[ReadBytes]-&Buffer[p])), &FrameType))
+            if (FindPictureHeader(&Buffer[p], min(200, (int)(&Buffer[ReadBytes]-&Buffer[p])), &FrameType, NULL))
               if (FrameType == 1)  // nur von I-Frame nehmen
               {
                 FirstFilePCR = (long long)FirstFilePTS * 600;
@@ -1075,7 +1075,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             p--;
           if (GetPTS(&Buffer[p], NULL, &LastFilePTS) && !LastFilePTSOK)
           {
-            if (FindPictureHeader(&Buffer[p], min(200, (int)(&Buffer[ReadBytes]-&Buffer[p])), &FrameType))
+            if (FindPictureHeader(&Buffer[p], min(200, (int)(&Buffer[ReadBytes]-&Buffer[p])), &FrameType, NULL))
               if (FrameType == 1 || FrameType == 2)  // nur von I- oder P-Frame nehmen
               {
                 LastFilePCR = (long long)LastFilePTS * 600;
@@ -1222,6 +1222,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   {
     tTSPacket          *curPacket = NULL;
     word                curPID = 0;
+    bool                PTSLastPayloadStart = FALSE;
+    int                 PTSLastEndNulls = 0;
     PMTPID = 0;
     PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE);
 
@@ -1308,15 +1310,6 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             memset(EPGPacks, 0, NrEPGPacks * 192);
             for (k = 0; k < NrEPGPacks; k++)
               memcpy(&EPGPacks[((PACKETSIZE==192) ? 0 : 4) + k*192], &p[k*PACKETSIZE], PACKETSIZE);
-          }
-
-          {
-            FILE *f = fopen("D:\\Test\\patpmt.bin", "wb");
-            fwrite(PATPMTBuf, 192, 4, f);
-            fclose(f);
-            f = fopen("D:\\Test\\epg.bin", "wb");
-            fwrite(EPGPacks, 192, NrEPGPacks, f);
-            fclose(f);
           }
         }
         else continue;
@@ -1650,7 +1643,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 
     //Read the first TS pakets to detect start PCR / PTS
     fseeko64(fIn, 0, SEEK_SET);
-    for (d = 0; d < 10; d++)
+    for (d = 0; d < 15; d++)
     {
       // Read the first 512/504 TS packets
       ReadBytes = (int)fread(Buffer, 1, (HumaxSource ? 3*32768 : 512*PACKETSIZE), fIn);
@@ -1681,15 +1674,17 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           if (DoInfoOnly && !FirstFilePTSOK)
           {
             curPacket = (tTSPacket*) &p[PACKETOFFSET];
-            if ((curPacket->SyncByte == 'G') && (curPacket->PID1 * 256 + curPacket->PID2 == VideoPID) && (curPacket->Payload_Unit_Start))
+            if ((curPacket->SyncByte == 'G') && (curPacket->PID1 * 256 + curPacket->PID2 == VideoPID) && (curPacket->Payload_Unit_Start || PTSLastPayloadStart))
             {
               curPESPacket = (tPESHeader*) &curPacket->Data[(curPacket->Adapt_Field_Exists) ? curPacket->Data[0] + 1 : 0];
-              GetPTS((byte*) curPESPacket, &FirstFilePTS, NULL);
-              if (!FirstFilePTSOK)
+              if (curPacket->Payload_Unit_Start)
+                GetPTS((byte*) curPESPacket, &FirstFilePTS, NULL);
+//              if (!FirstFilePTSOK)
               {
-                if (FindPictureHeader((byte*) curPESPacket, 184 - ((curPacket->Adapt_Field_Exists) ? curPacket->Data[0] + 1 : 0), &FrameType))
+                if (FindPictureHeader((byte*) curPESPacket, 184 - ((curPacket->Adapt_Field_Exists) ? curPacket->Data[0] + 1 : 0), &FrameType, &PTSLastEndNulls))
                   if (FrameType == 1)  FirstFilePTSOK = TRUE;  // nur vom I-Frame nehmen
               }
+              PTSLastPayloadStart = (curPacket->Payload_Unit_Start && !FrameType);
             }
           }
           p += PACKETSIZE;
@@ -1745,9 +1740,9 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             {
               curPESPacket = (tPESHeader*) &curPacket->Data[(curPacket->Adapt_Field_Exists) ? curPacket->Data[0] + 1 : 0];
               GetPTS((byte*) curPESPacket, &LastFilePTS, NULL);
-              if (!LastFilePTSOK)
+//              if (!LastFilePTSOK)
               {
-                if (FindPictureHeader((byte*) curPESPacket, 184 - ((curPacket->Adapt_Field_Exists) ? curPacket->Data[0] + 1 : 0), &FrameType))
+                if (FindPictureHeader((byte*) curPESPacket, 184 - ((curPacket->Adapt_Field_Exists) ? curPacket->Data[0] + 1 : 0), &FrameType, NULL))
                   if (FrameType == 1 || FrameType == 2)  LastFilePTSOK = TRUE;  // nur von I- oder P-Frame nehmen
               }
             }

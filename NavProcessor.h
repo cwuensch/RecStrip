@@ -109,7 +109,7 @@ bool GetPCR(byte *pBuffer, long long *pPCR);
 bool GetPCRms(byte *pBuffer, dword *pPCR);
 bool SetPCR(byte *pBuffer, long long pPCR);
 dword DeltaPCR(dword FirstPCR, dword SecondPCR);
-dword FindPictureHeader(byte *Buffer, int BufferLen, byte *pFrameType);
+dword FindPictureHeader(byte *Buffer, int BufferLen, byte *pFrameType, int *pInOutEndNulls);
 
 void NavProcessor_Init(void);
 bool LoadNavFileIn(const char* AbsInNav);
