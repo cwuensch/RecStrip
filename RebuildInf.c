@@ -1015,7 +1015,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   FirstFilePCR = 0; LastFilePCR = 0; FirstFilePTS = 0; LastFilePTS = 0; FirstFilePTSOK = FALSE; LastFilePTSOK = FALSE;
   memset (PATPMTBuf, 0, 4*192 + 5);
 
-  rewind(fIn);
+//  rewind(fIn);
   if (!HumaxSource && !EycosSource)
     InitInfStruct(RecInf);
 
@@ -1216,6 +1216,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       printf ("  Failed to get the EIT information.\n");
   }
 
+////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
   if (MedionMode != 1)
   {
@@ -1242,8 +1243,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       if (d < 0)
       {
         // Versuche erst PMT am Anfang der Aufnahme zu finden (gestrippte Aufnahmen mit PMT/EPG nur in den ersten Paketen)
-        FilePos = 0;  //+ Offset;
-        fseeko64(fIn, FilePos, SEEK_SET);
+        FilePos = 0;
+        fseeko64(fIn, FilePos, SEEK_SET);  // nicht nötig, wenn fseek(CurrentPosition) in LoadInfFromRec - generell eig. nicht nötig
       }
       if (d == 0)
       {
@@ -1268,7 +1269,9 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       // Wenn PMT direkt am Anfang, merken
       if (d < 0)
       {
-        tTSPacket *packet1, *packet2;
+        tTSPacket *packet1, *packet2, *curPacket;
+        int k = 0;
+
         Offset = FindNextPacketStart(Buffer, ReadBytes);
         packet1 = (tTSPacket*) &Buffer[Offset + PACKETOFFSET];
         packet2 = (tTSPacket*) &Buffer[Offset + PACKETSIZE + PACKETOFFSET];
@@ -1278,6 +1281,43 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           PMTPID = packet2->PID1 * 256 + packet2->PID2;
           printf("  TS: PMTPID=%hd", PMTPID);
           PMTatStart = TRUE;
+
+          // Kopiere PAT/PMT/EIT-Pakete vom Dateianfang in Buffer (nur beim ersten File-Open?)
+          memset(PATPMTBuf, 0, 4*192 + 5);
+
+          curPacket = packet1;
+          for (k = 0; (k*PACKETSIZE < ReadBytes) && ((curPacket->PID1 * 256 + curPacket->PID2 == 0) || (curPacket->PID1 * 256 + curPacket->PID2 == PMTPID)); k++)
+          {
+            memcpy(&PATPMTBuf[((PACKETSIZE==192) ? 0 : 4) + k*192], &Buffer[Offset + k*PACKETSIZE], PACKETSIZE);
+            curPacket = (tTSPacket*)&Buffer[Offset + (k+1)*PACKETSIZE + PACKETOFFSET];
+          }
+          WriteDescPackets = TRUE;
+
+          NrEPGPacks = 0;
+          p = (byte*)curPacket;
+          while ((((tTSPacket*)p)->PID1 == 0) && (((tTSPacket*)p)->PID2 == 18))
+          {
+            NrEPGPacks++;
+            p += PACKETSIZE;
+          }
+            
+          p = &Buffer[Offset + k*PACKETSIZE];
+          if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
+          if (NrEPGPacks && ((EPGPacks = (byte*)malloc(NrEPGPacks * 192))))
+          {
+            memset(EPGPacks, 0, NrEPGPacks * 192);
+            for (k = 0; k < NrEPGPacks; k++)
+              memcpy(&EPGPacks[((PACKETSIZE==192) ? 0 : 4) + k*192], &p[k*PACKETSIZE], PACKETSIZE);
+          }
+
+          {
+            FILE *f = fopen("D:\\Test\\patpmt.bin", "wb");
+            fwrite(PATPMTBuf, 192, 4, f);
+            fclose(f);
+            f = fopen("D:\\Test\\epg.bin", "wb");
+            fwrite(EPGPacks, 192, NrEPGPacks, f);
+            fclose(f);
+          }
         }
         else continue;
       }
@@ -1389,7 +1429,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       PSBuffer_Init(&TtxBuffer, TeletextPID, 16384, FALSE);
       LastPMTBuffer = 0; LastEITBuffer = 0; LastTtxBuffer = 0;
 
-      fseeko64(fIn, FilePos, SEEK_SET);  // Hier auf 0 setzen (?)
+      fseeko64(fIn, FilePos + Offset, SEEK_SET);  // Hier auf 0 setzen (?)
       for (i = 0; i < 300; i++)
       {
         ReadBytes = (int)fread(Buffer, PACKETSIZE, 168, fIn) * PACKETSIZE;
@@ -1586,41 +1626,6 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 
       if (TeletextPID != (word) -1) AddContinuityPids(TeletextPID, FALSE);
       AddContinuityPids(0x12, FALSE);
-
-      // Kopiere PAT/PMT/EIT-Pakete vom Dateianfang in Buffer (nur beim ersten File-Open?)
-      if (PMTatStart /*&& !WriteDescPackets*/)
-      {
-        int PacksRead, k = 0;
-        tTSPacket *curPacket;
-        fseeko64(fIn, FilePos, SEEK_SET);  // Hier auf 0 setzen (?)
-        PacksRead = (int)fread(Buffer, PACKETSIZE, 32, fIn) / PACKETSIZE;
-
-        memset(PATPMTBuf, 0, 4*192 + 5);
-
-        curPacket = (tTSPacket*)&Buffer[PACKETOFFSET];
-        for (k = 0; k < PacksRead && ((curPacket->PID1 * 256 + curPacket->PID2 == 0) || (curPacket->PID1 * 256 + curPacket->PID2 == PMTPID)); k++)
-        {
-          memcpy(&PATPMTBuf[((PACKETSIZE==192) ? 0 : 4) + k*192], &Buffer[k*PACKETSIZE], PACKETSIZE);
-          curPacket = (tTSPacket*)&Buffer[PACKETOFFSET + (k+1)*PACKETSIZE];
-        }
-        WriteDescPackets = TRUE;
-
-        NrEPGPacks = 0;
-        p = &Buffer[PACKETOFFSET + k*PACKETSIZE];
-        while ((((tTSPacket*)p)->PID1 == 0) && (((tTSPacket*)p)->PID2 == 18))
-        {
-          NrEPGPacks++;
-          p += PACKETSIZE;
-        }
-            
-        if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
-        if (NrEPGPacks && ((EPGPacks = (byte*)malloc(NrEPGPacks * 192))))
-        {
-          memset(EPGPacks, 0, NrEPGPacks * 192);
-          for (k = 0; k < NrEPGPacks; k++)
-            memcpy(&EPGPacks[((PACKETSIZE==192) ? 0 : 4) + k*192], &Buffer[(k+2)*PACKETSIZE], PACKETSIZE);
-        }
-      }
 
       if(!SDTOK)
         printf ("  Failed to get service name from SDT.\n");

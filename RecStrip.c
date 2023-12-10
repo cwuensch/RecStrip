@@ -2028,9 +2028,7 @@ int main(int argc, const char* argv[])
     // Print out details to STDERR
     memset(EventName, 0, sizeof(EventName));
 
-    if (NavDurationMS)
-      snprintf(DurationStr, sizeof(DurationStr), "%02u:%02u:%02u,%03u", NavDurationMS/3600000, NavDurationMS/60000 % 60, NavDurationMS/1000 % 60, NavDurationMS % 1000);
-    else if (FirstFilePTS && LastFilePTS)
+    if (FirstFilePTS && LastFilePTS)
     {
       dword dPTS = DeltaPCR((dword)(FirstFilePTS / 45), (dword)(LastFilePTS / 45));
       snprintf(DurationStr, sizeof(DurationStr), "%02u:%02u:%02u,%03u", dPTS/3600000, dPTS/60000 % 60, dPTS/1000 % 60, dPTS % 1000);
@@ -2040,6 +2038,8 @@ int main(int argc, const char* argv[])
       dword dPCR = DeltaPCR((dword)(FirstFilePCR / 27000), (dword)(LastFilePCR / 27000));
       snprintf(DurationStr, sizeof(DurationStr), "%02u:%02u:%02u,%03u", dPCR/3600000, dPCR/60000 % 60, dPCR/1000 % 60, dPCR % 1000);
     }
+    else if (NavDurationMS)
+      snprintf(DurationStr, sizeof(DurationStr), "%02u:%02u:%02u,%03u", NavDurationMS/3600000, NavDurationMS/60000 % 60, NavDurationMS/1000 % 60, NavDurationMS % 1000);
     else
       snprintf(DurationStr, sizeof(DurationStr), "%02hu:%02hu:%02hu", Inf_TMSS->RecHeaderInfo.DurationMin/60, Inf_TMSS->RecHeaderInfo.DurationMin % 60, Inf_TMSS->RecHeaderInfo.DurationSec);
     strncpy(EventName, Inf_TMSS->EventInfo.EventNameDescription, Inf_TMSS->EventInfo.EventNameLength);

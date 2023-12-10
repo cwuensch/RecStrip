@@ -92,12 +92,12 @@ void AddDefaultSegmentMarker(void)
   ResetSegmentMarkers();
 //  SegmentMarker[0].Selected = TRUE;
   SegmentMarker[1].Position = RecFileSize;
-  if (NavDurationMS)
-    SegmentMarker[1].Timems = NavDurationMS;
-  else if (FirstFilePTS && LastFilePTS)
+  if (FirstFilePTS && LastFilePTS)
     SegmentMarker[1].Timems = DeltaPCR((dword)(FirstFilePTS / 45), (dword)(LastFilePTS / 45));
   else if (FirstFilePCR && LastFilePCR)
     SegmentMarker[1].Timems = DeltaPCR((dword)(FirstFilePCR / 27000), (dword)(LastFilePCR / 27000));
+  else if (NavDurationMS)
+    SegmentMarker[1].Timems = NavDurationMS;
   else
     SegmentMarker[1].Timems = InfDuration * 1000;
   SegmentMarker[1].Percent  = 100.0;

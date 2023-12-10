@@ -159,6 +159,7 @@ bool LoadInfFromRec(char *AbsRecFileName)
   if (fIn)
   {
     setvbuf(fIn, NULL, _IOFBF, BUFSIZE);
+//    fseeko64(fIn, CurrentPosition, SEEK_SET);
 //    if (GetPacketSize(fIn, &FileOffset))
 //      fseeko64(fIn, FileOffset, SEEK_SET);
   }
