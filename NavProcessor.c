@@ -19,6 +19,7 @@
 
 
 // Globale Variablen
+dword                   NrFrames = 0;
 dword                   LastTimems = 0;
 int                     TimeOffset = 0;
 dword                  *pOutNextTimeStamp = NULL;
@@ -333,7 +334,7 @@ void NavProcessor_Init(void)
   PosFirstNull = 0; PosSecondNull = 0; HeaderFound = 0;
   PTS = 0;
   PTSBufFill = 0;  // 0: keinen PTS suchen, 1..15 Puffer-Füllstand, bei 16 PTS auslesen und zurücksetzen
-  FrameCtr = 0; FrameOffset = 0;
+  NrFrames = 0; FrameCtr = 0; FrameOffset = 0;
   WaitForIFrame = TRUE; WaitForPFrame = FALSE; FirstPacketAfterCut = FALSE; FirstRecordAfterCut = TRUE;
 
   //HDNAV
@@ -787,6 +788,7 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
                     printf("ProcessNavFile(): Error writing to nav file!\n");
                     fclose(fNavOut); fNavOut = NULL;
                   }
+                  NrFrames++;
                   FrameCtr++;
                   NavPtr++;
                 }
@@ -1019,7 +1021,10 @@ static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
 dbg_HeaderPosOffset = dbg_PositionOffset - (Ptr-PayloadStart-3 <= 1 ? dbg_DelBytesSinceLastVid : 0);  // Ptr-PayloadStart in {3,4} -> nur dann ist HeaderFound falsch
       PictHeader = 0;
       if(NavPtr > 0 && (!WaitForIFrame || navSD.FrameType==1) && (!WaitForPFrame || navSD.FrameType<=2))
+      {
+        NrFrames++;
         FrameCtr++;
+      }
     }
 
     HeaderFound = 0;
@@ -1152,6 +1157,7 @@ void QuickNavProcess(const long long CurrentPosition, const long long PositionOf
           fclose(fNavOut); fNavOut = NULL;
           break;
         }
+        NrFrames++;
       }
 
       // nächsten Record einlesen
@@ -1170,7 +1176,8 @@ void QuickNavProcess(const long long CurrentPosition, const long long PositionOf
 bool LoadNavFileIn(const char* AbsInNav)
 {
   unsigned long long    NavSize;
-  dword                 start = 0, TimemsStart = 0;
+  dword                 start = 0, skippedFrames = 0, TimemsStart = 0;
+  byte                  FrameType = 0;
   tnavSD                navSD;
   TRACEENTER;
 
@@ -1190,19 +1197,43 @@ bool LoadNavFileIn(const char* AbsInNav)
     else
       rewind(fNavIn);
 
-    // Länge der nav ermitteln
-    if (fread(&navSD, sizeof(tnavSD), 1, fNavIn))
+    // erstes I-Frame der nav ermitteln
+    while (FrameType != 1)
+    {
+      if (fread(&navSD, sizeof(tnavSD), 1, fNavIn))
+        FrameType = navSD.FrameType;
+      else break;
       TimemsStart = navSD.Timems;
-    fseek(fNavIn, -(int)(isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD)), SEEK_END);
-    if (fread(&navSD, sizeof(tnavSD), 1, fNavIn))
-      NavDurationMS = navSD.Timems - TimemsStart;
-//    HDD_GetFileSize(AbsInNav, &NavSize);
-    fseek(fNavIn, 0, SEEK_END);
-    NavSize = ftell(fNavIn);
+      if (FrameType != 1)
+      {
+        skippedFrames++;
+        if(isHDVideo) fseek(fNavIn, sizeof(tnavSD), SEEK_CUR);
+      }
+    }
 
+    // letztes I/P-Frame der nav ermitteln
+    FrameType = 0x0f;
+    fseek(fNavIn, -(int)(isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD)), SEEK_END);
+    while (FrameType > 2)
+    {
+      if (fread(&navSD, sizeof(tnavSD), 1, fNavIn))
+      {
+        if (FrameType == 0x0f)
+        {
+          NavSize = ftell(fNavIn) + (isHDVideo ? sizeof(tnavSD) : 0);
+          NavFrames = (dword)((NavSize-start) / (isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD))) - skippedFrames;
+        }
+        FrameType = navSD.FrameType;
+      }
+      else break;
+      if (FrameType > 2)
+        fseek(fNavIn, -2 * (int)(isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD)), SEEK_CUR);
+    }  
+
+//    HDD_GetFileSize(AbsInNav, &NavSize);
     fseek(fNavIn, start, SEEK_SET);
 
-    NavFrames = (dword)(NavSize / (isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD)));
+    NavDurationMS = navSD.Timems - TimemsStart;
 printf("  NAV: Duration = %02d:%02d:%02d,%03d\n", NavDurationMS/3600000, NavDurationMS/60000 % 60, NavDurationMS/1000 % 60, NavDurationMS % 1000);
 printf("  NAV: Frames   = %d (%.1f fps)\n", NavFrames, NavFrames / ((double)NavDurationMS / 1000));
   }
@@ -1268,7 +1299,10 @@ bool CloseNavFileOut(void)
       if (pOutNextTimeStamp)
         *pOutNextTimeStamp = navSD.Timems;
       if(!WaitForIFrame && (!WaitForPFrame || navSD.FrameType<=2))
+      {
         if(fNavOut) fwrite(&navSD, sizeof(tnavSD), 1, fNavOut);
+        NrFrames++;
+      }
     }
   }
 /*  else if (fNavOut && isHDVideo)

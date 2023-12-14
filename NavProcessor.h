@@ -97,6 +97,7 @@ typedef struct
 } tTimeStamp2;
 
 
+extern dword            NrFrames;
 extern dword            LastTimems;
 extern int              TimeOffset;
 extern dword           *pOutNextTimeStamp;
