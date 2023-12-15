@@ -543,7 +543,6 @@ dbg_HeaderPosOffset = dbg_PositionOffset - (Ptr-PayloadStart <= 1 ? dbg_DelBytes
             {
               SEI = HeaderFound;
               SEIPTS = PTS;
-              if(FirstSEIPTS == 0 || (PTS < FirstSEIPTS && FirstSEIPTS-PTS < 10000)) FirstSEIPTS = PTS;
               SEIFoundInPacket = TRUE;
 
 dbg_SEIPositionOffset = dbg_HeaderPosOffset;
@@ -666,6 +665,7 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
                 FrameOffset     = FrameCtr + ((/*SystemType==ST_TMSC ||*/ !FrameCtr) ? 0 : 1);  // Position des I-Frames in der aktuellen Zählung (diese geht weiter, bis P kommt) - SRP-2401 zählt nach dem I-Frame + 2 (neuer CRP auch)
                 FrameCtr        = 0;        // zählt die Distanz zum letzten I-Frame
                 IFramePTS       = SEIPTS;
+                if(FirstSEIPTS == 0 /*|| (PTS < FirstSEIPTS && FirstSEIPTS-PTS < 10000)*/) FirstSEIPTS = SEIPTS;
               }
 //              FrameCtr++;
 
@@ -772,8 +772,8 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
                 if (!WaitForIFrame && (!WaitForPFrame || navHD.FrameType<=2))
                 {
                   // sicherstellen, dass Timems monoton ansteigt
-                  if( ((int)(navHD.Timems - LastTimems)) >= 0)  LastTimems = navHD.Timems;
-                  else  navHD.Timems = LastTimems;
+                  /* if( ((int)(navHD.Timems - LastTimems)) >= 0) */ LastTimems = navHD.Timems;
+                  /* else  navHD.Timems = LastTimems; */
 #ifdef _DEBUG
 {
   long long RefPictureHeaderOffset = dbg_NavPictureHeaderOffset - dbg_SEIPositionOffset;
@@ -880,9 +880,7 @@ static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
       PTSBuffer[PTSBufFill++] = Packet->Data[Ptr];
       if (PTSBufFill > 10)
       {
-        if (GetPTS2(PTSBuffer, &PTS, NULL))
-          if((FirstPTS == 0) || (PTS < FirstPTS && FirstPTS-PTS < 10000))
-            FirstPTS = PTS;
+        GetPTS2(PTSBuffer, &PTS, NULL);
         PTSBufFill = 0;
       }
     }
@@ -962,8 +960,8 @@ static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
       if(NavPtr > 0 && !WaitForIFrame && (!WaitForPFrame || navSD.FrameType<=2))
       {
         // sicherstellen, dass Timems monoton ansteigt
-        if( ((int)(navSD.Timems - LastTimems)) >= 0)  LastTimems = navSD.Timems;
-        else  navSD.Timems = LastTimems;
+        /* if( ((int)(navSD.Timems - LastTimems)) >= 0) */ LastTimems = navSD.Timems;
+        /* else  navSD.Timems = LastTimems; */
 #ifdef _DEBUG
 {
   unsigned long long RefPictureHeaderOffset = dbg_NavPictureHeaderOffset - dbg_HeaderPosOffset;
@@ -1001,6 +999,7 @@ static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
         FirstSHPHOffset = (word) (PictHeader - CurrentSeqHeader);
         FrameOffset            = FrameCtr;  // Position des I-Frames in der aktuellen Zählung (diese geht weiter, bis P kommt)
         FrameCtr               = 0;         // zählt die Distanz zum letzten I-Frame
+        if((FirstPTS == 0) /*|| (PTS < FirstPTS && FirstPTS-PTS < 10000)*/)  FirstPTS = PTS;
       }
 
       navSD.SHOffset        = (dword)(PictHeader - CurrentSeqHeader);
@@ -1294,8 +1293,8 @@ bool CloseNavFileOut(void)
     if (NavPtr > 0)
     {
       navSD.Timems -= TimeOffset;
-      if( ((int)(navSD.Timems - LastTimems)) >= 0)  LastTimems = navSD.Timems;
-      else  navSD.Timems = LastTimems;
+      /* if( ((int)(navSD.Timems - LastTimems)) >= 0) */ LastTimems = navSD.Timems;
+      /* else  navSD.Timems = LastTimems; */
       if (pOutNextTimeStamp)
         *pOutNextTimeStamp = navSD.Timems;
       if(!WaitForIFrame && (!WaitForPFrame || navSD.FrameType<=2))
