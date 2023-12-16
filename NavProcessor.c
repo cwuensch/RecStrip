@@ -1175,6 +1175,7 @@ bool LoadNavFileIn(const char* AbsInNav)
   unsigned long long    NavSize;
   dword                 start = 0, skippedFrames = 0, TimemsStart = 0, TimemsEnd = 0;
   byte                  FrameType = 0;
+  byte                  FirstTimeOK = FALSE;
   tnavSD                navSD;
   TRACEENTER;
 
@@ -1195,17 +1196,18 @@ bool LoadNavFileIn(const char* AbsInNav)
       rewind(fNavIn);
 
     // erstes I-Frame der nav ermitteln
-    while (FrameType != 1)
+    while (TRUE)
     {
-      if (fread(&navSD, sizeof(tnavSD), 1, fNavIn))
-        FrameType = navSD.FrameType;
-      else break;
-      TimemsStart = navSD.Timems;
-      if (FrameType != 1)
+      if (!fread(&navSD, sizeof(tnavSD), 1, fNavIn)) break;
+      if (!FirstTimeOK || (int)(TimemsStart - navSD.Timems) > 0)
+        TimemsStart = navSD.Timems;
+      if (navSD.FrameType == 1)
       {
-        skippedFrames++;
-        if(isHDVideo) fseek(fNavIn, sizeof(tnavSD), SEEK_CUR);
+        if(!FirstTimeOK) FirstTimeOK = TRUE;
+        else break;
       }
+      if(!FirstTimeOK) skippedFrames++;
+      if(isHDVideo) fseek(fNavIn, sizeof(tnavSD), SEEK_CUR);
     }
 
     // letztes P-Frame der nav ermitteln
@@ -1222,7 +1224,7 @@ bool LoadNavFileIn(const char* AbsInNav)
         }
         FrameType = navSD.FrameType;
         if (navSD.FrameType == 2)
-          if(navSD.Timems > TimemsEnd) TimemsEnd = navSD.Timems;
+          if(navSD.Timems > TimemsEnd)  TimemsEnd = navSD.Timems;
       }
       else break;
       if (FrameType >= 2)

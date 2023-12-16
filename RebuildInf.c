@@ -1038,13 +1038,19 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         {
           while ((p < 524000) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1))
             p++;
-          if (!FirstFilePTSOK && GetPTS(&Buffer[p], NULL, &FirstFilePTS))
+          if (FirstFilePTSOK < 2 && GetPTS(&Buffer[p], NULL, &FirstFilePTS))
           {
             if (FindPictureHeader(&Buffer[p], min(200, (int)(&Buffer[ReadBytes]-&Buffer[p])), &FrameType, NULL))
-              if (FrameType == 1)  // nur von I-Frame nehmen
+              if (FrameType == 1)  // zuerst vom I-Frame nehmen
               {
+                if(!FirstFilePTS)  FirstFilePTS = curPTS;
                 FirstFilePCR = (long long)FirstFilePTS * 600;
-                FirstFilePTSOK = TRUE;
+                FirstFilePTSOK++;
+              }
+              else if (FirstFilePTS && curPTS < FirstFilePTS)
+              {
+                FirstFilePTS = curPTS;
+                FirstFilePCR = (long long)FirstFilePTS * 600;
               }
           }
 
@@ -1052,7 +1058,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             VidOK = AnalyseVideo(&Buffer[p], ReadBytes - p, 0, &VideoHeight, &VideoWidth, &VideoFPS, &VideoDAR);
           if (VidOK && isHDVideo) RecInf->ServiceInfo.VideoStreamType = STREAM_VIDEO_MPEG4_H264;
 
-          if(FirstFilePTSOK && (!DoInfoOnly || VidOK)) break;
+          if(FirstFilePTSOK >= 2 && (!DoInfoOnly || VidOK)) break;
           p++;
         }
       }
@@ -1662,7 +1668,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       if (Offset >= 0)
       {
         p = &Buffer[Offset];
-        while ((p <= &Buffer[ReadBytes-16]) && (!FirstFilePCR || (DoInfoOnly && !FirstFilePTSOK)))
+        while ((p <= &Buffer[ReadBytes-16]) && (!FirstFilePCR || (DoInfoOnly && FirstFilePTSOK < 2)))
         {
           if (p[PACKETOFFSET] != 'G')
           {
@@ -1674,23 +1680,31 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           if(!FirstFilePCR) GetPCR(&p[PACKETOFFSET], &FirstFilePCR);
 
           // Alternative: Find the first Video PTS
-          if (DoInfoOnly && !FirstFilePTSOK)
+          if (DoInfoOnly && FirstFilePTSOK < 2)
           {
             curPacket = (tTSPacket*) &p[PACKETOFFSET];
             if ((curPacket->SyncByte == 'G') && (curPacket->PID1 * 256 + curPacket->PID2 == VideoPID) && (curPacket->Payload_Unit_Start || PTSLastPayloadStart))
             {
               curPESPacket = (tPESHeader*) &curPacket->Data[(curPacket->Adapt_Field_Exists) ? curPacket->Data[0] + 1 : 0];
               if (curPacket->Payload_Unit_Start)
-                GetPTS((byte*) curPESPacket, &FirstFilePTS, NULL);
+                GetPTS((byte*) curPESPacket, &curPTS, NULL);
               if (FindPictureHeader((byte*) curPESPacket, 184 - ((curPacket->Adapt_Field_Exists) ? curPacket->Data[0] + 1 : 0), &FrameType, &PTSLastEndNulls))
-                if (FrameType == 1)  FirstFilePTSOK = TRUE;  // nur vom I-Frame nehmen
+              {
+                if (FrameType == 1)  // zuerst vom I-Frame nehmen
+                {
+                  if(!FirstFilePTS) FirstFilePTS = curPTS;
+                  FirstFilePTSOK++;
+                }
+                else if (FirstFilePTS && curPTS < FirstFilePTS)
+                  FirstFilePTS = curPTS;
+              }
               PTSLastPayloadStart = (curPacket->Payload_Unit_Start && !FrameType);
             }
           }
           p += PACKETSIZE;
         }
       }
-      if(FirstFilePCR && (!DoInfoOnly || FirstFilePTSOK)) break;
+      if(FirstFilePCR && (!DoInfoOnly || FirstFilePTSOK >= 2)) break;
     }
 
     //Read the last RECBUFFERENTRIES TS pakets
@@ -1741,7 +1755,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               curPESPacket = (tPESHeader*) &curPacket->Data[(curPacket->Adapt_Field_Exists) ? curPacket->Data[0] + 1 : 0];
               GetPTS((byte*) curPESPacket, &curPTS, NULL);
               if (FindPictureHeader((byte*) curPESPacket, 184 - ((curPacket->Adapt_Field_Exists) ? curPacket->Data[0] + 1 : 0), &FrameType, NULL))
-                if (FrameType == 2)  LastFilePTS = curPTS;  // nur von I- oder P-Frame nehmen
+                if (FrameType == 2)  LastFilePTS = curPTS;  // nur von P-Frame nehmen
                 else if (FrameType == 1)  LastFilePTSOK = TRUE;
             }
           }
