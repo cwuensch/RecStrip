@@ -975,6 +975,7 @@ static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
           printf("ProcessNavFile(): Error writing to nav file!\n");
           fclose(fNavOut); fNavOut = NULL;
         }
+        NrFrames++;
       }
 
       if (FirstPacketAfterCut)
@@ -1020,10 +1021,7 @@ static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
 dbg_HeaderPosOffset = dbg_PositionOffset - (Ptr-PayloadStart-3 <= 1 ? dbg_DelBytesSinceLastVid : 0);  // Ptr-PayloadStart in {3,4} -> nur dann ist HeaderFound falsch
       PictHeader = 0;
       if(NavPtr > 0 && (!WaitForIFrame || navSD.FrameType==1) && (!WaitForPFrame || navSD.FrameType<=2))
-      {
-        NrFrames++;
         FrameCtr++;
-      }
     }
 
     HeaderFound = 0;
@@ -1175,7 +1173,7 @@ void QuickNavProcess(const long long CurrentPosition, const long long PositionOf
 bool LoadNavFileIn(const char* AbsInNav)
 {
   unsigned long long    NavSize;
-  dword                 start = 0, skippedFrames = 0, TimemsStart = 0;
+  dword                 start = 0, skippedFrames = 0, TimemsStart = 0, TimemsEnd = 0;
   byte                  FrameType = 0;
   tnavSD                navSD;
   TRACEENTER;
@@ -1210,10 +1208,10 @@ bool LoadNavFileIn(const char* AbsInNav)
       }
     }
 
-    // letztes I/P-Frame der nav ermitteln
+    // letztes P-Frame der nav ermitteln
     FrameType = 0x0f;
     fseek(fNavIn, -(int)(isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD)), SEEK_END);
-    while (FrameType > 2)
+    while (FrameType > 1)
     {
       if (fread(&navSD, sizeof(tnavSD), 1, fNavIn))
       {
@@ -1223,16 +1221,18 @@ bool LoadNavFileIn(const char* AbsInNav)
           NavFrames = (dword)((NavSize-start) / (isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD))) - skippedFrames;
         }
         FrameType = navSD.FrameType;
+        if (navSD.FrameType == 2)
+          if(navSD.Timems > TimemsEnd) TimemsEnd = navSD.Timems;
       }
       else break;
-      if (FrameType > 2)
-        fseek(fNavIn, -2 * (int)(isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD)), SEEK_CUR);
+      if (FrameType >= 2)
+        fseek(fNavIn, -(int)(isHDVideo ? sizeof(tnavHD) + sizeof(tnavSD) : 2*sizeof(tnavSD)), SEEK_CUR);
     }  
 
 //    HDD_GetFileSize(AbsInNav, &NavSize);
     fseek(fNavIn, start, SEEK_SET);
 
-    NavDurationMS = navSD.Timems - TimemsStart;
+    NavDurationMS = TimemsEnd - TimemsStart;
 printf("  NAV: Duration = %02d:%02d:%02d,%03d\n", NavDurationMS/3600000, NavDurationMS/60000 % 60, NavDurationMS/1000 % 60, NavDurationMS % 1000);
 printf("  NAV: Frames   = %d (%.1f fps)\n", NavFrames, NavFrames / ((double)NavDurationMS / 1000));
   }
