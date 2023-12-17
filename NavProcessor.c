@@ -732,8 +732,13 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
               if (AUD >= SEI)
                 navHD.NextAUD = (dword) (AUD - SEI);
 
-              if (!fNavIn && !navHD.Timems)
-                navHD.Timems = (SEIPTS - FirstSEIPTS) / 45;
+              if (!fNavIn && !navHD.Timems && FirstSEIPTS)
+              {
+                if (SEIPTS < FirstSEIPTS && (FirstSEIPTS - SEIPTS < 90000))
+                  navHD.Timems = ((int)(SEIPTS - FirstSEIPTS) / 45);
+                else
+                  navHD.Timems = (SEIPTS - FirstSEIPTS) / 45;
+              }
 
               if((SEI != 0) && (SPS != 0) && (PPSCount != 0))
               {
@@ -1013,7 +1018,11 @@ static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
       navSD.PHOffsetHigh    = (dword)(PictHeader >> 32);
       navSD.PTS2            = PTS;
 
-      navSD.Timems = (PTS - FirstPTS) / 45;
+      if (PTS < FirstPTS && (FirstPTS - PTS < 90000))
+        navSD.Timems = ((int)(PTS - FirstPTS) / 45);
+      else
+        navSD.Timems = (PTS - FirstPTS) / 45;
+
       navSD.Zero5 = 0;
       navSD.NextPH = 0;
 
