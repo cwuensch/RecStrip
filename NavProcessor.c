@@ -733,12 +733,7 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
                 navHD.NextAUD = (dword) (AUD - SEI);
 
               if (!fNavIn && !navHD.Timems && FirstSEIPTS)
-              {
-                if (SEIPTS < FirstSEIPTS && (FirstSEIPTS - SEIPTS < 90000))
-                  navHD.Timems = ((int)(SEIPTS - FirstSEIPTS) / 45);
-                else
-                  navHD.Timems = (SEIPTS - FirstSEIPTS) / 45;
-              }
+                navHD.Timems = ((int)(SEIPTS - FirstSEIPTS) / 45);
 
               if((SEI != 0) && (SPS != 0) && (PPSCount != 0))
               {
@@ -1018,10 +1013,7 @@ static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
       navSD.PHOffsetHigh    = (dword)(PictHeader >> 32);
       navSD.PTS2            = PTS;
 
-      if (PTS < FirstPTS && (FirstPTS - PTS < 90000))
-        navSD.Timems = ((int)(PTS - FirstPTS) / 45);
-      else
-        navSD.Timems = (PTS - FirstPTS) / 45;
+      navSD.Timems = ((int)(PTS - FirstPTS) / 45);
 
       navSD.Zero5 = 0;
       navSD.NextPH = 0;
@@ -1204,7 +1196,7 @@ bool LoadNavFileIn(const char* AbsInNav)
     else
       rewind(fNavIn);
 
-    // erstes I-Frame der nav ermitteln
+    // erstes I-Frame der nav ermitteln (bzw. danach decodierte frühere B-Frames)
     while (TRUE)
     {
       if (!fread(&navSD, sizeof(tnavSD), 1, fNavIn)) break;
@@ -1219,7 +1211,7 @@ bool LoadNavFileIn(const char* AbsInNav)
       if(isHDVideo) fseek(fNavIn, sizeof(tnavSD), SEEK_CUR);
     }
 
-    // letztes P-Frame der nav ermitteln
+    // letztes P/B-Frame der nav ermitteln
     FrameType = 0x0f;
     fseek(fNavIn, -(int)(isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD)), SEEK_END);
     while (FrameType > 1)
@@ -1232,8 +1224,9 @@ bool LoadNavFileIn(const char* AbsInNav)
           NavFrames = (dword)((NavSize-start) / (isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD))) - skippedFrames;
         }
         FrameType = navSD.FrameType;
-        if (navSD.FrameType == 2)
-          if(navSD.Timems > TimemsEnd)  TimemsEnd = navSD.Timems;
+        if (navSD.FrameType >= 2)
+          if (!TimemsEnd || (int)(navSD.Timems - TimemsEnd) > 0)
+            TimemsEnd = navSD.Timems;
       }
       else break;
       if (FrameType >= 2)
@@ -1304,6 +1297,7 @@ bool CloseNavFileOut(void)
     if (NavPtr > 0)
     {
       navSD.Timems -= TimeOffset;
+      // Timems soll monoton ansteigen
       /* if( ((int)(navSD.Timems - LastTimems)) >= 0) */ LastTimems = navSD.Timems;
       /* else  navSD.Timems = LastTimems; */
       if (pOutNextTimeStamp)

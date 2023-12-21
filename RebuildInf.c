@@ -1041,6 +1041,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           if (FirstFilePTSOK < 2 && GetPTS(&Buffer[p], NULL, &FirstFilePTS))
           {
             if (FindPictureHeader(&Buffer[p], min(200, (int)(&Buffer[ReadBytes]-&Buffer[p])), &FrameType, NULL))
+            {
               if (FrameType == 1)  // zuerst vom I-Frame nehmen
               {
                 if(!FirstFilePTS)  FirstFilePTS = curPTS;
@@ -1052,6 +1053,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                 FirstFilePTS = curPTS;
                 FirstFilePCR = (long long)FirstFilePTS * 600;
               }
+            }
           }
 
           if (!VidOK)
@@ -1082,6 +1084,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           if (GetPTS(&Buffer[p], NULL, &curPTS) && !LastFilePTSOK)
           {
             if (FindPictureHeader(&Buffer[p], min(200, (int)(&Buffer[ReadBytes]-&Buffer[p])), &FrameType, NULL))
+            {
               if (FrameType == 2)  // nur von I- oder P-Frame nehmen
               {
                 if(curPTS > LastFilePTS) LastFilePTS = curPTS;
@@ -1092,6 +1095,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                 LastFilePTSOK = TRUE;
                 break;
               }
+            }
           }
           p--;
         }
@@ -1695,7 +1699,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                   if(!FirstFilePTS) FirstFilePTS = curPTS;
                   FirstFilePTSOK++;
                 }
-                else if (FirstFilePTS && curPTS < FirstFilePTS)
+                else if (FirstFilePTS && ((int)(FirstFilePTS - curPTS) > 0))
                   FirstFilePTS = curPTS;
               }
               PTSLastPayloadStart = (curPacket->Payload_Unit_Start && !FrameType);
@@ -1755,8 +1759,12 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               curPESPacket = (tPESHeader*) &curPacket->Data[(curPacket->Adapt_Field_Exists) ? curPacket->Data[0] + 1 : 0];
               GetPTS((byte*) curPESPacket, &curPTS, NULL);
               if (FindPictureHeader((byte*) curPESPacket, 184 - ((curPacket->Adapt_Field_Exists) ? curPacket->Data[0] + 1 : 0), &FrameType, NULL))
-                if (FrameType == 2)  LastFilePTS = curPTS;  // nur von P-Frame nehmen
-                else if (FrameType == 1)  LastFilePTSOK = TRUE;
+              {
+                if (FrameType >= 2 && (!LastFilePTS || (int)(curPTS - LastFilePTS) > 0))  // nur von P- oder B-Frame nehmen
+                  LastFilePTS = curPTS;
+                else if (FrameType == 1)
+                  LastFilePTSOK = TRUE;
+              }
             }
           }
           p -= PACKETSIZE;
