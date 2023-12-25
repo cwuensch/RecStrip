@@ -850,6 +850,12 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
       printf("  File date: %s (local)\n", TimeStrTF(FileDate, FileSec));
 
       LoadInfFromRec(RecFileIn);
+      if (FirstFilePTS && LastFilePTS && !RecHeaderInfo->DurationSec)  // gute Idee??
+      {
+        dword dPTS = DeltaPCR((dword)(FirstFilePTS / 45), (dword)(LastFilePTS / 45));
+        RecHeaderInfo->DurationMin = dPTS/60000;
+        RecHeaderInfo->DurationSec = dPTS/1000 % 60;
+      }
 
       if (EycosSource)
       {
@@ -2032,11 +2038,6 @@ int main(int argc, const char* argv[])
     {
       dword dPTS = DeltaPCR((dword)(FirstFilePTS / 45), (dword)(LastFilePTS / 45));
       snprintf(DurationStr, sizeof(DurationStr), "%02u:%02u:%02u,%03u", dPTS/3600000, dPTS/60000 % 60, dPTS/1000 % 60, dPTS % 1000);
-    }
-    else if (FirstFilePCR && LastFilePCR)
-    {
-      dword dPCR = DeltaPCR((dword)(FirstFilePCR / 27000), (dword)(LastFilePCR / 27000));
-      snprintf(DurationStr, sizeof(DurationStr), "%02u:%02u:%02u,%03u", dPCR/3600000, dPCR/60000 % 60, dPCR/1000 % 60, dPCR % 1000);
     }
     else if (NavDurationMS)
       snprintf(DurationStr, sizeof(DurationStr), "%02u:%02u:%02u,%03u", NavDurationMS/3600000, NavDurationMS/60000 % 60, NavDurationMS/1000 % 60, NavDurationMS % 1000);

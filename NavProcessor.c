@@ -1211,10 +1211,10 @@ bool LoadNavFileIn(const char* AbsInNav)
       if(isHDVideo) fseek(fNavIn, sizeof(tnavSD), SEEK_CUR);
     }
 
-    // letztes P/B-Frame der nav ermitteln
+    // letztes Frame der nav ermitteln
     FrameType = 0x0f;
     fseek(fNavIn, -(int)(isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD)), SEEK_END);
-    while (FrameType > 1)
+    while (!TimemsEnd || FrameType > 1)
     {
       if (fread(&navSD, sizeof(tnavSD), 1, fNavIn))
       {
@@ -1224,12 +1224,11 @@ bool LoadNavFileIn(const char* AbsInNav)
           NavFrames = (dword)((NavSize-start) / (isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD))) - skippedFrames;
         }
         FrameType = navSD.FrameType;
-        if (navSD.FrameType >= 2)
-          if (!TimemsEnd || (int)(navSD.Timems - TimemsEnd) > 0)
-            TimemsEnd = navSD.Timems;
+        if (!TimemsEnd || (int)(navSD.Timems - TimemsEnd) > 0)
+          TimemsEnd = navSD.Timems;
       }
       else break;
-      if (FrameType >= 2)
+      if (!TimemsEnd || FrameType >= 2)
         fseek(fNavIn, -(int)(isHDVideo ? sizeof(tnavHD) + sizeof(tnavSD) : 2*sizeof(tnavSD)), SEEK_CUR);
     }  
 

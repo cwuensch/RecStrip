@@ -1044,7 +1044,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             {
               if (FrameType == 1)  // zuerst vom I-Frame nehmen
               {
-                if(!FirstFilePTS)  FirstFilePTS = curPTS;
+                if(!FirstFilePTS)
+                  FirstFilePTS = curPTS;
                 FirstFilePCR = (long long)FirstFilePTS * 600;
                 FirstFilePTSOK++;
               }
@@ -1696,7 +1697,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               {
                 if (FrameType == 1)  // zuerst vom I-Frame nehmen
                 {
-                  if(!FirstFilePTS) FirstFilePTS = curPTS;
+                  if(!FirstFilePTS)
+                    FirstFilePTS = curPTS;
                   FirstFilePTSOK++;
                 }
                 else if (FirstFilePTS && ((int)(FirstFilePTS - curPTS) > 0))
@@ -1760,9 +1762,9 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               GetPTS((byte*) curPESPacket, &curPTS, NULL);
               if (FindPictureHeader((byte*) curPESPacket, 184 - ((curPacket->Adapt_Field_Exists) ? curPacket->Data[0] + 1 : 0), &FrameType, NULL))
               {
-                if (FrameType >= 2 && (!LastFilePTS || (int)(curPTS - LastFilePTS) > 0))  // nur von P- oder B-Frame nehmen
+                if (!LastFilePTS || (int)(curPTS - LastFilePTS) > 0)
                   LastFilePTS = curPTS;
-                else if (FrameType == 1)
+                else if (LastFilePTS && FrameType == 1)
                   LastFilePTSOK = TRUE;
               }
             }
