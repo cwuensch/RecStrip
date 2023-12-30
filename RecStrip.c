@@ -143,13 +143,14 @@ static unsigned int     NrSegments = 0, NrCopiedSegments = 0;
 static int              CutTimeOffset = 0;
 long long               NrDroppedZeroStuffing=0;
 static long long        NrDroppedFillerNALU=0, NrDroppedAdaptation=0, NrDroppedNullPid=0, NrDroppedEPGPid=0, NrDroppedTxtPid=0, NrScrambledPackets=0, CurScrambledPackets=0, NrIgnoredPackets=0;
-static dword            LastPCR = 0, LastTimeStamp = 0, CurTimeStep = 1200;
+static dword            LastPCR = 0, LastTimeStamp = 0, CurTimeStep = 1200, *pGetPCR = NULL;
 static signed char      ContinuityCtrs[MAXCONTINUITYPIDS];
 static bool             ResumeSet = FALSE, AfterFirstEPGPacks = FALSE, DoOutputHeaderPacks = FALSE;
 
 // Continuity Statistik
 static tContinuityError FileDefect[MAXCONTINUITYPIDS];
 static long long        LastContErrPos = 0;
+static dword            LastGoodPCR = 0, FirstPCRAfter = 0;
 static int              NrContErrsInFile = 0;
 char                   *ExtEPGText = NULL;
 
@@ -409,6 +410,7 @@ static bool PrintFileDefect()
         { percent = (double)FileDefect[i].Position*100/RecFileSize; break; }
     }
     printf("TS Check: Continuity Error:\t%d.\t%.2f%%", NrContErrsInFile+1, percent);
+    printf((FirstPCRAfter ? "\t%u->%u (%.3f sec)" : "\t%u->?"), LastGoodPCR, FirstPCRAfter, (float)((int)(FirstPCRAfter-LastGoodPCR)) / 1000);
     for (i = 0; i < NrContinuityPIDs; i++)
       printf("\t%hd\t%lld", FileDefect[i].PID, FileDefect[i].Position);
     printf("\n");
@@ -456,6 +458,9 @@ void AddContinuityError(word CurPID, long long CurrentPosition, byte CountShould
       if (PrintFileDefect())
         NrContErrsInFile++;
       memset(FileDefect, 0, MAXCONTINUITYPIDS * sizeof(tContinuityError));
+      LastGoodPCR = global_timestamp;
+      FirstPCRAfter = 0;
+      pGetPCR = &FirstPCRAfter;
     }
     FileDefect[PidID].PID         = CurPID;
     FileDefect[PidID].Position    = CurrentPosition;
@@ -2034,13 +2039,13 @@ int main(int argc, const char* argv[])
     // Print out details to STDERR
     memset(EventName, 0, sizeof(EventName));
 
-    if (FirstFilePTS && LastFilePTS)
+    if (NavDurationMS)
+      snprintf(DurationStr, sizeof(DurationStr), "%02u:%02u:%02u,%03u", NavDurationMS/3600000, NavDurationMS/60000 % 60, NavDurationMS/1000 % 60, NavDurationMS % 1000);
+    else if (FirstFilePTS && LastFilePTS)
     {
       dword dPTS = DeltaPCR((dword)(FirstFilePTS / 45), (dword)(LastFilePTS / 45));
       snprintf(DurationStr, sizeof(DurationStr), "%02u:%02u:%02u,%03u", dPTS/3600000, dPTS/60000 % 60, dPTS/1000 % 60, dPTS % 1000);
     }
-    else if (NavDurationMS)
-      snprintf(DurationStr, sizeof(DurationStr), "%02u:%02u:%02u,%03u", NavDurationMS/3600000, NavDurationMS/60000 % 60, NavDurationMS/1000 % 60, NavDurationMS % 1000);
     else
       snprintf(DurationStr, sizeof(DurationStr), "%02hu:%02hu:%02hu", Inf_TMSS->RecHeaderInfo.DurationMin/60, Inf_TMSS->RecHeaderInfo.DurationMin % 60, Inf_TMSS->RecHeaderInfo.DurationSec);
     strncpy(EventName, Inf_TMSS->EventInfo.EventNameDescription, Inf_TMSS->EventInfo.EventNameLength);
@@ -2799,11 +2804,8 @@ int main(int argc, const char* argv[])
           {
             // Extract Teletext Subtitles
             if (/*ExtractTeletext &&*/ fTtxOut)
-            {
-              dword CurPCR = 0;
-              if (GetPCRms(&Buffer[4], &CurPCR))  global_timestamp = CurPCR;
               ProcessTtxPacket((tTSPacket*) &Buffer[4]);
-            }
+
             // Remove Teletext packets
             if (RemoveTeletext)
             {
@@ -2939,7 +2941,7 @@ int main(int argc, const char* argv[])
                 CurTimeStep = 1200;
               LastPCR = CurPCR;
               LastTimeStamp = CurPCR;
-              GetPCRms(&Buffer[4], &global_timestamp);  // oder global_timestamp = (CurPCRfull / 27000)
+//              GetPCRms(&Buffer[4], &global_timestamp);  // oder global_timestamp = (CurPCRfull / 27000)
             }
             else if (CurPID == VideoPID && LastTimeStamp)
               LastTimeStamp += CurTimeStep;
@@ -2948,10 +2950,22 @@ int main(int argc, const char* argv[])
             Buffer[2] = ((byte*)&LastTimeStamp)[1];
             Buffer[3] = ((byte*)&LastTimeStamp)[0];
           }
-          else if (ExtractTeletext)
-          {
-            GetPCRms(&Buffer[4], &global_timestamp);
-          }
+//          else if (ExtractTeletext)
+//          {
+            if (GetPCRms(&Buffer[4], &global_timestamp))
+            {
+              if (pGetPCR)
+              {
+                *pGetPCR = global_timestamp;
+/*                for (k = 0; k < NrContinuityPIDs; k++)
+                {
+                  if (FileDefect[k].Position && !FileDefect[k].FirstPCRAfter)
+                    FileDefect[k].FirstPCRAfter = global_timestamp;
+                } */
+                pGetPCR = NULL;
+              }
+            }
+//          }
 
           // Nach Übernahme der ersten EPG-Packs, EPG-Counter zurücksetzen
           if (!AfterFirstEPGPacks && (CurPID != 0) && (CurPID != ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID) && (CurPID != 18))
@@ -3264,8 +3278,6 @@ int main(int argc, const char* argv[])
 
   if (NrCopiedSegments > 0)
     printf("\nSegments: %d of %d segments copied.\n", NrCopiedSegments, NrSegments);
-  if (NrFrames > 0)
-    printf("\nFrames: %u of %u frames written.\n", NrFrames, NavFrames);
   if (MedionMode == 1)
     NrDroppedZeroStuffing = NrDroppedZeroStuffing / 184;
 

@@ -397,6 +397,10 @@ int ProcessTSPacket(unsigned char *Packet, long long FilePosition)
       }
     }
 
+//#if defined(_WIN32) && defined(_DEBUG)
+  if (Info.ZerosOnly && (!TSPacket->Adapt_Field_Exists && TSPacket->Data[1]!=0) && (isHDVideo || SliceState) /*&& LastEndNulls>0*/)
+    printf("DEBUG: RecStrip 2.8b - strip a packet with empty adaptation field!\n");
+//#endif
     if (Info.ZerosOnly && (!TSPacket->Adapt_Field_Exists || TSPacket->Data[1]==0) && (isHDVideo || SliceState) /*&& LastEndNulls>0*/)
     {
 //printf("Potential zero-byte-stuffing at position %lld", FilePosition);
@@ -418,6 +422,15 @@ int ProcessTSPacket(unsigned char *Packet, long long FilePosition)
     {
       if (PendingPacket)
       {
+//#if defined(_WIN32) && defined(_DEBUG)
+  if (Remaining==0 || (Remaining<=1 && LastEndNulls<=1) || (Remaining<=2 && LastEndNulls==0))
+  {
+    printf("DEBUG: RecStrip 2.8b - previously buffer read over end of packet!\n");
+    if (Packet[Offset]==0 && Packet[Offset+1]==0 && Packet[Offset+2]==0)
+      printf("DEBUG: RecStrip 2.8b - previously stripped packet re-inserted!\n");
+  }
+//#endif
+
         if (Remaining && Packet[Offset]==0 && ((Remaining>=2 && Packet[Offset+1]==0) || LastEndNulls>=2) && ((Remaining>=3 && Packet[Offset+2]==0) || LastEndNulls))
         {
 //printf("PENDING PACKET --> confirmed by next packet!\n");
