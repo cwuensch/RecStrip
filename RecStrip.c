@@ -1160,9 +1160,8 @@ static void CloseInputFiles(bool PrintErrors, bool SetStripFlags, bool SetStartT
 
   if (PrintErrors)
   {
-    if (PrintFileDefect())
-      NrContErrsInFile++;
-    printf("\nTSCheck: %d continuity errors found.\n", NrContErrsInFile);
+    if(PrintFileDefect())  NrContErrsInFile++;
+    printf("TSCheck: %d continuity errors found.\n", NrContErrsInFile);
   }
 
   if (fIn)
@@ -3260,7 +3259,7 @@ int main(int argc, const char* argv[])
 
   if ((fOut || (DoCut != 2)) && !CloseOutputFiles())
   {
-    CloseInputFiles(TRUE, FALSE, FALSE);
+    CloseInputFiles(TRUE, TRUE, (!*RecFileOut));
     CutProcessor_Free();
     InfProcessor_Free();
     free(PendingBuf); PendingBuf = NULL;
