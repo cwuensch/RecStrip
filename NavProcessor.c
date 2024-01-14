@@ -22,7 +22,7 @@
 // Globale Variablen
 dword                   NrFrames = 0;
 dword                   LastTimems = 0;
-int                     TimeOffset = 0, LastNavTimeOffset = 0;
+int                     TimeOffset = 0;
 dword                  *pOutNextTimeStamp = NULL;
 FILE                   *fNavIn = NULL;
 static FILE            *fNavOut = NULL;
@@ -32,7 +32,7 @@ static byte             PTSBuffer[16];
 static int              PTSBufFill = 0;  // 0: keinen PTS suchen, 1..15 Puffer-Füllstand, bei 16 PTS auslesen und zurücksetzen
 static byte             FrameCtr = 0, FrameOffset = 0;
 static bool             WaitForIFrame = TRUE, WaitForPFrame = FALSE, FirstPacketAfterCut = FALSE, FirstRecordAfterCut = TRUE;
-static dword            FirstNavPTS = 0, LastNavPTS = 0;
+static dword            FirstNavPTS = 0, LastNavPTS = 0, PTSJump = 0;
 static bool             FirstNavPTSOK = FALSE;
 
 //HDNAV
@@ -339,7 +339,7 @@ void NavProcessor_Init(void)
   PTSBufFill = 0;  // 0: keinen PTS suchen, 1..15 Puffer-Füllstand, bei 16 PTS auslesen und zurücksetzen
   NrFrames = 0; FrameCtr = 0; FrameOffset = 0;
   WaitForIFrame = TRUE; WaitForPFrame = FALSE; FirstPacketAfterCut = FALSE; FirstRecordAfterCut = TRUE;
-  FirstNavPTS = 0; FirstNavPTS = 0;
+  FirstNavPTS = 0; LastNavPTS = 0; PTSJump = 0;
   FirstNavPTSOK = FALSE;
 
   //HDNAV
@@ -561,6 +561,8 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
                   WaitForIFrame = TRUE;
                   FirstRecordAfterCut = TRUE;
                 }
+                if (LastNavPTS && ((int)(SEIPTS - LastNavPTS) > 45000))
+                  PTSJump += (SEIPTS - LastNavPTS);
                 FirstPacketAfterCut = FALSE;
               }
             }            
@@ -679,7 +681,8 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
                   if(!FirstNavPTSOK)  FirstNavPTSOK = TRUE;
               }
               else if (!FirstNavPTSOK && !WaitForPFrame)
-                if(FirstNavPTS && ((int)(SEIPTS - FirstNavPTS) < 0))  FirstNavPTS = SEIPTS;
+                if(FirstNavPTS && ((int)(SEIPTS - FirstNavPTS) < 0))
+                  FirstNavPTS = SEIPTS;
 
 //              FrameCtr++;
 
@@ -789,10 +792,7 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
                   /* if( ((int)(navHD.Timems - LastTimems)) >= 0) */ LastTimems = navHD.Timems;
                   /* else  navHD.Timems = LastTimems; */
                   if (FirstNavPTSOK)
-                  {
                     if(!LastNavPTS || ((int)(navHD.SEIPTS - LastNavPTS) > 0))  LastNavPTS = navHD.SEIPTS;
-                    LastNavTimeOffset = TimeOffset;
-                  }
 #ifdef _DEBUG
 {
   long long RefPictureHeaderOffset = dbg_NavPictureHeaderOffset - dbg_SEIPositionOffset;
@@ -982,10 +982,7 @@ static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
         /* if( ((int)(navSD.Timems - LastTimems)) >= 0) */ LastTimems = navSD.Timems;
         /* else  navSD.Timems = LastTimems; */
         if (FirstNavPTSOK)
-        {
           if(!LastNavPTS || (int)(navSD.PTS2 - LastNavPTS) > 0)  LastNavPTS = navSD.PTS2;
-          LastNavTimeOffset = TimeOffset;
-        }
 #ifdef _DEBUG
 {
   unsigned long long RefPictureHeaderOffset = dbg_NavPictureHeaderOffset - dbg_HeaderPosOffset;
@@ -1007,6 +1004,8 @@ static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
         WaitForIFrame = TRUE;
         FirstRecordAfterCut = TRUE;
         FirstPacketAfterCut = FALSE;
+        if (LastNavPTS && ((int)(PTS - LastNavPTS) > 45000))
+          PTSJump += (PTS - LastNavPTS);
       }
       NavPtr++;
 
@@ -1033,7 +1032,8 @@ static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
           if(!FirstNavPTSOK)  FirstNavPTSOK = TRUE;
       }
       else if (!FirstNavPTSOK && !WaitForPFrame)
-        if(FirstNavPTS && ((int)(PTS - FirstNavPTS) < 0))  FirstNavPTS = PTS;
+        if(FirstNavPTS && ((int)(PTS - FirstNavPTS) < 0))
+          FirstNavPTS = PTS;
 
       navSD.SHOffset        = (dword)(PictHeader - CurrentSeqHeader);
       navSD.FrameType       = FrameType;
@@ -1149,6 +1149,9 @@ void QuickNavProcess(const long long CurrentPosition, const long long PositionOf
       if(TimeOffset_new < TimeOffset || TimeOffset_new > TimeOffset + 1000) TimeOffset = TimeOffset_new;
     }
 
+    if (LastNavPTS && ((int)(curSDNavRec->PTS2 - LastNavPTS) > 45000))
+      PTSJump += (curSDNavRec->PTS2 - LastNavPTS);
+
     WaitForIFrame = TRUE;
     FirstPacketAfterCut = FALSE;
   }
@@ -1177,8 +1180,23 @@ void QuickNavProcess(const long long CurrentPosition, const long long PositionOf
       if (WaitForIFrame && (curSDNavRec->FrameType == 1)) {
         WaitForIFrame = FALSE; WaitForPFrame = TRUE; }
 
+      // FirstPTS ermitteln
+      if (curSDNavRec->FrameType == 1)
+      {
+        if (FirstNavPTS == 0)
+          FirstNavPTS = curSDNavRec->PTS2;
+        else
+          if(!FirstNavPTSOK)  FirstNavPTSOK = TRUE;
+      }
+      else if (!FirstNavPTSOK && !WaitForPFrame)
+        if(FirstNavPTS && ((int)(curSDNavRec->PTS2 - FirstNavPTS) < 0))
+          FirstNavPTS = curSDNavRec->PTS2;
+
       if (!WaitForIFrame && (/*isHDVideo ||*/ !WaitForPFrame || curSDNavRec->FrameType<=2))
       {
+        if (FirstNavPTSOK)
+          if(!LastNavPTS || (int)(curSDNavRec->PTS2 - LastNavPTS) > 0)  LastNavPTS =  curSDNavRec->PTS2;
+
         // Record schreiben
         if (fNavOut && !fwrite(NavBuffer, isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD), 1, fNavOut))
         {
@@ -1347,7 +1365,6 @@ bool CloseNavFileOut(void)
         if(fNavOut) fwrite(&navSD, sizeof(tnavSD), 1, fNavOut);
         if (FirstNavPTSOK && (!LastNavPTS || ((int)(navSD.PTS2 - LastNavPTS) > 0)))
           LastNavPTS = navSD.PTS2;
-        LastNavTimeOffset = TimeOffset;
         NrFrames++;
       }
     }
@@ -1373,12 +1390,19 @@ bool CloseNavFileOut(void)
     TYPE_RecHeader_TMSS *RecInf = (TYPE_RecHeader_TMSS*)InfBuffer;
     dword FirstPTSms = (dword)(FirstNavPTS/45);
     dword LastPTSms = (dword)(LastNavPTS/45);
-    dword dPTS = DeltaPCR(FirstPTSms, LastPTSms /*- (dword)TimeOffset*/);
+    dword dPTS = DeltaPCR(FirstPTSms, ((LastNavPTS - PTSJump) / 45));
     RecInf->RecHeaderInfo.DurationMin = (int)(dPTS / 60000);
     RecInf->RecHeaderInfo.DurationSec = (dPTS / 1000) % 60;
+    dPTS = DeltaPCR(FirstPTSms, LastPTSms);
 printf("NewNav: FirstPTS = %u (%01u:%02u:%02u,%03u), Last: %u (%01u:%02u:%02u,%03u)\n", FirstNavPTS, (FirstPTSms/3600000), (FirstPTSms/60000 % 60), (FirstPTSms/1000 % 60), (FirstPTSms % 1000), LastNavPTS, (LastPTSms/3600000), (LastPTSms/60000 % 60), (LastPTSms/1000 % 60), (LastPTSms % 1000));
-printf("NewNav: Duration = %01u:%02u:%02u,%03u (skipped time %02d:%02u,%03u)\n\n", dPTS / 3600000, (dPTS / 60000) % 60, (dPTS / 1000) % 60, dPTS % 1000, (LastNavTimeOffset-TimeOffset) / 60000, ((LastNavTimeOffset-TimeOffset) / 1000) % 60, (LastNavTimeOffset-TimeOffset) % 1000);
+printf("NewNav: Duration = %01u:%02u:%02u,%03u", dPTS / 3600000, (dPTS / 60000) % 60, (dPTS / 1000) % 60, dPTS % 1000);
+
+if (((dPTS = PTSJump / 45)) != 0)
+printf(" (time jumps %02d:%02u,%03u)\n", dPTS / 60000, (dPTS / 1000) % 60, dPTS % 1000);
+else
+printf("\n");
   }
+  printf("\n");
 
   if (fNavOut)
     ret = (/*fflush(fNavOut) == 0 &&*/ fclose(fNavOut) == 0);
@@ -1397,7 +1421,7 @@ tTimeStamp2* NavLoad(const char *AbsInRec, int *const OutNrTimeStamps, byte Pack
   tTimeStamp2          *TimeStampBuffer = NULL;
   tTimeStamp2          *TimeStamps = NULL;
   int                   NavRecordsNr, NrTimeStamps = 0;
-  dword                 FirstTime, LastTime;
+//  dword                 FirstPTS = 0xffffffff;  // FirstTime = 0xffffffff, LastTime = 0xffffffff;
   dword                 FirstDword = 0;
   long long             AbsPos;
   unsigned long long    NavSize = 0;
@@ -1435,15 +1459,13 @@ tTimeStamp2* NavLoad(const char *AbsInRec, int *const OutNrTimeStamps, byte Pack
     rewind(fNav);
 
   //Count and save all the _different_ time stamps in the .nav
-  LastTime = 0xFFFFFFFF;
-  FirstTime = 0xFFFFFFFF;
-
   while (fread(CurNavRec, sizeof(tnavSD) * (isHDVideo ? 2 : 1), 1, fNav) && (NrTimeStamps < NavRecordsNr))
   {
-    if(FirstTime == 0xFFFFFFFF) FirstTime = CurNavRec->Timems;
+//    if(FirstTime == 0xFFFFFFFF) FirstTime = CurNavRec->Timems;
     if(CurNavRec->FrameType == 1)  // erfasse nur noch I-Frames
     {
       AbsPos = ((long long)(CurNavRec->PHOffsetHigh) << 32) | CurNavRec->PHOffset;
+//      if(FirstPTS == 0xffffffff) FirstPTS = CurNavRec->PTS2;
 /*      if(CurNavRec->Timems == LastTime)
       {
 TAP_PrintNet("Achtung! I-Frame an %llu hat denselben Timestamp wie sein Vorgänger!\n", AbsPos);
@@ -1462,7 +1484,7 @@ TAP_PrintNet("Achtung! I-Frame an %llu hat denselben Timestamp wie sein Vorgänge
         TimeStampBuffer[*NrTimeStamps].Timems = (0xffffffff - FirstTime) + CurNavRec->Timems + 1;
 */
       NrTimeStamps++;
-      LastTime = CurNavRec->Timems;
+//      LastTime = CurNavRec->Timems;
     }
   }
 
