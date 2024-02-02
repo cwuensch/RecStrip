@@ -409,7 +409,7 @@ static bool PrintFileDefect()
       if (FileDefect[i].Position > 0)
         { percent = (double)FileDefect[i].Position*100/RecFileSize; break; }
     }
-    printf("TS Check: Continuity Error:\t%d.\t%.2f%%", NrContErrsInFile+1, percent);
+    printf("TSCheck: Continuity Error:\t%d.\t%.2f%%", NrContErrsInFile+1, percent);
     printf((FirstPCRAfter ? "\t%u->%u (%.3f sec)" : "\t%u->?"), LastGoodPCR, FirstPCRAfter, (float)((int)(FirstPCRAfter-LastGoodPCR)) / 1000);
     for (i = 0; i < NrContinuityPIDs; i++)
       printf("\t%hd\t%lld", FileDefect[i].PID, FileDefect[i].Position);
