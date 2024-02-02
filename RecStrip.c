@@ -144,13 +144,14 @@ static unsigned int     NrSegments = 0, NrCopiedSegments = 0;
 static int              CutTimeOffset = 0;
 long long               NrDroppedFillerNALU=0, NrDroppedZeroStuffing=0;
 static long long        NrDroppedAdaptation=0, NrDroppedNullPid=0, NrDroppedEPGPid=0, NrDroppedTxtPid=0, NrScrambledPackets=0, CurScrambledPackets=0, NrIgnoredPackets=0;
-static dword            LastPCR = 0, LastTimeStamp = 0, CurTimeStep = 1200;
+static dword            LastPCR = 0, LastTimeStamp = 0, CurTimeStep = 1200, *pGetPCR = NULL;
 static signed char      ContinuityCtrs[MAXCONTINUITYPIDS];
 static bool             ResumeSet = FALSE, AfterFirstEPGPacks = FALSE, DoOutputHeaderPacks = FALSE;
 
 // Continuity Statistik
 static tContinuityError FileDefect[MAXCONTINUITYPIDS];
 static long long        LastContErrPos = 0;
+static dword            LastGoodPCR = 0, FirstPCRAfter = 0;
 static int              NrContErrsInFile = 0;
 char                   *ExtEPGText = NULL;
 
@@ -409,7 +410,8 @@ static bool PrintFileDefect()
       if (FileDefect[i].Position > 0)
         { percent = (double)FileDefect[i].Position*100/RecFileSize; break; }
     }
-    printf("TS Check: Continuity Error:\t%d.\t%.2f%%", NrContErrsInFile+1, percent);
+    printf("TSCheck: Continuity Error:\t%d.\t%.2f%%", NrContErrsInFile+1, percent);
+    printf((FirstPCRAfter ? "\t%u->%u (%.3f sec)" : "\t%u->?"), LastGoodPCR, FirstPCRAfter, (float)((int)(FirstPCRAfter-LastGoodPCR)) / 1000);
     for (i = 0; i < NrContinuityPIDs; i++)
       printf("\t%hd\t%lld", FileDefect[i].PID, FileDefect[i].Position);
     printf("\n");
@@ -457,6 +459,9 @@ void AddContinuityError(word CurPID, long long CurrentPosition, byte CountShould
       if (PrintFileDefect())
         NrContErrsInFile++;
       memset(FileDefect, 0, MAXCONTINUITYPIDS * sizeof(tContinuityError));
+      LastGoodPCR = global_timestamp;
+      FirstPCRAfter = 0;
+      pGetPCR = &FirstPCRAfter;
     }
     FileDefect[PidID].PID         = CurPID;
     FileDefect[PidID].Position    = CurrentPosition;
@@ -851,6 +856,12 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
       printf("  File date: %s (local)\n", TimeStrTF(FileDate, FileSec));
 
       LoadInfFromRec(RecFileIn);
+      if (FirstFilePTS && LastFilePTS && !RecHeaderInfo->DurationSec)  // gute Idee??
+      {
+        dword dPTS = DeltaPCR((dword)(FirstFilePTS / 45), (dword)(LastFilePTS / 45));
+        RecHeaderInfo->DurationMin = dPTS/60000;
+        RecHeaderInfo->DurationSec = dPTS/1000 % 60;
+      }
 
       if (EycosSource)
       {
@@ -1157,9 +1168,8 @@ static void CloseInputFiles(bool PrintErrors, bool SetStripFlags, bool SetStartT
 
   if (PrintErrors)
   {
-    if (PrintFileDefect())
-      NrContErrsInFile++;
-    printf("\nTSCheck: %d continuity errors found.\n", NrContErrsInFile);
+    if(PrintFileDefect())  NrContErrsInFile++;
+    printf("TSCheck: %d continuity errors found.\n", NrContErrsInFile);
   }
 
   if (fIn)
@@ -1813,7 +1823,7 @@ FILE *fDbg;
     }
     else if (DoInfoOnly)
     {
-      fprintf(stderr, "RecFile\tRecSize\tFileDate\tStartTime\tDuration\tFirstPCR\tLastPCR\tFirstPTS\tLastPTS\tisStripped\t");
+      fprintf(stderr, "RecFile\tRecSize\tFileDate\tStartTime\tDuration\tNrFrames\tFirstPCR\tLastPCR\tFirstPTS\tLastPTS\tisStripped\t");
       fprintf(stderr, "InfType\tSender\tServiceID\tPMTPid\tVideoPid\tAudioPid\tTtxPid\tVideoType\tAudioType\tAudioTypeFlag\tHD\tResolution\tFPS\tAspectRatio\tTtxSubPage\t");
       fprintf(stderr, "SegmentMarker\tBookmarks\t");
       fprintf(stderr, "EventName\tEventDesc\tEventStart\tEventEnd\tEventDuration\tExtEventText\n");
@@ -1971,7 +1981,7 @@ FILE *fDbg;
       if ((p = strrchr(ServiceString, '/'))) p[1] = '\0';
       else if ((p = strrchr(ServiceString, '\\'))) p[1] = '\0';
       else ServiceString[0] = 0;
-      n = strlen(ServiceString);
+      n = (int)strlen(ServiceString);
 
       snprintf(&ServiceString[n], sizeof(ServiceString) - n, "pmts/%hu_%hd_%hd.pmt", ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, VideoPID, GetMinimalAudioPID(AudioPIDs));
       if (HDD_FileExist(ServiceString))
@@ -2032,16 +2042,22 @@ FILE *fDbg;
 
     // Print out details to STDERR
     memset(EventName, 0, sizeof(EventName));
+
     if (NavDurationMS)
-      snprintf(DurationStr, sizeof(DurationStr), "%02u:%02u:%02u.%03u", NavDurationMS/3600000, NavDurationMS/60000 % 60, NavDurationMS/1000 % 60, NavDurationMS % 1000);
+      snprintf(DurationStr, sizeof(DurationStr), "%02u:%02u:%02u,%03u", NavDurationMS/3600000, NavDurationMS/60000 % 60, NavDurationMS/1000 % 60, NavDurationMS % 1000);
+    else if (FirstFilePTS && LastFilePTS)
+    {
+      dword dPTS = DeltaPCR((dword)(FirstFilePTS / 45), (dword)(LastFilePTS / 45));
+      snprintf(DurationStr, sizeof(DurationStr), "%02u:%02u:%02u,%03u", dPTS/3600000, dPTS/60000 % 60, dPTS/1000 % 60, dPTS % 1000);
+    }
     else
       snprintf(DurationStr, sizeof(DurationStr), "%02hu:%02hu:%02hu", Inf_TMSS->RecHeaderInfo.DurationMin/60, Inf_TMSS->RecHeaderInfo.DurationMin % 60, Inf_TMSS->RecHeaderInfo.DurationSec);
     strncpy(EventName, Inf_TMSS->EventInfo.EventNameDescription, Inf_TMSS->EventInfo.EventNameLength);
 
-    // REC:    RecFileIn;  RecSize;  FileDate;  StartTime (DateTime);  Duration (nav=hh:mm:ss.xxx, TS=hh:mm:ss);  FirstPCR;  LastPCR;  FirstPTS;  LastPTS;  isStripped
+    // REC:    RecFileIn;  RecSize;  FileDate;  StartTime (DateTime);  Duration (nav=hh:mm:ss.xxx, TS=hh:mm:ss);  NrFrames;  FirstPCR;  LastPCR;  FirstPTS;  LastPTS;  isStripped
     strncpy(FileDateStr, TimeStr_DB(FileDate, FileSec), sizeof(FileDateStr));
     strncpy(StartTimeStr, TimeStr_DB(Inf_TMSS->RecHeaderInfo.StartTime, Inf_TMSS->RecHeaderInfo.StartTimeSec), sizeof(StartTimeStr));
-    fprintf(stderr, "%s\t%llu\t%s\t%s\t%s\t%lld\t%lld\t%u\t%u\t%s\t",  RecFileIn,  RecFileSize,  FileDateStr,  StartTimeStr,  DurationStr,  FirstFilePCR,  LastFilePCR,  FirstFilePTS,  LastFilePTS,  (Inf_TMSS->RecHeaderInfo.rs_HasBeenStripped ? "yes" : "no"));
+    fprintf(stderr, "%s\t%llu\t%s\t%s\t%s\t%u\t%lld\t%lld\t%u\t%u\t%s\t",  RecFileIn,  RecFileSize,  FileDateStr,  StartTimeStr,  DurationStr,  NavFrames,  FirstFilePCR,  LastFilePCR,  FirstFilePTS,  LastFilePTS,  (Inf_TMSS->RecHeaderInfo.rs_HasBeenStripped ? "yes" : "no"));
 
     // SERVICE:  InfType;   Sender;   ServiceID;  PMTPid;  VideoPid;  AudioPid;  TtxPid;  VideoType;  AudioType;  AudioTypeFlag;  HD;  VideoWidth x VideoHeight;  VideoFPS;  VideoDAR;  TtxSubtPage; 
     fprintf(stderr, "ST_TMS%c\t%s\t%hu\t%hd\t%hd\t%hd\t%hd\t0x%hx\t0x%hx\t0x%hx\t%s\t%dx%d\t%.1f fps\t%.3f\t%hx\t",  (SystemType==ST_TMSS ? 's' : ((SystemType==ST_TMSC) ? 'c' : ((SystemType==ST_TMST) ? 't' : '?'))),  Inf_TMSS->ServiceInfo.ServiceName,  Inf_TMSS->ServiceInfo.ServiceID,  Inf_TMSS->ServiceInfo.PMTPID,  Inf_TMSS->ServiceInfo.VideoPID,  Inf_TMSS->ServiceInfo.AudioPID,  TeletextPID,  Inf_TMSS->ServiceInfo.VideoStreamType,  Inf_TMSS->ServiceInfo.AudioStreamType,  Inf_TMSS->ServiceInfo.AudioTypeFlag,  (isHDVideo ? "yes" : "no"),  VideoWidth,  VideoHeight,  (VideoFPS ? VideoFPS : (NavFrames ? NavFrames/((double)NavDurationMS/1000) : 0)),  VideoDAR,  TeletextPage);
@@ -2196,12 +2212,14 @@ FILE *fDbg;
       char                  InfFileStripped[FBLIB_DIR_SIZE];
       TYPE_RecHeader_Info   RecHeaderInfo_out;
       TYPE_Service_Info     ServiceInfo_out;
+      TYPE_Event_Info       EventInfo_out;
+      TYPE_ExtEvent_Info    ExtEventInfo_out;
       TYPE_Bookmark_Info    BookmarkInfo_out;
       TYPE_RecHeader_TMSS*  RecHeader = ((TYPE_RecHeader_TMSS*)InfBuffer);
 
       if ((fInfOut = fopen((DoFixPMT ? InfFileOut : InfFileIn), "rb")))
       {
-        if ((fread(&RecHeaderInfo_out, sizeof(TYPE_RecHeader_Info), 1, fInfOut)) && (fread(&ServiceInfo_out, sizeof(TYPE_Service_Info), 1, fInfOut))
+        if ((fread(&RecHeaderInfo_out, sizeof(TYPE_RecHeader_Info), 1, fInfOut)) && (fread(&ServiceInfo_out, sizeof(TYPE_Service_Info), 1, fInfOut)) && (fread(&EventInfo_out, sizeof(TYPE_Event_Info), 1, fInfOut)) && (fread(&ExtEventInfo_out, sizeof(TYPE_ExtEvent_Info), 1, fInfOut))
           && ((strncmp(RecHeaderInfo_out.Magic, "TFrc", 4) == 0) && (RecHeaderInfo_out.Version == 0x8000)))
         {
           if ((RecHeaderInfo_out.StartTime != OrigStartTime) || (OrigStartSec && (RecHeaderInfo_out.StartTimeSec != OrigStartSec)))
@@ -2261,6 +2279,28 @@ FILE *fDbg;
           {
             printf("INF FIX (%s): Fixing AudioTypeFlag %hu -> %hu\n", (DoFixPMT ? "output" : "source"), ServiceInfo_out.AudioTypeFlag, RecHeader->ServiceInfo.AudioTypeFlag);
             ServiceInfo_out.AudioTypeFlag = RecHeader->ServiceInfo.AudioTypeFlag;
+            InfModified = TRUE;
+          }
+
+          if ((RecHeader->EventInfo.StartTime != 0) && (RecHeader->EventInfo.StartTime != EventInfo_out.StartTime))
+          {
+            printf("INF FIX (%s): Fixing EventInfo ('%s')\n", (DoFixPMT ? "output" : "source"), RecHeader->EventInfo.EventNameDescription);
+            EventInfo_out.ServiceID       = RecHeader->EventInfo.ServiceID;
+            EventInfo_out.EventID         = RecHeader->EventInfo.EventID;
+            EventInfo_out.RunningStatus   = RecHeader->EventInfo.RunningStatus;
+            EventInfo_out.StartTime       = RecHeader->EventInfo.StartTime;
+            EventInfo_out.DurationHour    = RecHeader->EventInfo.DurationHour;
+            EventInfo_out.DurationMin     = RecHeader->EventInfo.DurationMin;
+            EventInfo_out.EventNameLength = RecHeader->EventInfo.EventNameLength;
+            strncpy(EventInfo_out.EventNameDescription, RecHeader->EventInfo.EventNameDescription, sizeof(EventInfo_out.EventNameDescription));
+            
+            if (RecHeader->ExtEventInfo.TextLength > 0)
+            {
+              ExtEventInfo_out.ServiceID  = RecHeader->ExtEventInfo.ServiceID;
+              ExtEventInfo_out.TextLength = RecHeader->ExtEventInfo.TextLength;
+              ExtEventInfo_out.NrItemizedPairs = RecHeader->ExtEventInfo.NrItemizedPairs;
+              strncpy(ExtEventInfo_out.Text, RecHeader->ExtEventInfo.Text, sizeof(ExtEventInfo_out.Text));
+            }
             InfModified = TRUE;
           }
 
@@ -2352,6 +2392,8 @@ FILE *fDbg;
           fwrite(&RecHeaderInfo_out, 1, 12, fInfOut);
           fseek(fInfOut, sizeof(TYPE_RecHeader_Info), SEEK_SET);
           fwrite(&ServiceInfo_out, 1, sizeof(TYPE_Service_Info), fInfOut);
+          fwrite(&EventInfo_out, 1, sizeof(TYPE_Event_Info), fInfOut);
+          fwrite(&ExtEventInfo_out, 1, sizeof(TYPE_ExtEvent_Info), fInfOut);
         }
         if (BookmarkFix)
         {
@@ -2892,11 +2934,8 @@ FILE *fDbg;
           {
             // Extract Teletext Subtitles
             if (/*ExtractTeletext &&*/ fTtxOut)
-            {
-              dword CurPCR = 0;
-              if (GetPCRms(&Buffer[4], &CurPCR))  global_timestamp = CurPCR;
               ProcessTtxPacket((tTSPacket*) &Buffer[4], CurrentPosition);
-            }
+
             // Remove Teletext packets
             if (RemoveTeletext)
             {
@@ -2993,7 +3032,7 @@ FILE *fDbg;
                 CurTimeStep = 1200;
               LastPCR = CurPCR;
               LastTimeStamp = CurPCR;
-              GetPCRms(&Buffer[4], &global_timestamp);  // oder global_timestamp = (CurPCRfull / 27000)
+//              GetPCRms(&Buffer[4], &global_timestamp);  // oder global_timestamp = (CurPCRfull / 27000)
             }
             else if (CurPID == VideoPID && LastTimeStamp)
               LastTimeStamp += CurTimeStep;
@@ -3005,10 +3044,22 @@ FILE *fDbg;
             Buffer[2] = ((byte*)&LastTimeStamp)[1];
             Buffer[3] = ((byte*)&LastTimeStamp)[0];
           }
-          else if (ExtractTeletext)
-          {
-            GetPCRms(&Buffer[4], &global_timestamp);
-          }
+//          else if (ExtractTeletext)
+//          {
+            if (GetPCRms(&Buffer[4], &global_timestamp))
+            {
+              if (pGetPCR)
+              {
+                *pGetPCR = global_timestamp;
+/*                for (k = 0; k < NrContinuityPIDs; k++)
+                {
+                  if (FileDefect[k].Position && !FileDefect[k].FirstPCRAfter)
+                    FileDefect[k].FirstPCRAfter = global_timestamp;
+                } */
+                pGetPCR = NULL;
+              }
+            }
+//          }
 
           // Nach Übernahme der ersten EPG-Packs, EPG-Counter zurücksetzen
           if (!AfterFirstEPGPacks && (CurPID != 0) && (CurPID != ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID) && (CurPID != 18))
@@ -3296,7 +3347,7 @@ FILE *fDbg;
 
   if ((fOut || (DoCut != 2)) && !CloseOutputFiles())
   {
-    CloseInputFiles(TRUE, FALSE, FALSE);
+    CloseInputFiles(TRUE, TRUE, (!*RecFileOut));
     CutProcessor_Free();
     InfProcessor_Free();
     PSBuffer_Reset(&VideoBuffer);

@@ -159,6 +159,7 @@ bool LoadInfFromRec(char *AbsRecFileName)
   if (fIn)
   {
     setvbuf(fIn, NULL, _IOFBF, BUFSIZE);
+//    fseeko64(fIn, CurrentPosition, SEEK_SET);
 //    if (GetPacketSize(fIn, &FileOffset))
 //      fseeko64(fIn, FileOffset, SEEK_SET);
   }
@@ -196,6 +197,9 @@ printf("ASSERTION: AudioTypeFlag should be 0 or 1, but is %hd!\n", RecInf->Servi
         RecInf->ServiceInfo.AudioTypeFlag = 1;
     }
     SortAudioPIDs(AudioPIDs);
+
+    if ((HumaxSource || EycosSource) && !RecInf->EventInfo.StartTime)
+      GetEPGFromMap(AbsRecFileName, RecInf->ServiceInfo.ServiceID, &RecInf->EventInfo, &RecInf->ExtEventInfo);
   }
 
 //  CurrentStartTime = ((TYPE_RecHeader_Info*)InfBuffer)->StartTime;
@@ -263,21 +267,23 @@ bool LoadInfFile(char *AbsInfName, bool FirstTime)
 
   //Read the source .inf
   if (AbsInfName && !RebuildInf)
+  {
     fInfIn = fopen(AbsInfName, "rb");
-  if(fInfIn)
-  {
-    fseeko64(fInfIn, 0, SEEK_END);
-    InfFileSize = ftell(fInfIn);
-    rewind(fInfIn);
-    Result = (fread(InfBuffer, 1, InfSize, fInfIn) + 4 >= InfSize);
-    fclose(fInfIn);
-  }
-  else
-  {
-    if(!RebuildInf) printf("  Cannot open inf file %s.\n", AbsInfName);
-    if (AbsInfName) AbsInfName[0] = '\0';
-    SystemType = ST_TMSS;
-//    BookmarkInfo = &(((TYPE_RecHeader_TMSS*)InfBuffer)->BookmarkInfo);
+    if(fInfIn)
+    {
+      fseeko64(fInfIn, 0, SEEK_END);
+      InfFileSize = ftell(fInfIn);
+      rewind(fInfIn);
+      Result = (fread(InfBuffer, 1, InfSize, fInfIn) + 4 >= InfSize);
+      fclose(fInfIn);
+    }
+    else
+    {
+      if(!RebuildInf) printf("  Cannot open inf file %s.\n", AbsInfName);
+      if (AbsInfName) AbsInfName[0] = '\0';
+      SystemType = ST_TMSS;
+//      BookmarkInfo = &(((TYPE_RecHeader_TMSS*)InfBuffer)->BookmarkInfo);
+    }
   }
 
   //Check for correct inf file header

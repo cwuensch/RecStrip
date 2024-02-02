@@ -134,7 +134,7 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
         else
           printf("  Eycos-Import: Invalid Bookmark %d: %u is less than %u.\n", j, EycosHeader.Bookmarks[j], SegmentMarker[NrSegmentMarker].Timems);
       }
-      SegmentMarker[NrSegmentMarker++].Timems = 0;
+      SegmentMarker[NrSegmentMarker++].Position = RecFileSize;
 
       AudioPIDs[0].pid = EycosHeader.AudioPid;
       AudioPIDs[0].sorted = TRUE;
@@ -282,6 +282,14 @@ if (HOUR(RecInf->RecHeaderInfo.StartTime) != EycosEvent.EvtStartHour || MINUTE(R
         BookmarkInfo->Bookmarks[BookmarkInfo->NrBookmarks++] = (dword)(EycosIdx.PacketNr / 48);
         printf((j > 0) ? ", %llu (%u:%02u:%02u,%03u)" : "%llu (%u:%02u:%02u,%03u)", SegmentMarker[j].Position, SegmentMarker[j].Timems/3600000, SegmentMarker[j].Timems/60000 % 60, SegmentMarker[j].Timems/1000 % 60, SegmentMarker[j].Timems % 1000);
       }
+    }
+    fseeko64(fIdx, -1 * (int)sizeof(tEycosIdxEntry), SEEK_END);
+    if (fread(&EycosIdx, sizeof(tEycosIdxEntry), 1, fIdx))
+    {
+      RecInf->RecHeaderInfo.DurationMin = (word)(EycosIdx.Timems / 60000);
+      RecInf->RecHeaderInfo.DurationSec = (word)(EycosIdx.Timems / 1000) % 60;
+      if (NrSegmentMarker > 2)
+        SegmentMarker[NrSegmentMarker-1].Timems = EycosIdx.Timems;
     }
     fclose(fIdx);
     printf("\n");
