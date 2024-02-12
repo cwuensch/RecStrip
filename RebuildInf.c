@@ -1038,21 +1038,28 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         {
           while ((p < 524000) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1))
             p++;
-          if (FirstFilePTSOK < 2 && GetPTS(&Buffer[p], NULL, &FirstFilePTS))
+          if (FirstFilePTSOK < 3 && GetPTS(&Buffer[p], &curPTS, NULL))
           {
             if (FindPictureHeader(&Buffer[p], min(200, (int)(&Buffer[ReadBytes]-&Buffer[p])), &FrameType, NULL))
             {
               if (FrameType == 1)  // zuerst vom I-Frame nehmen
               {
-                if(!FirstFilePTS)
+                if(!FirstFilePTSOK)
+                {
                   FirstFilePTS = curPTS;
-                FirstFilePCR = (long long)FirstFilePTS * 600;
-                FirstFilePTSOK++;
+                  FirstFilePCR = (long long)FirstFilePTS * 600;
+                  FirstFilePTSOK = 1;
+                }
+                else FirstFilePTSOK = 3;
               }
-              else if (FirstFilePTS && curPTS < FirstFilePTS)
+              else if (FirstFilePTSOK)
               {
-                FirstFilePTS = curPTS;
-                FirstFilePCR = (long long)FirstFilePTS * 600;
+                if(FrameType == 2) FirstFilePTSOK = 2;
+                if ((FirstFilePTSOK == 2) && ((int)(FirstFilePTS - curPTS) > 0))
+                {
+                  FirstFilePTS = curPTS;
+                  FirstFilePCR = (long long)FirstFilePTS * 600;
+                }
               }
             }
           }
@@ -1082,17 +1089,17 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         {
           while ((p > 0) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1))
             p--;
-          if (GetPTS(&Buffer[p], NULL, &curPTS) && !LastFilePTSOK)
+          if (GetPTS(&Buffer[p], &curPTS, NULL) && !LastFilePTSOK)
           {
             if (FindPictureHeader(&Buffer[p], min(200, (int)(&Buffer[ReadBytes]-&Buffer[p])), &FrameType, NULL))
             {
-              if (FrameType == 2)  // nur von I- oder P-Frame nehmen
+              if (!LastFilePTS || (int)(curPTS - LastFilePTS) > 0)
               {
-                if(curPTS > LastFilePTS) LastFilePTS = curPTS;
+                LastFilePTS = curPTS;
+//                LastFilePCR = (long long)LastFilePTS * 600;
               }
-              else if (FrameType == 1)
+              else if (LastFilePTS && FrameType == 1)
               {
-                LastFilePCR = (long long)LastFilePTS * 600;
                 LastFilePTSOK = TRUE;
                 break;
               }
@@ -1160,11 +1167,11 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             p++;
           TtxFound = AnalyseTtx(&Buffer[p], 32768-p, &TtxTime, &TtxTimeSec, &TtxTimeZone, RecInf->ServiceInfo.ServiceName, sizeof(RecInf->ServiceInfo.ServiceName));
           if(TtxFound && !TtxOK)
-            TtxOK = GetPTS(&Buffer[p], NULL, &TtxPCR) && (TtxPCR != 0);
+            TtxOK = GetPTS(&Buffer[p], &TtxPCR, NULL) && (TtxPCR != 0);
           if(TtxOK)
           {
             TtxPCR = TtxPCR / 45;
-            printf("  TS: TeletextPID=%hd\n", TeletextPID);
+//            printf("  TS: TeletextPID=%hd\n", TeletextPID);
             break;
           }
           p++;
@@ -1181,30 +1188,38 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       if (fread(Buffer, 1, 16384, fMDIn) > 0)
       {
         byte *p = Buffer;
-        dword PCRDuration = DeltaPCR((dword)(FirstFilePCR / 27000), (dword)(LastFilePCR / 27000)) / 1000;
-        dword MidTimeUTC = AddTimeSec(TtxTime, TtxTimeSec, NULL, TtxTimeZone + PCRDuration/2);
+        dword PTSDuration = DeltaPCR((dword)(FirstFilePTS / 45), (dword)(LastFilePTS / 45)) / 1000;
+        dword MidTimeUTC = AddTimeSec(TtxTime, TtxTimeSec, NULL, TtxTimeZone + PTSDuration/2);
 
-        while ((p - Buffer < 16380) && (*(int*)p == 0x12345678))
+        while ((p - Buffer < 16380) && (*(byte*)p == 0x00))
+          p++;
+
+        if (*(int*)p == 0x12345678)
         {
-          int EITLen = *(int*)(&p[4]);
-          tTSEIT *EIT = (tTSEIT*)(&p[8]);
-          RecInf->ServiceInfo.ServiceID = (EIT->ServiceID1 * 256 | EIT->ServiceID2);
-          if ((EITOK = AnalyseEIT(&p[8], (int)(p-Buffer), RecInf->ServiceInfo.ServiceID, RecInf)))
+          while ((p - Buffer < 16380) && (*(int*)p == 0x12345678))
           {
-            EPGLen = 0;
-            if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
-            if (EITLen && ((EPGBuffer = (byte*)malloc(EITLen + 1))))
+            int EITLen = *(int*)(&p[4]);
+            tTSEIT *EIT = (tTSEIT*)(&p[8]);
+            RecInf->ServiceInfo.ServiceID = (EIT->ServiceID1 * 256 | EIT->ServiceID2);
+            if ((EITOK = AnalyseEIT(&p[8], (int)(p-Buffer), RecInf->ServiceInfo.ServiceID, RecInf)))
             {
-              EPGBuffer[0] = 0;  // Pointer field (=0) vor der TableID (nur im ersten TS-Paket der Tabelle, gibt den Offset an, an der die Tabelle startet, z.B. wenn noch Reste der vorherigen am Paketanfang stehen)
-              memcpy(&EPGBuffer[1], &p[8], EITLen); 
-              EPGLen = EITLen + 1;
-            }
+              EPGLen = 0;
+              if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
+              if (EITLen && ((EPGBuffer = (byte*)malloc(EITLen + 1))))
+              {
+                EPGBuffer[0] = 0;  // Pointer field (=0) vor der TableID (nur im ersten TS-Paket der Tabelle, gibt den Offset an, an der die Tabelle startet, z.B. wenn noch Reste der vorherigen am Paketanfang stehen)
+                memcpy(&EPGBuffer[1], &p[8], EITLen); 
+                EPGLen = EITLen + 1;
+              }
 
-            if (!TtxOK || ((RecInf->EventInfo.StartTime <= MidTimeUTC) && (RecInf->EventInfo.EndTime >= MidTimeUTC)))
-              break;
+              if (!TtxOK || ((RecInf->EventInfo.StartTime <= MidTimeUTC) && (RecInf->EventInfo.EndTime >= MidTimeUTC)))
+                break;
+            }
+            p = p + 8 + EITLen + 53;
           }
-          p = p + 8 + EITLen + 53;
-        };
+        }
+        else
+          RecInf->ServiceInfo.ServiceID = *(word*)p;
       }
       fclose(fMDIn);
     }
@@ -1673,7 +1688,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       if (Offset >= 0)
       {
         p = &Buffer[Offset];
-        while ((p <= &Buffer[ReadBytes-16]) && (!FirstFilePCR || (DoInfoOnly && FirstFilePTSOK < 2)))
+        while ((p <= &Buffer[ReadBytes-16]) && (!FirstFilePCR || (DoInfoOnly && FirstFilePTSOK < 3)))
         {
           if (p[PACKETOFFSET] != 'G')
           {
@@ -1685,7 +1700,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           if(!FirstFilePCR) GetPCR(&p[PACKETOFFSET], &FirstFilePCR);
 
           // Alternative: Find the first Video PTS
-          if (DoInfoOnly && FirstFilePTSOK < 2)
+          if (DoInfoOnly && FirstFilePTSOK < 3)
           {
             curPacket = (tTSPacket*) &p[PACKETOFFSET];
             if ((curPacket->SyncByte == 'G') && (curPacket->PID1 * 256 + curPacket->PID2 == VideoPID) && (curPacket->Payload_Unit_Start || PTSLastPayloadStart))
@@ -1697,12 +1712,16 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               {
                 if (FrameType == 1)  // zuerst vom I-Frame nehmen
                 {
-                  if(!FirstFilePTS)
+                  if(!FirstFilePTSOK++)
                     FirstFilePTS = curPTS;
-                  FirstFilePTSOK++;
+                  else FirstFilePTSOK = 3;
                 }
-                else if (FirstFilePTS && ((int)(FirstFilePTS - curPTS) > 0))
-                  FirstFilePTS = curPTS;
+                else if (FirstFilePTSOK)
+                {
+                  if(FrameType == 2) FirstFilePTSOK = 2;
+                  if ((FirstFilePTSOK == 2) && ((int)(FirstFilePTS - curPTS) > 0))
+                    FirstFilePTS = curPTS;
+                }
               }
               PTSLastPayloadStart = (curPacket->Payload_Unit_Start && !FrameType);
             }
@@ -1710,7 +1729,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           p += PACKETSIZE;
         }
       }
-      if(FirstFilePCR && (!DoInfoOnly || FirstFilePTSOK >= 2)) break;
+      if(FirstFilePCR && (!DoInfoOnly || FirstFilePTSOK >= 3)) break;
     }
 
     //Read the last RECBUFFERENTRIES TS pakets
@@ -1802,10 +1821,8 @@ printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStrTF(StartTime, 0), time_offset /
     dPCR = DeltaPCR(FirstPCRms, LastPCRms);
     RecInf->RecHeaderInfo.DurationMin = (int)(dPCR / 60000);
     RecInf->RecHeaderInfo.DurationSec = (dPCR / 1000) % 60;
-printf("  TS: FirstPCR  = %lld (%01u:%02u:%02u,%03u), Last: %lld (%01u:%02u:%02u,%03u)\n", FirstFilePCR, (FirstPCRms/3600000), (FirstPCRms/60000 % 60), (FirstPCRms/1000 % 60), (FirstPCRms % 1000), LastFilePCR, (LastPCRms/3600000), (LastPCRms/60000 % 60), (LastPCRms/1000 % 60), (LastPCRms % 1000));
+    printf("  TS: FirstPCR  = %lld (%01u:%02u:%02u,%03u), Last: %lld (%01u:%02u:%02u,%03u)\n", FirstFilePCR, (FirstPCRms/3600000), (FirstPCRms/60000 % 60), (FirstPCRms/1000 % 60), (FirstPCRms % 1000), LastFilePCR, (LastPCRms/3600000), (LastPCRms/60000 % 60), (LastPCRms/1000 % 60), (LastPCRms % 1000));
   }
-  else
-    printf("  Duration calculation failed (missing PCR). Using 120 minutes.\n");
 
   if(FirstFilePTSOK && LastFilePTSOK)
   {
@@ -1813,14 +1830,21 @@ printf("  TS: FirstPCR  = %lld (%01u:%02u:%02u,%03u), Last: %lld (%01u:%02u:%02u
     FirstPTSms = (dword)(FirstFilePTS / 45);
     LastPTSms = (dword)(LastFilePTS / 45);
     dPTS = DeltaPCR(FirstPTSms, LastPTSms);
-//    RecInf->RecHeaderInfo.DurationMin = (int)(dPTS / 60000);
-//    RecInf->RecHeaderInfo.DurationSec = (dPTS / 1000) % 60;
-printf("  TS: FirstPTS  = %u (%01u:%02u:%02u,%03u), Last: %u (%01u:%02u:%02u,%03u)\n", FirstFilePTS, (FirstPTSms/3600000), (FirstPTSms/60000 % 60), (FirstPTSms/1000 % 60), (FirstPTSms % 1000), LastFilePTS, (LastPTSms/3600000), (LastPTSms/60000 % 60), (LastPTSms/1000 % 60), (LastPTSms % 1000));
+    RecInf->RecHeaderInfo.DurationMin = (int)(dPTS / 60000);
+    RecInf->RecHeaderInfo.DurationSec = (dPTS / 1000) % 60;
+    printf("  TS: FirstPTS  = %u (%01u:%02u:%02u,%03u), Last: %u (%01u:%02u:%02u,%03u)\n", FirstFilePTS, (FirstPTSms/3600000), (FirstPTSms/60000 % 60), (FirstPTSms/1000 % 60), (FirstPTSms % 1000), LastFilePTS, (LastPTSms/3600000), (LastPTSms/60000 % 60), (LastPTSms/1000 % 60), (LastPTSms % 1000));
   }
-printf("  TS: Duration  = %01u:%02u:%02u,%03u", dPCR / 3600000, (dPCR / 60000) % 60, (dPCR / 1000) % 60, dPCR % 1000);
-if (FirstFilePTSOK && LastFilePTSOK)
-  printf(" / %01u:%02u:%02u,%03u (PCR/PTS)", dPTS / 3600000, (dPTS / 60000) % 60, (dPTS / 1000) % 60, dPTS % 1000);
-printf("\n");
+  if (FirstFilePCR && LastFilePCR)
+  {
+    printf("  TS: Duration  = %01u:%02u:%02u,%03u", dPCR / 3600000, (dPCR / 60000) % 60, (dPCR / 1000) % 60, dPCR % 1000);
+    if (FirstFilePTSOK && LastFilePTSOK)
+      printf(" (PCR) / %01u:%02u:%02u,%03u (PTS)", dPTS / 3600000, (dPTS / 60000) % 60, (dPTS / 1000) % 60, dPTS % 1000);
+    printf("\n");
+  }
+  else if (FirstFilePTSOK && LastFilePTSOK)
+    printf("  TS: Duration  = %01u:%02u:%02u,%03u (PTS)\n", dPTS / 3600000, (dPTS / 60000) % 60, (dPTS / 1000) % 60, dPTS % 1000);
+  else
+    printf("  Duration calculation failed (missing PCR). Using 120 minutes.\n");
 
   if(TtxTime && TtxPCR)
   {

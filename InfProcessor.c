@@ -658,7 +658,7 @@ bool SaveInfFile(const char *AbsDestInf, const char *AbsSourceInf)
 void InfProcessor_Free()
 {
   TRACEENTER;
-  free(InfBuffer); InfBuffer = NULL;
+  if(InfBuffer) { free(InfBuffer); InfBuffer = NULL; }
   RecHeaderInfo = NULL;
   BookmarkInfo = NULL;
   TRACEEXIT;

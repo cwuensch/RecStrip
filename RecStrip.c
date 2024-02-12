@@ -789,7 +789,10 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
   {
     p = strrchr(RecFileIn, '_');
     if (p && strcmp(p, "_video.pes") == 0)
+    {
       MedionMode = 1;
+      if(DoStrip) { MedionStrip = TRUE; DoStrip = FALSE; }
+    }
   }
 #ifndef LINUX
   if (HumaxSource || EycosSource)  OutCutVersion = 4;
@@ -1213,9 +1216,6 @@ static bool CloseOutputFiles(void)
       CutFileSave(CutFileOut);
       SaveInfFile(InfFileOut, InfFileFirstIn);
       CloseTeletextOut(TeletextOut);
-      CutProcessor_Free();
-      InfProcessor_Free();
-      free(PendingBuf); PendingBuf = NULL;
       TRACEEXIT;
       return FALSE;
     }
@@ -1889,7 +1889,7 @@ int main(int argc, const char* argv[])
       printf("--> already stripped.\n");
       CutProcessor_Free();
       InfProcessor_Free();
-      free(PendingBuf); PendingBuf = NULL;
+      if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
       if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
       printf("\nRecStrip finished. No files to process.\n");
       TRACEEXIT;
@@ -1904,7 +1904,7 @@ int main(int argc, const char* argv[])
     {
       CutProcessor_Free();
       InfProcessor_Free();
-      free(PendingBuf); PendingBuf = NULL;
+      if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
       if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
       if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
       printf("ERROR: Cannot read output %s.\n", RecFileOut);
@@ -1931,7 +1931,7 @@ int main(int argc, const char* argv[])
   {
     CutProcessor_Free();
     InfProcessor_Free();
-    free(PendingBuf); PendingBuf = NULL;
+    if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
     if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
     printf("ERROR: Cannot open input %s.\n", RecFileIn);
@@ -1945,7 +1945,7 @@ int main(int argc, const char* argv[])
 /*    CloseInputFiles(FALSE, FALSE, FALSE);
     CutProcessor_Free();
     InfProcessor_Free();
-    free(PendingBuf); PendingBuf = NULL;
+    if(PendingBuf) { free(PendingBuf); PendingBuf = NULL };
     if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
     TRACEEXIT;
@@ -2170,7 +2170,7 @@ int main(int argc, const char* argv[])
         if(MedionMode == 1) SimpleMuxer_Close();
         CutProcessor_Free();
         InfProcessor_Free();
-        free(PendingBuf); PendingBuf = NULL;
+        if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
         if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
         if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
         TRACEEXIT;
@@ -2421,7 +2421,7 @@ int main(int argc, const char* argv[])
     if(MedionMode == 1) SimpleMuxer_Close();
     CutProcessor_Free();
     InfProcessor_Free();
-    free(PendingBuf); PendingBuf = NULL;
+    if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
     if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
     printf("\nRecStrip finished. View information / fix PMT only.\n");
@@ -2472,7 +2472,7 @@ int main(int argc, const char* argv[])
     if(MedionMode == 1) SimpleMuxer_Close();
     CutProcessor_Free();
     InfProcessor_Free();
-    free(PendingBuf); PendingBuf = NULL;
+    if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
     if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
     printf("ERROR: Cannot write output %s.\n", RecFileOut);
@@ -2544,10 +2544,10 @@ int main(int argc, const char* argv[])
           // aktuelle Output-Files schlieﬂen
           if (!CloseOutputFiles())
           {
-            CloseInputFiles(TRUE, FALSE, FALSE);
+            CloseInputFiles(!MedionMode, FALSE, FALSE);
             CutProcessor_Free();
             InfProcessor_Free();
-            free(PendingBuf); PendingBuf = NULL;
+            if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
             if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
             if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
             exit(10);
@@ -2671,7 +2671,7 @@ int main(int argc, const char* argv[])
               if(MedionMode == 1) SimpleMuxer_Close();
               CutProcessor_Free();
               InfProcessor_Free();
-              free(PendingBuf); PendingBuf = NULL;      
+              if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }      
               if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
               if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
               printf("ERROR: Cannot create %s.\n", RecFileOut);
@@ -3157,7 +3157,7 @@ int main(int argc, const char* argv[])
           if(MedionMode == 1) SimpleMuxer_Close();
           CutProcessor_Free();
           InfProcessor_Free();
-          free(PendingBuf);
+          if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
           if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
           if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
           printf("\n RecStrip aborted.\n");
@@ -3202,7 +3202,7 @@ int main(int argc, const char* argv[])
 
     if (DoMerge && (curInputFile < NrInputFiles-1))
     {
-      CloseInputFiles(TRUE, TRUE, FALSE);
+      CloseInputFiles(!MedionMode, TRUE, FALSE);
 
       // n‰chstes Input-File aus Parameter-String ermitteln
       strncpy(RecFileIn, argv[curInputFile+1], sizeof(RecFileIn));
@@ -3227,7 +3227,7 @@ int main(int argc, const char* argv[])
         CloseOutputFiles();
         CutProcessor_Free();
         InfProcessor_Free();
-        free(PendingBuf); PendingBuf = NULL;
+        if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
         if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
         if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
         printf("ERROR: Cannot open input %s.\n", RecFileIn);
@@ -3257,21 +3257,20 @@ int main(int argc, const char* argv[])
     printf("Max. Video PES length: %u\n", PESVideo.maxPESLen);
 #endif
 
+  CloseInputFiles(!MedionMode, TRUE, (!*RecFileOut));
   if ((fOut || (DoCut != 2)) && !CloseOutputFiles())
   {
-    CloseInputFiles(TRUE, TRUE, (!*RecFileOut));
     CutProcessor_Free();
     InfProcessor_Free();
-    free(PendingBuf); PendingBuf = NULL;
+    if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
     if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
     exit(10);
   }
-  CloseInputFiles(TRUE, TRUE, (!*RecFileOut));
   
   CutProcessor_Free();
   InfProcessor_Free();
-  free(PendingBuf); PendingBuf = NULL;
+  if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
   if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
   if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
 

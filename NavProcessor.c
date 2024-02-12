@@ -1410,7 +1410,7 @@ bool CloseNavFileOut(void)
     TYPE_RecHeader_TMSS *RecInf = (TYPE_RecHeader_TMSS*)InfBuffer;
     dword FirstPTSms = (dword)(FirstNavPTS/45);
     dword LastPTSms = (dword)(LastNavPTS/45);
-    dword dPTS = DeltaPCR(FirstPTSms, ((LastNavPTS - PTSJump) / 45));
+    dword dPTS = DeltaPCR(FirstPTSms, LastPTSms /*((LastNavPTS - PTSJump) / 45)*/);
     RecInf->RecHeaderInfo.DurationMin = (int)(dPTS / 60000);
     RecInf->RecHeaderInfo.DurationSec = (dPTS / 1000) % 60;
 //    dPTS = DeltaPCR(FirstPTSms, LastPTSms);
