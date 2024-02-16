@@ -1004,7 +1004,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   const byte            PMTMask[7] = {0x47, 0x40, 0x00, 0x10, 0x00, 0x02, 0xB0};
 
   TRACEENTER;
-  Buffer = (byte*) malloc((MedionMode == 1 ? 524288 : 98304));
+  Buffer = (byte*) malloc((MedionMode == 1 ? 524288 : 98304 + 192));
   if (!Buffer)
   {
     printf("  Failed to allocate the buffer.\n");
@@ -1249,7 +1249,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 
   if (MedionMode != 1)
   {
-    tTSPacket          *curPacket = NULL;
+    tTSPacket          *curPacket = NULL, *lastPacket = NULL;
     word                curPID = 0;
     bool                PTSLastPayloadStart = FALSE;
     int                 PTSLastEndNulls = 0;
@@ -1747,6 +1747,12 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       // Read the last 512/504 TS packets
       fseeko64(fIn2, -d * (HumaxSource ? 3*32768 : 512*PACKETSIZE), SEEK_END);
       ReadBytes = (int)fread(Buffer, 1, (HumaxSource ? 3*32768 : 512*PACKETSIZE), fIn2);
+      if ((d > 1) && lastPacket)
+      {
+        memcpy(&Buffer[ReadBytes], lastPacket, PACKETSIZE);
+        lastPacket = (tTSPacket*) &Buffer[ReadBytes];
+      }
+
       if(ReadBytes < (HumaxSource ? 3*32768 : 512*PACKETSIZE))
       {
         printf ("  Failed to read the last %d x %d TS bytes.\n", d, (HumaxSource ? 3*32768 : 512*PACKETSIZE));
@@ -1779,7 +1785,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             {
               curPESPacket = (tPESHeader*) &curPacket->Data[(curPacket->Adapt_Field_Exists) ? curPacket->Data[0] + 1 : 0];
               GetPTS((byte*) curPESPacket, &curPTS, NULL);
-              if (FindPictureHeader((byte*) curPESPacket, 184 - ((curPacket->Adapt_Field_Exists) ? curPacket->Data[0] + 1 : 0), &FrameType, NULL))
+              if (FindPictureHeader((byte*) curPESPacket, 184 - ((curPacket->Adapt_Field_Exists) ? curPacket->Data[0] + 1 : 0), &FrameType, NULL)
+               || (lastPacket && FindPictureHeader((byte*) &lastPacket->Data[(lastPacket->Adapt_Field_Exists) ? lastPacket->Data[0] + 1 : 0], 184 - ((lastPacket->Adapt_Field_Exists) ? lastPacket->Data[0] + 1 : 0), &FrameType, NULL)))
               {
                 if (!LastFilePTS || (int)(curPTS - LastFilePTS) > 0)
                   LastFilePTS = curPTS;
@@ -1787,6 +1794,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                   LastFilePTSOK = TRUE;
               }
             }
+            if ((curPacket->SyncByte == 'G') && (curPacket->PID1 * 256 + curPacket->PID2 == VideoPID))
+              lastPacket = curPacket;
           }
           p -= PACKETSIZE;
         }
