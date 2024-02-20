@@ -1044,10 +1044,9 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             {
               if (FrameType == 1)  // zuerst vom I-Frame nehmen
               {
-                if(!FirstFilePTSOK)
+                if (!FirstFilePTSOK)
                 {
                   FirstFilePTS = curPTS;
-                  FirstFilePCR = (long long)FirstFilePTS * 600;
                   FirstFilePTSOK = 1;
                 }
                 else FirstFilePTSOK = 3;
@@ -1056,11 +1055,10 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               {
                 if(FrameType == 2) FirstFilePTSOK = 2;
                 if ((FirstFilePTSOK == 2) && ((int)(FirstFilePTS - curPTS) > 0))
-                {
                   FirstFilePTS = curPTS;
-                  FirstFilePCR = (long long)FirstFilePTS * 600;
-                }
               }
+              if (!FirstFilePCR)
+                FirstFilePCR = (long long)FirstFilePTS * 600 - PCRTOPTSOFFSET_SD;
             }
           }
 
@@ -1094,16 +1092,15 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             if (FindPictureHeader(&Buffer[p], min(200, (int)(&Buffer[ReadBytes]-&Buffer[p])), &FrameType, NULL))
             {
               if (!LastFilePTS || (int)(curPTS - LastFilePTS) > 0)
-              {
                 LastFilePTS = curPTS;
-//                LastFilePCR = (long long)LastFilePTS * 600;
-              }
               else if (LastFilePTS && FrameType == 1)
               {
                 LastFilePTSOK = TRUE;
                 break;
               }
-            }
+              if (!LastFilePCR)
+                LastFilePCR = (long long)LastFilePTS * 600 - PCRTOPTSOFFSET_SD;
+            } 
           }
           p--;
         }
@@ -1672,7 +1669,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 
     //Read the first TS pakets to detect start PCR / PTS
     fseeko64(fIn, 0, SEEK_SET);
-    for (d = 0; d < 15; d++)
+    for (d = 0; d < 20; d++)
     {
       // Read the first 512/504 TS packets
       ReadBytes = (int)fread(Buffer, 1, (HumaxSource ? 3*32768 : 512*PACKETSIZE), fIn);
@@ -1742,7 +1739,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         fIn2 = fopen(EycosGetPart(LastEycosPart, RecFileIn, EycosNrParts-1), "rb");
     }
 
-    for (d = 1; d <= 10; d++)
+    for (d = 1; d <= 20; d++)
     {
       // Read the last 512/504 TS packets
       fseeko64(fIn2, -d * (HumaxSource ? 3*32768 : 512*PACKETSIZE), SEEK_END);
@@ -1843,7 +1840,7 @@ printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStrTF(StartTime, 0), time_offset /
     RecInf->RecHeaderInfo.DurationSec = (dPTS / 1000) % 60;
     printf("  TS: FirstPTS  = %u (%01u:%02u:%02u,%03u), Last: %u (%01u:%02u:%02u,%03u)\n", FirstFilePTS, (FirstPTSms/3600000), (FirstPTSms/60000 % 60), (FirstPTSms/1000 % 60), (FirstPTSms % 1000), LastFilePTS, (LastPTSms/3600000), (LastPTSms/60000 % 60), (LastPTSms/1000 % 60), (LastPTSms % 1000));
   }
-  if (FirstFilePCR && LastFilePCR)
+  if (FirstFilePCR && LastFilePCR && MedionMode!=1)
   {
     printf("  TS: Duration  = %01u:%02u:%02u,%03u", dPCR / 3600000, (dPCR / 60000) % 60, (dPCR / 1000) % 60, dPCR % 1000);
     if (FirstFilePTSOK && LastFilePTSOK)

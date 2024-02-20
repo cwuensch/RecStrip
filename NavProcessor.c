@@ -615,7 +615,7 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
             #endif
             GetSlicePPSID = TRUE;
             GolombFull = 0;
-            if((navHD.FrameType == 3) && (NALRefIdc > 0)) navHD.FrameType = 2;
+            if((navHD.FrameType == 3) && (NALRefIdc >= 2)) navHD.FrameType = 2;
             break;
           }
 
