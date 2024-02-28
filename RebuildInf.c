@@ -992,7 +992,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   tPVRTime              TtxTime = 0;
   byte                  TtxTimeSec = 0;
   dword                 TtxPCR = 0, curPTS = 0, dPCR = 0, dPTS = 0;
-  int                   Offset, ReadBytes, d, i;
+  int                   Offset, ReadBytes, d, d_max=100, i;
   bool                  EITOK = FALSE, SDTOK = FALSE, TtxFound = FALSE, TtxOK = FALSE, VidOK = FALSE;
   bool                  FirstFilePTSOK = FALSE, LastFilePTSOK = FALSE, AllPidsScanned = FALSE;
   int                   AudOK = 0;
@@ -1057,7 +1057,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                 if ((FirstFilePTSOK == 2) && ((int)(FirstFilePTS - curPTS) > 0))
                   FirstFilePTS = curPTS;
               }
-              if (!FirstFilePCR)
+              if (!FirstFilePCR && FirstFilePTS)
                 FirstFilePCR = (long long)FirstFilePTS * 600 - PCRTOPTSOFFSET_SD;
             }
           }
@@ -1085,11 +1085,11 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         int p = ReadBytes - 14;
         while (p >= 0)
         {
-          while ((p > 0) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1))
+          while ((p > 0) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1 || Buffer[p+3] < 0xe0 || Buffer[p+3] > 0xef))
             p--;
           if (GetPTS(&Buffer[p], &curPTS, NULL) && !LastFilePTSOK)
           {
-            if (FindPictureHeader(&Buffer[p], min(200, (int)(&Buffer[ReadBytes]-&Buffer[p])), &FrameType, NULL))
+            if (FindPictureHeader(&Buffer[p], min(300, (int)(&Buffer[ReadBytes]-&Buffer[p])), &FrameType, NULL))
             {
               if (!LastFilePTS || (int)(curPTS - LastFilePTS) > 0)
                 LastFilePTS = curPTS;
@@ -1098,7 +1098,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                 LastFilePTSOK = TRUE;
                 break;
               }
-              if (!LastFilePCR)
+              if (!LastFilePCR && LastFilePTS)
                 LastFilePCR = (long long)LastFilePTS * 600 - PCRTOPTSOFFSET_SD;
             } 
           }
@@ -1689,9 +1689,17 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         {
           if (p[PACKETOFFSET] != 'G')
           {
-            Offset = FindNextPacketStart(p, (int)(&Buffer[ReadBytes] - p));
-            if(Offset >= 0)  p += Offset;
-            else break;
+            if (HumaxSource && (*((dword*)p) == HumaxHeaderAnfang))
+            {
+              p += HumaxHeaderLaenge;
+              if (&p[HumaxHeaderLaenge] >= &Buffer[ReadBytes]) continue;
+            }
+            else
+            {
+              Offset = FindNextPacketStart(p, (int)(&Buffer[ReadBytes] - p));
+              if(Offset >= 0)  p += Offset;
+              else break;
+            }
           }
           //Find the first PCR (for duration calculation)
           if(!FirstFilePCR) GetPCR(&p[PACKETOFFSET], &FirstFilePCR);
@@ -1739,7 +1747,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         fIn2 = fopen(EycosGetPart(LastEycosPart, RecFileIn, EycosNrParts-1), "rb");
     }
 
-    for (d = 1; d <= 20; d++)
+    for (d = 1; d <= d_max; d++)
     {
       // Read the last 512/504 TS packets
       fseeko64(fIn2, -d * (HumaxSource ? 3*32768 : 512*PACKETSIZE), SEEK_END);
@@ -1764,7 +1772,12 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         p = &Buffer[Offset];
         while ((p >= &Buffer[0]) && (!LastFilePCR || (DoInfoOnly && !LastFilePTSOK)))
         {
-          if (p[PACKETOFFSET] != 'G')
+          if (HumaxSource && (((p - Buffer) % HumaxHeaderIntervall) >= HumaxHeaderIntervall-HumaxHeaderLaenge))
+          {
+            if ((p >= Buffer + HumaxHeaderLaenge) && (p[-HumaxHeaderLaenge] == 'G'))
+              p -= HumaxHeaderLaenge;
+          }
+          else if (p[PACKETOFFSET] != 'G')
           {
             Offset = FindPrevPacketStart(Buffer, (int)(p - &Buffer[0]));
             if (Offset >= 0)  p = &Buffer[Offset];
@@ -1778,21 +1791,27 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           if (DoInfoOnly && !LastFilePTSOK)
           {
             curPacket = (tTSPacket*) &p[PACKETOFFSET];
-            if ((curPacket->SyncByte == 'G') && (curPacket->PID1 * 256 + curPacket->PID2 == VideoPID) && (curPacket->Payload_Unit_Start))
-            {
-              curPESPacket = (tPESHeader*) &curPacket->Data[(curPacket->Adapt_Field_Exists) ? curPacket->Data[0] + 1 : 0];
-              GetPTS((byte*) curPESPacket, &curPTS, NULL);
-              if (FindPictureHeader((byte*) curPESPacket, 184 - ((curPacket->Adapt_Field_Exists) ? curPacket->Data[0] + 1 : 0), &FrameType, NULL)
-               || (lastPacket && FindPictureHeader((byte*) &lastPacket->Data[(lastPacket->Adapt_Field_Exists) ? lastPacket->Data[0] + 1 : 0], 184 - ((lastPacket->Adapt_Field_Exists) ? lastPacket->Data[0] + 1 : 0), &FrameType, NULL)))
-              {
-                if (!LastFilePTS || (int)(curPTS - LastFilePTS) > 0)
-                  LastFilePTS = curPTS;
-                else if (LastFilePTS && FrameType == 1)
-                  LastFilePTSOK = TRUE;
-              }
-            }
             if ((curPacket->SyncByte == 'G') && (curPacket->PID1 * 256 + curPacket->PID2 == VideoPID))
+            {
+              // erstes Video Paket gefunden
+              if (d_max == 100)
+                d_max = d + 20;
+
+              if (curPacket->Payload_Unit_Start)
+              {
+                curPESPacket = (tPESHeader*) &curPacket->Data[(curPacket->Adapt_Field_Exists) ? curPacket->Data[0] + 1 : 0];
+                GetPTS((byte*) curPESPacket, &curPTS, NULL);
+                if (FindPictureHeader((byte*) curPESPacket, 184 - ((curPacket->Adapt_Field_Exists) ? curPacket->Data[0] + 1 : 0), &FrameType, NULL)
+                 || (lastPacket && FindPictureHeader((byte*) &lastPacket->Data[(lastPacket->Adapt_Field_Exists) ? lastPacket->Data[0] + 1 : 0], 184 - ((lastPacket->Adapt_Field_Exists) ? lastPacket->Data[0] + 1 : 0), &FrameType, NULL)))
+                {
+                  if (!LastFilePTS || (int)(curPTS - LastFilePTS) > 0)
+                    LastFilePTS = curPTS;
+                  else if (LastFilePTS && FrameType == 1)
+                    LastFilePTSOK = TRUE;
+                }
+              }
               lastPacket = curPacket;
+            }
           }
           p -= PACKETSIZE;
         }
@@ -1830,7 +1849,7 @@ printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStrTF(StartTime, 0), time_offset /
     printf("  TS: FirstPCR  = %lld (%01u:%02u:%02u,%03u), Last: %lld (%01u:%02u:%02u,%03u)\n", FirstFilePCR, (FirstPCRms/3600000), (FirstPCRms/60000 % 60), (FirstPCRms/1000 % 60), (FirstPCRms % 1000), LastFilePCR, (LastPCRms/3600000), (LastPCRms/60000 % 60), (LastPCRms/1000 % 60), (LastPCRms % 1000));
   }
 
-  if(FirstFilePTSOK && LastFilePTSOK)
+  if(FirstFilePTSOK && LastFilePTS)
   {
     dword FirstPTSms, LastPTSms;
     FirstPTSms = (dword)(FirstFilePTS / 45);
@@ -1843,11 +1862,11 @@ printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStrTF(StartTime, 0), time_offset /
   if (FirstFilePCR && LastFilePCR && MedionMode!=1)
   {
     printf("  TS: Duration  = %01u:%02u:%02u,%03u", dPCR / 3600000, (dPCR / 60000) % 60, (dPCR / 1000) % 60, dPCR % 1000);
-    if (FirstFilePTSOK && LastFilePTSOK)
+    if (FirstFilePTSOK==3 && LastFilePTS)
       printf(" (PCR) / %01u:%02u:%02u,%03u (PTS)", dPTS / 3600000, (dPTS / 60000) % 60, (dPTS / 1000) % 60, dPTS % 1000);
     printf("\n");
   }
-  else if (FirstFilePTSOK && LastFilePTSOK)
+  else if (FirstFilePTSOK==3 && LastFilePTS)
     printf("  TS: Duration  = %01u:%02u:%02u,%03u (PTS)\n", dPTS / 3600000, (dPTS / 60000) % 60, (dPTS / 1000) % 60, dPTS % 1000);
   else
     printf("  Duration calculation failed (missing PCR). Using 120 minutes.\n");

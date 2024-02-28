@@ -398,7 +398,7 @@ int ProcessTSPacket(unsigned char *Packet, long long FilePosition)
     }
 
 //#if defined(_WIN32) && defined(_DEBUG)
-  if (Info.ZerosOnly && (TSPacket->Adapt_Field_Exists && TSPacket->Data[1]==0) && (isHDVideo || SliceState) /*&& LastEndNulls>0*/)
+  if (Info.ZerosOnly && (TSPacket->Adapt_Field_Exists && TSPacket->Data[1]==0) && (isHDVideo || SliceState) /*&& (LastEndNulls >= 3 || PendingPacket)*/)
     printf("DEBUG: RecStrip 2.8b - strip a packet with empty adaptation field!\n");
 //#endif
     if (Info.ZerosOnly && (!TSPacket->Adapt_Field_Exists || TSPacket->Data[1]==0) && (isHDVideo || SliceState) /*&& LastEndNulls>0*/)
