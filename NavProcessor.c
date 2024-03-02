@@ -251,29 +251,29 @@ bool SetPCR(byte *pBuffer, long long pPCR)
   return FALSE;
 }
 
-dword DeltaPCR(dword FirstPCR, dword SecondPCR)
+int DeltaPCR(dword FirstPCR, dword SecondPCR)
 {
   if (FirstPCR <= SecondPCR)
     return (SecondPCR - FirstPCR);
   else
   {
-    if (FirstPCR - SecondPCR <= 45000)
-      // Erlaube "Rücksprünge", wenn weniger als 1 sek
-      return (SecondPCR - FirstPCR);
+    if (FirstPCR - SecondPCR <= 450000)
+      // Erlaube "Rücksprünge", wenn weniger als 10 sek
+      return (int)(SecondPCR - FirstPCR);
     else
       // Überlauf des 90 kHz Counters (halbiert)
       return (0xffffffff - FirstPCR + SecondPCR + 1);
   }
 }
-dword DeltaPCRms(dword FirstPCR, dword SecondPCR)
+int DeltaPCRms(dword FirstPCR, dword SecondPCR)
 {
   if (FirstPCR <= SecondPCR)
     return (SecondPCR - FirstPCR);
   else
   {
-    if (FirstPCR - SecondPCR <= 1000)
-      // Erlaube "Rücksprünge", wenn weniger als 1 sek
-      return (SecondPCR - FirstPCR);
+    if (FirstPCR - SecondPCR <= 10000)
+      // Erlaube "Rücksprünge", wenn weniger als 10 sek
+      return (int)(SecondPCR - FirstPCR);
     else
       // Überlauf des 90 kHz Counters (in Millisekunden)
       return (95443718 - FirstPCR + SecondPCR);
@@ -1251,7 +1251,8 @@ void QuickNavProcess(const long long CurrentPosition, const long long PositionOf
 bool LoadNavFileIn(const char* AbsInNav)
 {
   unsigned long long    NavSize;
-  dword                 start = 0, skippedFrames = 0, NrFrames = 0, FirstPTS = 0, LastPTS = 0, FirstPTSms, LastPTSms, dPTS, TimemsStart = 0, TimemsEnd = 0, DurationMS;
+  dword                 start = 0, skippedFrames = 0, NrFrames = 0, FirstPTS = 0, LastPTS = 0, FirstPTSms, LastPTSms, TimemsStart = 0, TimemsEnd = 0;
+  int                   dPTS, DurationMS;
   byte                  FrameType = 0;
   byte                  FirstTimeOK = FALSE;
   tnavSD                navSD;
@@ -1323,7 +1324,7 @@ bool LoadNavFileIn(const char* AbsInNav)
     dPTS = DeltaPCR(FirstPTS, LastPTS) / 45;
     DurationMS = TimemsEnd - TimemsStart;
 printf("  NAV: FirstPTS = %u (%01u:%02u:%02u,%03u), Last: %u (%01u:%02u:%02u,%03u)\n", FirstPTS, (FirstPTSms/3600000), (FirstPTSms/60000 % 60), (FirstPTSms/1000 % 60), (FirstPTSms % 1000), LastPTS, (LastPTSms/3600000), (LastPTSms/60000 % 60), (LastPTSms/1000 % 60), (LastPTSms % 1000));
-printf("  NAV: Duration = %02d:%02d:%02d,%03d (PTS: %02d:%02d:%02d,%03d)\n", DurationMS/3600000, DurationMS/60000 % 60, DurationMS/1000 % 60, DurationMS % 1000, dPTS/3600000, dPTS/60000 % 60, dPTS/1000 % 60, dPTS % 1000);
+printf("  NAV: Duration = %02d:%02u:%02u,%03u (PTS: %02d:%02u:%02u,%03u)\n", DurationMS/3600000, abs(DurationMS/60000) % 60, abs(DurationMS/1000) % 60, abs(DurationMS) % 1000, dPTS/3600000, abs(dPTS/60000) % 60, abs(dPTS/1000) % 60, abs(dPTS) % 1000);
 printf("  NAV: Frames   = %d (%.1f fps)\n", NrFrames, NrFrames / ((double)DurationMS / 1000));
     NavFrames += NrFrames;
     NavDurationMS += DurationMS;
@@ -1424,15 +1425,15 @@ bool CloseNavFileOut(void)
     TYPE_RecHeader_TMSS *RecInf = (TYPE_RecHeader_TMSS*)InfBuffer;
     dword FirstPTSms = (dword)(FirstNavPTS/45);
     dword LastPTSms = (dword)(LastNavPTS/45);
-    dword dPTS = DeltaPCR(FirstNavPTS, LastNavPTS) / 45;  /* DeltaPCR(FirstNavPTS, (LastNavPTS - PTSJump)) / 45 */
-    RecInf->RecHeaderInfo.DurationMin = (int)(dPTS / 60000);
-    RecInf->RecHeaderInfo.DurationSec = (dPTS / 1000) % 60;
+    int dPTS = DeltaPCR(FirstNavPTS, LastNavPTS) / 45;  /* DeltaPCR(FirstNavPTS, (LastNavPTS - PTSJump)) / 45 */
+    RecInf->RecHeaderInfo.DurationMin = (word)(dPTS / 60000);
+    RecInf->RecHeaderInfo.DurationSec = (word)abs((dPTS / 1000) % 60);
 //    dPTS = DeltaPCR(FirstNavPTS, LastNavPTS) / 45;
 printf("NewNav: FirstPTS = %u (%01u:%02u:%02u,%03u), Last: %u (%01u:%02u:%02u,%03u)\n", FirstNavPTS, (FirstPTSms/3600000), (FirstPTSms/60000 % 60), (FirstPTSms/1000 % 60), (FirstPTSms % 1000), LastNavPTS, (LastPTSms/3600000), (LastPTSms/60000 % 60), (LastPTSms/1000 % 60), (LastPTSms % 1000));
-printf("NewNav: Duration = %01u:%02u:%02u,%03u", dPTS / 3600000, (dPTS / 60000) % 60, (dPTS / 1000) % 60, dPTS % 1000);
+printf("NewNav: Duration = %01d:%02u:%02u,%03u", dPTS / 3600000, abs(dPTS / 60000) % 60, abs(dPTS / 1000) % 60, abs(dPTS) % 1000);
 
 if (((dPTS = PTSJump / 45)) != 0)
-printf(" (time jumps %02d:%02u,%03u)\n", dPTS / 60000, (dPTS / 1000) % 60, dPTS % 1000);
+printf(" (time jumps %02d:%02u,%03u)\n", dPTS / 60000, abs(dPTS / 1000) % 60, abs(dPTS) % 1000);
 else
 printf("\n");
   }

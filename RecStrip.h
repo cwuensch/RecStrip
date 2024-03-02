@@ -156,8 +156,8 @@ extern tSegmentMarker2 *SegmentMarker;       //[0]=Start of file, [x]=End of fil
 extern int              NrSegmentMarker;
 extern long long        NrDroppedZeroStuffing;
 extern int              ActiveSegment;
-extern dword            InfDuration, NewDurationMS;
-extern dword            NavDurationMS, NavFrames;
+extern dword            InfDuration, NewDurationMS, NavFrames;
+extern int              NavDurationMS;
 extern int              NewStartTimeOffset;
 extern long long        CurrentPosition;
 extern char            *ExtEPGText;

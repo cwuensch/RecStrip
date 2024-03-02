@@ -991,7 +991,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   word                  PMTPID = 0;
   tPVRTime              TtxTime = 0;
   byte                  TtxTimeSec = 0;
-  dword                 TtxPCR = 0, curPTS = 0, dPCR = 0, dPTS = 0;
+  dword                 TtxPCR = 0, curPTS = 0;
+  int                   dPCR = 0, dPTS = 0;
   int                   Offset, ReadBytes, d, d_max=100, i;
   bool                  EITOK = FALSE, SDTOK = FALSE, TtxFound = FALSE, TtxOK = FALSE, VidOK = FALSE;
   bool                  FirstFilePTSOK = FALSE, LastFilePTSOK = FALSE, AllPidsScanned = FALSE;
@@ -1185,7 +1186,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       if (fread(Buffer, 1, 16384, fMDIn) > 0)
       {
         byte *p = Buffer;
-        dword PTSDuration = DeltaPCR(FirstFilePTS, LastFilePTS) / 45000;
+        int PTSDuration = DeltaPCR(FirstFilePTS, LastFilePTS) / 45000;
         dword MidTimeUTC = AddTimeSec(TtxTime, TtxTimeSec, NULL, TtxTimeZone + PTSDuration/2);
 
         while ((p - Buffer < 16380) && (*(byte*)p == 0x00))
@@ -1840,41 +1841,39 @@ printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStrTF(StartTime, 0), time_offset /
 
   if(FirstFilePCR && LastFilePCR)
   {
-    dword FirstPCRms, LastPCRms;
-    FirstPCRms = (dword)(FirstFilePCR / 27000);
-    LastPCRms = (dword)(LastFilePCR / 27000);
+    dword FirstPCRms = (dword)(FirstFilePCR / 27000);
+    dword LastPCRms = (dword)(LastFilePCR / 27000);
     dPCR = DeltaPCRms(FirstPCRms, LastPCRms);
-    RecInf->RecHeaderInfo.DurationMin = (int)(dPCR / 60000);
-    RecInf->RecHeaderInfo.DurationSec = (dPCR / 1000) % 60;
+    RecInf->RecHeaderInfo.DurationMin = (word)(dPCR / 60000);
+    RecInf->RecHeaderInfo.DurationSec = (word)abs((dPCR / 1000) % 60);
     printf("  TS: FirstPCR  = %lld (%01u:%02u:%02u,%03u), Last: %lld (%01u:%02u:%02u,%03u)\n", FirstFilePCR, (FirstPCRms/3600000), (FirstPCRms/60000 % 60), (FirstPCRms/1000 % 60), (FirstPCRms % 1000), LastFilePCR, (LastPCRms/3600000), (LastPCRms/60000 % 60), (LastPCRms/1000 % 60), (LastPCRms % 1000));
   }
 
   if(FirstFilePTSOK && LastFilePTS)
   {
-    dword FirstPTSms, LastPTSms;
-    FirstPTSms = (dword)(FirstFilePTS / 45);
-    LastPTSms = (dword)(LastFilePTS / 45);
+    dword FirstPTSms = (dword)(FirstFilePTS / 45);
+    dword LastPTSms = (dword)(LastFilePTS / 45);
     dPTS = DeltaPCR(FirstFilePTS, LastFilePTS) / 45;
-    RecInf->RecHeaderInfo.DurationMin = (int)(dPTS / 60000);
-    RecInf->RecHeaderInfo.DurationSec = (dPTS / 1000) % 60;
+    RecInf->RecHeaderInfo.DurationMin = (word)(dPTS / 60000);
+    RecInf->RecHeaderInfo.DurationSec = (word)abs((dPTS / 1000) % 60);
     printf("  TS: FirstPTS  = %u (%01u:%02u:%02u,%03u), Last: %u (%01u:%02u:%02u,%03u)\n", FirstFilePTS, (FirstPTSms/3600000), (FirstPTSms/60000 % 60), (FirstPTSms/1000 % 60), (FirstPTSms % 1000), LastFilePTS, (LastPTSms/3600000), (LastPTSms/60000 % 60), (LastPTSms/1000 % 60), (LastPTSms % 1000));
   }
   if (FirstFilePCR && LastFilePCR && MedionMode!=1)
   {
-    printf("  TS: Duration  = %01u:%02u:%02u,%03u (PCR)", dPCR / 3600000, (dPCR / 60000) % 60, (dPCR / 1000) % 60, dPCR % 1000);
+    printf("  TS: Duration  = %01d:%02u:%02u,%03u (PCR)", dPCR / 3600000, abs(dPCR / 60000) % 60, abs(dPCR / 1000) % 60, abs(dPCR) % 1000);
     if (FirstFilePTSOK==3 && LastFilePTS)
-      printf(" / %01u:%02u:%02u,%03u (PTS)", dPTS / 3600000, (dPTS / 60000) % 60, (dPTS / 1000) % 60, dPTS % 1000);
+      printf(" / %01d:%02u:%02u,%03u (PTS)", dPTS / 3600000, abs(dPTS / 60000) % 60, abs(dPTS / 1000) % 60, abs(dPTS) % 1000);
     printf("\n");
   }
   else if (FirstFilePTSOK==3 && LastFilePTS)
-    printf("  TS: Duration  = %01u:%02u:%02u,%03u (PTS)\n", dPTS / 3600000, (dPTS / 60000) % 60, (dPTS / 1000) % 60, dPTS % 1000);
+    printf("  TS: Duration  = %01d:%02u:%02u,%03u (PTS)\n", dPTS / 3600000, abs(dPTS / 60000) % 60, abs(dPTS / 1000) % 60, abs(dPTS) % 1000);
   else
     printf("  Duration calculation failed (missing PCR). Using 120 minutes.\n");
 
   if(TtxTime && TtxPCR)
   {
-    dword dPCR = 0;
-    if((dword)(FirstFilePCR / 27000) < TtxPCR)
+    int dPCR = 0;
+//    if((dword)(FirstFilePCR / 27000) < TtxPCR)
       dPCR = DeltaPCRms((dword)(FirstFilePCR / 27000), TtxPCR);
     RecInf->RecHeaderInfo.StartTime = AddTimeSec(TtxTime, TtxTimeSec, &RecInf->RecHeaderInfo.StartTimeSec, -1 * (int)(dPCR/1000));
   }

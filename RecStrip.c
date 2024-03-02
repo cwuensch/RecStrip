@@ -122,8 +122,8 @@ TYPE_Bookmark_Info     *BookmarkInfo = NULL;
 tSegmentMarker2        *SegmentMarker = NULL;       //[0]=Start of file, [x]=End of file
 int                     NrSegmentMarker = 0;
 int                     ActiveSegment = 0;
-dword                   InfDuration = 0, NewDurationMS = 0;
-dword                   NavDurationMS = 0, NavFrames = 0;
+dword                   InfDuration = 0, NewDurationMS = 0, NavFrames = 0;
+int                     NavDurationMS = 0;
 int                     NewStartTimeOffset = -1;
 
 // Lokale Variablen
@@ -860,9 +860,9 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
       LoadInfFromRec(RecFileIn);
       if (FirstFilePTS && LastFilePTS && !RecHeaderInfo->DurationSec)  // gute Idee??
       {
-        dword dPTS = DeltaPCR(FirstFilePTS, LastFilePTS) / 45;
-        RecHeaderInfo->DurationMin = dPTS/60000;
-        RecHeaderInfo->DurationSec = dPTS/1000 % 60;
+        int dPTS = DeltaPCR(FirstFilePTS, LastFilePTS) / 45;
+        RecHeaderInfo->DurationMin = (word)(dPTS / 60000);
+        RecHeaderInfo->DurationSec = (word)abs((dPTS/1000) % 60);
       }
 
       if (EycosSource)
@@ -927,8 +927,8 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
       printf("  WARNING: Cannot open nav file %s.\n", NavFileIn);
     else if (NavDurationMS && !RecHeaderInfo->DurationSec)  // gute Idee??
     {
-      RecHeaderInfo->DurationMin = NavDurationMS/60000;
-      RecHeaderInfo->DurationSec = NavDurationMS/1000 % 60;
+      RecHeaderInfo->DurationMin = (word)(NavDurationMS / 60000);
+      RecHeaderInfo->DurationSec = (word)(abs(NavDurationMS/1000) % 60);
     }
 
     // ggf. cut-File einlesen
@@ -2039,11 +2039,11 @@ int main(int argc, const char* argv[])
     memset(EventName, 0, sizeof(EventName));
 
     if (NavDurationMS)
-      snprintf(DurationStr, sizeof(DurationStr), "%02u:%02u:%02u,%03u", NavDurationMS/3600000, NavDurationMS/60000 % 60, NavDurationMS/1000 % 60, NavDurationMS % 1000);
+      snprintf(DurationStr, sizeof(DurationStr), "%02d:%02u:%02u,%03u", NavDurationMS/3600000, abs(NavDurationMS/60000) % 60, abs(NavDurationMS/1000) % 60, abs(NavDurationMS) % 1000);
     else if (FirstFilePTS && LastFilePTS)
     {
-      dword dPTS = DeltaPCR(FirstFilePTS, LastFilePTS) / 45;
-      snprintf(DurationStr, sizeof(DurationStr), "%02u:%02u:%02u,%03u", dPTS/3600000, dPTS/60000 % 60, dPTS/1000 % 60, dPTS % 1000);
+      int dPTS = DeltaPCR(FirstFilePTS, LastFilePTS) / 45;
+      snprintf(DurationStr, sizeof(DurationStr), "%02d:%02u:%02u,%03u", dPTS/3600000, abs(dPTS/60000) % 60, abs(dPTS/1000) % 60, abs(dPTS) % 1000);
     }
     else
       snprintf(DurationStr, sizeof(DurationStr), "%02hu:%02hu:%02hu", Inf_TMSS->RecHeaderInfo.DurationMin/60, Inf_TMSS->RecHeaderInfo.DurationMin % 60, Inf_TMSS->RecHeaderInfo.DurationSec);
