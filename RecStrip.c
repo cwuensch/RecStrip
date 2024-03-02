@@ -860,7 +860,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
       LoadInfFromRec(RecFileIn);
       if (FirstFilePTS && LastFilePTS && !RecHeaderInfo->DurationSec)  // gute Idee??
       {
-        dword dPTS = DeltaPCR((dword)(FirstFilePTS / 45), (dword)(LastFilePTS / 45));
+        dword dPTS = DeltaPCR(FirstFilePTS, LastFilePTS) / 45;
         RecHeaderInfo->DurationMin = dPTS/60000;
         RecHeaderInfo->DurationSec = dPTS/1000 % 60;
       }
@@ -2042,7 +2042,7 @@ int main(int argc, const char* argv[])
       snprintf(DurationStr, sizeof(DurationStr), "%02u:%02u:%02u,%03u", NavDurationMS/3600000, NavDurationMS/60000 % 60, NavDurationMS/1000 % 60, NavDurationMS % 1000);
     else if (FirstFilePTS && LastFilePTS)
     {
-      dword dPTS = DeltaPCR((dword)(FirstFilePTS / 45), (dword)(LastFilePTS / 45));
+      dword dPTS = DeltaPCR(FirstFilePTS, LastFilePTS) / 45;
       snprintf(DurationStr, sizeof(DurationStr), "%02u:%02u:%02u,%03u", dPTS/3600000, dPTS/60000 % 60, dPTS/1000 % 60, dPTS % 1000);
     }
     else

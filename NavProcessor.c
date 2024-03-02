@@ -253,15 +253,29 @@ bool SetPCR(byte *pBuffer, long long pPCR)
 
 dword DeltaPCR(dword FirstPCR, dword SecondPCR)
 {
-  if(FirstPCR <= SecondPCR)
+  if (FirstPCR <= SecondPCR)
+    return (SecondPCR - FirstPCR);
+  else
+  {
+    if (FirstPCR - SecondPCR <= 45000)
+      // Erlaube "Rücksprünge", wenn weniger als 1 sek
+      return (SecondPCR - FirstPCR);
+    else
+      // Überlauf des 90 kHz Counters (halbiert)
+      return (0xffffffff - FirstPCR + SecondPCR + 1);
+  }
+}
+dword DeltaPCRms(dword FirstPCR, dword SecondPCR)
+{
+  if (FirstPCR <= SecondPCR)
     return (SecondPCR - FirstPCR);
   else
   {
     if (FirstPCR - SecondPCR <= 1000)
       // Erlaube "Rücksprünge", wenn weniger als 1 sek
-      return (FirstPCR - SecondPCR);
+      return (SecondPCR - FirstPCR);
     else
-      // Überlauf des 90 kHz Counters
+      // Überlauf des 90 kHz Counters (in Millisekunden)
       return (95443718 - FirstPCR + SecondPCR);
   }
 }
@@ -418,7 +432,7 @@ static void HDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
     {
       if(FirstPCR == 0) FirstPCR = PCR;
       #if DEBUGLOG != 0
-        printf("%8.8llx: PCR = 0x%8.8x, dPCR = 0x%8.8x\n", PrimaryTSOffset, PCR, DeltaPCR(FirstPCR, PCR));
+        printf("%8.8llx: PCR = 0x%8.8x, dPCR = 0x%8.8x\n", PrimaryTSOffset, PCR, DeltaPCRms(FirstPCR, PCR));
       #endif
     }
     PayloadStart = Packet->Data[0] + 1;
@@ -1410,10 +1424,10 @@ bool CloseNavFileOut(void)
     TYPE_RecHeader_TMSS *RecInf = (TYPE_RecHeader_TMSS*)InfBuffer;
     dword FirstPTSms = (dword)(FirstNavPTS/45);
     dword LastPTSms = (dword)(LastNavPTS/45);
-    dword dPTS = DeltaPCR(FirstPTSms, LastPTSms /*((LastNavPTS - PTSJump) / 45)*/);
+    dword dPTS = DeltaPCR(FirstNavPTS, LastNavPTS) / 45;  /* DeltaPCR(FirstNavPTS, (LastNavPTS - PTSJump)) / 45 */
     RecInf->RecHeaderInfo.DurationMin = (int)(dPTS / 60000);
     RecInf->RecHeaderInfo.DurationSec = (dPTS / 1000) % 60;
-//    dPTS = DeltaPCR(FirstPTSms, LastPTSms);
+//    dPTS = DeltaPCR(FirstNavPTS, LastNavPTS) / 45;
 printf("NewNav: FirstPTS = %u (%01u:%02u:%02u,%03u), Last: %u (%01u:%02u:%02u,%03u)\n", FirstNavPTS, (FirstPTSms/3600000), (FirstPTSms/60000 % 60), (FirstPTSms/1000 % 60), (FirstPTSms % 1000), LastNavPTS, (LastPTSms/3600000), (LastPTSms/60000 % 60), (LastPTSms/1000 % 60), (LastPTSms % 1000));
 printf("NewNav: Duration = %01u:%02u:%02u,%03u", dPTS / 3600000, (dPTS / 60000) % 60, (dPTS / 1000) % 60, dPTS % 1000);
 
