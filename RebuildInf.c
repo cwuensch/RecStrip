@@ -1236,7 +1236,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     RecInf->ServiceInfo.PMTPID = 0;
 
     if (RecInf->ServiceInfo.ServiceID != 1)
-      GetPidsFromMap(&RecInf->ServiceInfo.ServiceID, &RecInf->ServiceInfo.PMTPID, &VideoPID, 0, &TeletextPID, NULL, RecInf->ServiceInfo.ServiceName);
+      GetPidsFromMap(&RecInf->ServiceInfo.ServiceID, &RecInf->ServiceInfo.PMTPID, &VideoPID, &AudioPIDs[0].pid, &TeletextPID, NULL, RecInf->ServiceInfo.ServiceName);
     if(!RecInf->ServiceInfo.ServiceID) RecInf->ServiceInfo.ServiceID = 1;
     if(!RecInf->ServiceInfo.PMTPID) RecInf->ServiceInfo.PMTPID = 256;
     printf("  TS: SID=%hu, PCRPID=%hd, PMTPID=%hd\n", RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID, RecInf->ServiceInfo.PMTPID);

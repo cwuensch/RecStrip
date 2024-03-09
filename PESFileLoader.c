@@ -275,8 +275,7 @@ static bool           FirstRun = 2;
 static dword          LastVidDTS = 0;
 static word           curPid = 0;
 static int            StreamNr = 0;
-static bool           TtxSpecialMode = FALSE;
-static dword          TtxInterval = 0, NextTtxPTS = 0, TtxFileSize = 0;
+static dword          TtxPTSOffset = 0;
 
 // Simple Muxer
 bool SimpleMuxer_Open(FILE *fIn, char const* PESAudName, char const* PESTtxName, char const* EITName)  // fIn ist ein PES Video Stream
@@ -296,12 +295,7 @@ bool SimpleMuxer_Open(FILE *fIn, char const* PESAudName, char const* PESTtxName,
     printf("  SimpleMuxer: Cannot open file %s.\n", PESAudName);
 
   if ((ttx = fopen(PESTtxName, "rb")))
-  {
     setvbuf(ttx, NULL, _IOFBF, BUFSIZE);
-    fseek(ttx, 0, SEEK_END);
-    TtxFileSize = ftell(ttx);
-    rewind(ttx);
-  }
   else
     printf("  SimpleMuxer: Cannot open file %s.\n", PESTtxName);
 
@@ -391,34 +385,30 @@ bool SimpleMuxer_NextTSPacket(tTSPacket *pack)
       else
         PESStream_GetNextPacket(&PESVideo);
 
-    // Skip audio packets with DTS > 2 sec before first video packet
     if (!PESVideo.FileAtEnd)
     {
-      dword AudioSkipped = 0;
+      dword AudioSkipped = 0, TtxSkipped = 0;
+
+      // Skip audio packets with DTS > 2 sec before first video packet
       while (!PESAudio.FileAtEnd && ((int)(PESVideo.curPacketDTS - PESAudio.curPacketDTS) > 90000))
         { PESStream_GetNextPacket(&PESAudio); AudioSkipped++; }
       if (AudioSkipped)
-        printf("  SimpleMuxer: %u audio packets skipped at beginning.\n", AudioSkipped);
-    }
+        printf("SimpleMuxer: %u audio packets skipped at beginning.\n", AudioSkipped);
 
-    // For Teletext-Stream with unmatched PTS -> distribute Teletext-Packets equally
-    if (!PESTeletxt.FileAtEnd && (abs((int)(PESTeletxt.curPacketDTS - PESVideo.curPacketDTS)) > 450000))
-    {
-      dword NrTtxPackets;
-      printf("  SimpleMuxer: Enable special muxing mode for Teletext with unmatched PTS.\n");
-      TtxSpecialMode = TRUE;
-      NrTtxPackets = TtxFileSize / PESTeletxt.curPacketLength;
-      TtxInterval = (((TYPE_RecHeader_Info*)InfBuffer)->DurationMin*60 + ((TYPE_RecHeader_Info*)InfBuffer)->DurationSec + 1) * 1000 / NrTtxPackets;
-      NextTtxPTS = PESVideo.curPacketDTS + TtxInterval;
-    }
-    // Skip teletext packets with DTS > 2 sec before first video packet
-    else if (!PESTeletxt.FileAtEnd)
-    {
-      dword TtxSkipped = 0;
-      while (!PESTeletxt.FileAtEnd && ((int)(PESVideo.curPacketDTS - PESTeletxt.curPacketDTS) > 90000))
-        { PESStream_GetNextPacket(&PESTeletxt); TtxSkipped++; }
-      if (TtxSkipped)
-        printf("  SimpleMuxer: %u teletext packets skipped at beginning.\n", TtxSkipped);
+      // For Teletext-Stream with unmatched PTS -> enable special mode with offset
+      if (!PESTeletxt.FileAtEnd && (abs((int)(PESTeletxt.curPacketDTS - PESVideo.curPacketDTS)) > 450000))
+      {
+        TtxPTSOffset = PESVideo.curPacketDTS - PESTeletxt.curPacketDTS;
+        printf("SimpleMuxer: Enable special muxing mode, Teletext PTS offset=%u.\n", TtxPTSOffset);
+      }
+      // Skip teletext packets with DTS > 2 sec before first video packet
+      else
+      {
+        while (!PESTeletxt.FileAtEnd && ((int)(PESVideo.curPacketDTS - PESTeletxt.curPacketDTS) > 90000))
+          { PESStream_GetNextPacket(&PESTeletxt); TtxSkipped++; }
+        if (TtxSkipped)
+          printf("SimpleMuxer: %u teletext packets skipped at beginning.\n", TtxSkipped);
+      }
     }
 
     FirstRun = 0;
@@ -440,14 +430,7 @@ bool SimpleMuxer_NextTSPacket(tTSPacket *pack)
         StreamNr = 3;
         DoEITOutput = FALSE;
       }
-      else if (TtxSpecialMode && !PESTeletxt.FileAtEnd && ((int)(PESVideo.curPacketDTS - NextTtxPTS) > 0))
-      {
-        p = PESTeletxt.Buffer;
-        len = PESTeletxt.curPacketLength;
-        StreamNr = 2;
-        NextTtxPTS += TtxInterval;
-      }
-      else if (!PESVideo.FileAtEnd && (/*FirstRun ||*/ PESAudio.FileAtEnd || ((int)(PESAudio.curPacketDTS - PESVideo.curPacketDTS) >= 0)) && (PESTeletxt.FileAtEnd || TtxSpecialMode || ((int)(PESTeletxt.curPacketDTS - PESVideo.curPacketDTS) >= 0)))
+      else if (!PESVideo.FileAtEnd && (/*FirstRun ||*/ PESAudio.FileAtEnd || ((int)(PESAudio.curPacketDTS - PESVideo.curPacketDTS) >= 0)) && (PESTeletxt.FileAtEnd || ((int)(PESTeletxt.curPacketDTS + TtxPTSOffset - PESVideo.curPacketDTS) >= 0)))
       {
         // Start with video packet ----^
 //        FirstRun = 0;
@@ -464,13 +447,13 @@ bool SimpleMuxer_NextTSPacket(tTSPacket *pack)
         }
         LastVidDTS = PESVideo.curPacketDTS;
       }
-      else if (!PESAudio.FileAtEnd && (PESTeletxt.FileAtEnd || TtxSpecialMode || ((int)(PESTeletxt.curPacketDTS - PESAudio.curPacketDTS) >= 0)))
+      else if (!PESAudio.FileAtEnd && (PESTeletxt.FileAtEnd || ((int)(PESTeletxt.curPacketDTS + TtxPTSOffset - PESAudio.curPacketDTS) >= 0)))
       {
         p = PESAudio.Buffer;
         len = PESAudio.curPacketLength;
         StreamNr = 1;
       }
-      else if (!PESTeletxt.FileAtEnd && !TtxSpecialMode)
+      else if (!PESTeletxt.FileAtEnd)
       {
         p = PESTeletxt.Buffer;
         len = PESTeletxt.curPacketLength;

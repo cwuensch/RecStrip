@@ -2816,7 +2816,7 @@ int main(int argc, const char* argv[])
           // Remove EPG stream
           else if (CurPID == 0x12 && RemoveEPGStream)
           {
-            if (!PMTatStart || AfterFirstEPGPacks || (CurPosBlocks > 0) || (CurBlockBytes >= 10*(unsigned int)PACKETSIZE))
+            if ((!PMTatStart && MedionMode!=1) || AfterFirstEPGPacks || (CurPosBlocks > 0) || (CurBlockBytes >= 10*(unsigned int)PACKETSIZE))
             {
               NrDroppedEPGPid++;
               DropCurPacket = TRUE;
