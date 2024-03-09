@@ -163,19 +163,46 @@ bool FindExePath(const char* CalledExe, char *const OutExePath, int OutputSize)
 }
 
 
-bool GetPidsFromMap(word ServiceID, word *const OutPMTPID, word *const OutVidPID, word *const OutAudPID, word *const OutTtxPID, word *const OutSubtPID)
+bool GetPidsFromMap(word *const InOutServiceID, word *const OutPMTPID, word *const OutVidPID, word *const OutAudPID, word *const OutTtxPID, word *const OutSubtPID, char *const OutServiceName)
 {
-  FILE *fMap;
+  FILE *fMap, *fMap2;
   char LineBuf[FBLIB_DIR_SIZE], *pPid, *pLng, *NameStr, *p;
   word Sid, PPid, VPid, APid=0, TPid=0, SPid=0;
   int APidStr = 0, ALangStr = 0, k;
 
+  if(!InOutServiceID) return FALSE;
+
 //  strncpy(LineBuf, ExePath, sizeof(LineBuf));
   FindExePath(ExePath, LineBuf, sizeof(LineBuf));
+  k = (int)strlen(LineBuf);
   strncat(LineBuf, "SenderMap.txt", sizeof(LineBuf) - strlen(LineBuf) - 1);
-  
+
   if ((fMap = fopen(LineBuf, "r")))
   {
+    // bei Medion: ServiceID aus HumaxMap holen, falls nicht bekannt
+    if ((MedionMode == 1) && (*InOutServiceID <= 1))
+    {
+      strncpy(&LineBuf[k], "HumaxMap.txt", (int)sizeof(LineBuf) - k - 1);
+      if ((fMap2 = fopen(LineBuf, "rb")))
+      {
+        int len;
+        if ((p = strrchr(RecFileIn, '/'))) p++;
+        else if ((p = strrchr(RecFileIn, '\\'))) p++;
+        else p = RecFileIn;
+        len = (int)strlen(p);
+        while (fgets(LineBuf, sizeof(LineBuf), fMap2) != 0)
+        {
+          if (strncmp(LineBuf, p, len) == 0)
+          {
+            if (sscanf(&LineBuf[len + 1], "%hu %*70[^;\r\n]", &Sid) >= 1)
+              if(Sid > 1) *InOutServiceID = Sid;
+            break;
+          }
+        }
+        fclose(fMap2);
+      }
+    }
+
     while (fgets(LineBuf, sizeof(LineBuf), fMap))
     {
       if(LineBuf[0] == '#') continue;
@@ -188,7 +215,7 @@ bool GetPidsFromMap(word ServiceID, word *const OutPMTPID, word *const OutVidPID
 //      if (sscanf(LineBuf, "%hu ; %hu ; %hu ; %hu %*1[/] %*15[^;/] ; %*20[^;/] ; %hu ; %hu ; %n %*70[^;\r\n]", &Sid, &PPid, &VPid, &APid, &TPid, &SPid, &BytesRead) == 6)
       if (sscanf(LineBuf, "%hu ; %hu ; %hu ; %n %*19[^;] ; %n %*19[^;] ; %hu ; %hu ; %*70[^;\r\n]", &Sid, &PPid, &VPid, &APidStr, &ALangStr, &TPid, &SPid) >= 3)
       {
-        if (Sid == ServiceID)
+        if (InOutServiceID && (Sid == *InOutServiceID))
         {
           NameStr = strrchr(LineBuf, ';') + 1;
           if((p = strchr(&LineBuf[APidStr], ';'))) p[0] = '\0';
@@ -206,12 +233,13 @@ bool GetPidsFromMap(word ServiceID, word *const OutPMTPID, word *const OutVidPID
             pLng = (pLng && pLng[3] == '/') ? pLng + 4 : NULL;
           }
 
-          printf("  Found service from map: PMTPid=%hd, VidPID=%hd, AudPID=%hd, TtxPID=%hd (%s)\n", PPid, VPid, APid, TPid, NameStr);
+          printf("  Found service from map: ServiceID=%hu, PMTPid=%hd, VidPID=%hd, AudPID=%hd, TtxPID=%hd (%s)\n", Sid, PPid, VPid, APid, TPid, NameStr);
           if (OutPMTPID && PPid) *OutPMTPID = PPid;
           if (OutVidPID && VPid) *OutVidPID = VPid;
           if (OutAudPID && APid) *OutAudPID = APid;
           if (OutTtxPID && TPid) *OutTtxPID = TPid;
           if (OutSubtPID && SPid) *OutSubtPID = SPid;
+          if (OutServiceName && *NameStr) strncpy(OutServiceName, NameStr, sizeof(((TYPE_Service_Info*)NULL)->ServiceName));
           fclose(fMap);
           return TRUE;
         }
@@ -256,7 +284,7 @@ bool GetPidsFromMap(word ServiceID, word *const OutPMTPID, word *const OutVidPID
   return FALSE;
 } */
 
-word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *InOutServiceName, word *const OutPMTPID, bool UseHumaxMap)
+word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *const InOutServiceName, word *const OutPMTPID, bool UseHumaxMap)
 {
   FILE *fMap, *fMap2;
   char LineBuf[100], SenderFound[32], PidsFound[20], LangFound[20];

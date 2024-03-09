@@ -110,7 +110,7 @@ tPVRTime EPG2TFTime(tPVRTime TFTimeStamp, int *const out_timeoffset)
 #endif
 
   if(out_timeoffset) *out_timeoffset = time_offset;
-  return Unix2TFTime(UnixTime + (TtxTimeZone ? -1*TtxTimeZone : time_offset), NULL, FALSE);
+  return Unix2TFTime(UnixTime + (TtxTimeZone ? -TtxTimeZone : time_offset), NULL, FALSE);
 }
 
 tPVRTime AddTimeSec(tPVRTime pvrTime, byte pvrTimeSec, byte *const outSec, int addSeconds)
@@ -733,6 +733,7 @@ static bool AnalyseTtx(byte *PSBuffer, int BufSize, tPVRTime *const TtxTime, byt
             if (packet_format < 2)
             {
               // offset in half hours
+              int time_offset;
               byte timeOffsetCode   = byte_reverse(data_block[9]);
               byte timeOffsetH2     = ((timeOffsetCode >> 1) & 0x1F);
 
@@ -773,10 +774,20 @@ static bool AnalyseTtx(byte *PSBuffer, int BufSize, tPVRTime *const TtxTime, byt
               {
                 *TtxTime = DATE(mjd, localH, localM);
                 if(TtxTimeSec) *TtxTimeSec = localS;
+                EPG2TFTime(*TtxTime, &time_offset);
               }
 
 printf("  TS: Teletext Programme Identification Data: '%s'\n", programme);
 printf("  TS: Teletext date: %s (GMT%+d)\n", TimeStrTF(*TtxTime, *TtxTimeSec), -*TtxTimeZone/3600);
+
+if (time_offset != -*TtxTimeZone && (MedionMode || HumaxSource || EycosSource))
+{
+//  *TtxTime = AddTimeSec(*TtxTime, *TtxTimeSec, TtxTimeSec, -*TtxTimeZone - time_offset);
+//  printf("  TS: Teletext date: %s (GMT%+d, corrected!)\n", TimeStrTF(*TtxTime, *TtxTimeSec), time_offset/3600);
+  printf("  TS: Teletext time zone corrected: GMT%+d -> GMT%+d\n", -*TtxTimeZone/3600, time_offset/3600);
+  *TtxTimeZone = -time_offset;
+}
+
 //printf("  TS: Teletext date: mjd=%u, %02hhu:%02hhu:%02hhu\n", mjd, localH, localM, localS);
               TRACEEXIT;
               return TRUE;
@@ -993,8 +1004,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   byte                  TtxTimeSec = 0;
   dword                 TtxPCR = 0, curPTS = 0;
   int                   dPCR = 0, dPTS = 0;
-  int                   Offset, ReadBytes, d, d_max=100, i;
-  bool                  EITOK = FALSE, SDTOK = FALSE, TtxFound = FALSE, TtxOK = FALSE, VidOK = FALSE;
+  int                   Offset, ReadBytes, d, d_max=128, i;
+  bool                  PMTOK = FALSE, EITOK = FALSE, SDTOK = FALSE, TtxFound = FALSE, TtxOK = FALSE, VidOK = FALSE;
   bool                  FirstFilePTSOK = FALSE, LastFilePTSOK = FALSE, AllPidsScanned = FALSE;
   int                   AudOK = 0;
   byte                 *p;
@@ -1005,7 +1016,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   const byte            PMTMask[7] = {0x47, 0x40, 0x00, 0x10, 0x00, 0x02, 0xB0};
 
   TRACEENTER;
-  Buffer = (byte*) malloc((MedionMode == 1 ? 524288 : 98304 + 192));
+  Buffer = (byte*) malloc((MedionMode == 1 ? 655360 : 98304 + 192));
   if (!Buffer)
   {
     printf("  Failed to allocate the buffer.\n");
@@ -1031,13 +1042,13 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       RecInf->ServiceInfo.VideoStreamType = STREAM_VIDEO_MPEG2;
       RecInf->ServiceInfo.AudioStreamType = STREAM_AUDIO_MPEG2;
 
-      // Read first 500 kB of Video PES
-      if ((ReadBytes = (int)fread(Buffer, 1, 524288, fIn)))
+      // Read first 640 kB of Video PES
+      if ((ReadBytes = (int)fread(Buffer, 1, 655360, fIn)))
       {
         int p = 0;
-        while (p < 524000)
+        while (p < ReadBytes - 1000)
         {
-          while ((p < 524000) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1))
+          while ((p < ReadBytes - 1000) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1))
             p++;
           if (FirstFilePTSOK < 3 && GetPTS(&Buffer[p], &curPTS, NULL))
           {
@@ -1058,7 +1069,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                 if ((FirstFilePTSOK == 2) && ((int)(FirstFilePTS - curPTS) > 0))
                   FirstFilePTS = curPTS;
               }
-              if (!FirstFilePCR && FirstFilePTS)
+              if (FirstFilePTS && (!FirstFilePCR || (FirstFilePCR - ((long long)FirstFilePTS * 600) + PCRTOPTSOFFSET_SD > 0)))
                 FirstFilePCR = (long long)FirstFilePTS * 600 - PCRTOPTSOFFSET_SD;
             }
           }
@@ -1067,7 +1078,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             VidOK = AnalyseVideo(&Buffer[p], ReadBytes - p, 0, &VideoHeight, &VideoWidth, &VideoFPS, &VideoDAR);
           if (VidOK && isHDVideo) RecInf->ServiceInfo.VideoStreamType = STREAM_VIDEO_MPEG4_H264;
 
-          if(FirstFilePTSOK >= 2 && (!DoInfoOnly || VidOK)) break;
+          if(FirstFilePTSOK >= 3 && (!DoInfoOnly || VidOK)) break;
           p++;
         }
       }
@@ -1099,12 +1110,12 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                 LastFilePTSOK = TRUE;
                 break;
               }
-              if (!LastFilePCR && LastFilePTS)
-                LastFilePCR = (long long)LastFilePTS * 600 - PCRTOPTSOFFSET_SD;
             } 
           }
           p--;
         }
+        if (!LastFilePCR && LastFilePTS)
+          LastFilePCR = (long long)LastFilePTS * 600 - PCRTOPTSOFFSET_SD;
       }
       else
       {
@@ -1118,14 +1129,14 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     // Read first 32 kB of Audio PES
     if ((fMDIn = fopen(MDAudName, "rb")))
     {
-      if (fread(Buffer, 1, 32768, fMDIn) > 0)
+      if ((ReadBytes = fread(Buffer, 1, 65536, fMDIn)) > 0)
       {
         int p = 0;
-        while (p < 32000)
+        while (p < ReadBytes - 1000)
         {
-          while ((p < 32000) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1))
+          while ((p < ReadBytes - 1000) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1))
             p++;
-          if (AnalyseAudio(&Buffer[p], 32768-p, 0, &AudioPIDs[0]))
+          if (AnalyseAudio(&Buffer[p], 65536-p, 0, &AudioPIDs[0]))
           {
 /*            if (AudioPIDs[0].type > 4)
             {
@@ -1152,24 +1163,24 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       fclose(fMDIn);
     }
 
-    // Read first 32 kB of Teletext PES
+    // Read first 64 kB of Teletext PES
     if ((fMDIn = fopen(MDTtxName, "rb")))
     {
-      if (fread(Buffer, 1, 32768, fMDIn) > 0)
+      if ((ReadBytes = fread(Buffer, 1, 98304, fMDIn)) > 0)
       {
         int p = 0;
 
-        while (p < 32000)
+        while (p < ReadBytes - 1000)
         {
-          while ((p < 32000) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1 || Buffer[p+3] != 0xBD))
+          while ((p < ReadBytes - 1000) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1 || Buffer[p+3] != 0xBD))
             p++;
-          TtxFound = AnalyseTtx(&Buffer[p], 32768-p, &TtxTime, &TtxTimeSec, &TtxTimeZone, RecInf->ServiceInfo.ServiceName, sizeof(RecInf->ServiceInfo.ServiceName));
+          TtxFound = AnalyseTtx(&Buffer[p], 98304-p, &TtxTime, &TtxTimeSec, &TtxTimeZone, RecInf->ServiceInfo.ServiceName, sizeof(RecInf->ServiceInfo.ServiceName));
           if(TtxFound && !TtxOK)
             TtxOK = GetPTS(&Buffer[p], &TtxPCR, NULL) && (TtxPCR != 0);
           if(TtxOK)
           {
-            TtxPCR = TtxPCR / 45;
 //            printf("  TS: TeletextPID=%hd\n", TeletextPID);
+            TtxPCR = (TtxPCR - 66666) / 45;
             break;
           }
           p++;
@@ -1183,7 +1194,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     if ((fMDIn = fopen(MDEpgName, "rb")))
     {
       memset(Buffer, 0, 16384);
-      if (fread(Buffer, 1, 16384, fMDIn) > 0)
+      if ((ReadBytes = fread(Buffer, 1, 16384, fMDIn)) > 0)
       {
         byte *p = Buffer;
         int PTSDuration = DeltaPCR(FirstFilePTS, LastFilePTS) / 45000;
@@ -1199,7 +1210,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             int EITLen = *(int*)(&p[4]);
             tTSEIT *EIT = (tTSEIT*)(&p[8]);
             RecInf->ServiceInfo.ServiceID = (EIT->ServiceID1 * 256 | EIT->ServiceID2);
-            if ((EITOK = AnalyseEIT(&p[8], (int)(p-Buffer), RecInf->ServiceInfo.ServiceID, RecInf)))
+            if ((EITOK = AnalyseEIT(&p[8], ReadBytes - (int)(p-Buffer), RecInf->ServiceInfo.ServiceID, RecInf)))
             {
               EPGLen = 0;
               if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
@@ -1217,7 +1228,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           }
         }
         else
-          RecInf->ServiceInfo.ServiceID = *(word*)p;
+          printf("  Medion-EIT unreadable! ServiceID possibly %hu", *(word*)p);
       }
       fclose(fMDIn);
     }
@@ -1225,7 +1236,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     RecInf->ServiceInfo.PMTPID = 0;
 
     if (RecInf->ServiceInfo.ServiceID != 1)
-      GetPidsFromMap(RecInf->ServiceInfo.ServiceID, &RecInf->ServiceInfo.PMTPID, &VideoPID, 0, &TeletextPID, NULL);
+      GetPidsFromMap(&RecInf->ServiceInfo.ServiceID, &RecInf->ServiceInfo.PMTPID, &VideoPID, 0, &TeletextPID, NULL, RecInf->ServiceInfo.ServiceName);
     if(!RecInf->ServiceInfo.ServiceID) RecInf->ServiceInfo.ServiceID = 1;
     if(!RecInf->ServiceInfo.PMTPID) RecInf->ServiceInfo.PMTPID = 256;
     printf("  TS: SID=%hu, PCRPID=%hd, PMTPID=%hd\n", RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID, RecInf->ServiceInfo.PMTPID);
@@ -1236,7 +1247,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     RecInf->ServiceInfo.AudioPID = AudioPIDs[0].pid;
     RecInf->ServiceInfo.PCRPID = VideoPID;
     SimpleMuxer_SetPIDs(VideoPID, AudioPIDs[0].pid, TeletextPID);
-    printf("  TS: Using new PMTPID=%hd, VideoPID=%hd, AudioPID=%hd, TtxPID=%hd\n", RecInf->ServiceInfo.PMTPID, VideoPID, AudioPIDs[0].pid, TeletextPID);
+    printf("  Using new PMTPID=%hd, VideoPID=%hd, AudioPID=%hd, TtxPID=%hd\n", RecInf->ServiceInfo.PMTPID, VideoPID, AudioPIDs[0].pid, TeletextPID);
 
     if(!TtxFound)
       printf ("  Failed to get Teletext information.\n");
@@ -1253,6 +1264,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     int                 PTSLastEndNulls = 0;
     PMTPID = 0;
     PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE);
+    PSBuffer_Init(&EITBuffer, 0x0012, 16384, TRUE);
 
 /*    ReadBytes = (int)fread(Buffer, 1, 5760, fIn);
     if(ReadBytes < 5760)
@@ -1267,8 +1279,6 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 
     for (d = (DoFixPMT ? 0 : -1); d < 10; d++)
     {
-      bool PMTOK = FALSE;
-
       if (d < 0)
       {
         // Versuche erst PMT am Anfang der Aufnahme zu finden (gestrippte Aufnahmen mit PMT/EPG nur in den ersten Paketen)
@@ -1309,6 +1319,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         {
           PMTPID = packet2->PID1 * 256 + packet2->PID2;
           printf("  TS: PMTPID=%hd", PMTPID);
+          PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE);
           PMTatStart = TRUE;
 
           // Kopiere PAT/PMT/EIT-Pakete vom Dateianfang in Buffer (nur beim ersten File-Open?)
@@ -1317,8 +1328,14 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           curPacket = packet1;
           for (k = 0; (k*PACKETSIZE < ReadBytes) && ((curPacket->PID1 * 256 + curPacket->PID2 == 0) || (curPacket->PID1 * 256 + curPacket->PID2 == PMTPID)); k++)
           {
+            if(curPacket->PID1 * 256 + curPacket->PID2 == PMTPID) PSBuffer_ProcessTSPacket(&PMTBuffer, curPacket);
             memcpy(&PATPMTBuf[((PACKETSIZE==192) ? 0 : 4) + k*192], &Buffer[Offset + k*PACKETSIZE], PACKETSIZE);
             curPacket = (tTSPacket*)&Buffer[Offset + (k+1)*PACKETSIZE + PACKETOFFSET];
+          }
+          if (PMTBuffer.ValidBuffer == 1)
+          {
+            PMTOK = AnalysePMT(PMTBuffer.Buffer1, PMTBuffer.ValidBufLen, RecInf);
+            if(PMTOK) RecInf->ServiceInfo.PMTPID = PMTPID;
           }
           WriteDescPackets = TRUE;
 
@@ -1336,7 +1353,11 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           {
             memset(EPGPacks, 0, NrEPGPacks * 192);
             for (k = 0; k < NrEPGPacks; k++)
+            {
+              PSBuffer_ProcessTSPacket(&EITBuffer, (tTSPacket*) (&p[k*PACKETSIZE + PACKETOFFSET]));
               memcpy(&EPGPacks[((PACKETSIZE==192) ? 0 : 4) + k*192], &p[k*PACKETSIZE], PACKETSIZE);
+            }
+            EITOK = AnalyseEIT(EITBuffer.Buffer1, EITBuffer.ValidBufLen, RecInf->ServiceInfo.ServiceID, RecInf);
           }
         }
         else continue;
@@ -1371,13 +1392,12 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             }
           }
 
-          if(PMTPID)
+          if(PMTPID && !PMTOK)
           {
             RecInf->ServiceInfo.PMTPID = PMTPID;
 
             //Analyse the PMT
-            if (PMTBuffer.PID != PMTPID)
-              PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE);
+            PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE);
 
 //            p = &Buffer[Offset + PACKETOFFSET];
             while (p <= &Buffer[ReadBytes-188])
@@ -1427,7 +1447,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           }
         }
       }
-      if(PMTPID && PMTOK) break;
+      if(PMTPID && PMTOK && d >= 0) break;
     }
     PSBuffer_Reset(&PMTBuffer);
     if (!RecInf->ServiceInfo.PMTPID)
@@ -1445,7 +1465,6 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       word TeletextPID_PMT = TeletextPID;
       bool HasTeletext = FALSE;
       PSBuffer_Init(&PMTBuffer, 0x0011, 16384, TRUE);
-      PSBuffer_Init(&EITBuffer, 0x0012, 16384, TRUE);
       PSBuffer_Init(&TtxBuffer, TeletextPID, 16384, FALSE);
       LastPMTBuffer = 0; LastEITBuffer = 0; LastTtxBuffer = 0;
 
@@ -1718,7 +1737,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               {
                 if (FrameType == 1)  // zuerst vom I-Frame nehmen
                 {
-                  if(!FirstFilePTSOK++)
+                  if (!FirstFilePTSOK++)
                     FirstFilePTS = curPTS;
                   else FirstFilePTSOK = 3;
                 }
@@ -1735,7 +1754,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           p += PACKETSIZE;
         }
       }
-      if(FirstFilePCR && (!DoInfoOnly || FirstFilePTSOK >= 3)) break;
+      if(FirstFilePCR && (!DoInfoOnly || FirstFilePTSOK >= 3))
+        break;
     }
 
     //Read the last RECBUFFERENTRIES TS pakets
@@ -1795,7 +1815,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             if ((curPacket->SyncByte == 'G') && (curPacket->PID1 * 256 + curPacket->PID2 == VideoPID))
             {
               // erstes Video Paket gefunden
-              if (d_max == 100)
+              if (d_max == 128)
                 d_max = d + 20;
 
               if (curPacket->Payload_Unit_Start)
@@ -1849,7 +1869,7 @@ printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStrTF(StartTime, 0), time_offset /
     printf("  TS: FirstPCR  = %lld (%01u:%02u:%02u,%03u), Last: %lld (%01u:%02u:%02u,%03u)\n", FirstFilePCR, (FirstPCRms/3600000), (FirstPCRms/60000 % 60), (FirstPCRms/1000 % 60), (FirstPCRms % 1000), LastFilePCR, (LastPCRms/3600000), (LastPCRms/60000 % 60), (LastPCRms/1000 % 60), (LastPCRms % 1000));
   }
 
-  if(FirstFilePTSOK && LastFilePTS)
+  if(FirstFilePTSOK >= 1 && LastFilePTS)
   {
     dword FirstPTSms = (dword)(FirstFilePTS / 45);
     dword LastPTSms = (dword)(LastFilePTS / 45);
@@ -1858,14 +1878,14 @@ printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStrTF(StartTime, 0), time_offset /
     RecInf->RecHeaderInfo.DurationSec = (word)abs((dPTS / 1000) % 60);
     printf("  TS: FirstPTS  = %u (%01u:%02u:%02u,%03u), Last: %u (%01u:%02u:%02u,%03u)\n", FirstFilePTS, (FirstPTSms/3600000), (FirstPTSms/60000 % 60), (FirstPTSms/1000 % 60), (FirstPTSms % 1000), LastFilePTS, (LastPTSms/3600000), (LastPTSms/60000 % 60), (LastPTSms/1000 % 60), (LastPTSms % 1000));
   }
-  if (FirstFilePCR && LastFilePCR && MedionMode!=1)
+  if (FirstFilePCR && LastFilePCR)
   {
     printf("  TS: Duration  = %01d:%02u:%02u,%03u (PCR)", dPCR / 3600000, abs(dPCR / 60000) % 60, abs(dPCR / 1000) % 60, abs(dPCR) % 1000);
-    if (FirstFilePTSOK==3 && LastFilePTS)
+    if (FirstFilePTSOK >= 1 && LastFilePTS)
       printf(" / %01d:%02u:%02u,%03u (PTS)", dPTS / 3600000, abs(dPTS / 60000) % 60, abs(dPTS / 1000) % 60, abs(dPTS) % 1000);
     printf("\n");
   }
-  else if (FirstFilePTSOK==3 && LastFilePTS)
+  else if (FirstFilePTSOK >= 1 && LastFilePTS)
     printf("  TS: Duration  = %01d:%02u:%02u,%03u (PTS)\n", dPTS / 3600000, abs(dPTS / 60000) % 60, abs(dPTS / 1000) % 60, abs(dPTS) % 1000);
   else
     printf("  Duration calculation failed (missing PCR). Using 120 minutes.\n");
@@ -1873,9 +1893,15 @@ printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStrTF(StartTime, 0), time_offset /
   if(TtxTime && TtxPCR)
   {
     int dPCR = 0;
-//    if((dword)(FirstFilePCR / 27000) < TtxPCR)
-      dPCR = DeltaPCRms((dword)(FirstFilePCR / 27000), TtxPCR);
-    RecInf->RecHeaderInfo.StartTime = AddTimeSec(TtxTime, TtxTimeSec, &RecInf->RecHeaderInfo.StartTimeSec, -1 * (int)(dPCR/1000));
+
+    if(FirstFilePCR && LastFilePCR)
+    {
+      dword FirstPCRms = (dword)(FirstFilePCR / 27000);
+      dword LastPCRms = (dword)(LastFilePCR / 27000);
+      if ((TtxPCR + 10000 >= FirstPCRms) && (TtxPCR <= LastPCRms))
+        dPCR = DeltaPCRms(FirstPCRms, TtxPCR);
+    }
+    RecInf->RecHeaderInfo.StartTime = AddTimeSec(TtxTime, TtxTimeSec, &RecInf->RecHeaderInfo.StartTimeSec, -dPCR / 1000);
   }
   else if (!HumaxSource && !(EycosSource && RecInf->RecHeaderInfo.StartTime))
   {

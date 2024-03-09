@@ -2039,11 +2039,11 @@ int main(int argc, const char* argv[])
     memset(EventName, 0, sizeof(EventName));
 
     if (NavDurationMS)
-      snprintf(DurationStr, sizeof(DurationStr), "%02d:%02u:%02u,%03u", NavDurationMS/3600000, abs(NavDurationMS/60000) % 60, abs(NavDurationMS/1000) % 60, abs(NavDurationMS) % 1000);
+      snprintf(DurationStr, sizeof(DurationStr), "%02d:%02u:%02u.%03u", NavDurationMS/3600000, abs(NavDurationMS/60000) % 60, abs(NavDurationMS/1000) % 60, abs(NavDurationMS) % 1000);
     else if (FirstFilePTS && LastFilePTS)
     {
       int dPTS = DeltaPCR(FirstFilePTS, LastFilePTS) / 45;
-      snprintf(DurationStr, sizeof(DurationStr), "%02d:%02u:%02u,%03u", dPTS/3600000, abs(dPTS/60000) % 60, abs(dPTS/1000) % 60, abs(dPTS) % 1000);
+      snprintf(DurationStr, sizeof(DurationStr), "%02d:%02u:%02u.%03u", dPTS/3600000, abs(dPTS/60000) % 60, abs(dPTS/1000) % 60, abs(dPTS) % 1000);
     }
     else
       snprintf(DurationStr, sizeof(DurationStr), "%02hu:%02hu:%02hu", Inf_TMSS->RecHeaderInfo.DurationMin/60, Inf_TMSS->RecHeaderInfo.DurationMin % 60, Inf_TMSS->RecHeaderInfo.DurationSec);
@@ -2066,7 +2066,7 @@ int main(int argc, const char* argv[])
       for (p = 0; p < NrSegmentMarker; p++)
       {
         float Percent = (float)(((float)SegmentMarker[p].Position / RecFileSize) * 100.0);
-        snprintf(DurationStr, sizeof(DurationStr), "%u:%02u:%02u,%03u", SegmentMarker[p].Timems/3600000, SegmentMarker[p].Timems/60000 % 60, SegmentMarker[p].Timems/1000 % 60, SegmentMarker[p].Timems % 1000);
+        snprintf(DurationStr, sizeof(DurationStr), "%u:%02u:%02u.%03u", SegmentMarker[p].Timems/3600000, SegmentMarker[p].Timems/60000 % 60, SegmentMarker[p].Timems/1000 % 60, SegmentMarker[p].Timems % 1000);
 
         // Ersetze eventuelles '\t', ' | ' in der Caption
         if (SegmentMarker[p].pCaption)
@@ -2095,7 +2095,7 @@ int main(int argc, const char* argv[])
         if (TimeStamps)
         {
           dword Timems = NavGetPosTimeStamp(TimeStamps, NrTimeStamps, BookmarkInfo->Bookmarks[p] * 9024LL);
-          snprintf(DurationStr, sizeof(DurationStr), "%u:%02u:%02u,%03u", Timems/3600000, Timems/60000 % 60, Timems/1000 % 60, Timems % 1000);
+          snprintf(DurationStr, sizeof(DurationStr), "%u:%02u:%02u.%03u", Timems/3600000, Timems/60000 % 60, Timems/1000 % 60, Timems % 1000);
           fprintf(stderr, ((p > 0) ? " | %u; %s" : "%u; %s"), BookmarkInfo->Bookmarks[p], DurationStr);
         }
         else
