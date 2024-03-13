@@ -125,6 +125,7 @@ int                     ActiveSegment = 0;
 dword                   InfDuration = 0, NewDurationMS = 0, NavFrames = 0;
 int                     NavDurationMS = 0;
 int                     NewStartTimeOffset = -1;
+dword                   TtxPTSOffset = 0;
 
 // Lokale Variablen
 static char             InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], InfFileFirstIn[FBLIB_DIR_SIZE], /*InfFileOld[FBLIB_DIR_SIZE],*/ NavFileOut[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE], TeletextOut[FBLIB_DIR_SIZE];
@@ -2810,6 +2811,14 @@ int main(int argc, const char* argv[])
             {
               NrDroppedTxtPid++;
               DropCurPacket = TRUE;
+            }
+            else if (TtxPTSOffset && ((tTSPacket*) &Buffer[4])->Payload_Unit_Start)
+            {
+              tTSPacket* curPacket = (tTSPacket*) &Buffer[4];
+              byte *p = &curPacket->Data[curPacket->Adapt_Field_Exists ? curPacket->Data[0] : 0];
+              dword oldPTS = 0;
+              if ((p = FindPTS(p, 192 - (int)(p-Buffer), &oldPTS)) && oldPTS)
+                SetPTS2(p, oldPTS + TtxPTSOffset);
             }
           }
 

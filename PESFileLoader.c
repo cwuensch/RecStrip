@@ -209,6 +209,7 @@ byte* PESStream_GetNextPacket(tPESStream *PESStream)
     PESStream->curPacketLength = (dword)fread(&PESStream->Buffer[6], 1, PESStream->curPacketLength, PESStream->fSrc);
   PESStream->curPacketLength += 6;
 
+  // PES-Paket einlesen
   PESStream->NextStartCodeFound = PESStream_FindPacketStart(PESStream, PESStream->curPacketLength);
 #ifdef _DEBUG
   if (PESStream->curPacketLength > (dword)PESStream->maxPESLen)
@@ -275,7 +276,7 @@ static bool           FirstRun = 2;
 static dword          LastVidDTS = 0;
 static word           curPid = 0;
 static int            StreamNr = 0;
-static dword          TtxPTSOffset = 0;
+//static dword          TtxPTSOffset = 0;
 
 // Simple Muxer
 bool SimpleMuxer_Open(FILE *fIn, char const* PESAudName, char const* PESTtxName, char const* EITName)  // fIn ist ein PES Video Stream
@@ -458,6 +459,8 @@ bool SimpleMuxer_NextTSPacket(tTSPacket *pack)
         p = PESTeletxt.Buffer;
         len = PESTeletxt.curPacketLength;
         StreamNr = 2;
+//        if (TtxPTSOffset && PESTeletxt.curPacketDTS)
+//          SetPTS2(&p[3], PESTeletxt.curPacketDTS + TtxPTSOffset);
       }
       pack->Payload_Unit_Start = TRUE;
       curPid = PIDs[StreamNr];

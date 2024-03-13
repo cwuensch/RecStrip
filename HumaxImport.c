@@ -212,6 +212,7 @@ bool GetPidsFromMap(word *const InOutServiceID, word *const OutPMTPID, word *con
       while (k && (LineBuf[k-1] == '\r' || LineBuf[k-1] == '\n' || LineBuf[k-1] == ';'))
         LineBuf[--k] = '\0';
       
+      Sid = 0; PPid = 0; VPid = 0; APid = 0; APidStr = 0; ALangStr = 0; TPid = 0; SPid = 0;
 //      if (sscanf(LineBuf, "%hu ; %hu ; %hu ; %hu %*1[/] %*15[^;/] ; %*20[^;/] ; %hu ; %hu ; %n %*70[^;\r\n]", &Sid, &PPid, &VPid, &APid, &TPid, &SPid, &BytesRead) == 6)
       if (sscanf(LineBuf, "%hu ; %hu ; %hu ; %n %*19[^;] ; %n %*19[^;] ; %hu ; %hu ; %*70[^;\r\n]", &Sid, &PPid, &VPid, &APidStr, &ALangStr, &TPid, &SPid) >= 3)
       {
@@ -338,7 +339,7 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *const InOutServi
       while (k && (LineBuf[k-1] == '\r' || LineBuf[k-1] == '\n' || LineBuf[k-1] == ';'))
         LineBuf[--k] = '\0';
 
-      APidStr = 0; ALangStr = 0; APid = 0; TPid = 0; SPid = 0;
+      Sid = 0; PPid = 0; VPid = 0; APidStr = 0; ALangStr = 0; APid = 0; TPid = 0; SPid = 0;
       if (sscanf(LineBuf, "%hu ; %hu ; %hu ; %n %*19[^;] ; %n %*19[^;] ; %hu ; %hu ; %*70[^;\r\n]", &Sid, &PPid, &VPid, &APidStr, &ALangStr, &TPid, &SPid) >= 3)
       {
         if(APidStr) APid = (word) strtol(&LineBuf[APidStr], NULL, 10);

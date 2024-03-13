@@ -1002,7 +1002,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   word                  PMTPID = 0;
   tPVRTime              TtxTime = 0;
   byte                  TtxTimeSec = 0;
-  dword                 TtxPCR = 0, curPTS = 0;
+  dword                 TtxPCR = 0, TtxPTS = 0, curPTS = 0;
   int                   dPCR = 0, dPTS = 0;
   int                   Offset, ReadBytes, d, d_max=128, i;
   bool                  PMTOK = FALSE, EITOK = FALSE, SDTOK = FALSE, TtxFound = FALSE, TtxOK = FALSE, VidOK = FALSE;
@@ -1217,7 +1217,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               if (EITLen && ((EPGBuffer = (byte*)malloc(EITLen + 1))))
               {
                 EPGBuffer[0] = 0;  // Pointer field (=0) vor der TableID (nur im ersten TS-Paket der Tabelle, gibt den Offset an, an der die Tabelle startet, z.B. wenn noch Reste der vorherigen am Paketanfang stehen)
-                memcpy(&EPGBuffer[1], &p[8], EITLen); 
+                memcpy(&EPGBuffer[1], &p[8], EITLen);
                 EPGLen = EITLen + 1;
               }
 
@@ -1228,15 +1228,14 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           }
         }
         else
-          printf("  Medion-EIT unreadable! ServiceID possibly %hu", *(word*)p);
+          printf("  Medion-EIT unreadable! ServiceID possibly %hu?\n", *(word*) &Buffer[0xe58]);
       }
       fclose(fMDIn);
     }
 
     RecInf->ServiceInfo.PMTPID = 0;
 
-    if (RecInf->ServiceInfo.ServiceID != 1)
-      GetPidsFromMap(&RecInf->ServiceInfo.ServiceID, &RecInf->ServiceInfo.PMTPID, &VideoPID, &AudioPIDs[0].pid, &TeletextPID, NULL, RecInf->ServiceInfo.ServiceName);
+    GetPidsFromMap(&RecInf->ServiceInfo.ServiceID, &RecInf->ServiceInfo.PMTPID, &VideoPID, &AudioPIDs[0].pid, &TeletextPID, NULL, RecInf->ServiceInfo.ServiceName);
     if(!RecInf->ServiceInfo.ServiceID) RecInf->ServiceInfo.ServiceID = 1;
     if(!RecInf->ServiceInfo.PMTPID) RecInf->ServiceInfo.PMTPID = 256;
     printf("  TS: SID=%hu, PCRPID=%hd, PMTPID=%hd\n", RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID, RecInf->ServiceInfo.PMTPID);
@@ -1560,6 +1559,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                 if (!SDTOK && !KeepHumaxSvcName)
                   strncpy(RecInf->ServiceInfo.ServiceName, RecInf->EventInfo.EventNameDescription, sizeof(RecInf->ServiceInfo.ServiceName));
               } */
+              GetPTS(pBuffer, &TtxPTS, NULL);
               TtxBuffer.ErrorFlag = FALSE;
               LastTtxBuffer = TtxBuffer.ValidBuffer;
             }
@@ -1705,7 +1705,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       if (Offset >= 0)
       {
         p = &Buffer[Offset];
-        while ((p <= &Buffer[ReadBytes-16]) && (!FirstFilePCR || (DoInfoOnly && FirstFilePTSOK < 3)))
+        while ((p <= &Buffer[ReadBytes-16]) && (!FirstFilePCR || ((DoInfoOnly || HumaxSource || EycosSource) && FirstFilePTSOK < 3)))
         {
           if (p[PACKETOFFSET] != 'G')
           {
@@ -1725,7 +1725,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           if(!FirstFilePCR) GetPCR(&p[PACKETOFFSET], &FirstFilePCR);
 
           // Alternative: Find the first Video PTS
-          if (DoInfoOnly && FirstFilePTSOK < 3)
+          if ((DoInfoOnly || HumaxSource || EycosSource) && FirstFilePTSOK < 3)
           {
             curPacket = (tTSPacket*) &p[PACKETOFFSET];
             if ((curPacket->SyncByte == 'G') && (curPacket->PID1 * 256 + curPacket->PID2 == VideoPID) && (curPacket->Payload_Unit_Start || PTSLastPayloadStart))
@@ -1754,7 +1754,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           p += PACKETSIZE;
         }
       }
-      if(FirstFilePCR && (!DoInfoOnly || FirstFilePTSOK >= 3))
+      if(FirstFilePCR && ((!DoInfoOnly && !HumaxSource && !EycosSource) || FirstFilePTSOK >= 3))
         break;
     }
 
@@ -1791,7 +1791,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       if (Offset >= 0)
       {
         p = &Buffer[Offset];
-        while ((p >= &Buffer[0]) && (!LastFilePCR || (DoInfoOnly && !LastFilePTSOK)))
+        while ((p >= &Buffer[0]) && (!LastFilePCR || ((DoInfoOnly || HumaxSource || EycosSource) && !LastFilePTSOK)))
         {
           if (HumaxSource && (((p - Buffer) % HumaxHeaderIntervall) >= HumaxHeaderIntervall-HumaxHeaderLaenge))
           {
@@ -1809,7 +1809,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           if(!LastFilePCR) GetPCR(&p[PACKETOFFSET], &LastFilePCR);
 
           // Alternative: Find the last Video PTS
-          if (DoInfoOnly && !LastFilePTSOK)
+          if ((DoInfoOnly || HumaxSource || EycosSource) && !LastFilePTSOK)
           {
             curPacket = (tTSPacket*) &p[PACKETOFFSET];
             if ((curPacket->SyncByte == 'G') && (curPacket->PID1 * 256 + curPacket->PID2 == VideoPID))
@@ -1837,7 +1837,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           p -= PACKETSIZE;
         }
       }
-      if(LastFilePCR && (!DoInfoOnly || LastFilePTSOK)) break;
+      if(LastFilePCR && ((!DoInfoOnly && !HumaxSource && !EycosSource) || LastFilePTSOK)) break;
     }
     
     if (EycosSource && (fIn2 != fIn))
@@ -1892,16 +1892,25 @@ printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStrTF(StartTime, 0), time_offset /
 
   if(TtxTime && TtxPCR)
   {
+    dword FirstPCRms = (dword)(FirstFilePCR / 27000);
     int dPCR = 0;
 
     if(FirstFilePCR && LastFilePCR)
     {
-      dword FirstPCRms = (dword)(FirstFilePCR / 27000);
       dword LastPCRms = (dword)(LastFilePCR / 27000);
       if ((TtxPCR + 10000 >= FirstPCRms) && (TtxPCR <= LastPCRms))
         dPCR = DeltaPCRms(FirstPCRms, TtxPCR);
     }
     RecInf->RecHeaderInfo.StartTime = AddTimeSec(TtxTime, TtxTimeSec, &RecInf->RecHeaderInfo.StartTimeSec, -dPCR / 1000);
+
+    if ((HumaxSource || EycosSource) && TtxPTS && FirstFilePCR && FirstFilePTSOK)
+    {
+      TtxPTSOffset = FirstFilePTS - (TtxPTS - (45 * (dword)DeltaPCRms(FirstPCRms, TtxPCR)));
+      if (abs((int)TtxPTSOffset) > 450000)
+        printf("    -> Enable special PTS fixing mode, Teletext PTS offset=%u.\n", TtxPTSOffset);
+      else
+        TtxPTSOffset = 0;
+    }
   }
   else if (!HumaxSource && !(EycosSource && RecInf->RecHeaderInfo.StartTime))
   {

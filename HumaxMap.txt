@@ -9,7 +9,7 @@ Geheimnisvoll_0409281429.vid	WDR
 Mallorcaswild_0410171538.vid	WDR Köln
 Meereswelten_0402201328.vid	mdr
 SUEDSEEIMPRES_0408291234.vid	mdr
-TiereinGefahr_0402201548.vid	RBB
+ TiereinGefahr_0402201548.vid	RBB!
 UnserblauerPl_0408172215.vid	rbb
 
 360DieGeoRepo_0501161521.vid	arte
@@ -38,6 +38,7 @@ KleineGeschic_0706141338.vid	WDR Münster
  naturexclusiv_0706251028.vid	BR
 TiereAustrali_0702261338.vid	WDR Münster
 Tierschutzges_0707151745.vid	WDR Münster
+ZZZLOESCHEN_0709240311.vid
 
 AufnachEuropa_0811200923.vid	arte
 DieDschungelH_0806190923.vid	arte
@@ -49,3 +50,30 @@ UNTERWEGSZUD2_0810120807.vid	Phoenix
 Weltbilder_0712111528.vid	EinsPlus
 
 REIFEPRUEFUNG_1112221814.vid	arte
+
+[2006-05-27] Jeff Corwins tierische Abenteuer-1_video.pes	12020	RTL II
+[2006-05-27] Jeff Corwins tierische Abenteuer-2-1_video.pes	12020	RTL II
+[2006-05-27] Jeff Corwins tierische Abenteuer-2-2-1_video.pes	12020	RTL II
+[2006-05-27] Jeff Corwins tierische Abenteuer-2-2-2-1_video.pes	12020	RTL II
+[2006-05-27] Jeff Corwins tierische Abenteuer-2-2-2-2-1_video.pes	12020	RTL II
+[2006-05-27] Jeff Corwins tierische Abenteuer-2-2-2-2-2_video.pes	12020	RTL II
+[2006-06-03] Jeff Corwins tierische Abenteuer-1_video.pes	12020	RTL II
+[2006-06-03] Jeff Corwins tierische Abenteuer-2-1_video.pes	12020	RTL II
+[2006-06-27] VOX-Werbung_video.pes	12060	VOX
+[2006-07-02] Highway No 3 - Entlang der Ostküste Malaysias-1_video.pes	28113	SWR BW
+[2006-07-02] Highway No 3 - Entlang der Ostküste Malaysias-2--1_video.pes	28113	SWR BW
+[2006-07-02] Highway No 3 - Entlang der Ostküste Malaysias-2-1_video.pes	28113	SWR BW
+[2006-07-02] Highway No 3 - Entlang der Ostküste Malaysias-2-_video.pes	28113	SWR BW
+[2006-07-11] Tier zuliebe_video.pes	28206	rbb Berlin
+[2006-07-14] Wunder der Erde-1_video.pes	28108	hr fernsehen
+[2006-07-14] Wunder der Erde-2-1_video.pes	28108	hr fernsehen
+[2006-07-14] Wunder der Erde-2-2-1_video.pes	28108	hr fernsehen
+[2006-07-14] Wunder der Erde-2-2-2-1_video.pes	28108	hr fernsehen
+[2006-07-14] Wunder der Erde-2-2-2-2-1_video.pes	28108	hr fernsehen
+[2006-07-14] Wunder der Erde-2-2-2-2-2_video.pes	28108	hr fernsehen
+[2006-07-20] mare TV-1_video.pes	28114	Phoenix
+[2006-07-20] mare TV-2_video.pes	28114	Phoenix
+[2006-07-24] Kratts Safari - Wilde Tiere..._video.pes	51	Tele5
+[2006-09-28] Panda, Gorilla & Co.-1_video.pes	28108	hr fernsehen
+[2006-09-28] Panda, Gorilla & Co.-2-1_video.pes	28108	hr fernsehen
+[2006-09-28] Panda, Gorilla & Co.-2-2-1_video.pes	28108	hr fernsehen

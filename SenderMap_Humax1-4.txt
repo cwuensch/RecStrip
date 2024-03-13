@@ -1,9 +1,10 @@
 #SvcID;PMTPID;VidPID;AudPIDs;AudioDesc;TtxPID;SubtPID;ServiceName
 # ! bis 08/2007 (bis Humax-4)
-28202;100;101;102;;104;;Das Erste
+28202;100;101;102;deu;104;;Das Erste
 # ! ab 09/2007 (ab Humax-5 + von Humax-4: LEOPARDSEEBA?_070910*, FELIXUNDDIEW1_0709230553)
 #28106;100;101;102/103/106;deu/mis/deu;104;105;Das Erste
 28310;700;101;102/103;deu/mis;104;505;WDR Münster
+#17503;100;101;102;deu;104;;N24
 # bis 2006 (alle Humax)
 28006;100;110;120/121/122/125;deu/mis/mul/deu;130;131;ZDF
 12003;44;163;104/106;deu/deu;105;110;RTL Television
@@ -11,46 +12,46 @@
 12020;46;166;128;deu;68;75;RTL II
 12060;47;167;136;deu;71;74;VOX
 12090;48;169;73/77;deu/mul;80;;ntv
-17033;0;173;132;;;;terranova
+17033;0;173;132;deu;35;;terranova
 28107;200;201;202/203/206;deu/mis/deu;204;205;BR
-28722;200;201;202;deu;;;EinsFestival
+28722;200;201;202;deu;204;;EinsFestival
 28007;200;210;220/221/222/225;deu/mis/mul/deu;230;231;3sat
 17500;96;255;256/259;deu/deu;32;;SAT1
 17501;97;255;256/259;deu/deu;33;;ProSieben
 28108;300;301;302/303;deu/mis;304;;hr fernsehen
 # bis 2008 (alle Humax)
-28203;300;301;302;;;;EinsPlus
+28203;300;301;302;deu;304;;EinsPlus
 # ab 2009
-#28723;300;301;302;;304;;EinsPlus
+#28723;300;301;302;deu;304;;EinsPlus
 28008;300;310;320/321/322/325;deu/mis/mul/deu;330;331;KiKa
 # ! bis 02/2007 (bis Humax-4)
 28109;400;401;402/403;deu/fra;404;;arte
 # ! ab 10/2008 (ab Humax-5)
 #28724;400;401;402/403;deu/fra;404;;arte
-28330;400;401;402;;;;MDR
+28330;400;401;402;deu;404;;MDR
 13002;500;500;501;;;;ORF2
 # ab 03/2008 (ab Humax-5)
-#28725;500;501;502;deu;;;Phoenix
+#28725;500;501;502;deu;504;;Phoenix
 0;500;501;502;deu;504;;RBB Brandenburg
-899;98;511;512;;34;;kabel eins
+899;98;511;512;deu;34;;kabel eins
 17501;97;511;512/515;deu/deu;33;;ProSieben
 17502;98;511;512/515;deu/deu;34;;kabel eins
 28111;600;601;602/603;deu/mis;604;605;WDR Köln
 28206;600;601;602/603;deu/mis;604;;rbb Berlin
 28011;600;610;620/621/622/625;deu/mis/mul/deu;630;631;ZDFinfo
 28014;650;660;670/671/672/675;deu/mis/mul/deu;680;681;ZDFdoku
-28487;700;701;702;;;;BRalpha
+28487;700;701;702;deu;704;;BRalpha
 # ab 2009
 17502;98;767;768;deu;34;;kabel eins
 28113;800;801;802/803/806;deu/mis/deu;804;;SWR BW
 # bis 01/2008 (bis Humax-4)
-28114;900;901;902;;;;Phoenix
+28114;900;901;902;deu;904;;Phoenix
 51;99;1535;1536;deu;38;;Tele 5
 28396;1600;1601;1602/1606;ger/ger;;;EinsFestival HD
 17500;96;1791;1792;;;;SAT1
-28325;2400;2401;2402;;;;NDR FS HH
+28325;2400;2401;2402;deu;2404;;NDR FS HH
 28226;2600;2601;2602/2603;deu/mis;2604;;NDR Fernsehen
-28227;2700;2701;2602/2603;;2604;;NDR FS HH
+28227;2700;2701;2602/2603;deu/mis;2604;;NDR FS HH
 28230;3000;2901;2902/2903;deu/mis;2904;2905;MDR Thüringen
 28231;3100;3101;3102/3103/3106;deu/mis/deu;3104;;SWR Fernsehen RP
 10301;5100;5101;5102/5103/5107/5106;deu/mis/qks/deu;5104;5105;Das Erste HD

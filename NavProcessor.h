@@ -106,6 +106,8 @@ extern FILE            *fNavIn;
 
 bool GetPTS(byte *Buffer, dword *pPTS, dword *pDTS);
 bool GetPTS2(byte *Buffer, dword *pPTS, dword *pDTS);
+bool SetPTS2(byte *pBuffer, dword newPTS);
+byte* FindPTS(byte *pBuffer, int BufferLen, dword *pPTS);
 bool GetPCR(byte *pBuffer, long long *pPCR);
 bool GetPCRms(byte *pBuffer, dword *pPCR);
 bool SetPCR(byte *pBuffer, long long pPCR);

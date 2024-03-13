@@ -159,6 +159,7 @@ extern int              ActiveSegment;
 extern dword            InfDuration, NewDurationMS, NavFrames;
 extern int              NavDurationMS;
 extern int              NewStartTimeOffset;
+extern dword            TtxPTSOffset;
 extern long long        CurrentPosition;
 extern char            *ExtEPGText;
 
