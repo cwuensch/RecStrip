@@ -232,6 +232,8 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
       RecInf->EventInfo.EventNameLength = NameLen;
       strncpy(RecInf->EventInfo.EventNameDescription, EycosEvent.Title, NameLen);
       strncpy(&RecInf->EventInfo.EventNameDescription[NameLen], EycosEvent.ShortDesc, TextLen - 1);
+      printf("    EventName = %s\n", EycosEvent.Title);
+      printf("    EventDesc = %s\n", EycosEvent.ShortDesc);
 
       RecInf->ExtEventInfo.ServiceID = RecInf->ServiceInfo.ServiceID;
       TextLen = 0;
@@ -248,6 +250,7 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
 if (strlen(RecInf->ExtEventInfo.Text) != RecInf->ExtEventInfo.TextLength)
   printf("ASSERT: ExtEventTextLength (%d) != length of ExtEventText (%d)!\n", RecInf->ExtEventInfo.TextLength, strlen(RecInf->ExtEventInfo.Text));
 #endif
+      printf("    EPGExtEvt = %s\n", RecInf->ExtEventInfo.TextLength);
       EvtStartUnix = MakeUnixDate(EycosEvent.EvtStartYear, EycosEvent.EvtStartMonth, EycosEvent.EvtStartDay, EycosEvent.EvtStartHour, EycosEvent.EvtStartMin, 0);
       EvtEndUnix = MakeUnixDate(EycosEvent.EvtEndYear, EycosEvent.EvtEndMonth, EycosEvent.EvtEndDay, EycosEvent.EvtEndHour, EycosEvent.EvtEndMin, 0);
       RecInf->EventInfo.StartTime       = Unix2TFTime(EvtStartUnix, NULL, FALSE);  // DATE(UnixToMJD(EvtStartUnix), EycosEvent.EvtStartHour, EycosEvent.EvtStartMin);  // kein Convert, da ins EPG UTC geschrieben wird
@@ -262,7 +265,8 @@ if (HOUR(RecInf->RecHeaderInfo.StartTime) != EycosEvent.EvtStartHour || MINUTE(R
 //      RecInf->RecHeaderInfo.DurationMin = (word)((EvtEndUnix - EvtStartUnix) / 60);
       RecInf->EventInfo.DurationHour    = (byte)((EvtEndUnix - EvtStartUnix) / 60);
       RecInf->EventInfo.DurationMin     = (word)((EvtEndUnix - EvtStartUnix) % 60);
-      printf("    Start Time (Event): %s (local)\n", TimeStrTF(RecInf->RecHeaderInfo.StartTime, 0));
+      printf("    EvtStart  = %s (local)\n", TimeStrTF(RecInf->RecHeaderInfo.StartTime, 0));
+      printf("    EvtDuration = %02d:%02d\n", RecInf->EventInfo.DurationHour, RecInf->EventInfo.DurationMin);
     }
     fclose(fTxt);
   }

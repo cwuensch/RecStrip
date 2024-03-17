@@ -423,17 +423,19 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, TYPE_Event_Info *OutEventI
           StartMJD=0; StartHour=0; StartMin=0; DurationH=0; DurationM=0; DescStr[0]='\0'; ExtDesc = 0;
           if (sscanf(LineBuf, "%*[^;] ; %hu ; %hhu:%hhu ; %hhu:%hhu ; %256[^;] ; %256[^;] ; %n", &StartMJD, &StartHour, &StartMin, &DurationH, &DurationM, OutEventInfo->EventNameDescription, DescStr, &ExtDesc) >= 6)
           {
-            OutEventInfo->ServiceID = ServiceID;
-            OutEventInfo->EventID = 1;
-            OutEventInfo->RunningStatus = 4;
-            OutEventInfo->StartTime = DATE(StartMJD, StartHour, StartMin);
-            OutEventInfo->DurationHour = DurationH;
-            OutEventInfo->DurationMin = DurationM;
-            OutEventInfo->EventNameLength = (int)strlen(OutEventInfo->EventNameDescription);
-            if (OutEventInfo->EventNameLength + 2 < (int)sizeof(OutEventInfo->EventNameDescription))
-              strncpy(&OutEventInfo->EventNameDescription[OutEventInfo->EventNameLength + 1], DescStr, sizeof(OutEventInfo->EventNameDescription) - 1);
-
-            if (ExtDesc)
+            if (OutEventInfo)
+            {
+              OutEventInfo->ServiceID = ServiceID;
+              OutEventInfo->EventID = 1;
+              OutEventInfo->RunningStatus = 4;
+              OutEventInfo->StartTime = DATE(StartMJD, StartHour, StartMin);
+              OutEventInfo->DurationHour = DurationH;
+              OutEventInfo->DurationMin = DurationM;
+              OutEventInfo->EventNameLength = (int)strlen(OutEventInfo->EventNameDescription);
+              if (OutEventInfo->EventNameLength + 2 < (int)sizeof(OutEventInfo->EventNameDescription))
+                strncpy(&OutEventInfo->EventNameDescription[OutEventInfo->EventNameLength + 1], DescStr, sizeof(OutEventInfo->EventNameDescription) - 1);
+            }
+            if (OutEventInfo && ExtDesc)
             {
               // Remove line breaks in the end
               k = (int)strlen(LineBuf);

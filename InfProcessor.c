@@ -198,7 +198,7 @@ printf("ASSERTION: AudioTypeFlag should be 0 or 1, but is %hd!\n", RecInf->Servi
     }
     SortAudioPIDs(AudioPIDs);
 
-    if ((HumaxSource || EycosSource) && !RecInf->EventInfo.StartTime)
+    if ((HumaxSource || EycosSource) /* && !RecInf->EventInfo.StartTime */)
       GetEPGFromMap(AbsRecFileName, RecInf->ServiceInfo.ServiceID, &RecInf->EventInfo, &RecInf->ExtEventInfo);
   }
 
