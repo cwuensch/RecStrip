@@ -102,7 +102,6 @@
 
 // Globale Variablen
 char                    RecFileIn[FBLIB_DIR_SIZE], RecFileOut[FBLIB_DIR_SIZE], OutDir[FBLIB_DIR_SIZE];
-char                    MDEpgName[FBLIB_DIR_SIZE], MDTtxName[FBLIB_DIR_SIZE], MDAudName[FBLIB_DIR_SIZE];
 const char             *ExePath;
 byte                   *PATPMTBuf = NULL, *EPGPacks = NULL;
 unsigned long long      RecFileSize = 0;
@@ -719,8 +718,7 @@ static void AddBookmark(dword BookmarkIndex, dword BlockNr)
 static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
 {
   bool                  ret = TRUE;
-  char                  NavFileIn[FBLIB_DIR_SIZE];
-  char                  CutFileIn[FBLIB_DIR_SIZE];
+  char                  AddFileIn[FBLIB_DIR_SIZE], MDTtxName[FBLIB_DIR_SIZE], MDEpgName[FBLIB_DIR_SIZE];
 //  byte                 *InfBuf_tmp = NULL;
   tSegmentMarker2      *Segments_tmp = NULL;
 
@@ -802,16 +800,21 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
   // Spezialanpassung Medion
   if (MedionMode)
   {
-    char                MDBaseName[FBLIB_DIR_SIZE];
     char               *p;
     size_t              len;
 
-    strcpy(MDBaseName, RecFileIn);
-    if((p = strrchr(MDBaseName, '.'))) *p = '\0';
-    if(((len = strlen(MDBaseName)) > 6) && (strncmp(&MDBaseName[len-6], "_video", 6) == 0)) MDBaseName[len-6] = '\0';
-    snprintf(MDEpgName, sizeof(MDEpgName), "%s_epg.txt", MDBaseName);
-    snprintf(MDTtxName, sizeof(MDTtxName), "%s_ttx.pes", MDBaseName);
-    snprintf(MDAudName, sizeof(MDEpgName), "%s_audio1.pes", MDBaseName);
+    strcpy(AddFileIn, RecFileIn);
+    if((p = strrchr(AddFileIn, '.'))) *p = '\0';
+    if(((len = strlen(AddFileIn)) > 6) && (strncmp(&AddFileIn[len-6], "_video", 6) == 0)) AddFileIn[len-6] = '\0';
+    if ((len = strlen(AddFileIn)) < sizeof(AddFileIn) - 11)
+    {
+      snprintf(MDTtxName, sizeof(MDTtxName), "%s_ttx.pes", AddFileIn);
+      snprintf(MDEpgName, sizeof(MDEpgName), "%s_epg.txt", AddFileIn);
+      strcat (AddFileIn, "_audio1.pes");
+    }
+    else
+      ret = FALSE;
+
     VideoPID = 100;          // künftig: 101   // TODO
     AudioPIDs[0].pid = 101;  // künftig: 102
     TeletextPID = 102;       // künftig: 104
@@ -824,6 +827,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
 
   if (HDD_GetFileSize(RecFileIn, &RecFileSize))
     fIn = fopen(RecFileIn, "rb");
+
   if (fIn)
   {
     int FileOffset = 0, PS;
@@ -832,9 +836,10 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     if (MedionMode == 1)
     {
       unsigned long long AddSize = 0;
-      if(HDD_GetFileSize(MDAudName, &AddSize))  RecFileSize += AddSize;
+      if(HDD_GetFileSize(AddFileIn, &AddSize))  RecFileSize += AddSize;
       if(HDD_GetFileSize(MDTtxName, &AddSize))  RecFileSize += AddSize;
     }
+
     RecFileBlocks = CalcBlockSize(RecFileSize);
     BlocksOnePercent = (RecFileBlocks * NrInputFiles) / 100;
 
@@ -915,17 +920,22 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     }
   }
 
+  if (ret && (MedionMode == 1))
+  {
+    ret = SimpleMuxer_Open(fIn, AddFileIn, MDTtxName, MDEpgName);
+  }
+
   if (ret)
   {
     if (FirstTime && AlreadyStripped)
       printf("  INFO: File has already been stripped.\n");
 
     // ggf. nav-File öffnen
-    snprintf(NavFileIn, sizeof(NavFileIn), "%s.nav", RecFileIn);
-    printf("\nNav file: %s\n", NavFileIn);
-    HasNavIn = LoadNavFileIn(NavFileIn);
+    snprintf(AddFileIn, sizeof(AddFileIn), "%s.nav", RecFileIn);
+    printf("\nNav file: %s\n", AddFileIn);
+    HasNavIn = LoadNavFileIn(AddFileIn);
     if (!HasNavIn)
-      printf("  WARNING: Cannot open nav file %s.\n", NavFileIn);
+      printf("  WARNING: Cannot open nav file %s.\n", AddFileIn);
     else if (NavDurationMS && !RecHeaderInfo->DurationSec)  // gute Idee??
     {
       RecHeaderInfo->DurationMin = (word)(NavDurationMS / 60000);
@@ -935,9 +945,9 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     // ggf. cut-File einlesen
     if (NrSegmentMarker <= 2 || (!EycosSource && !HumaxSource))
     {
-      GetFileNameFromRec(RecFileIn, ".cut", CutFileIn);
-      printf("\nCut file: %s\n", CutFileIn);
-      if (!CutFileLoad(CutFileIn))
+      GetFileNameFromRec(RecFileIn, ".cut", AddFileIn);
+      printf("\nCut file: %s\n", AddFileIn);
+      if (!CutFileLoad(AddFileIn))
       {
 //        HasCutIn = FALSE;
         AddDefaultSegmentMarker();
@@ -946,11 +956,6 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
 //        DoCut = 0;
       }
     }
-  }
-
-  if (ret && (MedionMode == 1))
-  {
-    ret = SimpleMuxer_Open(fIn, MDAudName, MDTtxName, MDEpgName);
   }
 
   if (!FirstTime)

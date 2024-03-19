@@ -1035,8 +1035,16 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   //Spezial-Anpassung, um Medion-PES (EPG und Teletext) auszulesen
   if (MedionMode)
   {
-    FILE *fMDIn = NULL;
-    
+    FILE               *fMDIn = NULL;
+    char                AddFileIn[FBLIB_DIR_SIZE];
+    char               *p;
+    size_t              len;
+
+    strcpy(AddFileIn, RecFileIn);
+    if((p = strrchr(AddFileIn, '.'))) *p = '\0';
+    if(((len = strlen(AddFileIn)) > 6) && (strncmp(&AddFileIn[len-6], "_video", 6) == 0)) AddFileIn[len-6] = '\0';
+    len = strlen(AddFileIn);
+
     if (MedionMode == 1)
     {
       RecInf->ServiceInfo.ServiceType = 0;
@@ -1127,8 +1135,9 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       }
     }
 
-    // Read first 32 kB of Audio PES
-    if ((fMDIn = fopen(MDAudName, "rb")))
+    // Read first 64 kB of Audio PES
+    strcat (AddFileIn, "_audio1.pes");
+    if ((fMDIn = fopen(AddFileIn, "rb")))
     {
       if ((ReadBytes = fread(Buffer, 1, 65536, fMDIn)) > 0)
       {
@@ -1165,7 +1174,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     }
 
     // Read first 64 kB of Teletext PES
-    if ((fMDIn = fopen(MDTtxName, "rb")))
+    strcpy (&AddFileIn[len], "_ttx.pes");
+    if ((fMDIn = fopen(AddFileIn, "rb")))
     {
       if ((ReadBytes = fread(Buffer, 1, 98304, fMDIn)) > 0)
       {
@@ -1192,8 +1202,12 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 
     // Read EPG Event file
     RecInf->ServiceInfo.ServiceID = 1;
-    if ((fMDIn = fopen(MDEpgName, "rb")))
+    strcpy (&AddFileIn[len], "_epg.txt");
+    if ((fMDIn = fopen(AddFileIn, "rb")))
     {
+      bool Contains2 = ((len>2 && strncmp(&AddFileIn[len-2], "-2", 2) == 0) || (len>4 && strncmp(&AddFileIn[len-4], "-2", 2) == 0));
+      bool EndsWith1 = (!Contains2 && len>2 && strncmp(&AddFileIn[len-2], "-1", 2) == 0);
+
       memset(Buffer, 0, 16384);
       if ((ReadBytes = fread(Buffer, 1, 16384, fMDIn)) > 0)
       {
@@ -1222,7 +1236,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                 EPGLen = EITLen + 1;
               }
 
-              if (!TtxOK || ((RecInf->EventInfo.StartTime <= MidTimeUTC) && (RecInf->EventInfo.EndTime >= MidTimeUTC)))
+              if (!EndsWith1 && (Contains2 || !TtxOK || ((RecInf->EventInfo.StartTime <= MidTimeUTC) && (RecInf->EventInfo.EndTime >= MidTimeUTC))))
                 break;
             }
             p = p + 8 + EITLen + 53;

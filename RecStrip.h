@@ -135,7 +135,7 @@ typedef struct
 
 
 // Globale Variablen
-extern char             RecFileIn[], RecFileOut[], MDEpgName[], MDTtxName[], MDAudName[];
+extern char             RecFileIn[], RecFileOut[];
 extern byte            *PATPMTBuf, *EPGPacks;
 extern const char      *ExePath;
 extern unsigned long long RecFileSize;
