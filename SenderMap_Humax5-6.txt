@@ -4,7 +4,6 @@
 # ! ab 09/2007 (ab Humax-5 + von Humax-4: LEOPARDSEEBA?_070910*, FELIXUNDDIEW1_0709230553)
 28106;100;101;102/103/106;deu/mis/deu;104;105;Das Erste
 28310;700;101;102/103;deu/mis;104;505;WDR Münster
-#17503;100;101;102;deu;104;;N24
 # bis 2006 (alle Humax)
 28006;100;110;120/121/122/125;deu/mis/mul/deu;130;131;ZDF
 12003;44;163;104/106;deu/deu;105;110;RTL Television
@@ -17,7 +16,7 @@
 28722;200;201;202;deu;204;;EinsFestival
 28007;200;210;220/221/222/225;deu/mis/mul/deu;230;231;3sat
 17500;96;255;256/259;deu/deu;32;;SAT1
-17501;97;255;256/259;deu/deu;33;;ProSieben
+#898;100;255;256/257;deu/deu;32;;ProSieben
 28108;300;301;302/303;deu/mis;304;;hr fernsehen
 # bis 2008 (alle Humax)
 28203;300;301;302;deu;304;;EinsPlus
@@ -33,9 +32,8 @@
 # ab 03/2008 (ab Humax-5)
 28725;500;501;502;deu;504;;Phoenix
 0;500;501;502;deu;504;;RBB Brandenburg
-899;98;511;512;deu;34;;kabel eins
+#899;101;511;512;deu;33;;kabel eins
 17501;97;511;512/515;deu/deu;33;;ProSieben
-17502;98;511;512/515;deu/deu;34;;kabel eins
 28111;600;601;602/603;deu/mis;604;605;WDR Köln
 28206;600;601;602/603;deu/mis;604;;rbb Berlin
 28011;600;610;620/621/622/625;deu/mis/mul/deu;630;631;ZDFinfo
@@ -48,7 +46,8 @@
 #28114;900;901;902;deu;904;;Phoenix
 51;99;1535;1536;deu;38;;Tele 5
 28396;1600;1601;1602/1606;ger/ger;;;EinsFestival HD
-17500;96;1791;1792;;;;SAT1
+#46;106;1791;1792/1795;deu/deu;34;;SAT1
+#47;107;2047;2048;deu;36;;N24
 28325;2400;2401;2402;deu;2404;;NDR FS HH
 28226;2600;2601;2602/2603;deu/mis;2604;;NDR Fernsehen
 28227;2700;2701;2602/2603;deu/mis;2604;;NDR FS HH

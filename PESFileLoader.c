@@ -16,8 +16,6 @@
 
 tPESStream              PESVideo;
 static tPESStream       PESAudio, PESTeletxt;
-byte                   *EPGBuffer = 0;
-int                     EPGLen = 0;
 static word             PIDs[4] = {100, 101, 102, 0x12};  // künftig: {101, 102, 104, 0x12};  // TODO
 static byte             ContCtr[4] = {1, 1, 1, 1};
 static bool             DoEITOutput = TRUE;
@@ -279,7 +277,7 @@ static int            StreamNr = 0;
 //static dword          TtxPTSOffset = 0;
 
 // Simple Muxer
-bool SimpleMuxer_Open(FILE *fIn, char const* PESAudName, char const* PESTtxName, char const* EITName)  // fIn ist ein PES Video Stream
+bool SimpleMuxer_Open(FILE *fIn, char const* PESAudName, char const* PESTtxName /*, char const* EITName*/)  // fIn ist ein PES Video Stream
 {
   FILE *aud = NULL, *ttx = NULL;  //, *eit = NULL;
   TRACEENTER;
@@ -318,8 +316,8 @@ bool SimpleMuxer_Open(FILE *fIn, char const* PESAudName, char const* PESTtxName,
       }
     fclose(eit);
   } */
-  if (EITName && !EPGLen)
-    printf("  SimpleMuxer: Cannot open file %s.\n", EITName);
+//  if (EITName && !EPGLen)
+//    printf("  SimpleMuxer: Cannot open file %s.\n", EITName);
 
   if (PESStream_Open(&PESVideo, fIn, VIDEOBUFSIZE) && PESStream_Open(&PESAudio, aud, 131027) && PESStream_Open(&PESTeletxt, ttx, 32768))
   {
@@ -547,9 +545,9 @@ void SimpleMuxer_Close(void)
   PESStream_Close(&PESVideo);
   PESStream_Close(&PESAudio);
   PESStream_Close(&PESTeletxt);
-  free(EPGBuffer);
-  EPGBuffer = NULL;
-  EPGLen = 0;
+//  free(EPGBuffer);
+//  EPGBuffer = NULL;
+//  EPGLen = 0;
 
   TRACEEXIT;
 }

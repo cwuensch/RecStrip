@@ -52,14 +52,12 @@ typedef struct
 
 
 extern tPESStream       PESVideo;
-extern byte            *EPGBuffer;
-extern int              EPGLen;
 
 bool PESStream_Open(tPESStream *PESStream, FILE *fSource, int BufferSize);
 void PESStream_Close(tPESStream *PESStream);
 byte* PESStream_GetNextPacket(tPESStream *PESStream);
 
-bool SimpleMuxer_Open(FILE *fIn, char const* PESAudName, char const* PESTtxName, char const* EITName);
+bool SimpleMuxer_Open(FILE *fIn, char const* PESAudName, char const* PESTtxName /*, char const* EITName*/);
 void SimpleMuxer_SetPIDs(word VideoPID, word AudioPID, word TtxPID);
 void SimpleMuxer_DoEITOutput(void);
 bool SimpleMuxer_NextTSPacket(tTSPacket *pack);

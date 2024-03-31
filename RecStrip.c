@@ -718,7 +718,7 @@ static void AddBookmark(dword BookmarkIndex, dword BlockNr)
 static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
 {
   bool                  ret = TRUE;
-  char                  AddFileIn[FBLIB_DIR_SIZE], MDTtxName[FBLIB_DIR_SIZE], MDEpgName[FBLIB_DIR_SIZE];
+  char                  AddFileIn[FBLIB_DIR_SIZE], MDTtxName[FBLIB_DIR_SIZE];
 //  byte                 *InfBuf_tmp = NULL;
   tSegmentMarker2      *Segments_tmp = NULL;
 
@@ -809,7 +809,6 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     if ((len = strlen(AddFileIn)) < sizeof(AddFileIn) - 11)
     {
       snprintf(MDTtxName, sizeof(MDTtxName), "%s_ttx.pes", AddFileIn);
-      snprintf(MDEpgName, sizeof(MDEpgName), "%s_epg.txt", AddFileIn);
       strcat (AddFileIn, "_audio1.pes");
     }
     else
@@ -912,23 +911,18 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     {
       if (InfDuration)
         BlocksOneSecond = RecFileBlocks / InfDuration;
+      if (FirstTime && AlreadyStripped)
+        printf("  INFO: File has already been stripped.\n");
     }
     else
     {
       fclose(fIn); fIn = NULL;
+      if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
       ret = FALSE;
     }
-  }
 
-  if (ret && (MedionMode == 1))
-  {
-    ret = SimpleMuxer_Open(fIn, AddFileIn, MDTtxName, MDEpgName);
-  }
-
-  if (ret)
-  {
-    if (FirstTime && AlreadyStripped)
-      printf("  INFO: File has already been stripped.\n");
+    if (ret && (MedionMode == 1))
+      ret = SimpleMuxer_Open(fIn, AddFileIn, MDTtxName);
 
     // ggf. nav-File öffnen
     snprintf(AddFileIn, sizeof(AddFileIn), "%s.nav", RecFileIn);
@@ -941,8 +935,13 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
       RecHeaderInfo->DurationMin = (word)(NavDurationMS / 60000);
       RecHeaderInfo->DurationSec = (word)(abs(NavDurationMS/1000) % 60);
     }
+    if (!ret)
+      { fclose(fNavIn); fNavIn = NULL; }
+  }
 
-    // ggf. cut-File einlesen
+  // ggf. cut-File einlesen
+  if (ret)
+  {
     if (NrSegmentMarker <= 2 || (!EycosSource && !HumaxSource))
     {
       GetFileNameFromRec(RecFileIn, ".cut", AddFileIn);
@@ -1954,6 +1953,7 @@ int main(int argc, const char* argv[])
     InfProcessor_Free();
     if(PendingBuf) { free(PendingBuf); PendingBuf = NULL };
     if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
+    if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
     if(ExtEPGText) { free(ExtEPGText); ExtEPGText = NULL; }
     TRACEEXIT;
@@ -2116,6 +2116,8 @@ int main(int argc, const char* argv[])
     fprintf(stderr, "\t");
 
     // EPG:    EventName;  EventDesc;  EventStart (DateTime);  EventEnd (DateTime);  EventDuration (hh:mm);  ExtEventText (inkl. ItemizedItems, ohne '\n', '\t')
+    Inf_TMSS->EventInfo.EventNameDescription[sizeof(Inf_TMSS->EventInfo.EventNameDescription) - 1] = '\0';
+    Inf_TMSS->ExtEventInfo.Text[max(Inf_TMSS->ExtEventInfo.TextLength, sizeof(Inf_TMSS->ExtEventInfo.Text) - 1)] = '\0';
     fprintf(stderr, "%s\t%s\t", EventName,  &Inf_TMSS->EventInfo.EventNameDescription[Inf_TMSS->EventInfo.EventNameLength]);
     if (Inf_TMSS->EventInfo.StartTime != 0)
     {
@@ -2180,7 +2182,9 @@ int main(int argc, const char* argv[])
         InfProcessor_Free();
         if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
         if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
+        if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
         if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
+        if(ExtEPGText) { free(ExtEPGText); ExtEPGText = NULL; }
         TRACEEXIT;
         exit(7);
       }
@@ -2431,6 +2435,7 @@ int main(int argc, const char* argv[])
     InfProcessor_Free();
     if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
     if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
+    if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
     printf("\nRecStrip finished. View information / fix PMT only.\n");
     TRACEEXIT;
@@ -2482,6 +2487,7 @@ int main(int argc, const char* argv[])
     InfProcessor_Free();
     if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
     if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
+    if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
     printf("ERROR: Cannot write output %s.\n", RecFileOut);
     TRACEEXIT;
@@ -2557,6 +2563,7 @@ int main(int argc, const char* argv[])
             InfProcessor_Free();
             if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
             if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
+            if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
             if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
             exit(10);
           }
@@ -2681,6 +2688,7 @@ int main(int argc, const char* argv[])
               InfProcessor_Free();
               if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }      
               if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
+              if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
               if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
               printf("ERROR: Cannot create %s.\n", RecFileOut);
               TRACEEXIT;
@@ -3175,6 +3183,7 @@ int main(int argc, const char* argv[])
           InfProcessor_Free();
           if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
           if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
+          if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
           if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
           printf("\n RecStrip aborted.\n");
           TRACEEXIT;
@@ -3245,6 +3254,7 @@ int main(int argc, const char* argv[])
         InfProcessor_Free();
         if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
         if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
+        if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
         if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
         printf("ERROR: Cannot open input %s.\n", RecFileIn);
         TRACEEXIT;
@@ -3280,6 +3290,7 @@ int main(int argc, const char* argv[])
     InfProcessor_Free();
     if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
     if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
+    if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
     exit(10);
   }

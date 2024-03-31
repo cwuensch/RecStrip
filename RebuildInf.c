@@ -32,6 +32,8 @@
   extern long timezone;
 #endif*/
 
+byte                   *EPGBuffer = 0;
+int                     EPGLen = 0;
 long long               FirstFilePCR = 0, LastFilePCR = 0;
 dword                   FirstFilePTS = 0, LastFilePTS = 0;
 int                     VideoHeight = 0, VideoWidth = 0;
@@ -615,6 +617,7 @@ printf("  TS: EvtDuration = %02d:%02d\n", RecInf->EventInfo.DurationHour, RecInf
 printf("  TS: EventName = %s\n", RecInf->EventInfo.EventNameDescription);
 
             strncpy(&RecInf->EventInfo.EventNameDescription[NameLen], (char*)&Buffer[p + sizeof(tShortEvtDesc) + NameLen+1], TextLen);
+//            RecInf->EventInfo.EventNameDescription[sizeof(RecInf->EventInfo.EventNameDescription) - 1] = '\0';
 printf("  TS: EventDesc = %s\n", &RecInf->EventInfo.EventNameDescription[NameLen]);
 
 //            StrMkUTF8(RecInf.RecInfEventInfo.EventNameAndDescription, 9);
@@ -646,6 +649,7 @@ printf("  TS: EventDesc = %s\n", &RecInf->EventInfo.EventNameDescription[NameLen
           p += (Desc->DescrLength + sizeof(tTSDesc));
         }
         strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, min(ExtEPGTextLen, (int)sizeof(RecInf->ExtEventInfo.Text)));
+//        RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] = '\0';
         RecInf->ExtEventInfo.TextLength = ExtEPGTextLen;
 printf("  TS: EPGExtEvt = %s\n", ExtEPGText);
 
@@ -661,8 +665,9 @@ printf("  TS: EPGExtEvt = %s\n", ExtEPGText);
           }
         }
         else
-          free(ExtEPGText);
-
+        {
+          free(ExtEPGText); ExtEPGText = NULL;
+        }
         TRACEEXIT;
         return TRUE;
       }
@@ -1051,6 +1056,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     FILE               *fMDIn = NULL;
     char                AddFileIn[FBLIB_DIR_SIZE], *p;
     size_t              len;
+    bool                IsFirst, IsLast, Contains2;
 
     if ((p = strrchr(RecFileIn, '/'))) p++;
     else if ((p = strrchr(RecFileIn, '\\'))) p++;
@@ -1225,12 +1231,29 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 
     // Read EPG Event file
     RecInf->ServiceInfo.ServiceID = 1;
+
+    IsLast    = (len>2 && strncmp(&AddFileIn[len-2], "-2", 2) == 0);
+    Contains2 = (IsLast || (len>4 && strncmp(&AddFileIn[len-4], "-2", 2) == 0));
+    IsFirst   = (len>2 && strncmp(&AddFileIn[len-2], "-1", 2) == 0 && !Contains2);
+    if (IsLast)
+    {
+      AddFileIn[len-1] = '1';
+      strcpy(&AddFileIn[len], "_epg.txt");
+      if(!HDD_FileExist(AddFileIn)) AddFileIn[len-1] = '2';
+    }
+    else if (IsFirst)
+    {
+      AddFileIn[len-1] = '2';
+      strcpy(&AddFileIn[len], "-1_epg.txt");
+      if (HDD_FileExist(AddFileIn))
+        len += 2;
+      else
+        AddFileIn[len-1] = '1';
+    }
+
     strcpy (&AddFileIn[len], "_epg.txt");
     if ((fMDIn = fopen(AddFileIn, "rb")))
     {
-      bool Contains2 = ((len>2 && strncmp(&AddFileIn[len-2], "-2", 2) == 0) || (len>4 && strncmp(&AddFileIn[len-4], "-2", 2) == 0));
-      bool EndsWith1 = (!Contains2 && len>2 && strncmp(&AddFileIn[len-2], "-1", 2) == 0);
-
       memset(Buffer, 0, 16384);
       if ((ReadBytes = fread(Buffer, 1, 16384, fMDIn)) > 0)
       {
@@ -1259,7 +1282,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                 EPGLen = EITLen + 1;
               }
 
-              if (!EndsWith1 && (Contains2 || !TtxOK || ((RecInf->EventInfo.StartTime <= MidTimeUTC) && (RecInf->EventInfo.EndTime >= MidTimeUTC))))
+              if (!IsFirst && (IsLast || !TtxOK || ((RecInf->EventInfo.StartTime <= MidTimeUTC) && (RecInf->EventInfo.EndTime >= MidTimeUTC))))
                 break;
             }
             p = p + 8 + EITLen + 53;
@@ -1957,7 +1980,7 @@ printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStrTF(StartTime, 0), time_offset /
     RecInf->RecHeaderInfo.StartTime = EPG2TFTime(RecInf->EventInfo.StartTime, NULL);  // EventStart in lokale Zeit konvertieren und als StartTime setzen
 
     // Wenn rec-Datei am selben oder nächsten Tag geändert wurde, wie das EPG-Event -> nimm Datum der Datei (TODO: ABER inf dann nicht überschreiben?)
-    if (!RecInf->EventInfo.StartTime || ((MJD(FileTimeTF) - MJD(RecInf->RecHeaderInfo.StartTime) <= 1) && (TIME(FileTimeTF) != 0)))
+    if (!RecInf->EventInfo.StartTime || ((MJD(FileTimeTF) - MJD(RecInf->RecHeaderInfo.StartTime) <= 1) && (FileTimeTF > RecInf->RecHeaderInfo.StartTime)))
     {
       byte sec;
       printf("  TS: Setting start time to file time instead EPG event start.\n");

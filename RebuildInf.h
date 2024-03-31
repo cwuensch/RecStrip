@@ -405,6 +405,8 @@ typedef struct
 #define                 EPGBUFFERSIZE 4097
 
 //extern FILE            *fIn;  // dirty Hack
+extern byte            *EPGBuffer;
+extern int              EPGLen;
 extern long long        FirstFilePCR, LastFilePCR;
 extern dword            FirstFilePTS, LastFilePTS;
 extern int              VideoHeight, VideoWidth;
