@@ -44,6 +44,18 @@ static inline byte BCD2BIN(byte BCD)
   return (BCD >> 4) * 10 + (BCD & 0x0f);
 }
 
+static tPVRTime MakeTFTime(const word year, const byte month, const byte day, const byte hour, const byte minute, const byte second)
+{
+  struct tm timeinfo;
+  timeinfo.tm_year = year - 1900;
+  timeinfo.tm_mon  = month - 1;
+  timeinfo.tm_mday = day;
+  timeinfo.tm_hour = hour;
+  timeinfo.tm_min  = minute;
+  timeinfo.tm_sec  = second;
+  return Unix2TFTime(mktime(&timeinfo), NULL, FALSE);
+}
+
 tPVRTime Unix2TFTime(time_t UnixTimeStamp, byte *const outSec, bool convertToLocal)
 {
   if(!UnixTimeStamp) return 0;
@@ -548,6 +560,7 @@ static bool AnalyseEIT(byte *Buffer, int BufSize, word ServiceID, TYPE_RecHeader
 
   if ((EIT->TableID == TABLE_EIT) && ((EIT->ServiceID1 * 256 | EIT->ServiceID2) == ServiceID))
   {
+    if(ExtEPGText) free(ExtEPGText);
     if (!(ExtEPGText = (char*) malloc(EPGBUFFERSIZE)))
     {
       printf("Could not allocate memory for ExtEPGText.\n");
@@ -1036,9 +1049,19 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   if (MedionMode)
   {
     FILE               *fMDIn = NULL;
-    char                AddFileIn[FBLIB_DIR_SIZE];
-    char               *p;
+    char                AddFileIn[FBLIB_DIR_SIZE], *p;
     size_t              len;
+
+    if ((p = strrchr(RecFileIn, '/'))) p++;
+    else if ((p = strrchr(RecFileIn, '\\'))) p++;
+    else p = RecFileIn;
+
+    if (p[0] == '[')
+    {
+      dword year = 0, month = 0, day = 0;
+      if (sscanf(p, "[%u-%u-%u]", &year, &month, &day) == 3)
+        RecInf->RecHeaderInfo.StartTime = MakeTFTime((word)year, (byte)month, (byte)day, 0, 0, 0);
+    }
 
     strcpy(AddFileIn, RecFileIn);
     if((p = strrchr(AddFileIn, '.'))) *p = '\0';
@@ -1927,7 +1950,7 @@ printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStrTF(StartTime, 0), time_offset /
         TtxPTSOffset = 0;
     }
   }
-  else if (!HumaxSource && !(EycosSource && RecInf->RecHeaderInfo.StartTime))
+  else if (!HumaxSource && !MedionMode && !(EycosSource && RecInf->RecHeaderInfo.StartTime))
   {
     tPVRTime FileTimeTF = Unix2TFTime(RecFileTimeStamp, NULL, FALSE);
 

@@ -1940,6 +1940,7 @@ int main(int argc, const char* argv[])
     if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
     if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
+    if(ExtEPGText) { free(ExtEPGText); ExtEPGText = NULL; }
     printf("ERROR: Cannot open input %s.\n", RecFileIn);
     TRACEEXIT;
     exit(4);
@@ -1954,6 +1955,7 @@ int main(int argc, const char* argv[])
     if(PendingBuf) { free(PendingBuf); PendingBuf = NULL };
     if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
+    if(ExtEPGText) { free(ExtEPGText); ExtEPGText = NULL; }
     TRACEEXIT;
     exit(6);  */
   }
@@ -2118,12 +2120,12 @@ int main(int argc, const char* argv[])
     if (Inf_TMSS->EventInfo.StartTime != 0)
     {
       fprintf(stderr, "%s\t", TimeStr_DB(EPG2TFTime(Inf_TMSS->EventInfo.StartTime, NULL), 0));
-      fprintf(stderr, "%s\t%02hhu:%02hhu\t%s\n", TimeStr_DB(EPG2TFTime(Inf_TMSS->EventInfo.EndTime, NULL), 0),  Inf_TMSS->EventInfo.DurationHour,  Inf_TMSS->EventInfo.DurationMin,  (ExtEPGText ? ExtEPGText : ""));
+      fprintf(stderr, "%s\t%02hhu:%02hhu\t%s\n", TimeStr_DB(EPG2TFTime(Inf_TMSS->EventInfo.EndTime, NULL), 0),  Inf_TMSS->EventInfo.DurationHour,  Inf_TMSS->EventInfo.DurationMin,  (ExtEPGText ? ExtEPGText : Inf_TMSS->ExtEventInfo.Text));
     }
     else
       fprintf(stderr, "\t\t\t%s\n",  (ExtEPGText ? ExtEPGText : ""));
-    if(ExtEPGText) free(ExtEPGText);
   }
+  if(ExtEPGText) { free(ExtEPGText); ExtEPGText = NULL; }
 
 
   // SPECIAL FEATURE: Fix PAT/PMT of output file (-p)

@@ -174,7 +174,10 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
           case 0x05:
           case 0x0a:
           {
-            int NrAudio = (int) strlen((char*)EycosHeader.AudioNames) / 2;
+            int NrAudio = 0;  // (EycosHeader.NrPids > 2) ? (int)EycosHeader.NrPids - 2 : 0;  // (int) strlen((char*)EycosHeader.AudioNames) / 2;
+            for (k = 0; k < (int)EycosHeader.NrPids; k++)
+              if (EycosHeader.Pids[k].Type==STREAM_AUDIO_MPEG1 || EycosHeader.Pids[k].Type==STREAM_AUDIO_MPEG2 || EycosHeader.Pids[k].Type==0x05 || EycosHeader.Pids[k].Type==0x0a)
+                NrAudio++;
 
             if ((EycosHeader.Pids[j].PID == AudioPID) && (EycosHeader.Pids[j].Type == 0x0a))
             {
@@ -194,7 +197,7 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
             {
               if (EycosHeader.AudioNames[k] == EycosHeader.Pids[j].PID)
               {
-                strncpy(AudioPIDs[k].desc, &((char*)EycosHeader.AudioNames)[NrAudio*2 + 2 + k*4], 3);
+                strncpy(AudioPIDs[k].desc, &((char*)EycosHeader.AudioNames)[NrAudio*2 + k*4], 3);
                 break;
               }
             }
@@ -227,7 +230,7 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
       time_t EvtStartUnix, EvtEndUnix;
       int NameLen = (int) min(strlen(EycosEvent.Title), sizeof(RecInf->EventInfo.EventNameDescription) - 1);
       int TextLen = sizeof(RecInf->EventInfo.EventNameDescription) - NameLen - 1;
-
+      
       RecInf->EventInfo.ServiceID = RecInf->ServiceInfo.ServiceID;
       RecInf->EventInfo.EventNameLength = NameLen;
       strncpy(RecInf->EventInfo.EventNameDescription, EycosEvent.Title, NameLen);
@@ -235,22 +238,34 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
       printf("    EventName = %s\n", EycosEvent.Title);
       printf("    EventDesc = %s\n", EycosEvent.ShortDesc);
 
-      RecInf->ExtEventInfo.ServiceID = RecInf->ServiceInfo.ServiceID;
-      TextLen = 0;
-      for (k = 0; k < 5; k++)
+      if(ExtEPGText) free(ExtEPGText);
+      if ((ExtEPGText = (char*) malloc(2048)))
       {
-        char *pCurDesc = ((k > 0) && ((byte)(EycosEvent.LongDesc[k].DescBlock[0]) < 0x20)) ? &EycosEvent.LongDesc[k].DescBlock[1] : EycosEvent.LongDesc[k].DescBlock;
-        NameLen = (int) min(strlen(pCurDesc), sizeof(RecInf->ExtEventInfo.Text) - TextLen - 1);
-        strncpy(&RecInf->ExtEventInfo.Text[TextLen], pCurDesc, sizeof(RecInf->ExtEventInfo.Text) - TextLen - 1);
-        TextLen += NameLen;
-        if(NameLen < 248) break;
-      }
-      RecInf->ExtEventInfo.TextLength = TextLen;
+        TextLen = 0;
+        ExtEPGText[0] = '\0';
+        RecInf->ExtEventInfo.ServiceID = RecInf->ServiceInfo.ServiceID;
+        for (k = 0; k < 8; k++)
+        {
+          char *pCurDesc = ((k > 0) && ((byte)(EycosEvent.LongDesc[k].DescBlock[0]) < 0x20)) ? &EycosEvent.LongDesc[k].DescBlock[1] : EycosEvent.LongDesc[k].DescBlock;
+          NameLen = min((int)strlen(pCurDesc), 2048 - TextLen - 1);
+          strncpy(&ExtEPGText[TextLen], pCurDesc, 2048 - TextLen - 1);
+          TextLen += NameLen;
+          if(NameLen < 248) break;
+        }
 #ifdef _DEBUG
-if (strlen(RecInf->ExtEventInfo.Text) != RecInf->ExtEventInfo.TextLength)
-  printf("ASSERT: ExtEventTextLength (%d) != length of ExtEventText (%d)!\n", RecInf->ExtEventInfo.TextLength, strlen(RecInf->ExtEventInfo.Text));
+if (strlen(ExtEPGText) != TextLen)
+  printf("ASSERT: ExtEventTextLength (%d) != length of ExtEventText (%d)!\n", TextLen, strlen(ExtEPGText));
 #endif
-      printf("    EPGExtEvt = %s\n", RecInf->ExtEventInfo.TextLength);
+        RecInf->ExtEventInfo.TextLength = TextLen;
+        strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, sizeof(RecInf->ExtEventInfo.Text));
+        printf("    EPGExtEvt = %s\n", ExtEPGText);
+      }
+      else
+      {
+        printf("Could not allocate memory for ExtEPGText.\n");
+        ret = FALSE;
+      }
+
       EvtStartUnix = MakeUnixDate(EycosEvent.EvtStartYear, EycosEvent.EvtStartMonth, EycosEvent.EvtStartDay, EycosEvent.EvtStartHour, EycosEvent.EvtStartMin, 0);
       EvtEndUnix = MakeUnixDate(EycosEvent.EvtEndYear, EycosEvent.EvtEndMonth, EycosEvent.EvtEndDay, EycosEvent.EvtEndHour, EycosEvent.EvtEndMin, 0);
       RecInf->EventInfo.StartTime       = Unix2TFTime(EvtStartUnix, NULL, FALSE);  // DATE(UnixToMJD(EvtStartUnix), EycosEvent.EvtStartHour, EycosEvent.EvtStartMin);  // kein Convert, da ins EPG UTC geschrieben wird
