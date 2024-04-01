@@ -46,16 +46,30 @@ static inline byte BCD2BIN(byte BCD)
   return (BCD >> 4) * 10 + (BCD & 0x0f);
 }
 
-static tPVRTime MakeTFTime(const word year, const byte month, const byte day, const byte hour, const byte minute, const byte second)
+time_t MakeUnixTime(const word year, const byte month, const byte day, const byte hour, const byte minute, const byte second, int *const out_timeoffset)
 {
-  struct tm timeinfo;
+  struct tm timeinfo = {0};
+  time_t UnixTimeStamp;
   timeinfo.tm_year = year - 1900;
-  timeinfo.tm_mon  = month - 1;
-  timeinfo.tm_mday = day;
-  timeinfo.tm_hour = hour;
-  timeinfo.tm_min  = minute;
-  timeinfo.tm_sec  = second;
-  return Unix2TFTime(mktime(&timeinfo), NULL, FALSE);
+  timeinfo.tm_mon  = month - 1;    //months since January - [0,11]
+  timeinfo.tm_mday = day;          //day of the month - [1,31] 
+  timeinfo.tm_hour = hour;         //hours since midnight - [0,23]
+  timeinfo.tm_min  = minute;       //minutes after the hour - [0,59]
+  timeinfo.tm_sec  = second;       //seconds after the minute - [0,59]
+  timeinfo.tm_isdst = -1;          //detect Daylight Saving Time according to the timestamp's date
+  UnixTimeStamp = mktime(&timeinfo);  // converts local to UTC time
+
+#ifndef LINUX
+  if (out_timeoffset)
+  {
+    #ifdef _WIN32
+      *out_timeoffset = -1*_timezone + 3600*timeinfo.tm_isdst;
+    #else
+      *out_timeoffset = -1*timezone + 3600*timeinfo.tm_isdst;
+    #endif
+  }
+#endif
+  return UnixTimeStamp;
 }
 
 tPVRTime Unix2TFTime(time_t UnixTimeStamp, byte *const outSec, bool convertToLocal)
@@ -64,7 +78,7 @@ tPVRTime Unix2TFTime(time_t UnixTimeStamp, byte *const outSec, bool convertToLoc
 #ifndef LINUX
   if (convertToLocal)
   {
-    struct tm timeinfo;
+    struct tm timeinfo = {0};
 
     #ifdef _WIN32
       UnixTimeStamp -= _timezone;
@@ -90,7 +104,7 @@ time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec, bool convertToUTC)
 #ifndef LINUX
   if (convertToUTC)
   {
-    struct tm timeinfo;
+    struct tm timeinfo = {0};
 
     #ifdef _WIN32
       Result += _timezone;
@@ -109,7 +123,7 @@ time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec, bool convertToUTC)
 
 tPVRTime EPG2TFTime(tPVRTime TFTimeStamp, int *const out_timeoffset)
 {
-  struct tm timeinfo;
+  struct tm timeinfo = {0};
   int time_offset = 3600;
   time_t UnixTime = TF2UnixTime(TFTimeStamp, 0, FALSE);  // kein Convert, da EPG-Daten mit TtxTimeZone konvertiert werden sollen
 
@@ -682,12 +696,11 @@ printf("  TS: EPGExtEvt = %s\n", ExtEPGText);
   return FALSE;
 }
 
-static bool AnalyseTtx(byte *PSBuffer, int BufSize, tPVRTime *const TtxTime, byte *const TtxTimeSec, int *const TtxTimeZone, char *const ServiceName, int SvcNameLen)
+static bool AnalyseTtx(byte *PSBuffer, int BufSize, bool AcceptTimeString, tPVRTime *const TtxTime, byte *const TtxTimeSec, int *const TtxTimeZone, char *const ServiceName, int SvcNameLen)
 {
   char                  programme[50];
   dword                 History = 0xffffffff;
   int                   PESLength = BufSize, p = 0;
-
   TRACEENTER;
 
   while (p + 10 < BufSize)
@@ -714,7 +727,7 @@ static bool AnalyseTtx(byte *PSBuffer, int BufSize, tPVRTime *const TtxTime, byt
           if (magazin == 0) magazin = 8;
           row = row >> 3;
 
-          if (magazin == 8 && row == 30 && data_block[1] == 0xA8)
+          if ((magazin == 8 && row == 30 && data_block[1] == 0xA8) || (magazin < 8 && row == 0 && data_block[1] == 0xA8))
           {
             int i;
             byte packet_format = hamming_decode_rev(data_block[0]) & 0x0e;
@@ -742,14 +755,31 @@ static bool AnalyseTtx(byte *PSBuffer, int BufSize, tPVRTime *const TtxTime, byt
                 strcat(programme, u);
               }
               rtrim(programme);
-              if(ServiceName && !KeepHumaxSvcName)
+              if (magazin == 8 && row == 30)
               {
-                strncpy(ServiceName, programme, SvcNameLen-1);
-                ServiceName[SvcNameLen-1] = '\0';
+                if(ServiceName && !KeepHumaxSvcName)
+                {
+                  strncpy(ServiceName, programme, SvcNameLen-1);
+                  ServiceName[SvcNameLen-1] = '\0';
+                }
+printf("  TS: Teletext Programme Identification Data: '%s'\n", programme);
+              }
+              else if (programme[0]=='x' && programme[1]=='t')
+              {
+                dword year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
+printf("  TS: Teletext Possible Time String: '%s'\n", programme);
+                if (sscanf(programme, "xt%2u.%2u.%2u%2u:%2u:%2u", &day, &month, &year, &hour, &minute, &second) == 6)
+                {
+                  *TtxTime = Unix2TFTime(MakeUnixTime((word)(year + 2000), (byte)month, (byte)day, (byte)hour, (byte)minute, (byte)second, TtxTimeZone), TtxTimeSec, TRUE);
+                  *TtxTimeZone = -*TtxTimeZone;
+printf("  TS: Teletext date*: %s (GMT%+d)\n", TimeStrTF(*TtxTime, *TtxTimeSec), -*TtxTimeZone/3600);
+                  TRACEEXIT;
+                  if (AcceptTimeString) return TRUE;
+                }
               }
             }
 
-            if (packet_format < 2)
+            if (magazin == 8 && row == 30 && packet_format < 2)
             {
               // offset in half hours
               int time_offset;
@@ -795,8 +825,6 @@ static bool AnalyseTtx(byte *PSBuffer, int BufSize, tPVRTime *const TtxTime, byt
                 if(TtxTimeSec) *TtxTimeSec = localS;
                 EPG2TFTime(*TtxTime, &time_offset);
               }
-
-printf("  TS: Teletext Programme Identification Data: '%s'\n", programme);
 printf("  TS: Teletext date: %s (GMT%+d)\n", TimeStrTF(*TtxTime, *TtxTimeSec), -*TtxTimeZone/3600);
 
 if (time_offset != -*TtxTimeZone && (MedionMode || HumaxSource || EycosSource))
@@ -1066,7 +1094,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     {
       dword year = 0, month = 0, day = 0;
       if (sscanf(p, "[%u-%u-%u]", &year, &month, &day) == 3)
-        RecInf->RecHeaderInfo.StartTime = MakeTFTime((word)year, (byte)month, (byte)day, 0, 0, 0);
+        RecInf->RecHeaderInfo.StartTime = Unix2TFTime(MakeUnixTime((word)year, (byte)month, (byte)day, 0, 0, 0, NULL), NULL, TRUE);
     }
 
     strcpy(AddFileIn, RecFileIn);
@@ -1214,7 +1242,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         {
           while ((p < ReadBytes - 1000) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1 || Buffer[p+3] != 0xBD))
             p++;
-          TtxFound = AnalyseTtx(&Buffer[p], 98304-p, &TtxTime, &TtxTimeSec, &TtxTimeZone, RecInf->ServiceInfo.ServiceName, sizeof(RecInf->ServiceInfo.ServiceName));
+          TtxFound = AnalyseTtx(&Buffer[p], 98304-p, (p > ReadBytes/2), &TtxTime, &TtxTimeSec, &TtxTimeZone, RecInf->ServiceInfo.ServiceName, sizeof(RecInf->ServiceInfo.ServiceName));
           if(TtxFound && !TtxOK)
             TtxOK = GetPTS(&Buffer[p], &TtxPCR, NULL) && (TtxPCR != 0);
           if(TtxOK)
@@ -1612,7 +1640,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               byte *pBuffer = (TtxBuffer.ValidBuffer==2) ? TtxBuffer.Buffer2 : TtxBuffer.Buffer1;
 // IDEE: Hier vielleicht den Teletext-String in EventNameDescription schreiben, FALLS Länge größer ist als EventNameLength und !EITOK
 
-              TtxFound = !TtxBuffer.ErrorFlag && AnalyseTtx(pBuffer, TtxBuffer.ValidBufLen, &TtxTime, &TtxTimeSec, &TtxTimeZone, ((!SDTOK && !KeepHumaxSvcName) ? RecInf->ServiceInfo.ServiceName : NULL), sizeof(RecInf->ServiceInfo.ServiceName));
+              TtxFound = !TtxBuffer.ErrorFlag && AnalyseTtx(pBuffer, TtxBuffer.ValidBufLen, (i > 80), &TtxTime, &TtxTimeSec, &TtxTimeZone, ((!SDTOK && !KeepHumaxSvcName) ? RecInf->ServiceInfo.ServiceName : NULL), sizeof(RecInf->ServiceInfo.ServiceName));
 /*              TtxFound = !TtxBuffer.ErrorFlag && AnalyseTtx(pBuffer, TtxBuffer.ValidBufLen, &TtxTime, &TtxTimeSec, &TtxTimeZone, (!EITOK ? RecInf->EventInfo.EventNameDescription : ((!SDTOK && !KeepHumaxSvcName) ? RecInf->ServiceInfo.ServiceName : NULL)), sizeof(RecInf->ServiceInfo.ServiceName));
               if (!EITOK && *RecInf->EventInfo.EventNameDescription)
               {

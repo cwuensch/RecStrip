@@ -413,6 +413,7 @@ extern int              VideoHeight, VideoWidth;
 extern double           VideoFPS, VideoDAR;
 //extern int              TtxTimeZone;
 
+time_t MakeUnixTime(const word year, const byte month, const byte day, const byte hour, const byte minute, const byte second, int *const out_timeoffset);
 time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec, bool convertToUTC);
 tPVRTime Unix2TFTime(time_t UnixTimeStamp, byte *const outSec, bool convertToLocal);
 tPVRTime EPG2TFTime(tPVRTime TFTimeStamp, int *const out_timeoffset);

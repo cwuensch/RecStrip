@@ -282,7 +282,7 @@ static void timestamp_to_srttime(uint32_t timestamp, char *buffer) {
 char* TimeStr(time_t UnixTimeStamp)
 {
   static char TS[26];
-  struct tm timeinfo;
+  struct tm timeinfo = {0};
   TS[0] = '\0';
 
   if (UnixTimeStamp)
@@ -305,7 +305,7 @@ char* TimeStr(time_t UnixTimeStamp)
 static char* TimeStr_UTC(time_t UnixTimeStamp)
 {
   static char TS[26];
-  struct tm timeinfo;
+  struct tm timeinfo = {0};
   TS[0] = '\0';
 
   if (UnixTimeStamp)
@@ -324,7 +324,7 @@ static char* TimeStr_UTC(time_t UnixTimeStamp)
 char* TimeStrTF(tPVRTime TFTimeStamp, byte TFTimeSec)
 {
   static char TS[26];
-  struct tm timeinfo;
+  struct tm timeinfo = {0};
   TS[0] = '\0';
 
   if (TFTimeStamp)
@@ -344,7 +344,7 @@ char* TimeStrTF(tPVRTime TFTimeStamp, byte TFTimeSec)
 char* TimeStr_DB(tPVRTime TFTimeStamp, byte TFTimeSec)
 {
   static char TS[20];
-  struct tm timeinfo;
+  struct tm timeinfo = {0};
   TS[0] = '\0';
 
   if (TFTimeStamp)

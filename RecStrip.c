@@ -181,7 +181,7 @@ bool HDD_FileExist(const char *AbsFileName)
 //  free(wAbsFileName);
   return (dwAttrib != INVALID_FILE_ATTRIBUTES && !(dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
 #else
-  struct stat statbuf;
+  struct stat statbuf = {0};
   return (stat(AbsFileName, &statbuf) == 0);
 #endif
 }
@@ -194,7 +194,7 @@ static bool HDD_DirExist(const char *AbsDirName)
 //  free(wAbsDirName);
   return (dwAttrib != INVALID_FILE_ATTRIBUTES && (dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
 #else
-  struct stat statbuf;
+  struct stat statbuf = {0};
   return ((stat(AbsDirName, &statbuf) == 0) && (statbuf.st_mode & S_IFDIR));
 #endif
 }
@@ -214,7 +214,7 @@ bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize)
     if (ret && OutFileSize)
       *OutFileSize = (((unsigned long long)fad.nFileSizeHigh) << 32) + fad.nFileSizeLow;
 #else
-    struct stat64 statbuf;
+    struct stat64 statbuf = {0};
     ret = (stat64(AbsFileName, &statbuf) == 0);
     if (ret && OutFileSize)
       *OutFileSize = statbuf.st_size;
@@ -227,7 +227,7 @@ bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize)
 // Zeit-Angaben in UTC (Achtung! Windows führt ggf. eine eigene DST-Anpassung durch)
 static time_t HDD_GetFileDateTime(char const *AbsFileName)
 {
-  struct stat64         statbuf;
+  struct stat64         statbuf = {0};
   time_t                Result = 0;
 
   TRACEENTER;
@@ -254,7 +254,7 @@ static time_t HDD_GetFileDateTime(char const *AbsFileName)
 
       #ifdef _WIN32
       {
-        struct tm timeinfo, timeinfo_sys;
+        struct tm timeinfo = {0}, timeinfo_sys = {0};
         time_t now = time(NULL);
 
         localtime_s(&timeinfo, &Result);
@@ -274,8 +274,8 @@ if (Result3 != Result)
 
 static bool HDD_SetFileDateTime(char const *AbsFileName, time_t NewDateTime)
 {
-  struct stat64         statbuf;
-  struct utimbuf        timebuf;
+  struct stat64         statbuf = {0};
+  struct utimbuf        timebuf = {0};
 
   TRACEENTER;
   if(NewDateTime == 0)
@@ -286,7 +286,7 @@ static bool HDD_SetFileDateTime(char const *AbsFileName, time_t NewDateTime)
     if(stat64(AbsFileName, &statbuf) == 0)
     {
       #ifdef _WIN32
-        struct tm timeinfo, timeinfo_sys;
+        struct tm timeinfo = {0}, timeinfo_sys = {0};
         time_t now = time(NULL);
 
         localtime_s(&timeinfo, &NewDateTime);
@@ -1311,7 +1311,7 @@ int main(int argc, const char* argv[])
 #ifndef LINUX
   {
     char RealExePath[FBLIB_DIR_SIZE];
-    struct tm timeinfo;
+    struct tm timeinfo = {0};
     time_t curTime = time(NULL);
 
     if (FindExePath(argv[0], RealExePath, sizeof(RealExePath)))
@@ -1465,7 +1465,7 @@ int main(int argc, const char* argv[])
   tTSPacket            *Packet = NULL;
   tTSPAT               *PAT = NULL;
   TYPE_RecHeader_TMSS  *RecInf = NULL;
-  struct stat64         statbuf;
+  struct stat64         statbuf = {0};
   word                  PMTPid = 0;
   int                   InfSize = 0;
   time_t                RecDate = 0;

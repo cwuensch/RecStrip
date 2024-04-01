@@ -117,7 +117,7 @@ static bool GetRealPath(const char* RelativePath, char *const OutAbsPath, int Ou
 
 bool FindExePath(const char* CalledExe, char *const OutExePath, int OutputSize)
 {
-  struct stat statbuf;
+  struct stat statbuf = {0};
   char *curPath, *pPath, *p;
   bool WinExe = FALSE, ret = TRUE;
 

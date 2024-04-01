@@ -20,25 +20,6 @@
 #include "HumaxHeader.h"
 
 
-static time_t MakeUnixDate(word Year, byte Month, byte Day, byte Hour, byte Min, byte Sec)
-{
-  time_t                UnixTime;
-  struct tm             timeinfo;
-
-  TRACEENTER;
-  timeinfo.tm_year = Year - 1900;
-  timeinfo.tm_mon  = Month - 1;    //months since January - [0,11]
-  timeinfo.tm_mday = Day;          //day of the month - [1,31] 
-  timeinfo.tm_hour = Hour;         //hours since midnight - [0,23]
-  timeinfo.tm_min  = Min;          //minutes after the hour - [0,59]
-  timeinfo.tm_sec  = Sec;          //seconds after the minute - [0,59]
-  timeinfo.tm_isdst = -1;          //detect Daylight Saving Time according to the timestamp's date
-  UnixTime = mktime(&timeinfo);
-
-  TRACEEXIT;
-  return UnixTime;
-}
-
 char* EycosGetPart(char *const OutEycosPart, const char* AbsTrpName, int NrPart)
 {
   TRACEENTER;
@@ -271,8 +252,8 @@ if (strlen(ExtEPGText) != TextLen)
         ret = FALSE;
       }
 
-      EvtStartUnix = MakeUnixDate(EycosEvent.EvtStartYear, EycosEvent.EvtStartMonth, EycosEvent.EvtStartDay, EycosEvent.EvtStartHour, EycosEvent.EvtStartMin, 0);
-      EvtEndUnix = MakeUnixDate(EycosEvent.EvtEndYear, EycosEvent.EvtEndMonth, EycosEvent.EvtEndDay, EycosEvent.EvtEndHour, EycosEvent.EvtEndMin, 0);
+      EvtStartUnix = MakeUnixTime(EycosEvent.EvtStartYear, EycosEvent.EvtStartMonth, EycosEvent.EvtStartDay, EycosEvent.EvtStartHour, EycosEvent.EvtStartMin, 0, NULL);
+      EvtEndUnix = MakeUnixTime(EycosEvent.EvtEndYear, EycosEvent.EvtEndMonth, EycosEvent.EvtEndDay, EycosEvent.EvtEndHour, EycosEvent.EvtEndMin, 0, NULL);
       RecInf->EventInfo.StartTime       = Unix2TFTime(EvtStartUnix, NULL, FALSE);  // DATE(UnixToMJD(EvtStartUnix), EycosEvent.EvtStartHour, EycosEvent.EvtStartMin);  // kein Convert, da ins EPG UTC geschrieben wird
       RecInf->EventInfo.EndTime         = Unix2TFTime(EvtEndUnix, NULL, FALSE);    // DATE(UnixToMJD(EvtEndUnix), EycosEvent.EvtEndHour, EycosEvent.EvtEndMin);        // "
       RecInf->RecHeaderInfo.StartTime   = Unix2TFTime(EvtStartUnix, NULL, TRUE);   // Convert, da EvtStartUnix als UTC-Timestamp geparsed wurde
