@@ -242,7 +242,7 @@ if (strlen(ExtEPGText) != TextLen)
 #endif
         ExtEPGText[TextLen] = '\0';
         RecInf->ExtEventInfo.TextLength = TextLen;
-        strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, min(TextLen, sizeof(RecInf->ExtEventInfo.Text) - 1));
+        strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, min(TextLen, (int)sizeof(RecInf->ExtEventInfo.Text) - 1));
 //        RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] = '\0';
         printf("    EPGExtEvt = %s\n", ExtEPGText);
       }
