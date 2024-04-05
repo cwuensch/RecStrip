@@ -727,12 +727,12 @@ static bool AnalyseTtx(byte *PSBuffer, int BufSize, bool AcceptTimeString, tPVRT
           if (magazin == 0) magazin = 8;
           row = row >> 3;
 
-          if ((magazin == 8 && row == 30 && data_block[1] == 0xA8) || (AcceptTimeString && magazin < 8 && row == 0))
+          if ((magazin == 8 && row == 30 && data_block[1] == 0xA8) || (AcceptTimeString && magazin < 8 && row == 0 && data_block[1] == 0xA8))
           {
             int i;
             byte packet_format = hamming_decode_rev(data_block[0]) & 0x0e;
 
-            if (packet_format <= 2 || magazin < 8)
+            if (packet_format <= 2)
             {
               // get initial page
 /*              byte initialPageUnits = hamming_decode_rev(data_block[1]);
@@ -779,23 +779,25 @@ printf("  TS: Teletext Possible Time String: '%s'\n", programme);
 
                 if (sscanf(programme, "xt%2u.%2u.%2u%2u:%2u:%2u", &day, &month, &year, &hour, &minute, &second) == 6)
                   *TtxTime = Unix2TFTime(MakeUnixTime((word)(year + 2000), (byte)month, (byte)day, (byte)hour, (byte)minute, (byte)second, TtxTimeZone), TtxTimeSec, TRUE);
-                else if (sscanf(programme, "xt%*2s.%2u.%2u%2u:%2u:%2u", &day, &month, &hour, &minute, &second) == 5)
+                else if (sscanf(programme, "xt%*2[A-Za-z].%2u.%2u%2u:%2u:%2u", &day, &month, &hour, &minute, &second) == 5)
                   *TtxTime = Unix2TFTime(MakeUnixTime(timeinfo.tm_year+1900, (byte)month, (byte)day, (byte)hour, (byte)minute, (byte)second, TtxTimeZone), TtxTimeSec, TRUE);
                 else if (sscanf(programme, "t %2u.%2u.%2u%2u:%2u:%2u", &day, &month, &year, &hour, &minute, &second) == 6)
                   *TtxTime = Unix2TFTime(MakeUnixTime((word)(year + 2000), (byte)month, (byte)day, (byte)hour, (byte)minute, (byte)second, TtxTimeZone), TtxTimeSec, TRUE);
-                else if (sscanf(programme, "t%*2s %2u.%2u. %2u:%2u:%2u", &day, &month, &hour, &minute, &second) == 5)
+                else if (sscanf(programme, "t%*2[A-Za-z] %2u.%2u. %2u:%2u:%2u", &day, &month, &hour, &minute, &second) == 5)
                   *TtxTime = Unix2TFTime(MakeUnixTime(timeinfo.tm_year+1900, (byte)month, (byte)day, (byte)hour, (byte)minute, (byte)second, TtxTimeZone), TtxTimeSec, TRUE);
                 if (sscanf(programme, "ns%2u.%2u.%2u%2u:%2u:%2u", &day, &month, &year, &hour, &minute, &second) == 6)
                   *TtxTime = Unix2TFTime(MakeUnixTime((word)(year + 2000), (byte)month, (byte)day, (byte)hour, (byte)minute, (byte)second, TtxTimeZone), TtxTimeSec, TRUE);
                 else if (sscanf(programme, "Brbg%2u.%2u.%2u:%2u:%2u", &day, &month, &hour, &minute, &second) == 5)
                   *TtxTime = Unix2TFTime(MakeUnixTime(timeinfo.tm_year+1900, (byte)month, (byte)day, (byte)hour, (byte)minute, (byte)second, TtxTimeZone), TtxTimeSec, TRUE);
-                else if (sscanf(programme, "%*2s.%2u.%2u.%2u %2u:%2u:%2u", &day, &month, &year, &hour, &minute, &second) == 6)
+                else if (sscanf(programme, " ,%2u.%2u.%2u%2u:%2u:%2u", &day, &month, &year, &hour, &minute, &second) == 6)
                   *TtxTime = Unix2TFTime(MakeUnixTime((word)(year + 2000), (byte)month, (byte)day, (byte)hour, (byte)minute, (byte)second, TtxTimeZone), TtxTimeSec, TRUE);
-                else if (sscanf(programme, "%*2s %2u.%2u.%2u %2u:%2u:%2u", &day, &month, &year, &hour, &minute, &second) == 6)
+                else if (sscanf(programme, "%*2[A-Za-z].%2u.%2u.%2u %2u:%2u:%2u", &day, &month, &year, &hour, &minute, &second) == 6)
+                  *TtxTime = Unix2TFTime(MakeUnixTime((word)(year + 2000), (byte)month, (byte)day, (byte)hour, (byte)minute, (byte)second, TtxTimeZone), TtxTimeSec, TRUE);
+                else if (sscanf(programme, "%*2[A-Za-z] %2u.%2u.%2u %2u:%2u:%2u", &day, &month, &year, &hour, &minute, &second) == 6)
                   *TtxTime = Unix2TFTime(MakeUnixTime((word)(year + 2000), (byte)month, (byte)day, (byte)hour, (byte)minute, (byte)second, TtxTimeZone), TtxTimeSec, TRUE);
                 else if (sscanf(programme, " %2u.%2u.%2u%2u:%2u:%2u", &day, &month, &year, &hour, &minute, &second) == 6)
                   *TtxTime = Unix2TFTime(MakeUnixTime((word)(year + 2000), (byte)month, (byte)day, (byte)hour, (byte)minute, (byte)second, TtxTimeZone), TtxTimeSec, TRUE);
-                else if (sscanf(programme, " %*2s %2u %*3s%2u:%2u:%2u", &day, &hour, &minute, &second) == 4)
+                else if (sscanf(programme, " %*2[A-Za-z] %2u %*3[A-Za-z]%2u:%2u:%2u", &day, &hour, &minute, &second) == 4)
                   *TtxTime = Unix2TFTime(MakeUnixTime(timeinfo.tm_year+1900, timeinfo.tm_mon+1, (byte)day, (byte)hour, (byte)minute, (byte)second, TtxTimeZone), TtxTimeSec, TRUE);
 
                 if (TtxTimeZone && *TtxTimeZone)
@@ -861,7 +863,7 @@ printf("  TS: Teletext date*: %s (GMT%+d)\n", TimeStrTF(*TtxTime, *TtxTimeSec), 
 printf("  TS: Teletext date: %s (GMT%+d)\n", TimeStrTF(*TtxTime, *TtxTimeSec), -*TtxTimeZone/3600);
               }
 
-if (time_offset != -*TtxTimeZone && (MedionMode || HumaxSource || EycosSource))
+if (TtxTimeZone && time_offset != -*TtxTimeZone && (MedionMode || HumaxSource || EycosSource))
 {
 //  *TtxTime = AddTimeSec(*TtxTime, *TtxTimeSec, TtxTimeSec, -*TtxTimeZone - time_offset);
 //  printf("  TS: Teletext date: %s (GMT%+d, corrected!)\n", TimeStrTF(*TtxTime, *TtxTimeSec), time_offset/3600);
@@ -871,7 +873,7 @@ if (time_offset != -*TtxTimeZone && (MedionMode || HumaxSource || EycosSource))
 
 //printf("  TS: Teletext date: mjd=%u, %02hhu:%02hhu:%02hhu\n", mjd, localH, localM, localS);
               TRACEEXIT;
-              return TRUE;
+              return 2;
             }
           }
         }
@@ -1277,16 +1279,17 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           while ((p < ReadBytes - 1000) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1 || Buffer[p+3] != 0xBD))
             p++;
           TtxFound = AnalyseTtx(&Buffer[p], 98304-p, (p > ReadBytes/2), RecInf->RecHeaderInfo.StartTime, &TtxTime, &TtxTimeSec, &TtxTimeZone, RecInf->ServiceInfo.ServiceName, sizeof(RecInf->ServiceInfo.ServiceName));
-          if(TtxFound && !TtxOK)
-            TtxOK = GetPTS(&Buffer[p], &TtxPCR, NULL) && (TtxPCR != 0);
-          if(TtxOK)
+          if((TtxFound && !TtxOK) || TtxFound >= 2)
+            TtxOK = (GetPTS(&Buffer[p], &TtxPCR, NULL) && (TtxPCR != 0)) ? TtxFound : TtxOK;
+          if(TtxOK >= 2)
           {
 //            printf("  TS: TeletextPID=%hd\n", TeletextPID);
-            TtxPCR = (TtxPCR - 66666) / 45;
             break;
           }
           p++;
         }
+        if(TtxOK)
+          TtxPCR = (TtxPCR - 66666) / 45;
       }
       fclose(fMDIn);
     }
@@ -1666,7 +1669,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               LastEITBuffer = EITBuffer.ValidBuffer;
             }
           }
-          if (!TtxOK && (TeletextPID != 0xffff) && (curPID == TeletextPID))
+          if ((TtxFound <= 1 || TtxOK <= 1) && (TeletextPID != 0xffff) && (curPID == TeletextPID))
           {
             PSBuffer_ProcessTSPacket(&TtxBuffer, curPacket);
             if (TtxBuffer.ValidBuffer != LastTtxBuffer)
@@ -1674,7 +1677,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               byte *pBuffer = (TtxBuffer.ValidBuffer==2) ? TtxBuffer.Buffer2 : TtxBuffer.Buffer1;
 // IDEE: Hier vielleicht den Teletext-String in EventNameDescription schreiben, FALLS Länge größer ist als EventNameLength und !EITOK
 
-              TtxFound = !TtxBuffer.ErrorFlag && AnalyseTtx(pBuffer, TtxBuffer.ValidBufLen, (i > 35), RecInf->RecHeaderInfo.StartTime, &TtxTime, &TtxTimeSec, &TtxTimeZone, ((!SDTOK && !KeepHumaxSvcName) ? RecInf->ServiceInfo.ServiceName : NULL), sizeof(RecInf->ServiceInfo.ServiceName));
+              if (!TtxBuffer.ErrorFlag)
+                TtxFound = AnalyseTtx(pBuffer, TtxBuffer.ValidBufLen, (i > 28), RecInf->RecHeaderInfo.StartTime, &TtxTime, &TtxTimeSec, &TtxTimeZone, ((!SDTOK && !KeepHumaxSvcName) ? RecInf->ServiceInfo.ServiceName : NULL), sizeof(RecInf->ServiceInfo.ServiceName));
 /*              TtxFound = !TtxBuffer.ErrorFlag && AnalyseTtx(pBuffer, TtxBuffer.ValidBufLen, &TtxTime, &TtxTimeSec, &TtxTimeZone, (!EITOK ? RecInf->EventInfo.EventNameDescription : ((!SDTOK && !KeepHumaxSvcName) ? RecInf->ServiceInfo.ServiceName : NULL)), sizeof(RecInf->ServiceInfo.ServiceName));
               if (!EITOK && *RecInf->EventInfo.EventNameDescription)
               {
@@ -1687,8 +1691,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               LastTtxBuffer = TtxBuffer.ValidBuffer;
             }
           }
-          if(TtxFound && !TtxOK)
-            TtxOK = (GetPCRms(p, &TtxPCR) && TtxPCR != 0);
+          if((TtxFound && !TtxOK) || (TtxFound >= 2 && TtxOK <= 1))
+            TtxOK = (GetPCRms(p, &TtxPCR) && (TtxPCR != 0)) ? TtxFound : TtxOK;
           if (!VidOK)
           {
             if ((!PMTPID || (curPID == VideoPID)) && curPacket->Payload_Unit_Start)
@@ -1741,7 +1745,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               }
             }
           }
-          if(((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT)                                                                      || (EITOK && SDTOK)) && (TtxOK || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
+          if(((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT)                                                                      || (EITOK && SDTOK)) && (TtxOK>=2 || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
             break;
           p += PACKETSIZE;
         }
@@ -1752,7 +1756,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0) && AllPidsScanned; k++)
             if (!AudioPIDs[k].scanned) AllPidsScanned = FALSE;
         }
-        if(((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT) || (/*HumaxSource || EycosSource ||*/ AllPidsScanned || MedionMode==1) || (EITOK && SDTOK)) && (TtxOK || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
+        if(((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT) || (/*HumaxSource || EycosSource ||*/ AllPidsScanned || MedionMode==1) || (EITOK && SDTOK)) && (TtxOK>=2 || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
         {
           ret = TRUE;
           break;
