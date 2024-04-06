@@ -727,7 +727,7 @@ static bool AnalyseTtx(byte *PSBuffer, int BufSize, bool AcceptTimeString, tPVRT
           if (magazin == 0) magazin = 8;
           row = row >> 3;
 
-          if ((magazin == 8 && row == 30 && data_block[1] == 0xA8) || (AcceptTimeString && magazin < 8 && row == 0 && data_block[1] == 0xA8))
+          if ((magazin == 8 && row == 30 && data_block[1] == 0xA8) || (AcceptTimeString && magazin < 8 && row == 0))
           {
             int i;
             byte packet_format = hamming_decode_rev(data_block[0]) & 0x0e;
@@ -756,7 +756,7 @@ static bool AnalyseTtx(byte *PSBuffer, int BufSize, bool AcceptTimeString, tPVRT
               }
               rtrim(programme);
 
-              if (magazin == 8)
+              if (magazin == 8 && packet_format <= 2)
               {
                 if(ServiceName && !KeepHumaxSvcName)
                 {
@@ -785,9 +785,11 @@ printf("  TS: Teletext Possible Time String: '%s'\n", programme);
                   *TtxTime = Unix2TFTime(MakeUnixTime((word)(year + 2000), (byte)month, (byte)day, (byte)hour, (byte)minute, (byte)second, TtxTimeZone), TtxTimeSec, TRUE);
                 else if (sscanf(programme, "t%*2[A-Za-z] %2u.%2u. %2u:%2u:%2u", &day, &month, &hour, &minute, &second) == 5)
                   *TtxTime = Unix2TFTime(MakeUnixTime(timeinfo.tm_year+1900, (byte)month, (byte)day, (byte)hour, (byte)minute, (byte)second, TtxTimeZone), TtxTimeSec, TRUE);
-                if (sscanf(programme, "ns%2u.%2u.%2u%2u:%2u:%2u", &day, &month, &year, &hour, &minute, &second) == 6)
+                else if (sscanf(programme, "ns%2u.%2u.%2u%2u:%2u:%2u", &day, &month, &year, &hour, &minute, &second) == 6)
                   *TtxTime = Unix2TFTime(MakeUnixTime((word)(year + 2000), (byte)month, (byte)day, (byte)hour, (byte)minute, (byte)second, TtxTimeZone), TtxTimeSec, TRUE);
                 else if (sscanf(programme, "Brbg%2u.%2u.%2u:%2u:%2u", &day, &month, &hour, &minute, &second) == 5)
+                  *TtxTime = Unix2TFTime(MakeUnixTime(timeinfo.tm_year+1900, (byte)month, (byte)day, (byte)hour, (byte)minute, (byte)second, TtxTimeZone), TtxTimeSec, TRUE);
+                else if (sscanf(programme, "ITAL%2u.%2u. %2u:%2u:%2u", &day, &month, &hour, &minute, &second) == 5)
                   *TtxTime = Unix2TFTime(MakeUnixTime(timeinfo.tm_year+1900, (byte)month, (byte)day, (byte)hour, (byte)minute, (byte)second, TtxTimeZone), TtxTimeSec, TRUE);
                 else if (sscanf(programme, " ,%2u.%2u.%2u%2u:%2u:%2u", &day, &month, &year, &hour, &minute, &second) == 6)
                   *TtxTime = Unix2TFTime(MakeUnixTime((word)(year + 2000), (byte)month, (byte)day, (byte)hour, (byte)minute, (byte)second, TtxTimeZone), TtxTimeSec, TRUE);
@@ -799,14 +801,14 @@ printf("  TS: Teletext Possible Time String: '%s'\n", programme);
                   *TtxTime = Unix2TFTime(MakeUnixTime((word)(year + 2000), (byte)month, (byte)day, (byte)hour, (byte)minute, (byte)second, TtxTimeZone), TtxTimeSec, TRUE);
                 else if (sscanf(programme, " %*2[A-Za-z] %2u %*3[A-Za-z]%2u:%2u:%2u", &day, &hour, &minute, &second) == 4)
                   *TtxTime = Unix2TFTime(MakeUnixTime(timeinfo.tm_year+1900, timeinfo.tm_mon+1, (byte)day, (byte)hour, (byte)minute, (byte)second, TtxTimeZone), TtxTimeSec, TRUE);
+                else if (sscanf(programme, "%*3[A-Za-z].%2u.%*3[A-Za-z]%2u:%2u:%2u", &day, &hour, &minute, &second) == 4)
+                  *TtxTime = Unix2TFTime(MakeUnixTime(timeinfo.tm_year+1900, timeinfo.tm_mon+1, (byte)day, (byte)hour, (byte)minute, (byte)second, TtxTimeZone), TtxTimeSec, TRUE);
 
                 if (TtxTimeZone && *TtxTimeZone)
-                {
                   *TtxTimeZone = -*TtxTimeZone;
-printf("  TS: Teletext date*: %s (GMT%+d)\n", TimeStrTF(*TtxTime, *TtxTimeSec), -*TtxTimeZone/3600);
-                }
                 if (TtxTime && *TtxTime)
                 {
+printf("  TS: Teletext date*: %s (GMT%+d)\n", TimeStrTF(*TtxTime, *TtxTimeSec), -*TtxTimeZone/3600);
                   TRACEEXIT;
                   return TRUE;
                 }
@@ -1152,6 +1154,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         {
           while ((p < ReadBytes - 1000) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1))
             p++;
+          
           if (FirstFilePTSOK < 3 && GetPTS(&Buffer[p], &curPTS, NULL))
           {
             if (FindPictureHeader(&Buffer[p], min(200, (int)(&Buffer[ReadBytes]-&Buffer[p])), &FrameType, NULL))
@@ -1272,15 +1275,23 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     {
       if ((ReadBytes = (int)fread(Buffer, 1, 98304, fMDIn)) > 0)
       {
-        int p = 0;
+        dword FirstTtxPTS = 0;
+        int p = 0, res = 0;
 
         while (p < ReadBytes - 1000)
         {
           while ((p < ReadBytes - 1000) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1 || Buffer[p+3] != 0xBD))
             p++;
-          TtxFound = AnalyseTtx(&Buffer[p], 98304-p, (p > ReadBytes/2), RecInf->RecHeaderInfo.StartTime, &TtxTime, &TtxTimeSec, &TtxTimeZone, RecInf->ServiceInfo.ServiceName, sizeof(RecInf->ServiceInfo.ServiceName));
-          if((TtxFound && !TtxOK) || TtxFound >= 2)
-            TtxOK = (GetPTS(&Buffer[p], &TtxPCR, NULL) && (TtxPCR != 0)) ? TtxFound : TtxOK;
+
+          // For Teletext-Stream with unmatched PTS -> enable special mode with offset
+          if (!FirstTtxPTS)
+            if (GetPTS(&Buffer[p], &FirstTtxPTS, NULL) && FirstTtxPTS && (abs((int)(FirstTtxPTS - FirstFilePTS)) > 450000))
+              TtxPTSOffset = FirstFilePTS - FirstTtxPTS;
+
+          res = AnalyseTtx(&Buffer[p], 98304-p, (p > ReadBytes/2), RecInf->RecHeaderInfo.StartTime, &TtxTime, &TtxTimeSec, &TtxTimeZone, RecInf->ServiceInfo.ServiceName, sizeof(RecInf->ServiceInfo.ServiceName));
+          if(res > TtxFound) TtxFound = res;
+          if((TtxFound && !TtxOK) || (TtxFound >= 2 && TtxOK <= 1))
+            TtxOK = (GetPTS(&Buffer[p], &TtxPTS, NULL) && (TtxPTS != 0)) ? TtxFound : TtxOK;
           if(TtxOK >= 2)
           {
 //            printf("  TS: TeletextPID=%hd\n", TeletextPID);
@@ -1289,7 +1300,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           p++;
         }
         if(TtxOK)
-          TtxPCR = (TtxPCR - 66666) / 45;
+          TtxPCR = (TtxPTS + TtxPTSOffset - 66666) / 45;
       }
       fclose(fMDIn);
     }
@@ -1674,11 +1685,15 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             PSBuffer_ProcessTSPacket(&TtxBuffer, curPacket);
             if (TtxBuffer.ValidBuffer != LastTtxBuffer)
             {
-              byte *pBuffer = (TtxBuffer.ValidBuffer==2) ? TtxBuffer.Buffer2 : TtxBuffer.Buffer1;
+              byte *pBuffer = (TtxBuffer.ValidBuffer==2) ? TtxBuffer.Buffer2 : TtxBuffer.Buffer1; int res = 0;
 // IDEE: Hier vielleicht den Teletext-String in EventNameDescription schreiben, FALLS Länge größer ist als EventNameLength und !EITOK
 
               if (!TtxBuffer.ErrorFlag)
-                TtxFound = AnalyseTtx(pBuffer, TtxBuffer.ValidBufLen, (i > 28), RecInf->RecHeaderInfo.StartTime, &TtxTime, &TtxTimeSec, &TtxTimeZone, ((!SDTOK && !KeepHumaxSvcName) ? RecInf->ServiceInfo.ServiceName : NULL), sizeof(RecInf->ServiceInfo.ServiceName));
+                if ((res = AnalyseTtx(pBuffer, TtxBuffer.ValidBufLen, (i > 28), RecInf->RecHeaderInfo.StartTime, &TtxTime, &TtxTimeSec, &TtxTimeZone, ((!SDTOK && !KeepHumaxSvcName) ? RecInf->ServiceInfo.ServiceName : NULL), sizeof(RecInf->ServiceInfo.ServiceName))) > TtxFound)
+                {
+                  GetPTS(pBuffer, &TtxPTS, NULL);
+                  TtxFound = res;
+                }
 /*              TtxFound = !TtxBuffer.ErrorFlag && AnalyseTtx(pBuffer, TtxBuffer.ValidBufLen, &TtxTime, &TtxTimeSec, &TtxTimeZone, (!EITOK ? RecInf->EventInfo.EventNameDescription : ((!SDTOK && !KeepHumaxSvcName) ? RecInf->ServiceInfo.ServiceName : NULL)), sizeof(RecInf->ServiceInfo.ServiceName));
               if (!EITOK && *RecInf->EventInfo.EventNameDescription)
               {
@@ -1686,7 +1701,6 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                 if (!SDTOK && !KeepHumaxSvcName)
                   strncpy(RecInf->ServiceInfo.ServiceName, RecInf->EventInfo.EventNameDescription, sizeof(RecInf->ServiceInfo.ServiceName));
               } */
-              GetPTS(pBuffer, &TtxPTS, NULL);
               TtxBuffer.ErrorFlag = FALSE;
               LastTtxBuffer = TtxBuffer.ValidBuffer;
             }
@@ -2017,10 +2031,29 @@ printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStrTF(StartTime, 0), time_offset /
   else
     printf("  Duration calculation failed (missing PCR). Using 120 minutes.\n");
 
+  if (!HumaxSource && !(EycosSource && RecInf->RecHeaderInfo.StartTime) && !(MedionMode && RecInf->RecHeaderInfo.StartTimeSec))
+  {
+    tPVRTime FileTimeTF = Unix2TFTime(RecFileTimeStamp, NULL, FALSE);
+
+    RecInf->RecHeaderInfo.StartTime = EPG2TFTime(RecInf->EventInfo.StartTime, NULL);  // EventStart in lokale Zeit konvertieren und als StartTime setzen
+
+    // Wenn rec-Datei am selben oder nächsten Tag geändert wurde, wie das EPG-Event -> nimm Datum der Datei (TODO: ABER inf dann nicht überschreiben?)
+    if (!RecInf->EventInfo.StartTime || ((MJD(FileTimeTF) - MJD(RecInf->RecHeaderInfo.StartTime) <= 1) && (FileTimeTF > RecInf->RecHeaderInfo.StartTime)))
+    {
+      byte sec;
+      printf("  TS: Setting start time to file time instead EPG event start.\n");
+      FileTimeTF = Unix2TFTime(RecFileTimeStamp /*- (RecInf->RecHeaderInfo.DurationMin*60 + RecInf->RecHeaderInfo.DurationSec)*/, &sec, TRUE);
+      RecInf->RecHeaderInfo.StartTime = FileTimeTF;
+      RecInf->RecHeaderInfo.StartTimeSec = sec;
+    }
+  }
   if(TtxTime && TtxPCR)
   {
     dword FirstPCRms = (dword)(FirstFilePCR / 27000);
     int dPCR = 0;
+
+    if (MJD(TtxTime) < 40952)
+      TtxTime = DATE(MJD(RecInf->RecHeaderInfo.StartTime), HOUR(TtxTime), MINUTE(TtxTime));
 
     if(FirstFilePCR && LastFilePCR)
     {
@@ -2037,22 +2070,6 @@ printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStrTF(StartTime, 0), time_offset /
         printf("    -> Enable special PTS fixing mode, Teletext PTS offset=%u.\n", TtxPTSOffset);
       else
         TtxPTSOffset = 0;
-    }
-  }
-  else if (!HumaxSource && !MedionMode && !(EycosSource && RecInf->RecHeaderInfo.StartTime))
-  {
-    tPVRTime FileTimeTF = Unix2TFTime(RecFileTimeStamp, NULL, FALSE);
-
-    RecInf->RecHeaderInfo.StartTime = EPG2TFTime(RecInf->EventInfo.StartTime, NULL);  // EventStart in lokale Zeit konvertieren und als StartTime setzen
-
-    // Wenn rec-Datei am selben oder nächsten Tag geändert wurde, wie das EPG-Event -> nimm Datum der Datei (TODO: ABER inf dann nicht überschreiben?)
-    if (!RecInf->EventInfo.StartTime || ((MJD(FileTimeTF) - MJD(RecInf->RecHeaderInfo.StartTime) <= 1) && (FileTimeTF > RecInf->RecHeaderInfo.StartTime)))
-    {
-      byte sec;
-      printf("  TS: Setting start time to file time instead EPG event start.\n");
-      FileTimeTF = Unix2TFTime(RecFileTimeStamp /*- (RecInf->RecHeaderInfo.DurationMin*60 + RecInf->RecHeaderInfo.DurationSec)*/, &sec, TRUE);
-      RecInf->RecHeaderInfo.StartTime = FileTimeTF;
-      RecInf->RecHeaderInfo.StartTimeSec = sec;
     }
   }
 printf("  TS: StartTime = %s\n", (TimeStrTF(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec)));
