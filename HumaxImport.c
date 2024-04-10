@@ -500,7 +500,7 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   bool                  ret = TRUE;
 
   TRACEENTER;
-  InitInfStruct(RecInf);
+//  InitInfStruct(RecInf);
   KeepHumaxSvcName = FALSE;
 
 //  rewind(fIn);

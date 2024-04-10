@@ -193,7 +193,7 @@ static bool CutFileDecodeBin(FILE *fCut, unsigned long long *OutSavedSize)
 
 static bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
 {
-  char                  Buffer[4096];
+  char                 *Buffer = NULL;
   long long             SavedSize = -1;
   int                   Version = 3;
   int                   SavedNrSegments = -1;
@@ -209,10 +209,17 @@ static bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
   ActiveSegment = 0;
   if (OutSavedSize) *OutSavedSize = 0;
 
+  if (!(Buffer = (char*)malloc(4096)))
+  {
+    printf("CutFileDecodeTxt: Could not allocate buffer!\n");
+    TRACEEXIT;
+    return FALSE;
+  }
+
   if (fCut)
   {
     // Check the first line
-    if (fgets(Buffer, sizeof(Buffer), fCut))
+    if (fgets(Buffer, 4096, fCut))
     {
       if ((strncmp(Buffer, "[MCCut3]", 8)==0) || ((strncmp(Buffer, "[MCCut4]", 8)==0) && ((Version = 4))))
       {
@@ -221,7 +228,7 @@ static bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
       }
     }
 
-    while (ret && (fgets(Buffer, sizeof(Buffer), fCut)))
+    while (ret && (fgets(Buffer, 4096, fCut)))
     {
       //Interpret the following characters as remarks: //
       c = strstr(Buffer, "//");
@@ -312,6 +319,8 @@ static bool CutFileDecodeTxt(FILE *fCut, unsigned long long *OutSavedSize)
     else
       printf("CutFileDecodeTxt: Invalid cut file format!\n");
   }
+
+  free(Buffer);
   TRACEEXIT;
   return ret;
 }

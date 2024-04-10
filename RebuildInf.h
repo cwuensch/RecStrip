@@ -419,6 +419,8 @@ tPVRTime Unix2TFTime(time_t UnixTimeStamp, byte *const outSec, bool convertToLoc
 tPVRTime EPG2TFTime(tPVRTime TFTimeStamp, int *const out_timeoffset);
 tPVRTime AddTimeSec(tPVRTime pvrTime, byte pvrTimeSec, byte *const outSec, int addSeconds);
 word GetMinimalAudioPID(tAudioTrack AudioPIDs[]);
+bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf);
+
 void InitInfStruct(TYPE_RecHeader_TMSS *RecInf);
 bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf);
 //bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf);

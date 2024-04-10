@@ -111,7 +111,7 @@ byte                    PACKETSIZE = 192, PACKETOFFSET = 4, OutPacketSize = 0;
 word                    VideoPID = (word) -1, TeletextPID = (word) -1, SubtitlesPID = (word) -1, TeletextPage = 0;
 tAudioTrack             AudioPIDs[MAXCONTINUITYPIDS];
 word                    ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs = 1;
-bool                    isHDVideo = FALSE, AlreadyStripped = FALSE, HumaxSource = FALSE, EycosSource = FALSE;
+bool                    isHDVideo = FALSE, AlreadyStripped = FALSE, HumaxSource = FALSE, EycosSource = FALSE, DVBViewerSrc = FALSE;
 bool                    DoStrip = FALSE, DoSkip = FALSE, RemoveScrambled = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE, DoInfoOnly = FALSE, DoFixPMT = FALSE, MedionMode = FALSE, MedionStrip = FALSE, WriteDescPackets = TRUE, PMTatStart = FALSE;
 int                     DoCut = 0, DoMerge = 0, DoInfFix = 0;  // DoCut: 1=remove_parts, 2=copy_separate, DoMerge: 1=append, 2=merge  // DoInfFix: 1=enable, 2=inf to be fixed
 int                     curInputFile = 0, NrInputFiles = 1, NrEPGPacks = 0;
@@ -814,9 +814,9 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     else
       ret = FALSE;
 
-    VideoPID = 100;          // künftig: 101   // TODO
-    AudioPIDs[0].pid = 101;  // künftig: 102
-    TeletextPID = 102;       // künftig: 104
+    VideoPID = 101;          // vorher: 100, künftig: 101   // TODO
+    AudioPIDs[0].pid = 102;  // vorher: 101, künftig: 102
+    TeletextPID = 104;       // vorher: 102, künftig: 104
   }
 
   printf("\nInput file: %s\n", RecFileIn);

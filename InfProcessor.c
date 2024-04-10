@@ -171,6 +171,8 @@ bool LoadInfFromRec(char *AbsRecFileName)
     return FALSE;
   }
 
+  InitInfStruct(RecInf);
+
   if (HumaxSource)
   {
     Result = LoadHumaxHeader(fIn, RecInf);
@@ -181,6 +183,8 @@ bool LoadInfFromRec(char *AbsRecFileName)
     Result = LoadEycosHeader(AbsRecFileName, RecInf);
     if (!Result) EycosSource = FALSE;
   }
+  else if (strcmp(&AbsRecFileName[strlen(AbsRecFileName)-3], ".ts") == 0)
+    DVBViewerSrc = LoadDVBViewer(AbsRecFileName, RecInf);
 
   Result = GenerateInfFile(fIn, RecInf);
   

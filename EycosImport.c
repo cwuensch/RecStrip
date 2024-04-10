@@ -63,7 +63,7 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
   bool                  ret = FALSE;
 
   TRACEENTER;
-  InitInfStruct(RecInf);
+//  InitInfStruct(RecInf);
 
   // Zusatz-Dateien von Eycos laden
   strcpy(IfoFile, AbsTrpFileName);
@@ -210,20 +210,21 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
     {
       time_t EvtStartUnix, EvtEndUnix;
       int NameLen = (int) min(strlen(EycosEvent.Title), sizeof(RecInf->EventInfo.EventNameDescription) - 1);
-      int TextLen = sizeof(RecInf->EventInfo.EventNameDescription) - NameLen - 1;
+      int TextLen = sizeof(RecInf->EventInfo.EventNameDescription) - NameLen - 2;
       RecInf->EventInfo.ServiceID = RecInf->ServiceInfo.ServiceID;
-      RecInf->EventInfo.EventNameLength = NameLen;
+      RecInf->EventInfo.EventNameLength = NameLen + 1;
 
-      memset(RecInf->EventInfo.EventNameDescription, 0, sizeof(RecInf->EventInfo.EventNameDescription));
-      memset(RecInf->ExtEventInfo.Text, 0, sizeof(RecInf->ExtEventInfo.Text));
+//      memset(RecInf->EventInfo.EventNameDescription, 0, sizeof(RecInf->EventInfo.EventNameDescription));
+//      memset(RecInf->ExtEventInfo.Text, 0, sizeof(RecInf->ExtEventInfo.Text));
       strncpy(RecInf->EventInfo.EventNameDescription, EycosEvent.Title, NameLen);
-      strncpy(&RecInf->EventInfo.EventNameDescription[NameLen], EycosEvent.ShortDesc, TextLen - 1);
+      RecInf->EventInfo.EventNameDescription[NameLen] = '\0';
+      strncpy(&RecInf->EventInfo.EventNameDescription[NameLen + 1], EycosEvent.ShortDesc, TextLen);
 //      RecInf->EventInfo.EventNameDescription[sizeof(RecInf->EventInfo.EventNameDescription) - 1] = '\0';
       printf("    EventName = %s\n", EycosEvent.Title);
       printf("    EventDesc = %s\n", EycosEvent.ShortDesc);
 
       if(ExtEPGText) free(ExtEPGText);
-      if ((ExtEPGText = (char*) malloc(2048)))
+      if ((ExtEPGText = (char*) malloc(2049)))
       {
         TextLen = 0;
         ExtEPGText[0] = '\0';
@@ -231,8 +232,8 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
         for (k = 0; k < 8; k++)
         {
           char *pCurDesc = ((k > 0) && ((byte)(EycosEvent.LongDesc[k].DescBlock[0]) < 0x20)) ? &EycosEvent.LongDesc[k].DescBlock[1] : EycosEvent.LongDesc[k].DescBlock;
-          NameLen = min((int)strlen(pCurDesc), 2048 - TextLen - 1);
-          strncpy(&ExtEPGText[TextLen], pCurDesc, 2048 - TextLen - 1);
+          NameLen = min((int)strlen(pCurDesc), 2048 - TextLen);
+          strncpy(&ExtEPGText[TextLen], pCurDesc, 2048 - TextLen);
           TextLen += NameLen;
           if(NameLen < 248) break;
         }
@@ -241,9 +242,9 @@ if (strlen(ExtEPGText) != TextLen)
   printf("ASSERT: ExtEventTextLength (%d) != length of ExtEventText (%d)!\n", TextLen, strlen(ExtEPGText));
 #endif
         ExtEPGText[TextLen] = '\0';
-        RecInf->ExtEventInfo.TextLength = TextLen;
-        strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, min(TextLen, (int)sizeof(RecInf->ExtEventInfo.Text) - 1));
-//        RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] = '\0';
+        RecInf->ExtEventInfo.TextLength = min(TextLen, (int)sizeof(RecInf->ExtEventInfo.Text) - 1);
+        strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, RecInf->ExtEventInfo.TextLength);
+        RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] = '\0';
         printf("    EPGExtEvt = %s\n", ExtEPGText);
       }
       else
