@@ -799,6 +799,10 @@ printf("  TS: Teletext Possible Time String: '%s'\n", programme);
                   *TtxTime = Unix2TFTime(MakeUnixTime((word)(year + 2000), (byte)month, (byte)day, (byte)hour, (byte)minute, (byte)second, TtxTimeZone), TtxTimeSec, TRUE);
                 else if (sscanf(programme, " %2u.%2u.%2u%2u:%2u:%2u", &day, &month, &year, &hour, &minute, &second) == 6)
                   *TtxTime = Unix2TFTime(MakeUnixTime((word)(year + 2000), (byte)month, (byte)day, (byte)hour, (byte)minute, (byte)second, TtxTimeZone), TtxTimeSec, TRUE);
+                else if (sscanf(programme, "  %*2[A-Za-z] %2u.%2u.%2u:%2u:%2u", &day, &month, &hour, &minute, &second) == 5)
+                  *TtxTime = Unix2TFTime(MakeUnixTime(timeinfo.tm_year+1900, (byte)month, (byte)day, (byte)hour, (byte)minute, (byte)second, TtxTimeZone), TtxTimeSec, TRUE);
+                else if (sscanf(programme, "%*2[A-Za-z] %2u.%2u. %2u:%2u:%2u", &day, &month, &hour, &minute, &second) == 5)
+                  *TtxTime = Unix2TFTime(MakeUnixTime(timeinfo.tm_year+1900, (byte)month, (byte)day, (byte)hour, (byte)minute, (byte)second, TtxTimeZone), TtxTimeSec, TRUE);
                 else if (sscanf(programme, " %*2[A-Za-z] %2u %*3[A-Za-z]%2u:%2u:%2u", &day, &hour, &minute, &second) == 4)
                   *TtxTime = Unix2TFTime(MakeUnixTime(timeinfo.tm_year+1900, timeinfo.tm_mon+1, (byte)day, (byte)hour, (byte)minute, (byte)second, TtxTimeZone), TtxTimeSec, TRUE);
                 else if (sscanf(programme, "%*3[A-Za-z].%2u.%*3[A-Za-z]%2u:%2u:%2u", &day, &hour, &minute, &second) == 4)
@@ -2058,7 +2062,8 @@ printf("  TS: EvtStart  = %s (GMT%+d)\n", TimeStrTF(StartTime, 0), time_offset /
     if(FirstFilePCR && LastFilePCR)
     {
       dword LastPCRms = (dword)(LastFilePCR / 27000);
-      if ((TtxPCR + 10000 >= FirstPCRms) && (TtxPCR <= LastPCRms))
+      if (LastPCRms < FirstPCRms) LastPCRms += 95443718;  // Überlauf
+      if (((TtxPCR + 10000 >= FirstPCRms) && (TtxPCR <= LastPCRms)) || ((TtxPCR+95443718 + 10000 >= FirstPCRms) && (TtxPCR+95443718 <= LastPCRms)))
         dPCR = DeltaPCRms(FirstPCRms, TtxPCR);
     }
     RecInf->RecHeaderInfo.StartTime = AddTimeSec(TtxTime, TtxTimeSec, &RecInf->RecHeaderInfo.StartTimeSec, -dPCR / 1000);

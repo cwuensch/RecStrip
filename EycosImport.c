@@ -176,9 +176,9 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
 
             for (k = 0; k < NrAudio; k++)
             {
-              if (EycosHeader.AudioNames[k] == EycosHeader.Pids[j].PID)
+              if (*((word*) &EycosHeader.AudioNames[2*k]) == EycosHeader.Pids[j].PID)
               {
-                strncpy(AudioPIDs[k].desc, &((char*)EycosHeader.AudioNames)[NrAudio*2 + k*4], 3);
+                strncpy(AudioPIDs[k].desc, &EycosHeader.AudioNames[max(NrAudio*2, 6) + k*4], 3);
                 break;
               }
             }
