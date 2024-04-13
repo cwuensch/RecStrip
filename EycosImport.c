@@ -265,8 +265,8 @@ if (HOUR(RecInf->RecHeaderInfo.StartTime) != EycosEvent.EvtStartHour || MINUTE(R
 //  printf("ASSERT: Eycos Header EndTime (%u:%u) differs from converted time (%u:%u)!\n", EycosEvent.EvtEndHour, EycosEvent.EvtEndMin, HOUR(RecInf->EventInfo.EndTime), MINUTE(RecInf->EventInfo.EndTime));
 #endif
 //      RecInf->RecHeaderInfo.DurationMin = (word)((EvtEndUnix - EvtStartUnix) / 60);
-      RecInf->EventInfo.DurationHour    = (byte)((EvtEndUnix - EvtStartUnix) / 60);
-      RecInf->EventInfo.DurationMin     = (word)((EvtEndUnix - EvtStartUnix) % 60);
+      RecInf->EventInfo.DurationHour    = (byte)((EvtEndUnix - EvtStartUnix) / 3600);
+      RecInf->EventInfo.DurationMin     = (word)(((EvtEndUnix - EvtStartUnix) / 60) % 60);
       printf("    EvtStart  = %s (local)\n", TimeStrTF(RecInf->RecHeaderInfo.StartTime, 0));
       printf("    EvtDuration = %02d:%02d\n", RecInf->EventInfo.DurationHour, RecInf->EventInfo.DurationMin);
     }

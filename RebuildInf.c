@@ -253,7 +253,7 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
 {
   FILE                 *fLog;
   char                  LogFile[FBLIB_DIR_SIZE], *Buffer = NULL, *p;
-  time_t                UnixTime1, UnixTime2, Duration;
+  time_t                UnixTime1 = 0, UnixTime2 = 0, Duration;
   dword                 day=0, month=0, year=0, hour=0, minute=0, second=0, startH, startM, endH, endM;
   int                   NameLen = 0, c, i;
   bool                  ret = FALSE;
@@ -284,7 +284,7 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
           switch (i)
           {
             case 0:
-              c = strlen(Buffer);
+              c = (int)strlen(Buffer);
               if(c > 10)
               {
                 ret = ret && (sscanf(&Buffer[c-10], "%2u.%2u.%4u", &day, &month, &year) == 3);
@@ -294,7 +294,7 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
               }
               break;
             case 2:
-              NameLen = min(strlen(Buffer), sizeof(RecInf->EventInfo.EventNameDescription) - 1);
+              NameLen = (int) min(strlen(Buffer), sizeof(RecInf->EventInfo.EventNameDescription) - 1);
               RecInf->EventInfo.EventNameLength = NameLen + 1;
               strncpy(RecInf->EventInfo.EventNameDescription, Buffer, NameLen);
               RecInf->EventInfo.EventNameDescription[NameLen] = '\0';
@@ -311,12 +311,15 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
                 RecInf->EventInfo.DurationHour = (byte) (Duration / 3600);
                 RecInf->EventInfo.DurationMin = (byte) ((Duration / 60) % 60);
                 UnixTime1 = 0;
-                break;
               }
+              else i = 8;
+              break;
             case 5:
               if (NameLen < sizeof(RecInf->EventInfo.EventNameDescription) - 1)
+              {
                 strncpy(&RecInf->EventInfo.EventNameDescription[NameLen + 1], Buffer, sizeof(RecInf->EventInfo.EventNameDescription) - NameLen - 2);
                 printf("    EventDesc = %s\n", Buffer);
+              }
               break;
             case 7:
             {
@@ -332,10 +335,10 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
               strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, RecInf->ExtEventInfo.TextLength);
               RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] = '\0';
               printf("    EPGExtEvt = %s\n", ExtEPGText);
-
               break;
             }
             default:
+            {
               if (sscanf(Buffer, "%2u:%2u:%2u", &hour, &minute, &second) == 3)
               {
                 UnixTime2 = MakeUnixTime(year, month, ((UnixTime1==0 || hour>startH || (hour==startH && minute>=startM)) ? day : day+1), hour, minute, second, NULL);
@@ -347,15 +350,19 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
                 }
               }
               break;
+            }
           }
         }
       }
-      RecInf->RecHeaderInfo.StartTime = Unix2TFTime(UnixTime1, &RecInf->RecHeaderInfo.StartTimeSec, TRUE);
-      Duration = (UnixTime2 - UnixTime1);
-      RecInf->RecHeaderInfo.DurationMin = (word) (Duration / 60);
-      RecInf->RecHeaderInfo.DurationSec = (byte) (Duration % 60);
-      printf("    EvtStart  = %s (UTC)\n", TimeStrTF(RecInf->EventInfo.StartTime, 0));
-      printf("    EvtDuration = %02d:%02d\n", RecInf->EventInfo.DurationHour, RecInf->EventInfo.DurationMin);
+      if (UnixTime1)
+      {
+        RecInf->RecHeaderInfo.StartTime = Unix2TFTime(UnixTime1, &RecInf->RecHeaderInfo.StartTimeSec, TRUE);
+        Duration = (UnixTime2 - UnixTime1);
+        RecInf->RecHeaderInfo.DurationMin = (word) (Duration / 60);
+        RecInf->RecHeaderInfo.DurationSec = (byte) (Duration % 60);
+        printf("    EvtStart  = %s (UTC)\n", TimeStrTF(RecInf->EventInfo.StartTime, 0));
+        printf("    EvtDuration = %02d:%02d\n", RecInf->EventInfo.DurationHour, RecInf->EventInfo.DurationMin);
+      }
       free(Buffer);
     }
     else
@@ -783,7 +790,7 @@ printf("  TS: EventDesc = %s\n", &RecInf->EventInfo.EventNameDescription[NameLen
         }
         strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, min(ExtEPGTextLen, (int)sizeof(RecInf->ExtEventInfo.Text)));
         RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] = '\0';
-        RecInf->ExtEventInfo.TextLength = (word) min(ExtEPGTextLen, sizeof(RecInf->ExtEventInfo.Text) - 1);
+        RecInf->ExtEventInfo.TextLength = (word) min(ExtEPGTextLen, (int)sizeof(RecInf->ExtEventInfo.Text) - 1);
 printf("  TS: EPGExtEvt = %s\n", ExtEPGText);
 
         if (DoInfoOnly)
