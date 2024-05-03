@@ -772,6 +772,8 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
   }
   NrContinuityPIDs = 1;
   memset(AudioPIDs, 0, MAXCONTINUITYPIDS * sizeof(tAudioTrack));
+  for (k = 0; k < MAXCONTINUITYPIDS; k++)
+    AudioPIDs[k].streamType = STREAMTYPE_UNKNOWN;
   memset(FileDefect, 0, MAXCONTINUITYPIDS * sizeof(tContinuityError));
   NrContErrsInFile = 0;
   LastContErrPos = 0;

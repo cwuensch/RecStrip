@@ -503,7 +503,7 @@ printf("\n    DESC: Type=TSDesc, Size=%d, Len=%hhu, Tag=0x%02hhx (%c), Data=0x%0
         {
           dword DescrPt = ElemPt + sizeof(tElemStream);
           int DescrLength = ElemLength;
-          int streamType = 0;
+          int streamType = STREAMTYPE_UNKNOWN;
           byte DescType = 0;
 
           while (DescrLength > 0)
@@ -529,7 +529,7 @@ printf("\n    DESC: Type=Teletext, Size=%d, Len=%hhu, Data=0x%02hhx, Lang=%.3s",
                   TeletextPID = PID;
                   printf("\n  TS: TeletextPID=%hd [%.3s]", TeletextPID, Desc->LanguageCode);
                 }
-                streamType = 1;
+                streamType = STREAMTYPE_TELETEXT;
                 for (i = 0; i < Desc->DescrLength / 5; i++)
                 {
                   if (Desc3->ttx[i].teletext_type == 1)
@@ -556,7 +556,7 @@ printf("\n    DESC: Type=Subtitle, Size=%d, Len=%hhu, Data=0x%02hhx, Lang=%.3s",
                   SubtitlesPID = PID;
                   printf("\n  TS: SubtitlesPID=%hd [%.3s]", SubtitlesPID, Desc->LanguageCode);
                 }
-                streamType = 2;
+                streamType = STREAMTYPE_SUBTITLE;
                 DescType = Desc->subtitling_type + 1;  // plus 1, because 0 = unset
               }
 
@@ -619,14 +619,14 @@ printf("\n    DESC: Type=TSDesc, Size=%d, Len=%hhu, Tag=0x%02hhx (%c), Data=0x%0
             DescrLength -= (Desc->DescrLength + sizeof(tTSDesc));
           }
 
-          if ((k < MAXCONTINUITYPIDS) && !AudioPIDs[k].scanned && AudioPIDs[k].streamType == 0)
+          if ((k < MAXCONTINUITYPIDS) && !AudioPIDs[k].scanned && AudioPIDs[k].streamType == STREAMTYPE_AUDIO)
           {
             if (Elem->stream_type == 6 && !isAC3) break;
             AudioPIDs[k].pid = PID;
             AudioPIDs[k].type = Elem->stream_type;  // (Elem->stream_type == STREAM_AUDIO_MPEG2) ? 0 : (Elem->stream_type == STREAM_AUDIO_MPEG1 ? 1 : Elem->stream_type);
             AudioPIDs[k].sorted = TRUE;
             AudioPIDs[k].streamId = StreamTag;
-            AudioPIDs[k].streamType = ((Elem->stream_type != 0x06) || isAC3) ? 0 : 3;
+            AudioPIDs[k].streamType = ((Elem->stream_type != 0x06) || isAC3) ? STREAMTYPE_AUDIO : STREAMTYPE_UNKNOWN;
             strncpy(AudioPIDs[k].desc, LangCode, 3);
             AudioPIDs[k].desc_flag = DescType + 1;  // plus 1, because 0 = unset
           }
@@ -1020,7 +1020,7 @@ if (TtxTimeZone && time_offset != -*TtxTimeZone && (MedionMode || HumaxSource ||
 
 // Audio Substream Headers: https://web.archive.org/web/20220721025819/http://stnsoft.com/DVD/ass-hdr.html
 // AC3-Header: https://web.archive.org/web/20220120112704/http://stnsoft.com/DVD/ac3hdr.html
-static bool AnalyseAudio(byte *PSBuffer, int BufSize, word pid, tAudioTrack *const AudioTrack)
+static tStreamType AnalyseAudio(byte *PSBuffer, int BufSize, word pid, tAudioTrack *const AudioTrack)
 {
   int                   p = 0;
   dword                 History = 0xffffffff;
@@ -1045,13 +1045,15 @@ static bool AnalyseAudio(byte *PSBuffer, int BufSize, word pid, tAudioTrack *con
         const float AC3Sampling[] = {48, 44.1f, 32, 0};
         const short AC3Bitrates[] = {32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 384, 448, 512, 576, 640};
 
-        if (AudioTrack && !AudioTrack->type)
-          AudioTrack->type = STREAM_AUDIO_MPEG4_AC3_PLUS;
-
+        if (AudioTrack)
+        {
+          AudioTrack->streamType = STREAMTYPE_AUDIO;
+          if(!AudioTrack->type) AudioTrack->type = STREAM_AUDIO_MPEG4_AC3_PLUS;
+        }
         printf("  TS: PID=%d, AudioType: AC3 @ %.1f kHz, %hd kbit/s", pid, AC3Sampling[(PSBuffer[p] & 0xc0)], ((PSBuffer[p] & 0x3f) < 38) ? AC3Bitrates[(PSBuffer[p] & 0x3f) / 2] : -1);
         if(*AudioTrack->desc) printf(" [%s]\n", AudioTrack->desc); else printf("\n");
         TRACEEXIT;
-        return TRUE;
+        return STREAMTYPE_AUDIO;
       }
       else if (History == 0x7FFE8001)
       {
@@ -1061,13 +1063,15 @@ static bool AnalyseAudio(byte *PSBuffer, int BufSize, word pid, tAudioTrack *con
 
         tDTSHeader *DTSHeader = (tDTSHeader*) &PSBuffer[p-4];
         byte rate = DTSHeader->rate1 << 3 | DTSHeader->rate2;
-        if (AudioTrack && !AudioTrack->type)
-          AudioTrack->type = STREAM_AUDIO_MPEG4_DTS;
-
+        if (AudioTrack)
+        {
+          AudioTrack->streamType = STREAMTYPE_AUDIO;
+          if(!AudioTrack->type) AudioTrack->type = STREAM_AUDIO_MPEG4_DTS;
+        }
         printf("  TS: PID=%d, AudioType: DTS @ %.1f kHz, %hd kbit/s", pid, DTSSampling[DTSHeader->sfreq], ((rate == 0x0F) ? 768 : ((rate == 0x18) ? 1536 : 0)));
         if(*AudioTrack->desc) printf(" [%s]\n", AudioTrack->desc); else printf("\n");
         TRACEEXIT;
-        return TRUE;
+        return STREAMTYPE_AUDIO;
       }
       else if (History == 0x000001BD) // && (PSBuffer[p] == 0x10) && ((PSBuffer[p+1] & 0xfe) == 0x02))
       {
@@ -1078,26 +1082,26 @@ static bool AnalyseAudio(byte *PSBuffer, int BufSize, word pid, tAudioTrack *con
           printf("  TS: PID=%d, Teletext stream", pid);
           if (AudioTrack)
           {
-            AudioTrack->streamType = 1;
+            AudioTrack->streamType = STREAMTYPE_TELETEXT;
             if(*AudioTrack->desc) printf(" [%s]\n", AudioTrack->desc); else printf("\n");
           }
           if ((TeletextPID == (word)-1) || (AudioTrack && *AudioTrack->desc && (strncmp(AudioTrack->desc, "deu", 3) == 0 || strncmp(AudioTrack->desc, "ger", 3) == 0)))
             TeletextPID = pid;
           TRACEEXIT;
-          return TRUE;
+          return STREAMTYPE_TELETEXT;
         }
         else if (ttxHeader->data_identifier == 0x20)  // = EBU Subtitles (?)
         {
           printf("  TS: PID=%d, DVB subtitles stream", pid);
           if (AudioTrack)
           {
-            AudioTrack->streamType = 2;
+            AudioTrack->streamType = STREAMTYPE_SUBTITLE;
             if(*AudioTrack->desc) printf(" [%s]\n", AudioTrack->desc); else printf("\n");
           }
           if ((SubtitlesPID == (word)-1) || (AudioTrack && *AudioTrack->desc && (strncmp(AudioTrack->desc, "deu", 3) == 0 || strncmp(AudioTrack->desc, "ger", 3) == 0)))
             SubtitlesPID = pid;
           TRACEEXIT;
-          return TRUE;
+          return STREAMTYPE_SUBTITLE;
         }
       }
     }
@@ -1111,6 +1115,7 @@ static bool AnalyseAudio(byte *PSBuffer, int BufSize, word pid, tAudioTrack *con
       printf("  TS: PID=%d, AudioType: MPEG%d, Layer %d @ %.1f kHz, %s, %hd kbit/s", pid, 2-SeqHeader->MpegVersion, 4-SeqHeader->Layer, AudioSampling[SeqHeader->SamplingFreq], AudioModes[SeqHeader->Mode], ((SeqHeader->Layer==2) ? Bitrates[SeqHeader->BitrateIndex]: SeqHeader->BitrateIndex*32));
       if (AudioTrack)
       {
+        AudioTrack->streamType = STREAMTYPE_AUDIO;
         AudioTrack->type    = (SeqHeader->MpegVersion == 1) ? STREAM_AUDIO_MPEG1 : STREAM_AUDIO_MPEG2;
         AudioTrack->layer   = SeqHeader->Layer;
         AudioTrack->mode    = SeqHeader->Mode;
@@ -1118,13 +1123,13 @@ static bool AnalyseAudio(byte *PSBuffer, int BufSize, word pid, tAudioTrack *con
         if(*AudioTrack->desc) printf(" [%s]\n", AudioTrack->desc); else printf("\n");
       }
       TRACEEXIT;
-      return TRUE;
+      return STREAMTYPE_AUDIO;
     }
     History = (History << 8) | PSBuffer[p++];
   }
 
   TRACEEXIT;
-  return FALSE;
+  return STREAMTYPE_UNKNOWN;
 }
 
 // PES Headers: https://en.wikipedia.org/wiki/Packetized_elementary_stream
@@ -1439,13 +1444,18 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     RecInf->ServiceInfo.ServiceID = 1;
 
     IsLast    = (len>2 && strncmp(&AddFileIn[len-2], "-2", 2) == 0);
-    Contains2 = (IsLast || (len>4 && strncmp(&AddFileIn[len-4], "-2", 2) == 0));
+    Contains2 = (len>4 && strncmp(&AddFileIn[len-4], "-2", 2) == 0);
     IsFirst   = (len>2 && strncmp(&AddFileIn[len-2], "-1", 2) == 0 && !Contains2);
     if (IsLast)
     {
       AddFileIn[len-1] = '1';
       strcpy(&AddFileIn[len], "_epg.txt");
-      if(!HDD_FileExist(AddFileIn)) AddFileIn[len-1] = '2';
+      if(HDD_FileExist(AddFileIn))
+      {
+        if(!Contains2) IsFirst = TRUE;
+      }
+      else
+        AddFileIn[len-1] = '2';
     }
     else if (IsFirst)
     {
@@ -1507,7 +1517,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     if(!RecInf->ServiceInfo.PMTPID) RecInf->ServiceInfo.PMTPID = 256;
     printf("  TS: SID=%hu, PCRPID=%hd, PMTPID=%hd\n", RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID, RecInf->ServiceInfo.PMTPID);
 
-    AudioPIDs[1].streamType = 1;
+    AudioPIDs[0].streamType = STREAMTYPE_AUDIO;
+    AudioPIDs[1].streamType = STREAMTYPE_TELETEXT;
     AudioPIDs[1].pid = TeletextPID;
     RecInf->ServiceInfo.VideoPID = VideoPID;
     RecInf->ServiceInfo.AudioPID = AudioPIDs[0].pid;
@@ -1837,6 +1848,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           }
           if((TtxFound && !TtxOK) || (TtxFound >= 2 && TtxOK <= 1))
             TtxOK = (GetPCRms(p, &TtxPCR) && (TtxPCR != 0)) ? TtxFound : TtxOK;
+
           if (!VidOK)
           {
             if ((!PMTPID || (curPID == VideoPID)) && curPacket->Payload_Unit_Start)
@@ -1865,7 +1877,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             {
               int k;
               for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0) && (AudioPIDs[k].pid != curPID); k++);
-              if ((k < MAXCONTINUITYPIDS) && !AudioPIDs[k].scanned && AudioPIDs[k].streamType != 3)
+              if ((k < MAXCONTINUITYPIDS) && !AudioPIDs[k].scanned && !AudioPIDs[k].streamType)
               {
                 if (AnalyseAudio((byte*)&curPacket->Data + (curPacket->Adapt_Field_Exists ? curPacket->Data[0] + 1 : 0), sizeof(curPacket->Data) - (curPacket->Adapt_Field_Exists ? curPacket->Data[0] - 1 : 0), curPID, &AudioPIDs[k]))
                 {
@@ -1873,22 +1885,23 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                   AudioPIDs[k].scanned = 1;
                   AddContinuityPids(curPID, FALSE);
                   AudOK++;
-                  if ((TeletextPID != TeletextPID_PMT) && !TtxOK)
+                  if (!TtxOK && (TeletextPID != TeletextPID_PMT) && (AudioPIDs[k].streamType == STREAMTYPE_TELETEXT))
                   {
-                    TeletextPID = AudioPIDs[k].pid;
+                    TeletextPID = curPID;
                     TtxBuffer.PID = TeletextPID;
                     PSBuffer_DropCurBuffer(&TtxBuffer);
                     HasTeletext = TRUE;
                   }
-                  else if (AudioPIDs[k].streamType == 2)
+                  else if (AudioPIDs[k].streamType == STREAMTYPE_SUBTITLE)
                     SubtitlesPID = AudioPIDs[k].pid;
                 }
 /*                else
                   if (AudioPIDs[k].pid == curPID)
-                    AudioPIDs[k].streamType = 3;  */
+                    AudioPIDs[k].streamType = STREAMTYPE_UNKNOWN;  */
               }
             }
           }
+
           if(((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT)                                                                      || (EITOK && SDTOK)) && (TtxOK>=2 || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
             break;
           p += PACKETSIZE;
@@ -2014,7 +2027,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                 }
                 else if (FirstFilePTSOK)
                 {
-                  if(FrameType == 2) FirstFilePTSOK = 2;
+                  if(FrameType == 2)
+                    FirstFilePTSOK = 2;
                   if ((FirstFilePTSOK == 2) && ((int)(FirstFilePTS - curPTS) > 0))
                     FirstFilePTS = curPTS;
                 }
@@ -2231,7 +2245,7 @@ printf("  TS: StartTime = %s\n", (TimeStrTF(RecInf->RecHeaderInfo.StartTime, Rec
 void SortAudioPIDs(tAudioTrack AudioPIDs[])
 {
   tAudioTrack           tmp;
-  int                   curPid, minPid, minPos;
+  int                   curPid, minPid, minPos, StreamTypeSort;
   int                   i, j, k;
 
   for (i = 0; (i < MAXCONTINUITYPIDS) && (AudioPIDs[i].pid != 0) && AudioPIDs[i].sorted; i++);  // sortierte überspringen
@@ -2242,14 +2256,15 @@ void SortAudioPIDs(tAudioTrack AudioPIDs[])
     minPos = j;
     for (k = j; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0) && !AudioPIDs[k].sorted; k++)
     {
-      curPid = ((int)1 << (AudioPIDs[j].streamType + 17)) + ((strncmp(AudioPIDs[j].desc, "deu", 3)==0 || strncmp(AudioPIDs[j].desc, "ger", 3)==0) ? 0 : ((int)1 << (AudioPIDs[j].streamType + 16))) + (!AudioPIDs[j].scanned ? 0x200000 : 0) + AudioPIDs[j].pid;
-      if(curPid < minPid && AudioPIDs[j].streamType == 0)
+      StreamTypeSort = (AudioPIDs[j].streamType == STREAMTYPE_UNKNOWN) ? AudioPIDs[j].streamType : 4;
+      curPid = (StreamTypeSort << 17) + (!AudioPIDs[j].scanned ? (int)1 << 16 : 0) + ((strncmp(AudioPIDs[j].desc, "deu", 3)==0 || strncmp(AudioPIDs[j].desc, "ger", 3)==0) ? 0 : ((int)1 << (AudioPIDs[j].streamType + 15))) + AudioPIDs[j].pid;
+      if(curPid < minPid && AudioPIDs[j].streamType != STREAMTYPE_TELETEXT && AudioPIDs[j].streamType != STREAMTYPE_SUBTITLE)
       {
         minPid = curPid;
         minPos = k;
       }
     }
-    if ((minPos != j) && AudioPIDs[minPos].streamType == 0)  // setze Track mit minimaler PID an die aktuelle Position j
+    if ((minPos != j) && AudioPIDs[j].streamType != STREAMTYPE_TELETEXT && AudioPIDs[j].streamType != STREAMTYPE_SUBTITLE)  // setze Track mit minimaler PID an die aktuelle Position j
     {
       tmp = AudioPIDs[j];
       AudioPIDs[j] = AudioPIDs[minPos];
@@ -2374,7 +2389,7 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPid, word Vid
   // Audio-PIDs
   for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0); k++)
   {
-    if (AudioPIDs[k].scanned && AudioPIDs[k].streamType == 0)
+    if (AudioPIDs[k].scanned && AudioPIDs[k].streamType == STREAMTYPE_AUDIO)
     {
       tTSAudioDesc *Desc    = NULL;
 
@@ -2451,7 +2466,7 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPid, word Vid
       PMT->SectionLen2     += sizeof(tElemStream) + Elem->ESInfoLen2;
     }
 
-    else if ((AudioPIDs[k].streamType == 1) /* && !RemoveTeletext */)
+    else if ((AudioPIDs[k].streamType == STREAMTYPE_TELETEXT) /* && !RemoveTeletext */)
     {
       // Teletext-PID
       tTSTtxDesc *ttxDesc;
@@ -2500,7 +2515,7 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPid, word Vid
       printf("  Teletext Track: PID=%d [%.3s]\n", AudioPIDs[k].pid, ttxDesc->ttx[0].LanguageCode);
     }
   
-    else if (AudioPIDs[k].streamType == 2)
+    else if (AudioPIDs[k].streamType == STREAMTYPE_SUBTITLE)
     {
       // Subtitles-PID
       tTSSubtDesc *subtDesc;

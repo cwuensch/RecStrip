@@ -371,7 +371,26 @@ dword FindPictureHeader(byte *Buffer, int BufferLen, byte *pFrameType, int *pInO
       if (isHDVideo && ((Buffer[startcode] & 0x80) == 0x00))
       {
         // MPEG4 picture header: 
-        if(pFrameType)  *pFrameType = ((Buffer[startcode + 1] >> 5) & 7) + 1;
+        if(pFrameType)
+        {
+          *pFrameType = ((Buffer[startcode + 1] >> 5) & 7) + 1;
+          if (*pFrameType == 3)
+          {
+            while (++i < BufferLen - 4)
+            {
+              if ((Buffer[i] == 0x00) && (Buffer[i + 1] == 0x00) && (Buffer[i + 2] == 0x01))
+              {
+                byte NALType = Buffer[i + 3] & 0x1f;
+                if ((NALType >= NAL_SLICE) && (NALType <= NAL_SLICE_IDR))
+                {
+                  // byte NALRefIdc = ((Buffer[i + 4] >> 5) & 3);
+                  if (((Buffer[i + 3] >> 5) & 3) >= 2) *pFrameType = 2;
+                  break;
+                }
+              }
+            }
+          }
+        }
         TRACEEXIT;
         return startcode + 3;
       }
@@ -687,7 +706,8 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
             #endif
             GetSlicePPSID = TRUE;
             GolombFull = 0;
-            if((navHD.FrameType == 3) && (NALRefIdc >= 2)) navHD.FrameType = 2;
+            if((navHD.FrameType == 3) && (NALRefIdc >= 2))
+              navHD.FrameType = 2;
             break;
           }
 

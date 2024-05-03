@@ -228,6 +228,7 @@ bool GetPidsFromMap(word *const InOutServiceID, word *const OutPMTPID, word *con
           {
             // Set AudioPIDs according to Map
             AudioPIDs[k].pid = (word) strtol(pPid, NULL, 10);
+//            AudioPIDs[k].streamType = STREAMTYPE_AUDIO;
             strncpy(AudioPIDs[k].desc, pLng, 3);
 
             pPid = strtok(NULL, "/;");
@@ -573,6 +574,7 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         if ((i == 4) || (HumaxHeader.ZusInfoID == HumaxTonSpurenID))  // Header 4: Tonspuren
         {
           AudioPIDs[0].pid = HumaxHeader.Allgemein.AudioPID;
+          AudioPIDs[0].streamType = STREAMTYPE_AUDIO;
           AudioPIDs[0].sorted = TRUE;
           
           if (HumaxHeader.ZusInfoID == HumaxTonSpurenID)
@@ -595,6 +597,7 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                 if (k < MAXCONTINUITYPIDS)
                 {
                   AudioPIDs[k].pid = HumaxTonspuren->Items[j].PID;
+                  AudioPIDs[k].streamType = STREAMTYPE_AUDIO;
                   AudioPIDs[k].sorted = TRUE;
                   strncpy(AudioPIDs[k].desc, HumaxTonspuren->Items[j].Name, 3);
                 }

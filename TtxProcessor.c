@@ -590,7 +590,7 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
         for (k = 0; ((k < nrpages) && (pages[k] != page)); k++);
         if ((k >= nrpages) && (nrpages < 8))
         {
-          const uint16_t pageprio[] = { 0x160, 0x150, 0x777, 0x149, 0x571 };
+          const uint16_t pageprio[] = { 0x777, 0x150, 0x151, 0x888, 0x160, 0x161, 0x152, 0x149, 0x571 };  // { 0x160, 0x150, 0x777, 0x149, 0x571 };
 
 //          if (config.page==0 || page==0x160 || (config.page!=0x160 && (page==0x150 || (config.page!=0x160 && (page==0x777 || page==0x149 || (config.page!=0x777 && config.page!=0x149 && (page==0x571 || config.page!=0x571))))))) {
 //          if (config.page==0 || page==0x160 || (page==0x150 && config.page!=0x160) || ((page==0x777 || page==0x149) && config.page!=0x160 && config.page!=0x150) || (page==0x157 && config.page!=0x160 && config.page!=0x150 && config.page!=0x777 && config.page!=0x149)) {

@@ -39,6 +39,14 @@ typedef enum
   STREAM_UNKNOWN                = 0xFF
 } tVideoStreamFmt;
 
+typedef enum
+{
+  STREAMTYPE_UNKNOWN            = 0,
+  STREAMTYPE_AUDIO              = 1,
+  STREAMTYPE_TELETEXT           = 2,
+  STREAMTYPE_SUBTITLE           = 3
+} tStreamType;
+
 
 #if defined(WIN32) || defined(_WIN32) 
   #define PATH_SEPARATOR '\\' 

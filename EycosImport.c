@@ -170,6 +170,7 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
             if (k < MAXCONTINUITYPIDS)
             {
               AudioPIDs[k].pid = EycosHeader.Pids[j].PID;
+//              AudioPIDs[k].streamType = STREAMTYPE_AUDIO;
               AudioPIDs[k].type = (EycosHeader.Pids[j].Type == 0x0a) ? STREAM_AUDIO_MPEG4_AC3_PLUS : STREAM_AUDIO_MPEG2;
               AudioPIDs[k].sorted = TRUE;
             }
