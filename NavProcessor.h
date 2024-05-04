@@ -99,7 +99,6 @@ typedef struct
 
 extern dword            NrFrames;
 extern dword            LastTimems;
-extern int              TimeOffset;
 extern dword           *pOutNextTimeStamp;
 extern FILE            *fNavIn;
 

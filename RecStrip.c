@@ -58,6 +58,7 @@
 #include "NavProcessor.h"
 #include "CutProcessor.h"
 #include "TtxProcessor.h"
+#include "SrtProcessor.h"
 #include "RebuildInf.h"
 #include "NALUDump.h"
 #include "HumaxHeader.h"
@@ -112,7 +113,7 @@ word                    VideoPID = (word) -1, TeletextPID = (word) -1, Subtitles
 tAudioTrack             AudioPIDs[MAXCONTINUITYPIDS];
 word                    ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs = 1;
 bool                    isHDVideo = FALSE, AlreadyStripped = FALSE, HumaxSource = FALSE, EycosSource = FALSE, DVBViewerSrc = FALSE;
-bool                    DoStrip = FALSE, DoSkip = FALSE, RemoveScrambled = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, ExtractAllTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE, DoInfoOnly = FALSE, DoFixPMT = FALSE, MedionMode = FALSE, MedionStrip = FALSE, WriteDescPackets = TRUE, PMTatStart = FALSE;
+bool                    DoStrip = FALSE, DoSkip = FALSE, RemoveScrambled = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, ExtractAllTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE, RebuildSrt = FALSE, DoInfoOnly = FALSE, DoFixPMT = FALSE, MedionMode = FALSE, MedionStrip = FALSE, WriteDescPackets = TRUE, PMTatStart = FALSE;
 int                     DoCut = 0, DoMerge = 0, DoInfFix = 0;  // DoCut: 1=remove_parts, 2=copy_separate, DoMerge: 1=append, 2=merge  // DoInfFix: 1=enable, 2=inf to be fixed
 int                     curInputFile = 0, NrInputFiles = 1, NrEPGPacks = 0;
 int                     dbg_DelBytesSinceLastVid = 0;
@@ -959,6 +960,13 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     }
   }
 
+  // ggf. srt-File laden
+  if (ret)
+  {
+    GetFileNameFromRec(RecFileIn, ".srt", AddFileIn);
+    RebuildSrt = (!ExtractTeletext && ((fTtxIn = fopen(AddFileIn, "rb")) != NULL));
+  }
+
   if (!FirstTime)
   {
     int i;
@@ -1132,14 +1140,28 @@ SONST
     CutFileOut[0] = '\0';
 
   // TeletextOut ermitteln
-  if (ExtractTeletext)
+  if (ExtractTeletext || RebuildSrt)
   {
-/*    if (*RecFileOut)
-      GetFileNameFromRec(RecFileOut, ".srt", TeletextOut);
+    char AbsFileName[FBLIB_DIR_SIZE];
+    if (*RecFileOut)
+      GetFileNameFromRec(RecFileOut, ".srt", AbsFileName);
     else
-      GetFileNameFromRec(RecFileIn, ".srt", TeletextOut); */
-    /*if (*/LoadTeletextOut((*RecFileOut) ? RecFileOut : RecFileIn);
-//    printf("\nTeletext output: %s", TeletextOut);
+      GetFileNameFromRec(RecFileIn, ".srt", AbsFileName);
+
+    if (ExtractTeletext)
+    {
+      if (LoadTeletextOut(AbsFileName))
+        printf("\nTeletext output: %s", AbsFileName);
+      else
+        ExtractTeletext = FALSE;
+    }
+    else if (RebuildSrt)
+    {
+      if (LoadSrtFileOut(AbsFileName))
+        printf("\nSRT file output: %s", AbsFileName);
+      else
+        RebuildSrt = FALSE;
+    }
   }
 
   // Header-Pakete ausgeben
@@ -1186,6 +1208,8 @@ static void CloseInputFiles(bool PrintErrors, bool SetStripFlags, bool SetStartT
       HDD_SetFileDateTime(InfFileIn, OldInfTime);
   }
   CloseNavFileIn();
+  if (fTtxIn) { fclose(fTtxIn); fTtxIn = NULL; }
+  CloseSrtFileIn();
   if(MedionMode == 1) SimpleMuxer_Close();
   if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
 
@@ -1223,6 +1247,7 @@ static bool CloseOutputFiles(void)
       CutFileSave(CutFileOut);
       SaveInfFile(InfFileOut, InfFileFirstIn);
       CloseTeletextOut();
+      CloseSrtFileOut();
       TRACEEXIT;
       return FALSE;
     }
@@ -1247,6 +1272,8 @@ static bool CloseOutputFiles(void)
   if (ExtractTeletext && !CloseTeletextOut())
     printf("  WARNING: Cannot create teletext files.\n");
 
+  if (ExtractTeletext && !CloseSrtFileOut())
+    printf("  WARNING: Cannot create srt output file.\n");
 
   if (*RecFileOut)
     HDD_SetFileDateTime(RecFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE));
@@ -2584,6 +2611,13 @@ int main(int argc, const char* argv[])
             if(!ResumeSet) BookmarkInfo->Resume = 0;
           }
 
+          // ### SRT-Subtitles bis hierher ausgeben
+          if (RebuildSrt)
+          {
+            while (CaptionStart < SegmentMarker[CurSeg].Timems)
+              SrtProcessNextCaption(Out, NewStartTimeOffset, SegmentMarker[CurSeg].Timems);
+          }
+
           // aktuelle Output-Files schließen
           if (!CloseOutputFiles())
           {
@@ -2646,6 +2680,13 @@ int main(int argc, const char* argv[])
               DeleteBookmark(j);
             break;
           }
+
+          // ### SRT-Subtitles im Segment überspringen
+          if (RebuildSrt)
+          {
+            while (CaptionEnd < SegmentMarker[CurSeg+1].Timems)
+              SrtProcessNextCaption(noOut);
+          }
         }
 
         // Wir sind am nächsten (zu erhaltenden) SegmentMarker angekommen
@@ -2682,6 +2723,13 @@ int main(int argc, const char* argv[])
             if (NewStartTimeOffset < 0)
               NewStartTimeOffset = SegmentMarker[CurSeg].Timems;
             NewDurationMS += (SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems);
+
+            // ### bisherige SRT-Subtitles ausgeben
+            if (RebuildSrt)
+            {
+              while (CaptionStart < SegmentMarker[CurSeg+1].Timems)
+                SrtProcessNextCaption(Out, CutTimeOffset, SegmentMarker[CurSeg+1].Timems);
+            }
 
             // Header-Pakete ausgeben 2 (experimentell)
             if (CurrentPosition-PositionOffset > (2 + NrEPGPacks) * OutPacketSize)
@@ -3209,6 +3257,8 @@ int main(int argc, const char* argv[])
             SaveInfFile(InfFileOut, InfFileFirstIn);
           }
           CloseTeletextOut();
+          CloseSrtFileIn();
+          CloseSrtFileOut();
           if(MedionMode == 1) SimpleMuxer_Close();
           CutProcessor_Free();
           InfProcessor_Free();
@@ -3256,6 +3306,13 @@ int main(int argc, const char* argv[])
     if ((DoCut == 2) && (NrSegmentMarker == 2) /* && (CurrentPosition + PACKETSIZE > SegmentMarker[1].Position) */)
       NrPackets += (CurrentPosition-PositionOffset) / OutPacketSize;  // (SegmentMarker[1].Position / OutPacketSize);
     NrScrambledPackets += CurScrambledPackets;
+
+    // ### restliche SRT-Subtitles noch ausgeben
+    if (RebuildSrt)
+    {
+      while (CaptionEnd)
+        SrtProcessNextCaption(Out, CutTimeOffset, NULL);
+    }
 
     if (DoMerge && (curInputFile < NrInputFiles-1))
     {

@@ -1085,7 +1085,7 @@ void SetTeletextBreak(bool NewInputFile, word SubtitlePage)
       page_buffer[k].receiving_data = NO;
     }
   }
-
+  
   if (NewInputFile)
   {
     states.programme_info_processed = NO;
@@ -1133,10 +1133,11 @@ bool LoadTeletextOut(const char* AbsOutFile)
   snprintf(TeletextOut, sizeof(TeletextOut), "%s", AbsOutFile);
   if ((p = strrchr(AbsOutFile, '.')) != NULL)
     TeletextOutLen = (p - AbsOutFile);
-  else
+  if (fTtxOut)
     TeletextOutLen = strlen(TeletextOut);
 
-  PSBuffer_Init(&TtxBuffer, TeletextPID, 4096, FALSE);
+  if (ExtractTeletext)
+    PSBuffer_Init(&TtxBuffer, TeletextPID, 4096, FALSE);
 
   TRACEEXIT;
   return TRUE;
@@ -1214,15 +1215,15 @@ bool CloseTeletextOut(void)
     if (fTtxOut[k])
     {
       // output any pending close caption
-      if (page_buffer[k].tainted == YES)
+    if (ExtractTeletext && page_buffer[k].tainted == YES)
       {
         // this time we do not subtract any frames, there will be no more frames
         page_buffer[k].hide_timestamp = last_timestamp;
         process_page(&page_buffer[k], pages[k], k);
       }
 
-      ret = ret && (/*fflush(fTtxOut[i]) == 0 &&*/ fclose(fTtxOut[k]) == 0);
-
+      ret = (/*fflush(fTtxOut[i]) == 0 &&*/ fclose(fTtxOut[k]) == 0) && ret;
+ 
       sprintf (&TeletextOut[TeletextOutLen], "_%03hx.srt", pages[k]);
       if (HDD_GetFileSize(TeletextOut, &OutFileSize) && (OutFileSize == 0))
         remove(TeletextOut);

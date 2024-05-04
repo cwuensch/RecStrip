@@ -3,7 +3,7 @@
 
 #include "RecHeader.h"
 
-#define VERSION                  "v2.8b"
+#define VERSION                  "v2.9"
 
 #define NRBOOKMARKS                177   // eigentlich werden nur 48 Bookmarks unterstützt!! (SRP2401)
 #define NRSEGMENTMARKER            101
@@ -154,7 +154,7 @@ extern word             VideoPID, TeletextPID, SubtitlesPID, TeletextPage;
 extern tAudioTrack      AudioPIDs[];
 extern word             ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs;
 extern bool             isHDVideo, AlreadyStripped, HumaxSource, EycosSource, DVBViewerSrc;
-extern bool             DoStrip, DoSkip, RemoveEPGStream, ExtractTeletext, ExtractAllTeletext, RemoveTeletext, RebuildNav, RebuildInf, DoInfoOnly, DoFixPMT, MedionMode, MedionStrip, WriteDescPackets, PMTatStart;
+extern bool             DoStrip, DoSkip, RemoveEPGStream, ExtractTeletext, ExtractAllTeletext, RemoveTeletext, RebuildNav, RebuildInf, RebuildSrt, DoInfoOnly, DoFixPMT, MedionMode, MedionStrip, WriteDescPackets, PMTatStart;
 extern int              DoCut, DoMerge, DoInfFix;
 extern int              NrEPGPacks;
 extern int              dbg_DelBytesSinceLastVid;

@@ -6,7 +6,7 @@ CFLAGS   += -O2 -W -Wall -DLINUX -D_REENTRANT -static -std=c99 -fno-strict-alias
 CXXFLAGS += -s -O2 -W -Wall -DLINUX -D_REENTRANT -static -fno-strict-aliasing -funsigned-char -Woverloaded-virtual -Wno-parentheses -D_FORTIFY_SOURCE=1
 LDFLAGS  += -Wl,--gc-sections
 
-OBJS = RecStrip.o InfProcessor.o NavProcessor.o CutProcessor.o NALUDump.o RebuildInf.o TtxProcessor.o PESProcessor.o PESFileLoader.o HumaxImport.o EycosImport.o H264.o StrToUTF8.o
+OBJS = RecStrip.o InfProcessor.o NavProcessor.o CutProcessor.o NALUDump.o RebuildInf.o TtxProcessor.o SrtProcessor.o PESProcessor.o PESFileLoader.o HumaxImport.o EycosImport.o H264.o StrToUTF8.o
 
 #DEFINES += -D_GNU_SOURCE -D_FILE_OFFSET_BITS=64 -D_LARGEFILE64_SOURCE
 
