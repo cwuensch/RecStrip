@@ -22,7 +22,6 @@
 // Globale Variablen
 dword                   NrFrames = 0;
 dword                   LastTimems = 0;
-int                     TimeOffset = 0;
 dword                  *pOutNextTimeStamp = NULL;
 FILE                   *fNavIn = NULL;
 static FILE            *fNavOut = NULL;
@@ -34,6 +33,7 @@ static byte             FrameCtr = 0, FrameOffset = 0;
 static bool             WaitForIFrame = TRUE, WaitForPFrame = FALSE, FirstPacketAfterCut = FALSE, FirstRecordAfterCut = TRUE;
 static dword            FirstNavPTS = 0, LastNavPTS = 0, PTSJump = 0;
 static bool             FirstNavPTSOK = FALSE;
+static int              TimeOffset = 0;
 
 //HDNAV
 static tnavHD           navHD;

@@ -961,9 +961,16 @@ void process_pes_packet(uint8_t *buffer, uint16_t size) {
 void SetTeletextBreak(bool NewInputFile, word SubtitlePage)
 {
   FirstPacketAfterBreak = TRUE;
+
+  // evtl. aktive Caption noch ausgeben bzw. ausblenden
+  if (page_buffer.show_timestamp)
+  {
+    page_buffer.hide_timestamp = last_timestamp;
+    process_page(&page_buffer);
+  }
   PSBuffer_DropCurBuffer(&TtxBuffer);
   receiving_data = NO;
-
+  
   if (NewInputFile)
   {
     states.programme_info_processed = NO;
@@ -991,7 +998,7 @@ bool LoadTeletextOut(const char* AbsOutFile)
   TRACEENTER;
 
   fTtxOut = fopen(AbsOutFile, ((DoMerge==1) ? "ab" : "wb"));
-  if (fTtxOut)
+  if (ExtractTeletext && fTtxOut)
   {
     PSBuffer_Init(&TtxBuffer, TeletextPID, 4096, FALSE);
     TRACEEXIT;
@@ -1027,16 +1034,15 @@ bool CloseTeletextOut(const char* AbsOutFile)
   if (fTtxOut)
   {
     // output any pending close caption
-    if (page_buffer.tainted == YES)
+    if (ExtractTeletext && page_buffer.tainted == YES)
     {
       // this time we do not subtract any frames, there will be no more frames
       page_buffer.hide_timestamp = last_timestamp;
       process_page(&page_buffer);
     }
-
     ret = (/*fflush(fTtxOut) == 0 &&*/ fclose(fTtxOut) == 0);
+    fTtxOut = NULL;
   }
-  fTtxOut = NULL;
   PSBuffer_Reset(&TtxBuffer);
 
   if (AbsOutFile && *AbsOutFile)
