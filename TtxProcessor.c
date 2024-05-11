@@ -21,12 +21,16 @@
 #include "hamming.h"
 #include "teletext.h"
 
+#define NRTTXOUTPUTS 10
+
 // Globale Variablen
-FILE                   *fTtxOut = NULL;
+static FILE*            fTtxOut[NRTTXOUTPUTS] = {NULL};
+static char             TeletextOut[FBLIB_DIR_SIZE];
+static int              TeletextOutLen = 0;
 static tPSBuffer        TtxBuffer;
 static int              LastBuffer = 0;
 static bool             FirstPacketAfterBreak = TRUE;
-static uint16_t         pages[8], nrpages = 0;
+static uint16_t         pages[] = { 0x777, 0x150, 0x151, 0x888, 0x160, 0x161, 0x152, 0x149, 0x571, 0 };
 
 // global TS PCR value
 dword global_timestamp = 0;
@@ -128,7 +132,9 @@ typedef struct {
   uint32_t show_timestamp; // show at timestamp (in ms)
   uint32_t hide_timestamp; // hide at timestamp (in ms)
   uint16_t text[25][40]; // 25 lines x 40 cols (1 screen/page) of wide chars
+  uint8_t receiving_data;
   uint8_t tainted; // 1 = text variable contains any data
+  uint32_t frames_produced;
 } teletext_page_t;
 
 typedef struct {
@@ -175,19 +181,19 @@ static struct {
 } states = { NO, NO };
 
 // SRT frames produced
-static uint32_t frames_produced = 0;
+//static uint32_t frames_produced = 0;
 
 // subtitle type pages bitmap, 2048 bits = 2048 possible pages in teletext (excl. subpages)
 static uint8_t cc_map[256] = { 0 };
 
 // working teletext page buffer
-static teletext_page_t page_buffer;
+static teletext_page_t *page_buffer = NULL;  // [NRTTXOUTPUTS]
 
 // teletext transmission mode
-static transmission_mode_t transmission_mode = TRANSMISSION_MODE_SERIAL;
+//static transmission_mode_t transmission_mode = TRANSMISSION_MODE_SERIAL;
 
 // flag indicating if incoming data should be processed or ignored
-static uint8_t receiving_data = NO;
+//static uint8_t receiving_data = NO;
 
 // current charset (charset can be -- and always is -- changed during transmission)
 static struct {
@@ -396,8 +402,28 @@ uint16_t telx_to_ucs2(uint8_t c) {
   return r;
 }
 
+static bool GetTeletextOut(uint16_t page_number, bool AddNewPage)  // Page mit Magazin!
+{
+  uint8_t page = PAGE(page_number);
+  int i;
+  for (i = 0; i < NRTTXOUTPUTS; i++)
+    if(page == PAGE(pages[i])) return i;  // Magazin wird aber nicht ausgewertet
+
+  if (AddNewPage)
+  {
+    if (pages[i-1] == 0)
+    {
+      printf("  TTX: Additional subtitle page: %03x\n\n", page_number);
+      pages[i-1] = page_number;
+      return i-1;
+    }
+  }
+  return -1;
+}
+
 // FIXME: implement output modules (to support different formats, printf formatting etc)
-static void process_page(teletext_page_t *page) {
+static void process_page(teletext_page_t *page, uint16_t page_number, int out_nr) {
+  FILE* fOut = NULL;
   uint8_t row, col;
 #ifdef DEBUG
   for (row = 1; row < 25; row++) {
@@ -419,13 +445,22 @@ static void process_page(teletext_page_t *page) {
     }
   }
   page_is_empty:
-  if (page_is_empty == YES) return;
+    if (page_is_empty == YES) return;
+
+  // Erst hier das Output-File öffnen
+  if (!fTtxOut[out_nr])
+  {
+    printf("  TTX: Trying to extract subtitles from page %03x\n\n", page_number);
+    sprintf(&TeletextOut[TeletextOutLen], "_%03hx.srt", page_number);
+    fTtxOut[out_nr] = fopen(TeletextOut, ((DoMerge==1) ? "ab" : "wb"));
+  }
+  fOut = fTtxOut[out_nr];
 
   if (page->show_timestamp > page->hide_timestamp) page->hide_timestamp = page->show_timestamp;
 
   if (config.se_mode == YES) {
-    ++frames_produced;
-    fprintf(fTtxOut, "%.3f|", (double)page->show_timestamp / 1000.0);
+    ++page->frames_produced;
+    fprintf(fTtxOut[out_nr], "%.3f|", (double)page->show_timestamp / 1000.0);
   }
   else {
     char timecode_hide[24] = { 0 };
@@ -436,7 +471,7 @@ static void process_page(teletext_page_t *page) {
     timestamp_to_srttime(page->hide_timestamp, timecode_hide);
     timecode_hide[12] = 0;
 
-    fprintf(fTtxOut, "%u\r\n%s --> %s\r\n", ++frames_produced, timecode_show, timecode_hide);
+    fprintf(fTtxOut[out_nr], "%u\r\n%s --> %s\r\n", ++page->frames_produced, timecode_show, timecode_hide);
   }
 
   // process data
@@ -494,7 +529,7 @@ static void process_page(teletext_page_t *page) {
 
       if (col == col_start) {
         if ((foreground_color != 0x7) && (config.colours == YES)) {
-          fprintf(fTtxOut, "<font color=\"%s\">", TTXT_COLOURS[foreground_color]);
+          fprintf(fOut, "<font color=\"%s\">", TTXT_COLOURS[foreground_color]);
           font_tag_opened = YES;
         }
       }
@@ -505,14 +540,14 @@ static void process_page(teletext_page_t *page) {
           // each character space occupied by a spacing attribute is displayed as a SPACE.
           if (config.colours == YES) {
             if (font_tag_opened == YES) {
-              fprintf(fTtxOut, "</font> ");
+              fprintf(fOut, "</font> ");
               font_tag_opened = NO;
             }
 
             // black is considered as white for telxcc purpose
             // telxcc writes <font/> tags only when needed
             if ((v > 0x0) && (v < 0x7)) {
-              fprintf(fTtxOut, "<font color=\"%s\">", TTXT_COLOURS[v]);
+              fprintf(fOut, "<font color=\"%s\">", TTXT_COLOURS[v]);
               font_tag_opened = YES;
             }
           }
@@ -525,7 +560,7 @@ static void process_page(teletext_page_t *page) {
             uint8_t i;
             for (i = 0; i < ARRAY_LENGTH(ENTITIES); i++) {
               if (v == ENTITIES[i].character) {
-                fprintf(fTtxOut, "%s", ENTITIES[i].entity);
+                fprintf(fOut, "%s", ENTITIES[i].entity);
                 // v < 0x20 won't be printed in next block
                 v = 0;
                 break;
@@ -537,80 +572,47 @@ static void process_page(teletext_page_t *page) {
         if (v >= 0x20) {
           char u[4] = { 0, 0, 0, 0 };
           ucs2_to_utf8(u, v);
-          fprintf(fTtxOut, "%s", u);
+          fprintf(fOut, "%s", u);
         }
       }
     }
 
     // no tag will left opened!
     if ((config.colours == YES) && (font_tag_opened == YES)) {
-      fprintf(fTtxOut, "</font>");
+      fprintf(fOut, "</font>");
       font_tag_opened = NO;
     }
 
     // line delimiter
-    fprintf(fTtxOut, "%s", (config.se_mode == YES) ? " " : "\r\n");
+    fprintf(fOut, "%s", (config.se_mode == YES) ? " " : "\r\n");
   }
 
-  fprintf(fTtxOut, "\r\n");
-  fflush(fTtxOut);
+  fprintf(fOut, "\r\n");
+  fflush(fOut);
 }
 
 static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payload_t *packet, uint32_t timestamp) {
   // variable names conform to ETS 300 706, chapter 7.1.2
   uint8_t address = (unham_8_4(packet->address[1]) << 4) | unham_8_4(packet->address[0]);
-  uint8_t y = (address >> 3) & 0x1f;
+  uint8_t y = (address >> 3) & 0x1f;  // Zeile
+  uint8_t m = (address & 0x7) ? address & 0x7 : 8;  // Magazin
   uint8_t designation_code = (y > 25) ? unham_8_4(packet->data[0]) : 0x00;
-  uint8_t m = address & 0x7;
-  uint8_t c;
+  uint8_t c;  // Charset
 
-  if (m == 0) m = 8;
+  teletext_page_t* cur_page_buffer = NULL;   // &page_buffer[out_nr];
+  static uint16_t page_number = 0;   // (m << 8) | p;  // page_number = m|pp (magazin|page)
+  static int out_nr = -1;            // GetTeletextOut(page_number, FALSE);
 
-  if (y == 0) {
+  if (y == 0)
+  {
     // CC map
-    uint8_t i = (unham_8_4(packet->data[1]) << 4) | unham_8_4(packet->data[0]);
+    uint8_t p = (unham_8_4(packet->data[1]) << 4) | unham_8_4(packet->data[0]);  // Page
     uint8_t flag_subtitle = (unham_8_4(packet->data[5]) & 0x08) >> 3;
-    uint16_t page_number;
+    transmission_mode_t transmission_mode;
     uint8_t charset;
-    uint16_t page;
 
-    cc_map[i] |= flag_subtitle << (m - 1);
+    cc_map[p] |= flag_subtitle << (m - 1);
 
-    if ((flag_subtitle == YES) && (i < 0xff)) {
-      page = (m << 8) | i;
-/*      if (config.page == 0)
-      {
-        config.page = page;
-        printf("  TTX: Trying to extract subtitles from page %03x\n\n", config.page);
-        pages[nrpages++] = page;
-      }
-      else*/ if (page != config.page && !TeletextPage)
-      {
-        int k;
-        for (k = 0; ((k < nrpages) && (pages[k] != page)); k++);
-        if ((k >= nrpages) && (nrpages < 8))
-        {
-          const uint16_t pageprio[] = { 0x777, 0x150, 0x151, 0x888, 0x160, 0x161, 0x152, 0x149, 0x571 };  // { 0x160, 0x150, 0x777, 0x149, 0x571 };
-
-//          if (config.page==0 || page==0x160 || (config.page!=0x160 && (page==0x150 || (config.page!=0x160 && (page==0x777 || page==0x149 || (config.page!=0x777 && config.page!=0x149 && (page==0x571 || config.page!=0x571))))))) {
-//          if (config.page==0 || page==0x160 || (page==0x150 && config.page!=0x160) || ((page==0x777 || page==0x149) && config.page!=0x160 && config.page!=0x150) || (page==0x157 && config.page!=0x160 && config.page!=0x150 && config.page!=0x777 && config.page!=0x149)) {
-//          if (config.page==0 || page==pageprio[0] || (page==pageprio[1] && config.page!=pageprio[0]) || ((page==pageprio[2] || page==pageprio[3]) && config.page!=pageprio[0] && config.page!=pageprio[1]) || (page==pageprio[4] && config.page!=pageprio[0] && config.page!=pageprio[1] && config.page!=pageprio[2] && config.page!=pageprio[3])) {
-
-          for (k = 0; k < 5 && (config.page != pageprio[k]); k++)
-            if (config.page == 0 || page == pageprio[k]) {
-              config.page = page;
-              printf("  TTX: Trying to extract subtitles from page %03x\n\n", config.page);
-              break;
-            }
-          if (page != config.page)
-            printf("  TTX: Additional subtitle page: %03x\n\n", page);
-          pages[nrpages++] = page;
-        }
-      }
-    }
-
-     // Page number and control bits
-    page_number = (m << 8) | (unham_8_4(packet->data[1]) << 4) | unham_8_4(packet->data[0]);
     charset = ((unham_8_4(packet->data[7]) & 0x08) | (unham_8_4(packet->data[7]) & 0x04) | (unham_8_4(packet->data[7]) & 0x02)) >> 1;
     //uint8_t flag_suppress_header = unham_8_4(packet->data[6]) & 0x01;
     //uint8_t flag_inhibit_display = (unham_8_4(packet->data[6]) & 0x08) >> 3;
@@ -626,158 +628,186 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
     transmission_mode = unham_8_4(packet->data[7]) & 0x01;
 
     // FIXME: Well, this is not ETS 300 706 kosher, however we are interested in DATA_UNIT_EBU_TELETEXT_SUBTITLE only
-    if ((transmission_mode == TRANSMISSION_MODE_PARALLEL) && (data_unit_id != DATA_UNIT_EBU_TELETEXT_SUBTITLE)) return;
+//    if ((transmission_mode == TRANSMISSION_MODE_PARALLEL) && (data_unit_id != DATA_UNIT_EBU_TELETEXT_SUBTITLE)) return;  // unnötig (?)
 
-    if ((receiving_data == YES) && (
-        ((transmission_mode == TRANSMISSION_MODE_SERIAL) && (PAGE(page_number) != PAGE(config.page))) ||
-        ((transmission_mode == TRANSMISSION_MODE_PARALLEL) && (PAGE(page_number) != PAGE(config.page)) && (m == MAGAZINE(config.page)))
-    )) {
-      receiving_data = NO;
-      return;
+    if ( (out_nr >= 0) && (p != PAGE(page_number)) && (transmission_mode == TRANSMISSION_MODE_SERIAL || m == MAGAZINE(page_number)) )
+    {
+      page_buffer[out_nr].receiving_data = NO;
     }
+
+    if ((flag_subtitle == YES) && (p < 0xff))
+    {
+      page_number = (m << 8) | p;
+      out_nr = GetTeletextOut(page_number, FALSE);
+      cur_page_buffer = &page_buffer[out_nr];
+    }
+    else
+      out_nr = -1;
 
     // Page transmission is terminated, however now we are waiting for our new page
-    if (page_number != config.page) return;
+    if (out_nr > 0)
+    {
+      // Now we have the begining of page transmission; if there is page_buffer pending, process it
+      if (cur_page_buffer->tainted == YES) {
+        // it would be nice, if subtitle hides on previous video frame, so we contract 40 ms (1 frame @25 fps)
+        cur_page_buffer->hide_timestamp = timestamp - 40;
+        process_page(cur_page_buffer, page_number, out_nr);
+      }
 
-    // Now we have the begining of page transmission; if there is page_buffer pending, process it
-    if (page_buffer.tainted == YES) {
-      // it would be nice, if subtitle hides on previous video frame, so we contract 40 ms (1 frame @25 fps)
-      page_buffer.hide_timestamp = timestamp - 40;
-//printf ("    new page\n");
-      process_page(&page_buffer);
+      cur_page_buffer->show_timestamp = timestamp;
+      cur_page_buffer->hide_timestamp = 0;
+      memset(cur_page_buffer->text, 0x00, sizeof(cur_page_buffer->text));
+      cur_page_buffer->tainted = NO;
+      cur_page_buffer->receiving_data = YES;
+      primary_charset.g0_x28 = UNDEF;
+
+      c = (primary_charset.g0_m29 != UNDEF) ? primary_charset.g0_m29 : charset;
+      remap_g0_charset(c);
+
+      /*
+      // I know -- not needed; in subtitles we will never need disturbing teletext page status bar
+      // displaying tv station name, current time etc.
+      if (flag_suppress_header == NO) {
+        uint8_t i;
+        for (i = 14; i < 40; i++) cur_page_buffer->text[y][i] = telx_to_ucs2(packet->data[i]);
+        //cur_page_buffer->tainted = YES;
+      }
+      */
     }
-
-    page_buffer.show_timestamp = timestamp;
-    page_buffer.hide_timestamp = 0;
-    memset(page_buffer.text, 0x00, sizeof(page_buffer.text));
-    page_buffer.tainted = NO;
-    receiving_data = YES;
-    primary_charset.g0_x28 = UNDEF;
-
-    c = (primary_charset.g0_m29 != UNDEF) ? primary_charset.g0_m29 : charset;
-    remap_g0_charset(c);
-
-    /*
-    // I know -- not needed; in subtitles we will never need disturbing teletext page status bar
-    // displaying tv station name, current time etc.
-    if (flag_suppress_header == NO) {
-      uint8_t i;
-      for (i = 14; i < 40; i++) page_buffer.text[y][i] = telx_to_ucs2(packet->data[i]);
-      //page_buffer.tainted = YES;
-    }
-    */
+    return;
   }
-  else if ((m == MAGAZINE(config.page)) && (y >= 1) && (y <= 23) && (receiving_data == YES)) {
-    // ETS 300 706, chapter 9.4.1: Packets X/26 at presentation Levels 1.5, 2.5, 3.5 are used for addressing
-    // a character location and overwriting the existing character defined on the Level 1 page
-    // ETS 300 706, annex B.2.2: Packets with Y = 26 shall be transmitted before any packets with Y = 1 to Y = 25;
-    // so page_buffer.text[y][i] may already contain any character received
-    // in frame number 26, skip original G0 character
-    uint8_t i;
-    for (i = 0; i < 40; i++) if (page_buffer.text[y][i] == 0x00) page_buffer.text[y][i] = telx_to_ucs2(packet->data[i]);
-    page_buffer.tainted = YES;
-  }
-  else if ((m == MAGAZINE(config.page)) && (y == 26) && (receiving_data == YES)) {
-    // ETS 300 706, chapter 12.3.2: X/26 definition
-    uint8_t x26_row = 0;
-    uint8_t x26_col = 0;
 
-    uint32_t triplets[13] = { 0 };
-    uint8_t i, j;
-    for (i = 1, j = 0; i < 40; i += 3, j++) triplets[j] = unham_24_18((packet->data[i + 2] << 16) | (packet->data[i + 1] << 8) | packet->data[i]);
+  cur_page_buffer = &page_buffer[out_nr];
+  if (out_nr < 0) return;
 
-    for (j = 0; j < 13; j++) {
-      uint8_t data, mode, address, row_address_group;
+  if (m == MAGAZINE(page_number))
+  {
+    if (cur_page_buffer->receiving_data == YES)
+    {
+      if ((y >= 1) && (y <= 23)) {
+        // ETS 300 706, chapter 9.4.1: Packets X/26 at presentation Levels 1.5, 2.5, 3.5 are used for addressing
+        // a character location and overwriting the existing character defined on the Level 1 page
+        // ETS 300 706, annex B.2.2: Packets with Y = 26 shall be transmitted before any packets with Y = 1 to Y = 25;
+        // so page_buffer.text[y][i] may already contain any character received
+        // in frame number 26, skip original G0 character
+        uint8_t i;
+char test[41];
+memset(test, 0, sizeof(test));
+for(i = 0; i < 40; i++) {
+  test[i] = (char)telx_to_ucs2(packet->data[i]);
+  if (test[i] < 0x20 && test[i] != 0 && test[i] != '\n' && test[i] != '\t') test[i] = 0x20;
+}
+if (page_number == 0x150)
+printf("[%03hx] %03hhu: %s\n", page_number, y, test);
 
-      if (triplets[j] == 0xffffffff) {
-        // invalid data (HAM24/18 uncorrectable error detected), skip group
-//        VERBOSE_ONLY printf("  ! Unrecoverable data error; UNHAM24/18()=%04x\n", triplets[j]);
-        continue;
+        for (i = 0; i < 40; i++) if (cur_page_buffer->text[y][i] == 0x00) cur_page_buffer->text[y][i] = telx_to_ucs2(packet->data[i]);
+        cur_page_buffer->tainted = YES;
       }
+      else if (y == 26) {
+        // ETS 300 706, chapter 12.3.2: X/26 definition
+        uint8_t x26_row = 0;
+        uint8_t x26_col = 0;
 
-      data = (triplets[j] & 0x3f800) >> 11;
-      mode = (triplets[j] & 0x7c0) >> 6;
-      address = triplets[j] & 0x3f;
-      row_address_group = (address >= 40) && (address <= 63);
+        uint32_t triplets[13] = { 0 };
+        uint8_t i, j;
+        for (i = 1, j = 0; i < 40; i += 3, j++) triplets[j] = unham_24_18((packet->data[i + 2] << 16) | (packet->data[i + 1] << 8) | packet->data[i]);
 
-      // ETS 300 706, chapter 12.3.1, table 27: set active position
-      if ((mode == 0x04) && (row_address_group == YES)) {
-        x26_row = address - 40;
-        if (x26_row == 0) x26_row = 24;
-        x26_col = 0;
+        for (j = 0; j < 13; j++) {
+          uint8_t data, mode, address, row_address_group;
+
+          if (triplets[j] == 0xffffffff) {
+            // invalid data (HAM24/18 uncorrectable error detected), skip group
+//            VERBOSE_ONLY printf("  ! Unrecoverable data error; UNHAM24/18()=%04x\n", triplets[j]);
+            continue;
+          }
+
+          data = (triplets[j] & 0x3f800) >> 11;
+          mode = (triplets[j] & 0x7c0) >> 6;
+          address = triplets[j] & 0x3f;
+          row_address_group = (address >= 40) && (address <= 63);
+
+          // ETS 300 706, chapter 12.3.1, table 27: set active position
+          if ((mode == 0x04) && (row_address_group == YES)) {
+            x26_row = address - 40;
+            if (x26_row == 0) x26_row = 24;
+            x26_col = 0;
+          }
+
+          // ETS 300 706, chapter 12.3.1, table 27: termination marker
+          if ((mode >= 0x11) && (mode <= 0x1f) && (row_address_group == YES)) break;
+
+          // ETS 300 706, chapter 12.3.1, table 27: character from G2 set
+          if ((mode == 0x0f) && (row_address_group == NO)) {
+            x26_col = address;
+            if (data > 31) cur_page_buffer->text[x26_row][x26_col] = G2[0][data - 0x20];
+          }
+
+          // ETS 300 706, chapter 12.3.1, table 27: G0 character with diacritical mark
+          if ((mode >= 0x11) && (mode <= 0x1f) && (row_address_group == NO)) {
+            x26_col = address;
+
+            // A - Z
+            if ((data >= 65) && (data <= 90)) cur_page_buffer->text[x26_row][x26_col] = G2_ACCENTS[mode - 0x11][data - 65];
+            // a - z
+            else if ((data >= 97) && (data <= 122)) cur_page_buffer->text[x26_row][x26_col] = G2_ACCENTS[mode - 0x11][data - 71];
+            // other
+            else cur_page_buffer->text[x26_row][x26_col] = telx_to_ucs2(data);
+          }
+        }
       }
+      else if (y == 28) {
+        // TODO:
+        //   ETS 300 706, chapter 9.4.7: Packet X/28/4
+        //   Where packets 28/0 and 28/4 are both transmitted as part of a page, packet 28/0 takes precedence over 28/4 for all but the colour map entry coding.
+        if ((designation_code == 0) || (designation_code == 4)) {
+          // ETS 300 706, chapter 9.4.2: Packet X/28/0 Format 1
+          // ETS 300 706, chapter 9.4.7: Packet X/28/4
+          uint32_t triplet0 = unham_24_18((packet->data[3] << 16) | (packet->data[2] << 8) | packet->data[1]);
 
-      // ETS 300 706, chapter 12.3.1, table 27: termination marker
-      if ((mode >= 0x11) && (mode <= 0x1f) && (row_address_group == YES)) break;
-
-      // ETS 300 706, chapter 12.3.1, table 27: character from G2 set
-      if ((mode == 0x0f) && (row_address_group == NO)) {
-        x26_col = address;
-        if (data > 31) page_buffer.text[x26_row][x26_col] = G2[0][data - 0x20];
-      }
-
-      // ETS 300 706, chapter 12.3.1, table 27: G0 character with diacritical mark
-      if ((mode >= 0x11) && (mode <= 0x1f) && (row_address_group == NO)) {
-        x26_col = address;
-
-        // A - Z
-        if ((data >= 65) && (data <= 90)) page_buffer.text[x26_row][x26_col] = G2_ACCENTS[mode - 0x11][data - 65];
-        // a - z
-        else if ((data >= 97) && (data <= 122)) page_buffer.text[x26_row][x26_col] = G2_ACCENTS[mode - 0x11][data - 71];
-        // other
-        else page_buffer.text[x26_row][x26_col] = telx_to_ucs2(data);
-      }
-    }
-  }
-  else if ((m == MAGAZINE(config.page)) && (y == 28) && (receiving_data == YES)) {
-    // TODO:
-    //   ETS 300 706, chapter 9.4.7: Packet X/28/4
-    //   Where packets 28/0 and 28/4 are both transmitted as part of a page, packet 28/0 takes precedence over 28/4 for all but the colour map entry coding.
-    if ((designation_code == 0) || (designation_code == 4)) {
-      // ETS 300 706, chapter 9.4.2: Packet X/28/0 Format 1
-      // ETS 300 706, chapter 9.4.7: Packet X/28/4
-      uint32_t triplet0 = unham_24_18((packet->data[3] << 16) | (packet->data[2] << 8) | packet->data[1]);
-
-      if (triplet0 == 0xffffffff) {
-        // invalid data (HAM24/18 uncorrectable error detected), skip group
-//        VERBOSE_ONLY printf("  ! Unrecoverable data error; UNHAM24/18()=%04x\n", triplet0);
-      }
-      else {
-        // ETS 300 706, chapter 9.4.2: Packet X/28/0 Format 1 only
-        if ((triplet0 & 0x0f) == 0x00) {
-          primary_charset.g0_x28 = (triplet0 & 0x3f80) >> 7;
-          remap_g0_charset(primary_charset.g0_x28);
+          if (triplet0 == 0xffffffff) {
+            // invalid data (HAM24/18 uncorrectable error detected), skip group
+    //        VERBOSE_ONLY printf("  ! Unrecoverable data error; UNHAM24/18()=%04x\n", triplet0);
+          }
+          else {
+            // ETS 300 706, chapter 9.4.2: Packet X/28/0 Format 1 only
+            if ((triplet0 & 0x0f) == 0x00) {
+              primary_charset.g0_x28 = (triplet0 & 0x3f80) >> 7;
+              remap_g0_charset(primary_charset.g0_x28);
+            }
+          }
         }
       }
     }
-  }
-  else if ((m == MAGAZINE(config.page)) && (y == 29)) {
-    // TODO:
-    //   ETS 300 706, chapter 9.5.1 Packet M/29/0
-    //   Where M/29/0 and M/29/4 are transmitted for the same magazine, M/29/0 takes precedence over M/29/4.
-    if ((designation_code == 0) || (designation_code == 4)) {
-      // ETS 300 706, chapter 9.5.1: Packet M/29/0
-      // ETS 300 706, chapter 9.5.3: Packet M/29/4
-      uint32_t triplet0 = unham_24_18((packet->data[3] << 16) | (packet->data[2] << 8) | packet->data[1]);
+    if (y == 29)
+    {
+      // TODO:
+      //   ETS 300 706, chapter 9.5.1 Packet M/29/0
+      //   Where M/29/0 and M/29/4 are transmitted for the same magazine, M/29/0 takes precedence over M/29/4.
+      if ((designation_code == 0) || (designation_code == 4)) {
+        // ETS 300 706, chapter 9.5.1: Packet M/29/0
+        // ETS 300 706, chapter 9.5.3: Packet M/29/4
+        uint32_t triplet0 = unham_24_18((packet->data[3] << 16) | (packet->data[2] << 8) | packet->data[1]);
 
-      if (triplet0 == 0xffffffff) {
-        // invalid data (HAM24/18 uncorrectable error detected), skip group
-//        VERBOSE_ONLY printf("  ! Unrecoverable data error; UNHAM24/18()=%04x\n", triplet0);
-      }
-      else {
-        // ETS 300 706, table 11: Coding of Packet M/29/0
-        // ETS 300 706, table 13: Coding of Packet M/29/4
-        if ((triplet0 & 0xff) == 0x00) {
-          primary_charset.g0_m29 = (triplet0 & 0x3f80) >> 7;
-          // X/28 takes precedence over M/29
-          if (primary_charset.g0_x28 == UNDEF) {
-            remap_g0_charset(primary_charset.g0_m29);
+        if (triplet0 == 0xffffffff) {
+          // invalid data (HAM24/18 uncorrectable error detected), skip group
+//          VERBOSE_ONLY printf("  ! Unrecoverable data error; UNHAM24/18()=%04x\n", triplet0);
+        }
+        else {
+          // ETS 300 706, table 11: Coding of Packet M/29/0
+          // ETS 300 706, table 13: Coding of Packet M/29/4
+          if ((triplet0 & 0xff) == 0x00) {
+            primary_charset.g0_m29 = (triplet0 & 0x3f80) >> 7;
+            // X/28 takes precedence over M/29
+            if (primary_charset.g0_x28 == UNDEF) {
+              remap_g0_charset(primary_charset.g0_m29);
+            }
           }
         }
       }
     }
   }
-  else if ((m == 8) && (y == 30)) {
+  if ((m == 8) && (y == 30))
+  {
     // ETS 300 706, chapter 9.8: Broadcast Service Data Packets
     if (states.programme_info_processed == NO) {
       // ETS 300 706, chapter 9.8.1: Packet 8/30 Format 1
@@ -960,17 +990,34 @@ void process_pes_packet(uint8_t *buffer, uint16_t size) {
 
 void SetTeletextBreak(bool NewInputFile, word SubtitlePage)
 {
+  int k;
   FirstPacketAfterBreak = TRUE;
   PSBuffer_DropCurBuffer(&TtxBuffer);
-  receiving_data = NO;
+
+  for (k = 0; k < NRTTXOUTPUTS; k++)
+  {
+    if (fTtxOut[k])
+    {
+      // output any pending close caption
+      if (page_buffer[k].tainted == YES)
+      {
+        // this time we do not subtract any frames, there will be no more frames
+        page_buffer[k].hide_timestamp = last_timestamp;
+        process_page(&page_buffer[k], pages[k], k);
+      }
+      page_buffer[k].receiving_data = NO;
+    }
+  }
 
   if (NewInputFile)
   {
     states.programme_info_processed = NO;
     states.pts_initialized = NO;
+    pages[NRTTXOUTPUTS-1] = 0;
     if (SubtitlePage != config.page)
     {
       config.page = SubtitlePage;
+      pages[NRTTXOUTPUTS-1] = SubtitlePage;
       printf("  TTX: Trying to extract subtitles from user page %03x\n\n", config.page);
     }
   }
@@ -978,28 +1025,30 @@ void SetTeletextBreak(bool NewInputFile, word SubtitlePage)
 
 void TtxProcessor_Init(word SubtitlePage)
 {
-  memset(&page_buffer, 0, sizeof(teletext_page_t));
+  if(page_buffer) free(page_buffer);
+  page_buffer = (teletext_page_t*) malloc(NRTTXOUTPUTS * sizeof(teletext_page_t));
+  memset(page_buffer, 0, NRTTXOUTPUTS * sizeof(teletext_page_t));
+  pages[NRTTXOUTPUTS-1] = 0;
   config.page = SubtitlePage;
   if (SubtitlePage)
     printf("  TTX: Trying to extract subtitles from user page %03x\n\n", config.page);
-  nrpages = 0;
-  memset(pages, 0, sizeof(pages));
 }
 
 bool LoadTeletextOut(const char* AbsOutFile)
 {
+  char *p;
   TRACEENTER;
 
-  fTtxOut = fopen(AbsOutFile, ((DoMerge==1) ? "ab" : "wb"));
-  if (fTtxOut)
-  {
-    PSBuffer_Init(&TtxBuffer, TeletextPID, 4096, FALSE);
-    TRACEEXIT;
-    return TRUE;
-  }
+  snprintf(TeletextOut, sizeof(TeletextOut), "%s", AbsOutFile);
+  if ((p = strrchr(AbsOutFile, '.')) != NULL)
+    TeletextOutLen = (p - AbsOutFile);
+  else
+    TeletextOutLen = strlen(TeletextOut);
+
+  PSBuffer_Init(&TtxBuffer, TeletextPID, 4096, FALSE);
 
   TRACEEXIT;
-  return FALSE;
+  return TRUE;
 }
 
 void ProcessTtxPacket(tTSPacket *Packet)
@@ -1017,32 +1066,50 @@ void ProcessTtxPacket(tTSPacket *Packet)
   TRACEEXIT;
 }
 
-bool CloseTeletextOut(const char* AbsOutFile)
+bool CloseTeletextOut(void)
 {
-  unsigned long long OutFileSize = 0;
-  bool          ret = TRUE;
+  unsigned long long    OutFileSize = 0;
+  int                   k;
+  bool                  first = TRUE, ret = TRUE;
 
   TRACEENTER;
 
-  if (fTtxOut)
+  for (k = 0; k < NRTTXOUTPUTS; k++)
   {
-    // output any pending close caption
-    if (page_buffer.tainted == YES)
+    if (fTtxOut[k])
     {
-      // this time we do not subtract any frames, there will be no more frames
-      page_buffer.hide_timestamp = last_timestamp;
-      process_page(&page_buffer);
+      // output any pending close caption
+      if (page_buffer[k].tainted == YES)
+      {
+        // this time we do not subtract any frames, there will be no more frames
+        page_buffer[k].hide_timestamp = last_timestamp;
+        process_page(&page_buffer[k], pages[k], k);
+      }
+
+      ret = ret && (/*fflush(fTtxOut[i]) == 0 &&*/ fclose(fTtxOut[k]) == 0);
+
+      sprintf (&TeletextOut[TeletextOutLen], "_%03hx.srt", pages[k]);
+      if (HDD_GetFileSize(TeletextOut, &OutFileSize) && (OutFileSize == 0))
+        remove(TeletextOut);
+      else if((config.page == pages[k]) || (!config.page && first)) 
+      {
+        char NewName[FBLIB_DIR_SIZE];
+        snprintf(NewName, TeletextOutLen + 1, "%s", TeletextOut);
+        sprintf (&NewName[TeletextOutLen], ".srt");
+        rename(TeletextOut, NewName);
+      }
+      first = FALSE;
     }
-
-    ret = (/*fflush(fTtxOut) == 0 &&*/ fclose(fTtxOut) == 0);
+    fTtxOut[k] = NULL;
   }
-  fTtxOut = NULL;
+
   PSBuffer_Reset(&TtxBuffer);
-
-  if (AbsOutFile && *AbsOutFile)
-    if (HDD_GetFileSize(AbsOutFile, &OutFileSize) && (OutFileSize == 0))
-      remove(AbsOutFile);
-
   TRACEEXIT;
   return ret;
+}
+
+void TtxProcessor_Free(void)
+{
+  if(page_buffer) free(page_buffer);
+  page_buffer = NULL;
 }

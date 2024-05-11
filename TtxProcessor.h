@@ -3,7 +3,6 @@
 
 #include "RecStrip.h"
 
-extern FILE            *fTtxOut;
 extern dword            global_timestamp;
 extern dword            last_timestamp;
 
@@ -18,6 +17,7 @@ void ProcessTtxPacket(tTSPacket *Packet);
 word telx_to_ucs2(byte c);
 void ucs2_to_utf8(char *r, word ch);
 void process_pes_packet(byte *buffer, word size);
-bool CloseTeletextOut(const char* AbsOutFile);
+bool CloseTeletextOut(void);
+void TtxProcessor_Free(void);
 
 #endif

@@ -1266,7 +1266,7 @@ void QuickNavProcess(const long long CurrentPosition, const long long PositionOf
     {
       // Position anpassen
       NextPictureHeaderOffset   -= PositionOffset;
-      curSDNavRec->PHOffset      = (dword)NextPictureHeaderOffset;
+      curSDNavRec->PHOffset      = (dword)(NextPictureHeaderOffset & 0xffffffff);
       curSDNavRec->PHOffsetHigh  = (dword)(NextPictureHeaderOffset >> 32);
 
       // Zeit anpassen

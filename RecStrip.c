@@ -127,7 +127,7 @@ int                     NewStartTimeOffset = -1;
 dword                   TtxPTSOffset = 0;
 
 // Lokale Variablen
-static char             InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], InfFileFirstIn[FBLIB_DIR_SIZE], /*InfFileOld[FBLIB_DIR_SIZE],*/ NavFileOut[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE], TeletextOut[FBLIB_DIR_SIZE];
+static char             InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], InfFileFirstIn[FBLIB_DIR_SIZE], /*InfFileOld[FBLIB_DIR_SIZE],*/ NavFileOut[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE]; // TeletextOut[FBLIB_DIR_SIZE];
 static bool             HasNavIn, HasNavOld, HasInfOld;
 static FILE            *fIn = NULL;
 static FILE            *fOut = NULL;
@@ -1134,12 +1134,12 @@ SONST
   // TeletextOut ermitteln
   if (ExtractTeletext)
   {
-    if (*RecFileOut)
+/*    if (*RecFileOut)
       GetFileNameFromRec(RecFileOut, ".srt", TeletextOut);
     else
-      GetFileNameFromRec(RecFileIn, ".srt", TeletextOut);
-    if (LoadTeletextOut(TeletextOut))
-      printf("\nTeletext output: %s", TeletextOut);
+      GetFileNameFromRec(RecFileIn, ".srt", TeletextOut); */
+    /*if (*/LoadTeletextOut((*RecFileOut) ? RecFileOut : RecFileIn);
+//    printf("\nTeletext output: %s", TeletextOut);
   }
 
   // Header-Pakete ausgeben
@@ -1222,7 +1222,7 @@ static bool CloseOutputFiles(void)
       printf("  ERROR: Failed closing the output file.\n");
       CutFileSave(CutFileOut);
       SaveInfFile(InfFileOut, InfFileFirstIn);
-      CloseTeletextOut(TeletextOut);
+      CloseTeletextOut();
       TRACEEXIT;
       return FALSE;
     }
@@ -1244,8 +1244,8 @@ static bool CloseOutputFiles(void)
   if (*InfFileOut && !SaveInfFile(InfFileOut, InfFileFirstIn))
     printf("  WARNING: Cannot create inf %s.\n", InfFileOut);
 
-  if (ExtractTeletext && !CloseTeletextOut(TeletextOut))
-    printf("  WARNING: Cannot create teletext %s.\n", TeletextOut);
+  if (ExtractTeletext && !CloseTeletextOut())
+    printf("  WARNING: Cannot create teletext files.\n");
 
 
   if (*RecFileOut)
@@ -2182,6 +2182,7 @@ int main(int argc, const char* argv[])
         if(MedionMode == 1) SimpleMuxer_Close();
         CutProcessor_Free();
         InfProcessor_Free();
+        TtxProcessor_Free();
         if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
         if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
         if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
@@ -2435,6 +2436,7 @@ int main(int argc, const char* argv[])
     if(MedionMode == 1) SimpleMuxer_Close();
     CutProcessor_Free();
     InfProcessor_Free();
+    TtxProcessor_Free();
     if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
     if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
     if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
@@ -2473,7 +2475,7 @@ int main(int argc, const char* argv[])
           }
         }
         fclose(fMDIn);
-        CloseTeletextOut(TeletextOut);
+        CloseTeletextOut();
       }
     }
   } */
@@ -2487,6 +2489,7 @@ int main(int argc, const char* argv[])
     if(MedionMode == 1) SimpleMuxer_Close();
     CutProcessor_Free();
     InfProcessor_Free();
+    TtxProcessor_Free();
     if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
     if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
     if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
@@ -2563,6 +2566,7 @@ int main(int argc, const char* argv[])
             CloseInputFiles(!MedionMode, FALSE, FALSE);
             CutProcessor_Free();
             InfProcessor_Free();
+            TtxProcessor_Free();
             if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
             if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
             if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
@@ -2684,10 +2688,11 @@ int main(int argc, const char* argv[])
             {
               fclose(fIn); fIn = NULL;
               CloseNavFileIn();
-              CloseTeletextOut(TeletextOut);
+              CloseTeletextOut();
               if(MedionMode == 1) SimpleMuxer_Close();
               CutProcessor_Free();
               InfProcessor_Free();
+              TtxProcessor_Free();
               if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }      
               if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
               if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
@@ -2820,7 +2825,7 @@ int main(int argc, const char* argv[])
           if (CurPID == TeletextPID)
           {
             // Extract Teletext Subtitles
-            if (/*ExtractTeletext &&*/ fTtxOut)
+            if (ExtractTeletext /*&& fTtxOut*/)
               ProcessTtxPacket((tTSPacket*) &Buffer[4]);
 
             // Remove Teletext packets
@@ -3179,10 +3184,11 @@ int main(int argc, const char* argv[])
             CutFileSave(CutFileOut);
             SaveInfFile(InfFileOut, InfFileFirstIn);
           }
-          CloseTeletextOut(TeletextOut);
+          CloseTeletextOut();
           if(MedionMode == 1) SimpleMuxer_Close();
           CutProcessor_Free();
           InfProcessor_Free();
+          TtxProcessor_Free();
           if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
           if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
           if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
@@ -3254,6 +3260,7 @@ int main(int argc, const char* argv[])
         CloseOutputFiles();
         CutProcessor_Free();
         InfProcessor_Free();
+        TtxProcessor_Free();
         if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
         if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
         if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
@@ -3290,6 +3297,7 @@ int main(int argc, const char* argv[])
   {
     CutProcessor_Free();
     InfProcessor_Free();
+    TtxProcessor_Free();
     if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
     if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
     if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
@@ -3299,6 +3307,7 @@ int main(int argc, const char* argv[])
   
   CutProcessor_Free();
   InfProcessor_Free();
+  TtxProcessor_Free();
   if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
   if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
   if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
