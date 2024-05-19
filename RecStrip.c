@@ -112,7 +112,7 @@ word                    VideoPID = (word) -1, TeletextPID = (word) -1, Subtitles
 tAudioTrack             AudioPIDs[MAXCONTINUITYPIDS];
 word                    ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs = 1;
 bool                    isHDVideo = FALSE, AlreadyStripped = FALSE, HumaxSource = FALSE, EycosSource = FALSE, DVBViewerSrc = FALSE;
-bool                    DoStrip = FALSE, DoSkip = FALSE, RemoveScrambled = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE, DoInfoOnly = FALSE, DoFixPMT = FALSE, MedionMode = FALSE, MedionStrip = FALSE, WriteDescPackets = TRUE, PMTatStart = FALSE;
+bool                    DoStrip = FALSE, DoSkip = FALSE, RemoveScrambled = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, ExtractAllTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE, DoInfoOnly = FALSE, DoFixPMT = FALSE, MedionMode = FALSE, MedionStrip = FALSE, WriteDescPackets = TRUE, PMTatStart = FALSE;
 int                     DoCut = 0, DoMerge = 0, DoInfFix = 0;  // DoCut: 1=remove_parts, 2=copy_separate, DoMerge: 1=append, 2=merge  // DoInfFix: 1=enable, 2=inf to be fixed
 int                     curInputFile = 0, NrInputFiles = 1, NrEPGPacks = 0;
 int                     dbg_DelBytesSinceLastVid = 0;
@@ -1704,6 +1704,8 @@ int main(int argc, const char* argv[])
                       argc--;
                     }
                   }
+                  else if(argv[1][2] == 'x')
+                    ExtractAllTeletext = TRUE;
                   else RemoveTeletext = TRUE;
                   break;
       case 'x':   RemoveScrambled = TRUE; break;
@@ -1810,6 +1812,7 @@ int main(int argc, const char* argv[])
       printf("  -e:        Remove also the EPG data. (can be combined with -s)\n\n");
       printf("  -t:        Remove also the teletext data. (can be combined with -s)\n");
       printf("  -tt <page> Extract subtitles from teletext. (combine with -t to remove ttx)\n\n");
+      printf("  -tx        Extract all teletext pages as text. (requires 10 MB of RAM)\n\n");
       printf("  -x:        Remove packets marked as scrambled. (flag could be wrong!)\n\n");
       printf("  -o1/-o2:   Change the packet size for output-rec: \n"
              "             1: PacketSize = 188 Bytes, 2: PacketSize = 192 Bytes.\n\n");
@@ -1873,6 +1876,9 @@ int main(int argc, const char* argv[])
     }
   }
 
+  if (ExtractAllTeletext)
+    TtxProcessor_Init(0);
+
   // Variablen initialisieren
   if (DoMerge)
   {
@@ -1896,6 +1902,7 @@ int main(int argc, const char* argv[])
       printf("--> already stripped.\n");
       CutProcessor_Free();
       InfProcessor_Free();
+      TtxProcessor_Free();
       if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
       if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
       printf("\nRecStrip finished. No files to process.\n");
@@ -1911,6 +1918,7 @@ int main(int argc, const char* argv[])
     {
       CutProcessor_Free();
       InfProcessor_Free();
+      TtxProcessor_Free();
       if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
       if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
       if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
@@ -1938,6 +1946,7 @@ int main(int argc, const char* argv[])
   {
     CutProcessor_Free();
     InfProcessor_Free();
+    TtxProcessor_Free();
     if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
     if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
@@ -1953,6 +1962,7 @@ int main(int argc, const char* argv[])
 /*    CloseInputFiles(FALSE, FALSE, FALSE);
     CutProcessor_Free();
     InfProcessor_Free();
+    TtxProcessor_Free();
     if(PendingBuf) { free(PendingBuf); PendingBuf = NULL };
     if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
     if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
@@ -1960,13 +1970,6 @@ int main(int argc, const char* argv[])
     if(ExtEPGText) { free(ExtEPGText); ExtEPGText = NULL; }
     TRACEEXIT;
     exit(6);  */
-  }
-
-  TtxProcessor_Init(TeletextPage);
-  if (ExtractTeletext && !MedionMode && TeletextPID == (word)-1)
-  {
-    printf("Warning: No teletext PID determined.\n");
-    ExtractTeletext = FALSE;
   }
 
   // Spezialanpassung Humax / Medion
@@ -2428,6 +2431,21 @@ int main(int argc, const char* argv[])
     }
   }
 
+  if (ExtractAllTeletext)
+  {
+    char AbsOutFile[FBLIB_DIR_SIZE], *p;
+    int len;
+    strncpy(AbsOutFile, (*RecFileOut) ? RecFileOut : RecFileIn, sizeof(AbsOutFile));
+    if ((p = strrchr(AbsOutFile, '.')) != NULL)
+      len = (p - AbsOutFile);
+    else
+      len = strlen(AbsOutFile);
+    snprintf(&AbsOutFile[len], sizeof(AbsOutFile)-len, "%s", ".txt");
+    WriteAllTeletext(AbsOutFile);
+    TtxProcessor_Free();
+    ExtractAllTeletext = FALSE;
+  }
+
   // Hier beenden, wenn View Info Only
   if (DoInfoOnly || DoFixPMT)
   {
@@ -2446,6 +2464,12 @@ int main(int argc, const char* argv[])
     exit(0);
   }
 
+  TtxProcessor_Init(TeletextPage);
+  if (ExtractTeletext && !MedionMode && TeletextPID == (word)-1)
+  {
+    printf("Warning: No teletext PID determined.\n");
+    ExtractTeletext = FALSE;
+  }
 
   // Spezialanpassung Medion (Teletext-Extraktion)
 /*  if (MedionMode)

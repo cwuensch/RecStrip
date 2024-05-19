@@ -1423,11 +1423,16 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             if (GetPTS(&Buffer[p], &FirstTtxPTS, NULL) && FirstTtxPTS && (abs((int)(FirstTtxPTS - FirstFilePTS)) > 450000))
               TtxPTSOffset = FirstFilePTS - FirstTtxPTS;
 
-          res = AnalyseTtx(&Buffer[p], 98304-p, (p > ReadBytes/2), RecInf->RecHeaderInfo.StartTime, &TtxTime, &TtxTimeSec, &TtxTimeZone, RecInf->ServiceInfo.ServiceName, sizeof(RecInf->ServiceInfo.ServiceName));
-          if(res > TtxFound) TtxFound = res;
-          if((TtxFound && !TtxOK) || (TtxFound >= 2 && TtxOK <= 1))
-            TtxOK = (GetPTS(&Buffer[p], &TtxPTS, NULL) && (TtxPTS != 0)) ? TtxFound : TtxOK;
-          if(TtxOK >= 2)
+          if (TtxOK < 2)
+          {
+            res = AnalyseTtx(&Buffer[p], 98304-p, (p > ReadBytes/2), RecInf->RecHeaderInfo.StartTime, &TtxTime, &TtxTimeSec, &TtxTimeZone, RecInf->ServiceInfo.ServiceName, sizeof(RecInf->ServiceInfo.ServiceName));
+            if(res > TtxFound) TtxFound = res;
+            if((TtxFound && !TtxOK) || (TtxFound >= 2 && TtxOK <= 1))
+              TtxOK = (GetPTS(&Buffer[p], &TtxPTS, NULL) && (TtxPTS != 0)) ? TtxFound : TtxOK;
+          }
+          if (ExtractTeletext)
+            process_pes_packet(&Buffer[p], 98304-p);
+          else if (TtxOK >= 2)
           {
 //            printf("  TS: TeletextPID=%hd\n", TeletextPID);
             break;
@@ -1741,12 +1746,13 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     {
       word TeletextPID_PMT = TeletextPID;
       bool HasTeletext = FALSE;
+      int NrIterations = ExtractAllTeletext ? 1000 : 300;
       PSBuffer_Init(&PMTBuffer, 0x0011, 16384, TRUE);
       PSBuffer_Init(&TtxBuffer, TeletextPID, 16384, FALSE);
       LastPMTBuffer = 0; LastEITBuffer = 0; LastTtxBuffer = 0;
 
       fseeko64(fIn, FilePos + Offset, SEEK_SET);  // Hier auf 0 setzen (?)
-      for (i = 0; i < 300; i++)
+      for (i = 0; i < NrIterations; i++)
       {
         ReadBytes = (int)fread(Buffer, PACKETSIZE, 168, fIn) * PACKETSIZE;
         p = &Buffer[PACKETOFFSET];
@@ -1821,7 +1827,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               LastEITBuffer = EITBuffer.ValidBuffer;
             }
           }
-          if ((TtxFound <= 1 || TtxOK <= 1) && (TeletextPID != 0xffff) && (curPID == TeletextPID))
+          if ((TtxFound <= 1 || TtxOK <= 1 || ExtractAllTeletext) && (TeletextPID != 0xffff) && (curPID == TeletextPID))
           {
             PSBuffer_ProcessTSPacket(&TtxBuffer, curPacket);
             if (TtxBuffer.ValidBuffer != LastTtxBuffer)
@@ -1830,11 +1836,18 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 // IDEE: Hier vielleicht den Teletext-String in EventNameDescription schreiben, FALLS Länge größer ist als EventNameLength und !EITOK
 
               if (!TtxBuffer.ErrorFlag)
-                if ((res = AnalyseTtx(pBuffer, TtxBuffer.ValidBufLen, (i > 28), RecInf->RecHeaderInfo.StartTime, &TtxTime, &TtxTimeSec, &TtxTimeZone, ((!SDTOK && !KeepHumaxSvcName) ? RecInf->ServiceInfo.ServiceName : NULL), sizeof(RecInf->ServiceInfo.ServiceName))) > TtxFound)
+              {
+                if (TtxFound <= 1 || TtxOK <= 1 )
                 {
-                  GetPTS(pBuffer, &TtxPTS, NULL);
-                  TtxFound = res;
+                  if ((res = AnalyseTtx(pBuffer, TtxBuffer.ValidBufLen, (i > 28), RecInf->RecHeaderInfo.StartTime, &TtxTime, &TtxTimeSec, &TtxTimeZone, ((!SDTOK && !KeepHumaxSvcName) ? RecInf->ServiceInfo.ServiceName : NULL), sizeof(RecInf->ServiceInfo.ServiceName))) > TtxFound)
+                  {
+                    GetPTS(pBuffer, &TtxPTS, NULL);
+                    TtxFound = res;
+                  }
                 }
+                if (ExtractAllTeletext)
+                  process_pes_packet(pBuffer, TtxBuffer.ValidBufLen);
+              }
 /*              TtxFound = !TtxBuffer.ErrorFlag && AnalyseTtx(pBuffer, TtxBuffer.ValidBufLen, &TtxTime, &TtxTimeSec, &TtxTimeZone, (!EITOK ? RecInf->EventInfo.EventNameDescription : ((!SDTOK && !KeepHumaxSvcName) ? RecInf->ServiceInfo.ServiceName : NULL)), sizeof(RecInf->ServiceInfo.ServiceName));
               if (!EITOK && *RecInf->EventInfo.EventNameDescription)
               {
@@ -1902,7 +1915,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             }
           }
 
-          if(((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT)                                                                      || (EITOK && SDTOK)) && (TtxOK>=2 || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
+          if((!ExtractAllTeletext || TeletextPID==(word)-1) && ((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT)                                                                      || (EITOK && SDTOK)) && (TtxOK>=2 || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
             break;
           p += PACKETSIZE;
         }
@@ -1913,7 +1926,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0) && AllPidsScanned; k++)
             if (!AudioPIDs[k].scanned) AllPidsScanned = FALSE;
         }
-        if(((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT) || (/*HumaxSource || EycosSource ||*/ AllPidsScanned || MedionMode==1) || (EITOK && SDTOK)) && (TtxOK>=2 || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
+        if((!ExtractAllTeletext || TeletextPID==(word)-1) && ((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT) || (/*HumaxSource || EycosSource ||*/ AllPidsScanned || MedionMode==1) || (EITOK && SDTOK)) && (TtxOK>=2 || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
         {
           ret = TRUE;
           break;
