@@ -2613,10 +2613,7 @@ int main(int argc, const char* argv[])
 
           // ### SRT-Subtitles bis hierher ausgeben
           if (RebuildSrt)
-          {
-            while (CaptionStart < SegmentMarker[CurSeg].Timems)
-              SrtProcessNextCaption(Out, NewStartTimeOffset, SegmentMarker[CurSeg].Timems);
-          }
+            SrtProcessCaptionsUntil(SegmentMarker[CurSeg].Timems, NewStartTimeOffset, TRUE);
 
           // aktuelle Output-Files schließen
           if (!CloseOutputFiles())
@@ -2683,10 +2680,7 @@ int main(int argc, const char* argv[])
 
           // ### SRT-Subtitles im Segment überspringen
           if (RebuildSrt)
-          {
-            while (CaptionEnd < SegmentMarker[CurSeg+1].Timems)
-              SrtProcessNextCaption(noOut);
-          }
+            SrtProcessCaptionsUntil(SegmentMarker[CurSeg+1].Timems, 0, FALSE);
         }
 
         // Wir sind am nächsten (zu erhaltenden) SegmentMarker angekommen
@@ -2726,10 +2720,7 @@ int main(int argc, const char* argv[])
 
             // ### bisherige SRT-Subtitles ausgeben
             if (RebuildSrt)
-            {
-              while (CaptionStart < SegmentMarker[CurSeg+1].Timems)
-                SrtProcessNextCaption(Out, CutTimeOffset, SegmentMarker[CurSeg+1].Timems);
-            }
+              SrtProcessCaptionsUntil(SegmentMarker[CurSeg+1].Timems, CutTimeOffset, TRUE);
 
             // Header-Pakete ausgeben 2 (experimentell)
             if (CurrentPosition-PositionOffset > (2 + NrEPGPacks) * OutPacketSize)
@@ -3309,10 +3300,7 @@ int main(int argc, const char* argv[])
 
     // ### restliche SRT-Subtitles noch ausgeben
     if (RebuildSrt)
-    {
-      while (CaptionEnd)
-        SrtProcessNextCaption(Out, CutTimeOffset, NULL);
-    }
+      SrtProcessCaptionsUntil((dword)-1, CutTimeOffset, TRUE);
 
     if (DoMerge && (curInputFile < NrInputFiles-1))
     {
