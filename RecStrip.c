@@ -113,7 +113,7 @@ word                    VideoPID = (word) -1, TeletextPID = (word) -1, Subtitles
 tAudioTrack             AudioPIDs[MAXCONTINUITYPIDS];
 word                    ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs = 1;
 bool                    isHDVideo = FALSE, AlreadyStripped = FALSE, HumaxSource = FALSE, EycosSource = FALSE, DVBViewerSrc = FALSE;
-bool                    DoStrip = FALSE, DoSkip = FALSE, RemoveScrambled = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, ExtractAllTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE, RebuildSrt = FALSE, DoInfoOnly = FALSE, DoFixPMT = FALSE, MedionMode = FALSE, MedionStrip = FALSE, WriteDescPackets = TRUE, PMTatStart = FALSE;
+bool                    DoStrip = FALSE, DoSkip = FALSE, RemoveScrambled = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, ExtractAllTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE, RebuildSrt = FALSE, DoInfoOnly = FALSE, DoFixPMT = FALSE, DemuxAudio = FALSE, MedionMode = FALSE, MedionStrip = FALSE, WriteDescPackets = TRUE, PMTatStart = FALSE;
 int                     DoCut = 0, DoMerge = 0, DoInfFix = 0;  // DoCut: 1=remove_parts, 2=copy_separate, DoMerge: 1=append, 2=merge  // DoInfFix: 1=enable, 2=inf to be fixed
 int                     curInputFile = 0, NrInputFiles = 1, NrEPGPacks = 0;
 int                     dbg_DelBytesSinceLastVid = 0;
@@ -131,7 +131,7 @@ dword                   TtxPTSOffset = 0;
 static char             InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], InfFileFirstIn[FBLIB_DIR_SIZE], /*InfFileOld[FBLIB_DIR_SIZE],*/ NavFileOut[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE]; // TeletextOut[FBLIB_DIR_SIZE];
 static bool             HasNavIn, HasNavOld, HasInfOld;
 static FILE            *fIn = NULL;
-static FILE            *fOut = NULL;
+static FILE            *fOut = NULL, *fAudioOut = NULL;
 static byte            *PendingBuf = NULL;
 static int              PendingBufLen = 0, PendingBufStart = 0;
 static bool             isPending = FALSE;
@@ -964,7 +964,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
   if (ret)
   {
     GetFileNameFromRec(RecFileIn, ".srt", AddFileIn);
-    RebuildSrt = (!ExtractTeletext && ((fTtxIn = fopen(AddFileIn, "rb")) != NULL));
+    RebuildSrt = (!ExtractTeletext && LoadSrtFileIn(AddFileIn));
   }
 
   if (!FirstTime)
@@ -1158,10 +1158,22 @@ SONST
     else if (RebuildSrt)
     {
       if (LoadSrtFileOut(AbsFileName))
-        printf("\nSRT file output: %s", AbsFileName);
+        printf("\nSrt output: %s", AbsFileName);
       else
         RebuildSrt = FALSE;
     }
+  }
+
+  // Demux Audio Outfile ermitteln
+  if (DemuxAudio)
+  {
+    char AbsFileName[FBLIB_DIR_SIZE];
+    if (*RecFileOut)
+      GetFileNameFromRec(RecFileOut, "_audio.pes", AbsFileName);
+    else
+      GetFileNameFromRec(RecFileIn, "_audio.pes", AbsFileName);
+
+    fAudioOut = fopen(AbsFileName, ((DoMerge==1) ? "ab" : "wb"));
   }
 
   // Header-Pakete ausgeben
@@ -1208,7 +1220,6 @@ static void CloseInputFiles(bool PrintErrors, bool SetStripFlags, bool SetStartT
       HDD_SetFileDateTime(InfFileIn, OldInfTime);
   }
   CloseNavFileIn();
-  if (fTtxIn) { fclose(fTtxIn); fTtxIn = NULL; }
   CloseSrtFileIn();
   if(MedionMode == 1) SimpleMuxer_Close();
   if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
@@ -1272,8 +1283,10 @@ static bool CloseOutputFiles(void)
   if (ExtractTeletext && !CloseTeletextOut())
     printf("  WARNING: Cannot create teletext files.\n");
 
-  if (ExtractTeletext && !CloseSrtFileOut())
+  if (!CloseSrtFileOut())
     printf("  WARNING: Cannot create srt output file.\n");
+
+  fclose(fAudioOut);
 
   if (*RecFileOut)
     HDD_SetFileDateTime(RecFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE));
@@ -1740,6 +1753,7 @@ int main(int argc, const char* argv[])
       case 'M':   MedionMode = TRUE;      break;
       case 'f':   DoInfFix = 1;           break;
       case 'p':   DoFixPMT = TRUE;        break;
+      case 'd':   DemuxAudio = TRUE;      break;
       case 'v':   DoInfoOnly = TRUE;      break;
       case 'h':
       case '?':   ret = FALSE; AbortProcess = TRUE; break;
@@ -1846,6 +1860,7 @@ int main(int argc, const char* argv[])
       printf("  -v:        View rec information only. Disables any other option.\n\n");
       printf("  -p:        Fix PAT/PMT of output file. Disables any other option.\n\n");
       printf("  -f:        Fix start time in source inf. Set source-file timestamps.\n\n");
+      printf("  -d:        Demux first audio track to OutFile_audio.pes (not with -M)\n\n");
       printf("  -M:        Medion Mode: Multiplexes 4 separate PES-Files into output.\n");
       printf("             (With InFile=<name>_video.pes, _audio1, _ttx, _epg are used.)\n");
       printf("\nExamples:\n---------\n");
@@ -2613,7 +2628,7 @@ int main(int argc, const char* argv[])
 
           // ### SRT-Subtitles bis hierher ausgeben
           if (RebuildSrt)
-            SrtProcessCaptionsUntil(SegmentMarker[CurSeg].Timems, NewStartTimeOffset, TRUE);
+            SrtProcessCaptions(0, SegmentMarker[CurSeg].Timems, NewStartTimeOffset, TRUE);
 
           // aktuelle Output-Files schließen
           if (!CloseOutputFiles())
@@ -2680,7 +2695,7 @@ int main(int argc, const char* argv[])
 
           // ### SRT-Subtitles im Segment überspringen
           if (RebuildSrt)
-            SrtProcessCaptionsUntil(SegmentMarker[CurSeg+1].Timems, 0, FALSE);
+            SrtProcessCaptions(0, SegmentMarker[CurSeg+1].Timems, 0, FALSE);
         }
 
         // Wir sind am nächsten (zu erhaltenden) SegmentMarker angekommen
@@ -2720,7 +2735,7 @@ int main(int argc, const char* argv[])
 
             // ### bisherige SRT-Subtitles ausgeben
             if (RebuildSrt)
-              SrtProcessCaptionsUntil(SegmentMarker[CurSeg+1].Timems, CutTimeOffset, TRUE);
+              SrtProcessCaptions(SegmentMarker[CurSeg].Timems, SegmentMarker[CurSeg+1].Timems, CutTimeOffset, TRUE);
 
             // Header-Pakete ausgeben 2 (experimentell)
             if (CurrentPosition-PositionOffset > (2 + NrEPGPacks) * OutPacketSize)
@@ -2752,6 +2767,8 @@ int main(int argc, const char* argv[])
               fclose(fIn); fIn = NULL;
               CloseNavFileIn();
               CloseTeletextOut();
+              CloseSrtFileIn();
+              CloseSrtFileOut();
               if(MedionMode == 1) SimpleMuxer_Close();
               CutProcessor_Free();
               InfProcessor_Free();
@@ -2975,6 +2992,14 @@ int main(int argc, const char* argv[])
                   break;
               }
             }
+          }
+
+          // Demux first audio track
+          if (DemuxAudio && (CurPID == AudioPIDs[0].pid) && fAudioOut)
+          {
+            tTSPacket* curPacket = (tTSPacket*) &Buffer[4];
+            byte *p = &curPacket->Data[curPacket->Adapt_Field_Exists ? curPacket->Data[0] : 0];
+            fwrite(p, 1, 192 - (int)(p-Buffer), fAudioOut);
           }
 
           // SEGMENTMARKER ANPASSEN
@@ -3300,7 +3325,7 @@ int main(int argc, const char* argv[])
 
     // ### restliche SRT-Subtitles noch ausgeben
     if (RebuildSrt)
-      SrtProcessCaptionsUntil((dword)-1, CutTimeOffset, TRUE);
+      SrtProcessCaptions(0, (dword)-1, CutTimeOffset, TRUE);
 
     if (DoMerge && (curInputFile < NrInputFiles-1))
     {

@@ -163,6 +163,7 @@
     <ClInclude Include="..\RebuildInf.h" />
     <ClInclude Include="..\RecHeader.h" />
     <ClInclude Include="..\RecStrip.h" />
+    <ClInclude Include="..\SrtProcessor.h" />
     <ClInclude Include="..\teletext.h" />
     <ClInclude Include="..\TtxProcessor.h" />
     <ClInclude Include="..\type.h" />
@@ -179,6 +180,7 @@
     <ClCompile Include="..\PESProcessor.c" />
     <ClCompile Include="..\RebuildInf.c" />
     <ClCompile Include="..\RecStrip.c" />
+    <ClCompile Include="..\SrtProcessor.c" />
     <ClCompile Include="..\StrToUTF8.c" />
     <ClCompile Include="..\TtxProcessor.c" />
   </ItemGroup>

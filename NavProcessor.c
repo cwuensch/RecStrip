@@ -1511,9 +1511,8 @@ printf("NewNav: FirstPTS = %u (%01u:%02u:%02u,%03u), Last: %u (%01u:%02u:%02u,%0
 printf("NewNav: Duration = %01d:%02u:%02u,%03u", dPTS / 3600000, abs(dPTS / 60000) % 60, abs(dPTS / 1000) % 60, abs(dPTS) % 1000);
 
 if (((dPTS = PTSJump / 45)) != 0)
-printf(" (time jumps %02d:%02u,%03u)\n", dPTS / 60000, abs(dPTS / 1000) % 60, abs(dPTS) % 1000);
-else
-printf("\n");
+  printf(" (time jumps %02d:%02u,%03u)\n", dPTS / 60000, abs(dPTS / 1000) % 60, abs(dPTS) % 1000);
+else printf("\n");
   }
   printf("\n");
 

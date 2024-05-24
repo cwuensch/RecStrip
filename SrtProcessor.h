@@ -11,7 +11,7 @@ extern bool             inCaption;
 void SrtProcessor_Init(void);
 bool LoadSrtFileIn(const char* AbsInSrt);
 bool LoadSrtFileOut(const char* AbsOutSrt);
-bool SrtProcessCaptionsUntil(dword Timems, int TimeOffset, bool DoOutput);
+bool SrtProcessCaptions(dword FromTimems, dword ToTimems, int TimeOffset, bool DoOutput);
 void CloseSrtFileIn(void);
 bool CloseSrtFileOut(void);
 

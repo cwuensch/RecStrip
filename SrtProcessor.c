@@ -29,25 +29,24 @@ bool LoadSrtFileIn(const char* AbsInSrt)
 {
   if(fSrtIn) fclose(fSrtIn);
   fSrtIn = fopen(AbsInSrt, "rb");
-  return fSrtIn;
+  return (fSrtIn != NULL);
 }
 
 bool LoadSrtFileOut(const char* AbsOutSrt)
 {
   if(fSrtOut) fclose(fSrtOut);
-  fSrtOut = fopen(AbsOutSrt, "wb");
+  fSrtOut = fopen(AbsOutSrt, (DoMerge == 1) ? "ab" : "wb");
   Nr = 1;
-  return fSrtOut;
+  return (fSrtOut != NULL);
 }
 
-bool SrtProcessCaptionsUntil(dword Timems, int TimeDiff, bool DoOutput)
+bool SrtProcessCaptions(dword FromTimems, dword ToTimems, int TimeDiff, bool DoOutput)
 {
   char                  Buffer[256], Number[12];
   unsigned int          hour1, minute1, second1, millisec1, hour2, minute2, second2, millisec2;
-  dword                 TimeDiff = 0;
-  bool                  inCaption = FALSE, ret = FALSE;
+  bool                  inCaption = FALSE, ret = TRUE;
 
-  Buffer[0] = '\0';
+  Buffer[0] = '\0'; Number[0] = '\0';
   
   // Walk through srt file and copy relevant parts to output files
   while (ret && ((!inCaption && CaptionEnd) || (fgets(Buffer, sizeof(Buffer), fSrtIn))))
@@ -56,6 +55,7 @@ bool SrtProcessCaptionsUntil(dword Timems, int TimeDiff, bool DoOutput)
     if (inCaption)
     {
       ret = fwrite(Buffer, 1, strlen(Buffer), fSrtOut) && ret;
+      fwrite("\n", 1, 1, fSrtOut);
 
       // leere Zeile -> Caption beendet
       if (!*Buffer || Buffer[0] == '\r' || Buffer[0] == '\n')
@@ -73,19 +73,19 @@ bool SrtProcessCaptionsUntil(dword Timems, int TimeDiff, bool DoOutput)
         CaptionStart = 3600000*hour1 + 60000*minute1 + 1000*second1 + millisec1;
         CaptionEnd   = 3600000*hour2 + 60000*minute2 + 1000*second2 + millisec2;
 
-        if (CaptionStart <= Timems && (CaptionEnd <= Timems || DoOutput))
+        if (CaptionStart <= ToTimems && (CaptionEnd <= ToTimems || DoOutput))
         {
           // CaptionStart könnte vorm Bereich beginnen
-          if (CaptionStart >= TimeDiff)
-            CaptionStart -= TimeDiff;
+          if (CaptionStart >= FromTimems)
+            CaptionStart -= min(TimeDiff, (int)CaptionStart);
           else
-            CaptionStart = 0;
+            CaptionStart = FromTimems;
 
           // CaptionEnd könnte ihn überschreiten
-          if (CaptionEnd <= Timems)
+          if (CaptionEnd <= ToTimems)
             CaptionEnd -= TimeDiff;
           else
-            CaptionEnd = Timems;
+            CaptionEnd = ToTimems;
         }
         else
           break;
@@ -109,6 +109,7 @@ bool SrtProcessCaptionsUntil(dword Timems, int TimeDiff, bool DoOutput)
       }
     }
   }
+  return ret;
 }
 
 void CloseSrtFileIn(void)
@@ -119,6 +120,8 @@ void CloseSrtFileIn(void)
 
 bool CloseSrtFileOut(void)
 {
-  if(fSrtOut) fclose(fSrtOut);
+  bool ret = TRUE;
+  if(fSrtOut) ret = fclose(fSrtOut);
   fSrtOut = NULL;
+  return ret;
 }
