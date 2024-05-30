@@ -2,6 +2,7 @@
 #define __RECSTRIPH__
 
 #include "RecHeader.h"
+#include <time.h>
 
 #define VERSION                  "v2.9"
 

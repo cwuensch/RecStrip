@@ -64,7 +64,7 @@
 #include "HumaxHeader.h"
 #include "EycosHeader.h"
 
-//#include "PESProcessor.h"
+#include "PESProcessor.h"
 
 
 /*#if defined(LINUX)
@@ -132,6 +132,8 @@ static char             InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], I
 static bool             HasNavIn, HasNavOld, HasInfOld;
 static FILE            *fIn = NULL;
 static FILE            *fOut = NULL, *fAudioOut = NULL;
+static tPSBuffer        AudioPES;
+static int              LastAudBuffer = 0;
 static byte            *PendingBuf = NULL;
 static int              PendingBufLen = 0, PendingBufStart = 0;
 static bool             isPending = FALSE;
@@ -264,7 +266,7 @@ static time_t HDD_GetFileDateTime(char const *AbsFileName)
 //        Result += _timezone - (timeinfo.tm_isdst ? 3600 : 0);           // Windows-Datum (local) in UTC umwandeln
 //        Result3+= _timezone - (timeinfo.tm_isdst ? 3600 : 0);
 if (Result3 != Result)
-  printf("ASSERTION ERROR! Windows API date (%llu) does not match 'correct' stat date (%llu).\n", Result3, Result);
+  printf("ASSERTION ERROR! Windows API date (%llu) does not match 'correct' stat date (%llu).\n", (unsigned long long)Result3, (unsigned long long)Result);
       }
       #endif
     }
@@ -1019,7 +1021,7 @@ static bool OpenOutputFiles(void)
   TRACEENTER;
 
   // ggf. Output-File öffnen
-  if (*RecFileOut)
+  if (*RecFileOut && (DoStrip || OutPacketSize!=PACKETSIZE || DoCut || DoMerge || RemoveEPGStream || RemoveTeletext || (!ExtractTeletext && !ExtractAllTeletext && !DemuxAudio)))
   {
     printf("\nOutput rec: %s\n", RecFileOut);
     if (DoMerge == 1)
@@ -1151,14 +1153,14 @@ SONST
     if (ExtractTeletext)
     {
       if (LoadTeletextOut(AbsFileName))
-        printf("\nTeletext output: %s", AbsFileName);
+        printf("Teletext output: %s\n", AbsFileName);
       else
         ExtractTeletext = FALSE;
     }
-    else if (RebuildSrt)
+    else if (*RecFileOut && RebuildSrt)
     {
       if (LoadSrtFileOut(AbsFileName))
-        printf("\nSrt output: %s", AbsFileName);
+        printf("\nSrt output: %s\n", AbsFileName);
       else
         RebuildSrt = FALSE;
     }
@@ -1174,6 +1176,8 @@ SONST
       GetFileNameFromRec(RecFileIn, "_audio.pes", AbsFileName);
 
     fAudioOut = fopen(AbsFileName, ((DoMerge==1) ? "ab" : "wb"));
+
+    PSBuffer_Init(&AudioPES, AudioPIDs[0].pid, 65536, FALSE);
   }
 
   // Header-Pakete ausgeben
@@ -1259,6 +1263,7 @@ static bool CloseOutputFiles(void)
       SaveInfFile(InfFileOut, InfFileFirstIn);
       CloseTeletextOut();
       CloseSrtFileOut();
+      PSBuffer_Reset(&AudioPES);
       TRACEEXIT;
       return FALSE;
     }
@@ -1286,7 +1291,12 @@ static bool CloseOutputFiles(void)
   if (!CloseSrtFileOut())
     printf("  WARNING: Cannot create srt output file.\n");
 
-  fclose(fAudioOut);
+  if (fAudioOut)
+  {
+    PSBuffer_Reset(&AudioPES);
+    fclose(fAudioOut);
+    fAudioOut = NULL;
+  }
 
   if (*RecFileOut)
     HDD_SetFileDateTime(RecFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE));
@@ -1396,10 +1406,10 @@ int main(int argc, const char* argv[])
   tPSBuffer   Streams[4];
   FILE       *out[4], *in;
   int         PIDs[4];
-  bool        LastBuffer[4]  = { 0, 0, 0, 0 };
+  int         LastBuffer[4]  = { 0, 0, 0, 0 };
   int         FileOffset, i;
   int         ret = 0;
-  char       *p;
+  const char *p;
 
 //  const char *p = strrchr(DemuxInFile, '/');
 //  if(!p)      p = strrchr(DemuxInFile, '\\');
@@ -1437,7 +1447,7 @@ int main(int argc, const char* argv[])
     else
     {
       PIDs[0] = 100, PIDs[1] = 101, PIDs[2] = 102; PIDs[3] = 18;
-    }
+    } 
     InfProcessor_Free();
   }
   printf("\nPIDS: Video=%hd, Audio=%hd, Teletext=%hd, EPG=%hd\n\n", PIDs[0], PIDs[1], PIDs[2], PIDs[3]);
@@ -1497,7 +1507,7 @@ int main(int argc, const char* argv[])
   }
   fclose(in);
   exit(ret);
-}*/
+} */
 
 /* // Humax-Fix (falsche PMT-Pid und ServiceInfo in inf-Datei und Timestamps)
 {
@@ -2479,9 +2489,9 @@ int main(int argc, const char* argv[])
     int len;
     strncpy(AbsOutFile, (*RecFileOut) ? RecFileOut : RecFileIn, sizeof(AbsOutFile));
     if ((p = strrchr(AbsOutFile, '.')) != NULL)
-      len = (p - AbsOutFile);
+      len = (int)(p - AbsOutFile);
     else
-      len = strlen(AbsOutFile);
+      len = (int)strlen(AbsOutFile);
     snprintf(&AbsOutFile[len], sizeof(AbsOutFile)-len, "%s", ".txt");
     WriteAllTeletext(AbsOutFile);
     TtxProcessor_Free();
@@ -2641,6 +2651,7 @@ int main(int argc, const char* argv[])
             if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
             if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
             if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
+            PSBuffer_Reset(&AudioPES);
             exit(10);
           }
 
@@ -2695,7 +2706,7 @@ int main(int argc, const char* argv[])
 
           // ### SRT-Subtitles im Segment überspringen
           if (RebuildSrt)
-            SrtProcessCaptions(0, SegmentMarker[CurSeg+1].Timems, 0, FALSE);
+            SrtProcessCaptions(0, SegmentMarker[CurSeg].Timems, 0, FALSE);
         }
 
         // Wir sind am nächsten (zu erhaltenden) SegmentMarker angekommen
@@ -2997,9 +3008,16 @@ int main(int argc, const char* argv[])
           // Demux first audio track
           if (DemuxAudio && (CurPID == AudioPIDs[0].pid) && fAudioOut)
           {
-            tTSPacket* curPacket = (tTSPacket*) &Buffer[4];
-            byte *p = &curPacket->Data[curPacket->Adapt_Field_Exists ? curPacket->Data[0] : 0];
-            fwrite(p, 1, 192 - (int)(p-Buffer), fAudioOut);
+//            tTSPacket* curPacket = (tTSPacket*) &Buffer[4];
+//            byte *p = &curPacket->Data[curPacket->Adapt_Field_Exists ? curPacket->Data[0] : 0];
+//            fwrite(p, 1, 192 - (int)(p-Buffer), fAudioOut);
+            PSBuffer_ProcessTSPacket(&AudioPES, (tTSPacket*)(&Buffer[4]));
+
+            if((AudioPES.ValidBuffer != LastAudBuffer) && (AudioPES.ValidBuffer > 0))
+            {
+              fwrite(((AudioPES.ValidBuffer == 1) ? AudioPES.Buffer1 : AudioPES.Buffer2), 1, AudioPES.ValidBufLen, fAudioOut);
+              LastAudBuffer = AudioPES.ValidBuffer;
+            }
           }
 
           // SEGMENTMARKER ANPASSEN
@@ -3283,6 +3301,7 @@ int main(int argc, const char* argv[])
           if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
           if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
           if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
+          PSBuffer_Reset(&AudioPES);
           printf("\n RecStrip aborted.\n");
           TRACEEXIT;
           exit(8);
@@ -3325,7 +3344,7 @@ int main(int argc, const char* argv[])
 
     // ### restliche SRT-Subtitles noch ausgeben
     if (RebuildSrt)
-      SrtProcessCaptions(0, (dword)-1, CutTimeOffset, TRUE);
+      SrtProcessCaptions(0, 0xffffffff, CutTimeOffset, TRUE);
 
     if (DoMerge && (curInputFile < NrInputFiles-1))
     {
