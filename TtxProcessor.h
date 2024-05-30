@@ -4,6 +4,14 @@
 #include "stdint.h"
 #include "RecStrip.h"
 
+typedef enum {
+  DATA_UNIT_EBU_TELETEXT_NONSUBTITLE = 0x02,
+  DATA_UNIT_EBU_TELETEXT_SUBTITLE = 0x03,
+  DATA_UNIT_EBU_TELETEXT_INVERTED = 0x0c,
+  DATA_UNIT_VPS = 0xc3,
+  DATA_UNIT_CLOSED_CAPTIONS = 0xc5
+} data_unit_t;
+
 // 1-byte alignment; just to be sure, this struct is being used for explicit type conversion
 // FIXME: remove explicit type conversion from buffer to structs
 #pragma pack(push, 1)
@@ -29,7 +37,7 @@ void ProcessTtxPacket(tTSPacket *Packet);
 word telx_to_ucs2(byte c);
 void ucs2_to_utf8(char *r, word ch);
 void process_pes_packet(byte *buffer, word size);
-void process_telx_packet(int data_unit_id, teletext_packet_payload_t *packet, uint32_t timestamp);
+void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payload_t *packet, uint32_t timestamp);
 bool WriteAllTeletext(char *AbsOutFile);
 bool CloseTeletextOut(void);
 void TtxProcessor_Free(void);

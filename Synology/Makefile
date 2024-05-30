@@ -2,7 +2,7 @@
 include /env.mak
 
 EXEC = RecStrip
-OBJS = RecStrip.o InfProcessor.o NavProcessor.o CutProcessor.o NALUDump.o RebuildInf.o TtxProcessor.o PESProcessor.o PESFileLoader.o HumaxImport.o EycosImport.o H264.o StrToUTF8.o
+OBJS = RecStrip.o InfProcessor.o NavProcessor.o CutProcessor.o NALUDump.o RebuildInf.o TtxProcessor.o SrtProcessor.o PESProcessor.o PESFileLoader.o HumaxImport.o EycosImport.o H264.o StrToUTF8.o
 
 CFLAGS2   ?= -O2 -MD -W -Wall -static -std=c99 -fno-strict-aliasing -funsigned-char -D_FORTIFY_SOURCE=1 -Wstack-protector
 LDFLAGS   += -Wl,--gc-sections

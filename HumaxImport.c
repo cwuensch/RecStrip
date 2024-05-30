@@ -432,8 +432,8 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, TYPE_Event_Info *OutEventI
               OutEventInfo->StartTime = DATE(StartMJD, StartHour, StartMin);
               OutEventInfo->DurationHour = DurationH;
               OutEventInfo->DurationMin = DurationM;
-              OutEventInfo->EventNameLength = (int)strlen(OutEventInfo->EventNameDescription);
-              if (OutEventInfo->EventNameLength + 2 < (int)sizeof(OutEventInfo->EventNameDescription))
+              OutEventInfo->EventNameLength = (byte)strlen(OutEventInfo->EventNameDescription);
+              if (OutEventInfo->EventNameLength + 2 < (byte)sizeof(OutEventInfo->EventNameDescription))
                 strncpy(&OutEventInfo->EventNameDescription[OutEventInfo->EventNameLength + 1], DescStr, sizeof(OutEventInfo->EventNameDescription) - 1);
             }
             if (OutEventInfo && ExtDesc)
@@ -444,7 +444,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, TYPE_Event_Info *OutEventI
                 LineBuf[--k] = '\0';
               OutExtEventInfo->ServiceID = ServiceID;
               strncpy(OutExtEventInfo->Text, &LineBuf[ExtDesc], sizeof(OutExtEventInfo->Text) - 1);
-              OutExtEventInfo->TextLength = (int)strlen(OutExtEventInfo->Text);
+              OutExtEventInfo->TextLength = (word)strlen(OutExtEventInfo->Text);
             }
             printf("  Found EPGEvent in Map: Date=%s, Title=%s", TimeStrTF(OutEventInfo->StartTime, 0), OutEventInfo->EventNameDescription);
 
@@ -605,7 +605,7 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               AddContinuityPids(HumaxTonspuren->Items[j].PID, FALSE);
             }
           }
-          if(!*AudioPIDs[0].desc) strncpy(AudioPIDs[0].desc, "deu", 3);
+          if(!*AudioPIDs[0].desc) strncpy(AudioPIDs[0].desc, "deu", 4);
         }
       }
     }
