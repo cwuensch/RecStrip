@@ -51,12 +51,10 @@ bool SrtProcessCaptions(dword FromTimems, dword ToTimems, int TimeDiff, bool DoO
     {
       if (DoOutput)
       {
-//        fprintf(fOut, "%d\r\n", Nr++);
-printf("%s", Number);
         if(*Number) fprintf(fSrtOut, "%s", Number);
+//        fprintf(fSrtOut, "%d\r\n", Nr++);
         hour1 = CaptionStart / 3600000;  minute1 = (CaptionStart / 60000) % 60;  second1 = (CaptionStart / 1000) % 60;  millisec1 = CaptionStart % 1000;
         hour2 =  CaptionEnd / 3600000;   minute2 =  (CaptionEnd / 60000) % 60;   second2 =  (CaptionEnd / 1000) % 60;   millisec2 = CaptionEnd % 1000;
-printf("%02hu:%02hhu:%02hhu,%03hu --> %02hu:%02hhu:%02hhu,%03hu\r\n", hour1, minute1, second1, millisec1, hour2, minute2, second2, millisec2);
         fprintf(fSrtOut, "%02hu:%02hhu:%02hhu,%03hu --> %02hu:%02hhu:%02hhu,%03hu\r\n", hour1, minute1, second1, millisec1, hour2, minute2, second2, millisec2);
       }
       Number[0] = '\0';
@@ -67,10 +65,8 @@ printf("%02hu:%02hhu:%02hhu,%03hu --> %02hu:%02hhu:%02hhu,%03hu\r\n", hour1, min
     if (inCaption)
     {
       if (DoOutput)
-      {
         ret = fwrite(Buffer, 1, strlen(Buffer), fSrtOut) && ret;
-printf(Buffer);
-      }
+
       // leere Zeile -> Caption beendet
       if (!*Buffer || Buffer[0] == '\r' || Buffer[0] == '\n')
       {  
@@ -92,21 +88,21 @@ printf(Buffer);
         if (CaptionStart <= ToTimems && (CaptionEnd <= ToTimems || DoOutput))
         {
           // CaptionStart könnte vorm Bereich beginnen
-/*          if (CaptionStart >= FromTimems)
+          if (CaptionStart >= FromTimems)
             CaptionStart -= min(TimeDiff, (int)CaptionStart);
           else
-            CaptionStart = FromTimems;
+            CaptionStart = FromTimems-TimeDiff;
 
           // CaptionEnd könnte ihn überschreiten
           if (CaptionEnd <= ToTimems)
             CaptionEnd -= TimeDiff;
           else
-            CaptionEnd = ToTimems; */
+            CaptionEnd = ToTimems-TimeDiff - 1;
+
+          inCaption = TRUE;
         }
         else
           break;
-
-        inCaption = TRUE;
       }
       else if (!*Number)
         strncpy(Number, Buffer, sizeof(Number));

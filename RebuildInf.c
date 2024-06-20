@@ -590,6 +590,7 @@ printf("\n    -> No Teletext/Subtitle track detected! Analysing audio instead...
         case STREAM_AUDIO_MPEG2:
         case STREAM_AUDIO_MPEG4_AAC:
         case STREAM_AUDIO_MPEG4_AAC_PLUS:
+        //case STREAM_AUDIO_MPEG4_AC3_PLUS:  // Ignored because 0x06 = Private Stream (falls through)
         case STREAM_AUDIO_MPEG4_AC3:
         case STREAM_AUDIO_MPEG4_DTS:
         {
@@ -1404,18 +1405,18 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       fclose(fMDIn);
     }
 
-    // Read first 64 kB of Teletext PES
+    // Read first 96 kB of Teletext PES
     strcpy (&AddFileIn[len], "_ttx.pes");
     if ((fMDIn = fopen(AddFileIn, "rb")))
     {
+      dword FirstTtxPTS = 0;
+      int p = 0, res = 0;
+
       if ((ReadBytes = (int)fread(Buffer, 1, 98304, fMDIn)) > 0)
       {
-        dword FirstTtxPTS = 0;
-        int p = 0, res = 0;
-
-        while (p < ReadBytes - 1000)
+        while (p < ReadBytes - 1288)
         {
-          while ((p < ReadBytes - 1000) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1 || Buffer[p+3] != 0xBD))
+          while ((p < ReadBytes - 1288) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1 || Buffer[p+3] != 0xBD))
             p++;
 
           // For Teletext-Stream with unmatched PTS -> enable special mode with offset
@@ -1430,9 +1431,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             if((TtxFound && !TtxOK) || (TtxFound >= 2 && TtxOK <= 1))
               TtxOK = (GetPTS(&Buffer[p], &TtxPTS, NULL) && (TtxPTS != 0)) ? TtxFound : TtxOK;
           }
-          if (ExtractTeletext)
-            process_pes_packet(&Buffer[p], 98304-p);
-          else if (TtxOK >= 2)
+          else
           {
 //            printf("  TS: TeletextPID=%hd\n", TeletextPID);
             break;
@@ -1441,6 +1440,26 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         }
         if(TtxOK)
           TtxPCR = (TtxPTS + TtxPTSOffset - 66666) / 45;
+      }
+
+      if (ExtractAllTeletext)
+      {
+        int i;
+        fseek(fMDIn, p, SEEK_SET);
+        for (i = 0; i < 500; i++)
+        {
+          if ((ReadBytes = (int)fread(Buffer, 1, 128800, fMDIn)) > 0)
+          {
+            p = 0;
+            while (p < ReadBytes - 1288)
+//            {
+//              while ((p < ReadBytes - 1288) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1 || Buffer[p+3] != 0xBD))
+//                p++;
+              process_pes_packet(&Buffer[p], 655360-p);
+//            }
+          }
+          else break;
+        }
       }
       fclose(fMDIn);
     }
@@ -1545,7 +1564,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     bool                PTSLastPayloadStart = FALSE;
     int                 PTSLastEndNulls = 0;
     PMTPID = 0;
-    PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE);
+    PSBuffer_Init(&PMTBuffer, PMTPID,  4096, TRUE);
     PSBuffer_Init(&EITBuffer, 0x0012, 16384, TRUE);
 
 /*    ReadBytes = (int)fread(Buffer, 1, 5760, fIn);
@@ -1601,7 +1620,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         {
           PMTPID = packet2->PID1 * 256 + packet2->PID2;
           printf("  TS: PMTPID=%hd", PMTPID);
-          PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE);
+          PSBuffer_Init(&PMTBuffer, PMTPID, 4096, TRUE);
           PMTatStart = TRUE;
 
           // Kopiere PAT/PMT/EIT-Pakete vom Dateianfang in Buffer (nur beim ersten File-Open?)
@@ -1679,7 +1698,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             RecInf->ServiceInfo.PMTPID = PMTPID;
 
             //Analyse the PMT
-            PSBuffer_Init(&PMTBuffer, PMTPID, 16384, TRUE);
+            PSBuffer_Init(&PMTBuffer, PMTPID, 4096, TRUE);
 
 //            p = &Buffer[Offset + PACKETOFFSET];
             while (p <= &Buffer[ReadBytes-188])
@@ -1746,9 +1765,9 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     {
       word TeletextPID_PMT = TeletextPID;
       bool HasTeletext = FALSE;
-      int NrIterations = ExtractAllTeletext ? 1000 : 300;
-      PSBuffer_Init(&PMTBuffer, 0x0011, 16384, TRUE);
-      PSBuffer_Init(&TtxBuffer, TeletextPID, 16384, FALSE);
+      int NrIterations = ExtractAllTeletext ? 10000 : 300;
+      PSBuffer_Init(&PMTBuffer, 0x0011, 4096, TRUE);
+      PSBuffer_Init(&TtxBuffer, TeletextPID, 4096, FALSE);  // eigentlich: 1288
       LastPMTBuffer = 0; LastEITBuffer = 0; LastTtxBuffer = 0;
 
       fseeko64(fIn, FilePos + Offset, SEEK_SET);  // Hier auf 0 setzen (?)
@@ -1915,7 +1934,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             }
           }
 
-          if((!ExtractAllTeletext || TeletextPID==(word)-1) && ((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT)                                                                      || (EITOK && SDTOK)) && (TtxOK>=2 || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
+          if(((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT)                                                                       || (EITOK && SDTOK)) && (TtxOK>=2 || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK) && (!ExtractAllTeletext || TeletextPID==(word)-1))
             break;
           p += PACKETSIZE;
         }
@@ -1926,10 +1945,19 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0) && AllPidsScanned; k++)
             if (!AudioPIDs[k].scanned) AllPidsScanned = FALSE;
         }
-        if((!ExtractAllTeletext || TeletextPID==(word)-1) && ((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT) || (/*HumaxSource || EycosSource ||*/ AllPidsScanned || MedionMode==1) || (EITOK && SDTOK)) && (TtxOK>=2 || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
+        if( ((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT) || (/*HumaxSource || EycosSource ||*/ AllPidsScanned || MedionMode==1) || (EITOK && SDTOK)) && (TtxOK>=2 || (PMTPID && TeletextPID == 0xffff)) && ((!(HumaxSource || EycosSource || MedionMode==1) && PMTPID) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
         {
-          ret = TRUE;
-          break;
+          if (!ExtractAllTeletext || TeletextPID==(word)-1)
+          {
+            ret = TRUE;
+            break;
+          }
+          else if (ExtractAllTeletext == 1)
+          {
+            fseeko64(fIn, 0 + Offset, SEEK_SET);
+            ExtractTeletext++;
+            continue;
+          }
         }
         if(HumaxSource)
           fseeko64(fIn, +HumaxHeaderLaenge, SEEK_CUR);
@@ -1948,6 +1976,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           case STREAM_AUDIO_MPEG2:
             RecInf->ServiceInfo.AudioTypeFlag = 0;
             break;
+          case STREAM_AUDIO_MPEG4_AC3_PLUS:
           case STREAM_AUDIO_MPEG4_AC3:
             RecInf->ServiceInfo.AudioTypeFlag = 1;
             break;

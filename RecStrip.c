@@ -113,8 +113,8 @@ word                    VideoPID = (word) -1, TeletextPID = (word) -1, Subtitles
 tAudioTrack             AudioPIDs[MAXCONTINUITYPIDS];
 word                    ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs = 1;
 bool                    isHDVideo = FALSE, AlreadyStripped = FALSE, HumaxSource = FALSE, EycosSource = FALSE, DVBViewerSrc = FALSE;
-bool                    DoStrip = FALSE, DoSkip = FALSE, RemoveScrambled = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, ExtractAllTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE, RebuildSrt = FALSE, DoInfoOnly = FALSE, DoFixPMT = FALSE, DemuxAudio = FALSE, MedionMode = FALSE, MedionStrip = FALSE, WriteDescPackets = TRUE, PMTatStart = FALSE;
-int                     DoCut = 0, DoMerge = 0, DoInfFix = 0;  // DoCut: 1=remove_parts, 2=copy_separate, DoMerge: 1=append, 2=merge  // DoInfFix: 1=enable, 2=inf to be fixed
+bool                    DoStrip = FALSE, DoSkip = FALSE, RemoveScrambled = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, ExtractAllTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE, RebuildSrt = FALSE, DoInfoOnly = FALSE, DoFixPMT = FALSE, MedionMode = FALSE, MedionStrip = FALSE, WriteDescPackets = TRUE, PMTatStart = FALSE;
+int                     DoCut = 0, DoMerge = 0, DoInfFix = 0, DemuxAudio = 0;  // DoCut: 1=remove_parts, 2=copy_separate, DoMerge: 1=append, 2=merge  // DoInfFix: 1=enable, 2=inf to be fixed
 int                     curInputFile = 0, NrInputFiles = 1, NrEPGPacks = 0;
 int                     dbg_DelBytesSinceLastVid = 0;
 
@@ -969,13 +969,20 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     RebuildSrt = (!ExtractTeletext && LoadSrtFileIn(AddFileIn));
   }
 
+  // ggf. AudioPID für Demux Audio ermitteln
+  if (ret && DemuxAudio)
+  {
+    DemuxAudio = AudioPIDs[0].pid;
+    for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0); k++)
+      if (AudioPIDs[k].scanned && (AudioPIDs[k].streamType == 0) && (AudioPIDs[k].type == STREAM_AUDIO_MPEG4_AC3_PLUS || AudioPIDs[k].type == STREAM_AUDIO_MPEG4_AC3))
+        { DemuxAudio = AudioPIDs[k].pid; break; }
+  }
+
   if (!FirstTime)
   {
-    int i;
-
     // neu ermittelte Bookmarks kopieren
-    for (i = 0; i < (int)BookmarkInfo->NrBookmarks; i++)
-      BookmarkInfo_bak->Bookmarks[BookmarkInfo_bak->NrBookmarks++] = BookmarkInfo->Bookmarks[i];
+    for (k = 0; k < (int)BookmarkInfo->NrBookmarks; k++)
+      BookmarkInfo_bak->Bookmarks[BookmarkInfo_bak->NrBookmarks++] = BookmarkInfo->Bookmarks[k];
 
     // neu ermittelte SegmentMarker kopieren
 //    if (NrSegmentMarker_bak > 2 || NrSegmentMarker > 2 || (SegmentMarker && SegmentMarker[0].pCaption))
@@ -985,8 +992,8 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
         free(SegmentMarker_bak[--NrSegmentMarker_bak].pCaption);
 
       // neue SegmentMarker kopieren
-      for (i = 0; i < NrSegmentMarker; i++)
-        SegmentMarker_bak[NrSegmentMarker_bak++] = SegmentMarker[i];
+      for (k = 0; k < NrSegmentMarker; k++)
+        SegmentMarker_bak[NrSegmentMarker_bak++] = SegmentMarker[k];
     }
 /*    else if (NrSegmentMarker_bak >= 2)
     {
@@ -1177,7 +1184,8 @@ SONST
 
     fAudioOut = fopen(AbsFileName, ((DoMerge==1) ? "ab" : "wb"));
 
-    PSBuffer_Init(&AudioPES, AudioPIDs[0].pid, 65536, FALSE);
+    if(DemuxAudio <= 1) DemuxAudio = AudioPIDs[0].pid;
+    PSBuffer_Init(&AudioPES, DemuxAudio, 65536, FALSE);
   }
 
   // Header-Pakete ausgeben
@@ -2495,7 +2503,6 @@ int main(int argc, const char* argv[])
     snprintf(&AbsOutFile[len], sizeof(AbsOutFile)-len, "%s", ".txt");
     WriteAllTeletext(AbsOutFile);
     TtxProcessor_Free();
-    ExtractAllTeletext = FALSE;
   }
 
   // Hier beenden, wenn View Info Only
@@ -2516,6 +2523,7 @@ int main(int argc, const char* argv[])
     exit(0);
   }
 
+  ExtractAllTeletext = FALSE;
   TtxProcessor_Init(TeletextPage);
   if (ExtractTeletext && !MedionMode && TeletextPID == (word)-1)
   {
@@ -2746,7 +2754,7 @@ int main(int argc, const char* argv[])
 
             // ### bisherige SRT-Subtitles ausgeben
             if (RebuildSrt)
-              SrtProcessCaptions(SegmentMarker[CurSeg].Timems, SegmentMarker[CurSeg+1].Timems, CutTimeOffset, TRUE);
+              SrtProcessCaptions(SegmentMarker[CurSeg].Timems, (CurSeg < NrSegmentMarker-1) ? SegmentMarker[CurSeg+1].Timems : 0xffffffff, CutTimeOffset, TRUE);
 
             // Header-Pakete ausgeben 2 (experimentell)
             if (CurrentPosition-PositionOffset > (2 + NrEPGPacks) * OutPacketSize)
@@ -3006,7 +3014,7 @@ int main(int argc, const char* argv[])
           }
 
           // Demux first audio track
-          if (DemuxAudio && (CurPID == AudioPIDs[0].pid) && fAudioOut)
+          if (DemuxAudio && (CurPID == DemuxAudio) && fAudioOut)
           {
 //            tTSPacket* curPacket = (tTSPacket*) &Buffer[4];
 //            byte *p = &curPacket->Data[curPacket->Adapt_Field_Exists ? curPacket->Data[0] : 0];
