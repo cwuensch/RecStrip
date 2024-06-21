@@ -22,7 +22,7 @@
 #include "teletext.h"
 
 #define NRTTXOUTPUTS 10
-#define NRSUBPAGES    5
+#define NRSUBPAGES    6
 
 // Globale Variablen
 static FILE*            fTtxOut[NRTTXOUTPUTS] = {NULL};
@@ -425,7 +425,7 @@ uint16_t telx_to_ucs2(uint8_t c)
 
   if (PARITY_8[c] == 0) {
 //    VERBOSE_ONLY printf("  ! Unrecoverable data error; PARITY(%02x)\n", c);
-    return 0x20;
+    return 0x2588;
   }
 
   if (r <= 0x07)
@@ -682,14 +682,14 @@ static void process_page2(uint16_t page_number)
   // Check if unique and Compare with the desired place, if already present
   if (p < NRSUBPAGES)
   {
-    int nr_differences, nr_spaces_ref, nr_spaces_new;
+    int nr_differences, nr_missing_ref, nr_missing_new, nr_spaces_ref, nr_spaces_new;
     bool unique_page;
 
     teletext_text_t *page = &page_buffer_all[page_nr].subpages[0];
     for (s = 1; s <= p; s++)
     {
       teletext_text_t *ref = &page_buffer_all[page_nr].subpages[s];
-      bool page_empty = TRUE, ref_empty = TRUE; unique_page = FALSE; nr_differences = 0; nr_spaces_ref = 0, nr_spaces_new = 0;
+      bool page_empty = TRUE, ref_empty = TRUE; unique_page = FALSE; nr_differences = 0; nr_missing_ref = 0, nr_missing_new = 0, nr_spaces_ref = 0, nr_spaces_new = 0;
 
       for (i = 0; i < 25; i++)
       {
@@ -701,10 +701,12 @@ static void process_page2(uint16_t page_number)
             if(!unique_page)  unique_page = TRUE;
           }
 
-          if(page->text[i][j] == ' ')     nr_spaces_new++;
-          else if(page->text[i][j]=='\0') nr_spaces_new += (40 - j);
-          if(ref->text[i][j] == ' ')      nr_spaces_ref++;
-          else if(ref->text[i][j]=='\0')  nr_spaces_ref += (40 - j);
+          if(page->text[i][j] == ' ')       nr_spaces_new++;
+          else if(page->text[i][j]=='\0')   nr_spaces_new += (40 - j);
+          else if(page->text[i][j]==0x2588) nr_missing_new++;
+          if(ref->text[i][j] == ' ')        nr_spaces_ref++;
+          else if(ref->text[i][j]=='\0')    nr_spaces_ref += (40 - j);
+          else if(ref->text[i][j]==0x2588)  nr_missing_ref++;
 
           if(unique_page)
           {
@@ -712,6 +714,19 @@ static void process_page2(uint16_t page_number)
             if(ref->text[i][j])   ref_empty = FALSE;
           }
         }
+      }
+
+      // Fix missing chars if page is duplicate
+      if ((nr_missing_ref || nr_missing_new) && nr_differences <= 40)
+      {
+        for (i = 0; i < 25; i++)
+          for (j = 0; j < 40; j++)
+          {
+            if (     (ref->text[i][j] == 0x2588)  && ((j==0) || (ref->text[i][j-1] == page->text[i][j-1])) && ((j==39) || (ref->text[i][j+1] == page->text[i][j+1])))
+              ref->text[i][j] = page->text[i][j];
+            else if ((page->text[i][j] == 0x2588) && ((j==0) || (ref->text[i][j-1] == page->text[i][j-1])) && ((j==39) || (ref->text[i][j+1] == page->text[i][j+1])))
+              page->text[i][j] = ref->text[i][j];
+          }
       }
 
       // Check if new page is really different (and better)
@@ -739,8 +754,8 @@ static void process_page2(uint16_t page_number)
     // Copy the page to the desired place
     if (unique_page)
       memcpy(&page_buffer_all[page_nr].subpages[p], page, sizeof(teletext_text_t));
-    memset(page, 0, sizeof(teletext_text_t));
   }
+  memset(&page_buffer_all[page_nr].subpages[0], 0, sizeof(teletext_text_t));
 }
 
 void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payload_t *packet, uint32_t timestamp)
@@ -902,7 +917,7 @@ if (page_number == 0x100 || page_number == 0)
 printf("[%03hx] %03hhu: %s\n", page_number, y, test); */
 
         for (i = 0; i < 40; i++)
-          if (cur_page_text->text[y][i] == 0x00)
+//          if (cur_page_text->text[y][i] == 0x00)  // CW: entfernen?
             cur_page_text->text[y][i] = telx_to_ucs2(packet->data[i]);
         cur_page_buffer->tainted = YES;
       }
@@ -969,7 +984,7 @@ printf("[%03hx] %03hhu: %s\n", page_number, y, test); */
 
           if (triplet0 == 0xffffffff) {
             // invalid data (HAM24/18 uncorrectable error detected), skip group
-    //        VERBOSE_ONLY printf("  ! Unrecoverable data error; UNHAM24/18()=%04x\n", triplet0);
+//            VERBOSE_ONLY printf("  ! Unrecoverable data error; UNHAM24/18()=%04x\n", triplet0);
           }
           else {
             // ETS 300 706, chapter 9.4.2: Packet X/28/0 Format 1 only
@@ -1307,13 +1322,18 @@ bool WriteAllTeletext(char *AbsOutFile)
       if(empty_page)  { nr_subpages = s - 1; break; }
     }
 
-    for (s = 1; s <= nr_subpages; s++)
+    for (s = 1; s <= NRSUBPAGES; s++)
     {
       teletext_text_t *page = &page_buffer_all[p].subpages[s % NRSUBPAGES];
+      bool empty_page = TRUE;
+      for (i = 0; i < 25; i++)
+        if(*page->text[i])  { empty_page = FALSE; break; }
+      if(empty_page) continue;
+
       fprintf(f, "----------------------------------------\r\n");
       fprintf(f, ((nr_subpages <= 1) ? "[%03hu]\r\n" : "[%03hu] (%d/%d)\r\n"), p, s, nr_subpages);
 
-      for (i = 0; i < 25; i++)
+      for (i = 0; i < 24; i++)
       {
         for (j = 0; j < 40; j++)
         {
