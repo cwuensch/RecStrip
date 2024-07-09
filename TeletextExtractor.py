@@ -168,25 +168,22 @@ def load_teletext(content, file_text):
   if (len(file_text) == 0):
     return(content)
 
-  for line in (file_text + '\n----------------------------------------').split("\n"):
+  for line in (file_text + '\n----------------------------------------\n[000]').split("\n"):
     if (page_start and line.startswith("[")):
-      page_nr = line[1:4]
-      if (page_nr not in content):
-        content[page_nr] = {}
-      new_text = []
-    else:
-      page_start = False
+      if (new_text and len(new_text) > 1):
+        page_nr = new_text[0][1:4]
+        if (page_nr not in content):
+          content[page_nr] = {}
 
-    if (line == "----------------------------------------"):
-      if (new_text):
-        # Fix missing characters / take page with less spaces
         subpage_nr = 0
         if (new_text[1][3] == "|"):
           subpage_nr = int(new_text[1][4:7])
         else:
           for sub, old_text in content[page_nr].items():
-            nr_differences = sum( sum( old_text[i][j] != new_text[i][j] for j in range(1, len(new_text[i])) ) for i in range(0, len(new_text)) )
-            if (nr_differences <= 40):
+            if (len(new_text) < len(old_text)):
+              continue
+            nr_diff = sum( sum( (old_text[i][j] != new_text[i][j]) for j in range(0, min(len(old_text[i]), len(new_text[i]))) ) for i in range(1, len(old_text)) )
+            if (nr_diff <= 40):
               subpage_nr = sub
               break
         if (subpage_nr == 0):
@@ -194,13 +191,15 @@ def load_teletext(content, file_text):
 
         if(subpage_nr not in content[page_nr]):
           content[page_nr][subpage_nr] = []
+
+        # Fix missing characters / take page with less spaces
         old_text = content[page_nr][subpage_nr]
 
-        if (old_text):
-          nr_differences = sum( sum( old_text[i][j] != new_text[i][j] for j in range(1, len(new_text[i])) ) for i in range(0, len(new_text)) )
-          if (nr_differences <= 40):
-            for i in range (1, len(new_text)):
-              for j in range(0, 40):
+        if (old_text and len(old_text) > 1):
+          nr_diff = sum( sum( (old_text[i][j] != new_text[i][j]) for j in range(0, min(len(old_text[i]), len(new_text[i]))) ) for i in range(1, min(len(old_text), len(new_text))) )
+          if (nr_diff <= 40):
+            for i in range (1, min(len(old_text), len(new_text))):
+              for j in range(0, min(len(old_text[i]), len(new_text[i]))):
                 if (old_text[i][j] == '█' and (j == 0 or old_text[i][j-1]==new_text[i][j-1]) and (j == 39 or old_text[i][j+1]==new_text[i][j+1])):
                   old_text[i][j] = new_text[i][j]
                 if (new_text[i][j] == '█' and (j == 0 or old_text[i][j-1]==new_text[i][j-1]) and (j == 39 or old_text[i][j+1]==new_text[i][j+1])):
@@ -209,19 +208,28 @@ def load_teletext(content, file_text):
         nr_spaces_ref = sum( old_text[i].count(' ') for i in range(1, len(old_text)) )
         nr_spaces_new = sum( new_text[i].count(' ') for i in range(1, len(new_text)) )
 
-        if (len(old_text) == 0 or nr_spaces_new > nr_spaces_ref):
+        if (len(old_text) == 0 or nr_spaces_new < nr_spaces_ref):
           if (new_text[1][3] != "|"):
             content[page_nr][subpage_nr] = new_text
         else:
           content[page_nr][subpage_nr] = old_text
 
-      new_text = None
-      cur_text = None
+      new_text = []
+
+    elif (page_start and new_text != None):
+      new_text.append("")
+    page_start = False
+
+    if (line == "----------------------------------------"):
       page_start = True
     else:
       page_start = False
       if (new_text != None):
         new_text.append(line)
+
+#  for page_nr, page in content.items():
+#    for sub_nr, subpage in page.items():
+#      print(f"{page_nr} | {sub_nr}: {subpage[0]}")
   return(content)
 
 # Funktion zum Anzeigen des Inhalts einer Teletext-Seite
@@ -301,7 +309,7 @@ def main():
 
   clear()
   try:
-    with open(folder + ".txt", "r", encoding="utf-8") as in_file:
+    with open(folder.replace('/rec', '') + ".txt", "r", encoding="utf-8") as in_file:
       reader = csv.DictReader(in_file, delimiter="\t", quotechar='"')
       for row in reader:
         for name in row["filename"].split(".txt, "):
@@ -309,7 +317,7 @@ def main():
             name = name + ".txt"
           inlist[name] = row
   except FileNotFoundError:
-    print("Input page list file '" + folder + ".txt' not found.")
+    print("Input page list file '" + folder.replace('/rec', '') + ".txt' not found.")
 
   all_files = os.listdir(folder)
   all_files = list(filter(os.path.isfile, glob.glob(folder + "/*.txt")))
@@ -363,7 +371,7 @@ def main():
         file_names = file_names + (", " if (file_names != "") else "") + name
         file_path = os.path.join(folder, name)
 
-#        print(f'\nDEBUG: Open file "{file_path}"')
+        print(f'DEBUG: Open file "{file_path}"')
         with open(file_path, "r", encoding="utf-8") as file:
           content = load_teletext(content, file.read())
 
