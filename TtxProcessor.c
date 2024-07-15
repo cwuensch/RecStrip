@@ -642,7 +642,6 @@ static void process_page(teletext_page_t *page, uint16_t page_number, int out_nr
 static void process_page2(uint16_t page_number)
 {
   int p = 0, s, i, j, page_nr = hex2dec(page_number);
-  bool empty_page;
 
   // Remove empty lines
   for (i = 0; i < 25; i++)
@@ -671,7 +670,7 @@ static void process_page2(uint16_t page_number)
     for (p = 1; p < NRSUBPAGES; p++)
     {
       teletext_text_t *page = &page_buffer_all[page_nr].subpages[p];
-      empty_page = TRUE;
+      bool empty_page = TRUE;
       for (i = 0; i < 25; i++)
         if (*page->text[i])
           { empty_page = FALSE; break; }
@@ -683,13 +682,14 @@ static void process_page2(uint16_t page_number)
   if (p < NRSUBPAGES)
   {
     int nr_differences, nr_missing_ref, nr_missing_new, nr_spaces_ref, nr_spaces_new;
-    bool unique_page;
+    bool unique_page = FALSE;
 
     teletext_text_t *page = &page_buffer_all[page_nr].subpages[0];
     for (s = 1; s <= p; s++)
     {
       teletext_text_t *ref = &page_buffer_all[page_nr].subpages[s];
-      bool page_empty = TRUE, ref_empty = TRUE; unique_page = FALSE; nr_differences = 0; nr_missing_ref = 0, nr_missing_new = 0, nr_spaces_ref = 0, nr_spaces_new = 0;
+      bool page_empty = TRUE, ref_empty = TRUE; nr_differences = 0; nr_missing_ref = 0, nr_missing_new = 0, nr_spaces_ref = 0, nr_spaces_new = 0;
+      unique_page = FALSE;
 
       for (i = 0; i < 25; i++)
       {
@@ -758,7 +758,7 @@ static void process_page2(uint16_t page_number)
   memset(&page_buffer_all[page_nr].subpages[0], 0, sizeof(teletext_text_t));
 }
 
-void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payload_t *packet, uint32_t timestamp)
+void process_telx_packet(/*data_unit_t data_unit_id,*/ teletext_packet_payload_t *packet, uint32_t timestamp)
 {
   // variable names conform to ETS 300 706, chapter 7.1.2
   uint8_t address = (unham_8_4(packet->address[1]) << 4) | unham_8_4(packet->address[0]);
@@ -1084,7 +1084,7 @@ printf("[%03hx] %03hhu: %s\n", page_number, y, test); */
   }
 }
 
-void process_pes_packet(uint8_t *buffer, uint16_t size)
+uint16_t process_pes_packet(uint8_t *buffer, uint16_t size)
 {
   static bool_t         using_pts = UNDEF;
   static uint32_t       delta = 0;
@@ -1097,24 +1097,24 @@ void process_pes_packet(uint8_t *buffer, uint16_t size)
   uint16_t              optional_pes_header_length = 0;
   uint16_t              i;
 
-  if (size < 6) return;
+  if (size < 6) return 0;
 
   // Packetized Elementary Stream (PES) 32-bit start code
   pes_prefix = (buffer[0] << 16) | (buffer[1] << 8) | buffer[2];
   pes_stream_id = buffer[3];
 
   // check for PES header
-  if (pes_prefix != 0x000001) return;
+  if (pes_prefix != 0x000001) return 0;
 
   // stream_id is not "Private Stream 1" (0xbd)
-  if (pes_stream_id != 0xbd) return;
+  if (pes_stream_id != 0xbd) return 0;
 
   // PES packet length
   // ETSI EN 301 775 V1.2.1 (2003-05) chapter 4.3: (N x 184) - 6 + 6 B header
   pes_packet_length = 6 + ((buffer[4] << 8) | buffer[5]);
   // Can be zero. If the "PES packet length" is set to zero, the PES packet can be of any length.
   // A value of zero for the PES packet length can be used only when the PES packet payload is a video elementary stream.
-  if (pes_packet_length == 6) return;
+  if (pes_packet_length == 6) return 6;
 
   // truncate incomplete PES packets
   if (pes_packet_length > size) pes_packet_length = size;
@@ -1195,12 +1195,13 @@ void process_pes_packet(uint8_t *buffer, uint16_t size)
 //printf("  new payload\n");
 
         // FIXME: This explicit type conversion could be a problem some day -- do not need to be platform independant
-        process_telx_packet((data_unit_t)data_unit_id, (teletext_packet_payload_t *)&buffer[i], last_timestamp);
+        process_telx_packet(/*(data_unit_t)data_unit_id,*/ (teletext_packet_payload_t *)&buffer[i], last_timestamp);
       }
     }
 
     i += data_unit_len;
   }
+  return pes_packet_length;
 }
 
 

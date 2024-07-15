@@ -186,6 +186,9 @@ bool LoadInfFromRec(char *AbsRecFileName)
   else if (strcmp(&AbsRecFileName[strlen(AbsRecFileName)-3], ".ts") == 0)
     DVBViewerSrc = LoadDVBViewer(AbsRecFileName, RecInf);
 
+  if (HumaxSource || EycosSource || MedionMode == 1)
+    GetEPGFromMap(AbsRecFileName, RecInf->ServiceInfo.ServiceID, &RecInf->EventInfo, &RecInf->ExtEventInfo);
+
   Result = GenerateInfFile(fIn, RecInf);
   
   if (HumaxSource || EycosSource || MedionMode == 1)
@@ -201,9 +204,6 @@ printf("ASSERTION: AudioTypeFlag should be 0 or 1, but is %hd!\n", RecInf->Servi
         RecInf->ServiceInfo.AudioTypeFlag = 1;
     }
     SortAudioPIDs(AudioPIDs);
-
-    if ((HumaxSource || EycosSource) /* && !RecInf->EventInfo.StartTime */)
-      GetEPGFromMap(AbsRecFileName, RecInf->ServiceInfo.ServiceID, &RecInf->EventInfo, &RecInf->ExtEventInfo);
   }
 
 //  CurrentStartTime = ((TYPE_RecHeader_Info*)InfBuffer)->StartTime;

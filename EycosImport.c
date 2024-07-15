@@ -59,7 +59,7 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
   tEycosHeader          EycosHeader;
   tEycosEvent           EycosEvent;
   word                  AudioPID = (word) -1;
-  int                   j, k;
+  int                   j, k, l;
   bool                  ret = FALSE;
 
   TRACEENTER;
@@ -94,7 +94,7 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
       RecInf->ServiceInfo.VideoPID        = VideoPID;
       RecInf->ServiceInfo.PCRPID          = VideoPID;
       RecInf->ServiceInfo.AudioPID        = AudioPID;
-      RecInf->ServiceInfo.AudioStreamType = STREAM_AUDIO_MPEG2;
+      RecInf->ServiceInfo.AudioStreamType = STREAM_AUDIO_MPEG1;
       RecInf->ServiceInfo.AudioTypeFlag   = 0;
       RecInf->RecHeaderInfo.StartTime     = 0;  // TODO
 //      RecInf->RecHeaderInfo.DurationMin   = 0;  // TODO
@@ -155,7 +155,8 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
           case 0x05:
           case 0x0a:
           {
-            int NrAudio = 0;  // (EycosHeader.NrPids > 2) ? (int)EycosHeader.NrPids - 2 : 0;  // (int) strlen((char*)EycosHeader.AudioNames) / 2;
+            int NrAudio = 0, start;  // (EycosHeader.NrPids > 2) ? (int)EycosHeader.NrPids - 2 : 0;  // (int) strlen((char*)EycosHeader.AudioNames) / 2;
+            
             for (k = 0; k < (int)EycosHeader.NrPids; k++)
               if (EycosHeader.Pids[k].Type==STREAM_AUDIO_MPEG1 || EycosHeader.Pids[k].Type==STREAM_AUDIO_MPEG2 || EycosHeader.Pids[k].Type==0x05 || EycosHeader.Pids[k].Type==0x0a)
                 NrAudio++;
@@ -171,15 +172,17 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
             {
               AudioPIDs[k].pid = EycosHeader.Pids[j].PID;
 //              AudioPIDs[k].streamType = STREAMTYPE_AUDIO;
-              AudioPIDs[k].type = (EycosHeader.Pids[j].Type == 0x0a) ? STREAM_AUDIO_MPEG4_AC3_PLUS : STREAM_AUDIO_MPEG2;
+              AudioPIDs[k].type = (EycosHeader.Pids[j].Type == 0x0a) ? STREAM_AUDIO_MPEG4_AC3_PLUS : STREAM_AUDIO_MPEG1;
               AudioPIDs[k].sorted = TRUE;
             }
 
-            for (k = 0; k < NrAudio; k++)
+            start = max(NrAudio*2, 6);
+            while(EycosHeader.AudioNames[start] < 65) start++;
+            for (l = 0; l < NrAudio; l++)
             {
-              if (*((word*) &EycosHeader.AudioNames[2*k]) == EycosHeader.Pids[j].PID)
+              if (*((word*) &EycosHeader.AudioNames[2*l]) == EycosHeader.Pids[j].PID)
               {
-                strncpy(AudioPIDs[k].desc, &EycosHeader.AudioNames[max(NrAudio*2, 6) + k*4], 3);
+                strncpy(AudioPIDs[k].desc, &EycosHeader.AudioNames[start + l*4], 3);
                 break;
               }
             }

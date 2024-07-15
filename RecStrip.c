@@ -795,6 +795,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     if (p && strcmp(p, "_video.pes") == 0)
     {
       MedionMode = 1;
+      DemuxAudio = FALSE;
       if(DoStrip) { MedionStrip = TRUE; DoStrip = FALSE; }
     }
   }
@@ -1065,7 +1066,7 @@ SONST
     -> inf = NULL */
 
   HasInfOld = FALSE;
-  if (*RecFileOut)
+  if (fOut)
   {
     if (RebuildInf || *InfFileIn)
     {  
@@ -1112,7 +1113,7 @@ SONST
     -> nav = NULL */
 
   HasNavOld = FALSE;
-  if (*RecFileOut)
+  if (fOut)
   {
     if (RebuildNav || HasNavIn)
     {
@@ -1140,7 +1141,7 @@ SONST
     printf("\nNav output: %s\n", NavFileOut);
 
   // CutFileOut ermitteln
-  if (*RecFileOut)
+  if (fOut)
   {
     GetFileNameFromRec(RecFileOut, ".cut", CutFileOut);
     printf("\nCut output: %s\n", CutFileOut);
@@ -1834,6 +1835,8 @@ int main(int argc, const char* argv[])
     { printf("\nFix PAT/PMT (-p) disables any other option!\n"); }
   if (MedionMode==1 && DoStrip)
     { MedionStrip = TRUE; DoStrip = FALSE; }
+  if (MedionMode)
+    { printf("\nMedion Mode (-M) disables DemuxAudio (-d)!\n"); DemuxAudio = FALSE; }
 //  if (ExtractTeletext && DoStrip)
 //    { RemoveTeletext = TRUE; }
   #ifndef LINUX
@@ -1870,7 +1873,7 @@ int main(int argc, const char* argv[])
       printf("  -ss:       Strip and skip. Same as -s, but skips already stripped files.\n\n");
       printf("  -e:        Remove also the EPG data. (can be combined with -s)\n\n");
       printf("  -t:        Remove also the teletext data. (can be combined with -s)\n");
-      printf("  -tt <page> Extract subtitles from teletext. (combine with -t to remove ttx)\n\n");
+      printf("  -tt <page> Extract subtitles from teletext. (combine with -t to remove ttx)\n");
       printf("  -tx        Extract all teletext pages as text. (requires 10 MB of RAM)\n\n");
       printf("  -x:        Remove packets marked as scrambled. (flag could be wrong!)\n\n");
       printf("  -o1/-o2:   Change the packet size for output-rec: \n"
@@ -2522,6 +2525,8 @@ int main(int argc, const char* argv[])
     TRACEEXIT;
     exit(0);
   }
+  if ((DemuxAudio || ExtractTeletext) && !DoStrip && OutPacketSize==PACKETSIZE && !DoCut && !DoMerge && !RemoveEPGStream && !RemoveTeletext)
+    WriteCutInf = FALSE;
 
   ExtractAllTeletext = FALSE;
   TtxProcessor_Init(TeletextPage);
