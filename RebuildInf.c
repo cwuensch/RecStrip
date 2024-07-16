@@ -1488,7 +1488,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 
           if (TtxOK < 2)
           {
-            res = AnalyseTtx(&Buffer[p], 98304-p, (p > ReadBytes/2), RecInf->RecHeaderInfo.StartTime, &TtxTime, &TtxTimeSec, &TtxTimeZone, RecInf->ServiceInfo.ServiceName, sizeof(RecInf->ServiceInfo.ServiceName));
+            res = AnalyseTtx(&Buffer[p], ReadBytes-p, (p > ReadBytes/2), RecInf->RecHeaderInfo.StartTime, &TtxTime, &TtxTimeSec, &TtxTimeZone, RecInf->ServiceInfo.ServiceName, sizeof(RecInf->ServiceInfo.ServiceName));
             if(res > TtxFound) TtxFound = res;
             if((TtxFound && !TtxOK) || (TtxFound >= 2 && TtxOK <= 1))
               TtxOK = (GetPTS(&Buffer[p], &TtxPTS, NULL) && (TtxPTS != 0)) ? TtxFound : TtxOK;
@@ -1508,17 +1508,18 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       {
         int i;
         fseek(fMDIn, p, SEEK_SET);
-        for (i = 0; i < 500; i++)
+
+        for (i = 0; i < 300; i++)
         {
-          if ((ReadBytes = (int)fread(Buffer, 1, 128800, fMDIn)) > 0)
+          if ((ReadBytes = (int)fread(Buffer, 1, 236992, fMDIn)) > 0)
           {
             p = 0;
             while (p < ReadBytes - 1288)
-//            {
-//              while ((p < ReadBytes - 1288) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1 || Buffer[p+3] != 0xBD))
-//                p++;
-              p += process_pes_packet(&Buffer[p], min(655360-p, 4096));  // 1288
-//            }
+            {
+              while ((p < ReadBytes - 1288) && (Buffer[p] != 0 || Buffer[p+1] != 0 || Buffer[p+2] != 1 || Buffer[p+3] != 0xBD))
+                p++;
+              p += process_pes_packet(&Buffer[p], min(ReadBytes-p, 4096));  // 1288 / 1472
+            }
           }
           else break;
         }
@@ -1830,7 +1831,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       bool HasTeletext = FALSE;
       int NrIterations = ExtractAllTeletext ? 10000 : 300;
       PSBuffer_Init(&PMTBuffer, 0x0011, 4096, TRUE);    // wird hier jetzt für die SDT verwendet
-      PSBuffer_Init(&TtxBuffer, TeletextPID, 4096, FALSE);  // eigentlich: 1288
+      PSBuffer_Init(&TtxBuffer, TeletextPID, 4096, FALSE);  // eigentlich: 1288 / 1472
       LastPMTBuffer = 0; LastEITBuffer = 0; LastTtxBuffer = 0;
 
       fseeko64(fIn, FilePos + Offset, SEEK_SET);  // Hier auf 0 setzen (?)
