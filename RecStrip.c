@@ -948,7 +948,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
   // ggf. cut-File einlesen
   if (ret)
   {
-    if (NrSegmentMarker <= 2 || (!EycosSource && !HumaxSource))
+    if (NrSegmentMarker <= 2 || (!EycosSource && !HumaxSource && MedionMode != 1))
     {
       GetFileNameFromRec(RecFileIn, ".cut", AddFileIn);
       printf("\nCut file: %s\n", AddFileIn);
@@ -1078,7 +1078,7 @@ SONST
       }
       else
         snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf", RecFileOut);
-      if(!*InfFileIn && !HumaxSource && !EycosSource) WriteCutInf = TRUE;
+      if(!*InfFileIn && !HumaxSource && !EycosSource && MedionMode != 1) WriteCutInf = TRUE;
     }
     else
       InfFileOut[0] = '\0';
@@ -2529,12 +2529,6 @@ int main(int argc, const char* argv[])
     WriteCutInf = FALSE;
 
   ExtractAllTeletext = FALSE;
-  TtxProcessor_Init(TeletextPage);
-  if (ExtractTeletext && !MedionMode && TeletextPID == (word)-1)
-  {
-    printf("Warning: No teletext PID determined.\n");
-    ExtractTeletext = FALSE;
-  }
 
   // Spezialanpassung Medion (Teletext-Extraktion)
 /*  if (MedionMode)
@@ -2587,6 +2581,14 @@ int main(int argc, const char* argv[])
     TRACEEXIT;
     exit(7);
   }
+
+  if (ExtractTeletext && !MedionMode && TeletextPID == (word)-1)
+  {
+    printf("Warning: No teletext PID determined.\n");
+    ExtractTeletext = FALSE;
+  }
+  if (ExtractTeletext)
+    TtxProcessor_Init(TeletextPage);
 
   // Wenn Appending, ans Ende der nav-Datei springen
   if(DoMerge == 1) GoToEndOfNav(NULL);

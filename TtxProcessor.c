@@ -641,120 +641,89 @@ static void process_page(teletext_page_t *page, uint16_t page_number, int out_nr
 
 static void process_page2(uint16_t page_number)
 {
-  int p = 0, s, i, j, page_nr = hex2dec(page_number);
+  int page_nr = hex2dec(page_number);
+  teletext_text_t *page = &page_buffer_all[page_nr].subpages[0];
+  bool page_empty = TRUE;
+  int p = 0, s, i, j;
 
   // Remove empty lines
-  for (i = 0; i < 25; i++)
+  for (i = 1; i < 25; i++)
   {
-    teletext_text_t *page = &page_buffer_all[page_nr].subpages[0];
-    bool empty_line = TRUE;
+    bool line_empty = TRUE;
     for (j = 0; j < 40; j++)
-      if(page->text[i][j] > 0x20) { empty_line = FALSE; break; }
-    if(empty_line)
+      if(page->text[i][j] > 0x20) { line_empty = FALSE; page_empty = FALSE; break; }
+    if(line_empty)
       for (j = 0; j < 40; j++)
         page->text[i][j] = 0;
   }
+  if(!page_nr || page_empty) return;
 
-  // Find correct subpage
+  // Find subpage from subcode
   // (If subcode specified, use subcode as place - if not, use '1' or first free place)
-  if ((page_buffer_all[page_nr].subpages[0].text[0][3] == '|'))
+  if (page->text[0][3] == '|')
   {
-    if ((page_buffer_all[page_nr].subpages[0].text[0][4] == '0') && (page_buffer_all[page_nr].subpages[0].text[0][5] == '0') /*&& (page_buffer_all[page_nr].subpages[0].text[0][6] == '0')*/)
-      p = page_buffer_all[page_nr].subpages[0].text[0][6] - '0';
-  }
-  else p = 1;
-
-  // Else, find first empty page
-  if (p == 0 || p >= NRSUBPAGES)
-  {
-    for (p = 1; p < NRSUBPAGES; p++)
-    {
-      teletext_text_t *page = &page_buffer_all[page_nr].subpages[p];
-      bool empty_page = TRUE;
-      for (i = 0; i < 25; i++)
-        if (*page->text[i])
-          { empty_page = FALSE; break; }
-      if(empty_page) break;
-    }
+    if ((page->text[0][4] == '0'))
+      p = 10 * (page->text[0][5] - '0') + page->text[0][6] - '0';
   }
 
-  // Check if unique and Compare with the desired place, if already present
-  if (p < NRSUBPAGES)
+  // Find first (almost) matching page or page with subset, otherwise first empty page
+  for (s = (p ? p : 1); s < NRSUBPAGES; s++)
   {
-    int nr_differences, nr_missing_ref, nr_missing_new, nr_spaces_ref, nr_spaces_new;
-    bool unique_page = FALSE;
+    teletext_text_t *ref = &page_buffer_all[page_nr].subpages[s];
+    bool ref_empty = TRUE;
+    int nr_diff = 0, nr_content_same = 0, nr_unique_ref = 0, nr_unique_new = 0, nr_missing_ref = 0, nr_missing_new = 0;
 
-    teletext_text_t *page = &page_buffer_all[page_nr].subpages[0];
-    for (s = 1; s <= p; s++)
+    // Check if reference page is empty
+    for (i = 0; i < 25; i++)
+      if (*ref->text[i])
+        { ref_empty = FALSE; break; }
+    if(ref_empty)
+      { p = s; break; }
+
+    // Check for grade of matching
+    for (i = 0; i < 25; i++)
     {
-      teletext_text_t *ref = &page_buffer_all[page_nr].subpages[s];
-      bool page_empty = TRUE, ref_empty = TRUE; nr_differences = 0; nr_missing_ref = 0, nr_missing_new = 0, nr_spaces_ref = 0, nr_spaces_new = 0;
-      unique_page = FALSE;
-
-      for (i = 0; i < 25; i++)
+      for (j = 0; j < 40; j++)
       {
-        for (j = 0; j < 40; j++)
+        if (page->text[i][j] == ref->text[i][j])  nr_content_same++;  // völlige Übereinstimmung
+        else
         {
-          if(page->text[i][j] != ref->text[i][j])
-          {
-            nr_differences++;
-            if(!unique_page)  unique_page = TRUE;
-          }
-
-          if(page->text[i][j] == ' ')       nr_spaces_new++;
-          else if(page->text[i][j]=='\0')   nr_spaces_new += (40 - j);
-          else if(page->text[i][j]==0x2588) nr_missing_new++;
-          if(ref->text[i][j] == ' ')        nr_spaces_ref++;
-          else if(ref->text[i][j]=='\0')    nr_spaces_ref += (40 - j);
-          else if(ref->text[i][j]==0x2588)  nr_missing_ref++;
-
-          if(unique_page)
-          {
-            if(page->text[i][j])  page_empty = FALSE;
-            if(ref->text[i][j])   ref_empty = FALSE;
-          }
+          if (ref->text[i][j] != ' ' && page->text[i][j] != ' ' && ref->text[i][j] != 0 && page->text[i][j] != 0)  nr_diff++;  // echte Differenzen, ohne Leerzeichen
+          if      ( ref->text[i][j] == 0x2588)                        nr_missing_ref++;
+          else if (page->text[i][j] == ' ' || page->text[i][j] == 0)  nr_unique_ref++;  // zusätzliches Zeichen in ref
+          if      (page->text[i][j] == 0x2588)                        nr_missing_new++;
+          else if ( ref->text[i][j] == ' ' ||  ref->text[i][j] == 0)  nr_unique_new++;  // zusätzliches Zeichen in new
         }
       }
+    }
 
+    // Wenn ref = new oder ref Teilmenge von new oder umgekehrt
+    if((nr_content_same > 40 && (nr_diff < 40) && !(nr_unique_ref > 40 && nr_unique_new > 40)))
+    {
       // Fix missing chars if page is duplicate
-      if ((nr_missing_ref || nr_missing_new) && nr_differences <= 40)
+      if (nr_missing_ref || nr_missing_new)
       {
         for (i = 0; i < 25; i++)
           for (j = 0; j < 40; j++)
           {
-            if (     (ref->text[i][j] == 0x2588)  && ((j==0) || (ref->text[i][j-1] == page->text[i][j-1])) && ((j==39) || (ref->text[i][j+1] == page->text[i][j+1])))
+            if (     (ref->text[i][j] == 0x2588)  && ((j==0) || (ref->text[i][j-1] == page->text[i][j-1])) && ((j==39) || (ref->text[i][j+1] == page->text[i][j+1])) )
               ref->text[i][j] = page->text[i][j];
-            else if ((page->text[i][j] == 0x2588) && ((j==0) || (ref->text[i][j-1] == page->text[i][j-1])) && ((j==39) || (ref->text[i][j+1] == page->text[i][j+1])))
+            else if( (page->text[i][j] == 0x2588) && ((j==0) || (ref->text[i][j-1] == page->text[i][j-1])) && ((j==39) || (ref->text[i][j+1] == page->text[i][j+1])) )
               page->text[i][j] = ref->text[i][j];
           }
       }
 
-      // Check if new page is really different (and better)
-      if (unique_page)
-      {
-        if (page_empty)
-          { unique_page = FALSE; break; }
-        if (ref_empty)
-          { p = s; break; }
-        if ((s == p || (page->text[0][3] != '|')) && (nr_differences <= 40))
-        {
-          if (nr_spaces_new < nr_spaces_ref)  
-            p = s;
-          else
-            unique_page = FALSE;
-          break;
-        }
-      }
-      else break;
-
-//      if (memcmp(page, &page_buffer_all[page_nr].subpages[s], sizeof(teletext_text_t)) == 0)
-//        { unique_page = FALSE; break; }
+      // ref und new stimmen überein
+      if(nr_unique_new > nr_unique_ref)  p = s;
+      else  p = 0;
+      break;
     }
-
-    // Copy the page to the desired place
-    if (unique_page)
-      memcpy(&page_buffer_all[page_nr].subpages[p], page, sizeof(teletext_text_t));
+    if(p) break;
   }
+
+  // Copy the page to the desired place
+  if (p && p < NRSUBPAGES)
+    memcpy(&page_buffer_all[page_nr].subpages[p], page, sizeof(teletext_text_t));
   memset(&page_buffer_all[page_nr].subpages[0], 0, sizeof(teletext_text_t));
 }
 
@@ -814,22 +783,50 @@ void process_telx_packet(/*data_unit_t data_unit_id,*/ teletext_packet_payload_t
     // FIXME: Well, this is not ETS 300 706 kosher, however we are interested in DATA_UNIT_EBU_TELETEXT_SUBTITLE only
 //    if ((transmission_mode == TRANSMISSION_MODE_PARALLEL) && (data_unit_id != DATA_UNIT_EBU_TELETEXT_SUBTITLE)) return;  // unnötig (?)
 
-    if ( (p != PAGE(page_number)) && (transmission_mode == TRANSMISSION_MODE_SERIAL || m == MAGAZINE(page_number)) )
+    if ( (p != PAGE(page_number)) || (transmission_mode == TRANSMISSION_MODE_SERIAL && m != MAGAZINE(page_number)) )
     {
       if (out_nr >= 0)
         page_buffer[out_nr].receiving_data = NO;
       else if (ExtractAllTeletext /* && out_nr >= -1 */)
       {
-        if(page_number) process_page2(page_number);
+        if (page_number)
+        {
+          int i;
+          if (transmission_mode == TRANSMISSION_MODE_PARALLEL)
+            for (i = 1; i <= 8; i++)
+              process_page2(i << 8 | PAGE(page_number));
+          else
+            process_page2(page_number);
+        }
         dummy_page.receiving_data = TRUE;
-
-        primary_charset.g0_x28 = UNDEF;
-        c = (primary_charset.g0_m29 != UNDEF) ? primary_charset.g0_m29 : charset;
-        remap_g0_charset(c);
       }
+
+      // Page transmission is terminated, however now we are waiting for our new page
+      if (out_nr >= 0)
+      {
+        // Now we have the begining of page transmission; if there is page_buffer pending, process it
+        if (cur_page_buffer->tainted == YES) {
+          // it would be nice, if subtitle hides on previous video frame, so we contract 40 ms (1 frame @25 fps)
+          cur_page_buffer->hide_timestamp = timestamp - 40;
+          process_page(cur_page_buffer, page_number, out_nr);
+        }
+
+        cur_page_buffer->show_timestamp = timestamp;
+        cur_page_buffer->hide_timestamp = 0;
+        memset(cur_page_buffer->text, 0x00, sizeof(cur_page_buffer->text));
+        cur_page_buffer->tainted = NO;
+        cur_page_buffer->receiving_data = YES;
+      }
+
+      primary_charset.g0_x28 = UNDEF;
+      c = (primary_charset.g0_m29 != UNDEF) ? primary_charset.g0_m29 : charset;
+      remap_g0_charset(c);
     }
 
+
     page_number = (m << 8) | p;
+
+    // Open a new srt output file
     if (!ExtractAllTeletext && (flag_subtitle == YES) && (p < 0xff))
     {
       out_nr = GetTeletextOut(page_number, TRUE);
@@ -839,27 +836,6 @@ void process_telx_packet(/*data_unit_t data_unit_id,*/ teletext_packet_payload_t
       out_nr = -1;
     else
       out_nr = -2;
-
-    // Page transmission is terminated, however now we are waiting for our new page
-    if (out_nr >= 0)
-    {
-      // Now we have the begining of page transmission; if there is page_buffer pending, process it
-      if (cur_page_buffer->tainted == YES) {
-        // it would be nice, if subtitle hides on previous video frame, so we contract 40 ms (1 frame @25 fps)
-        cur_page_buffer->hide_timestamp = timestamp - 40;
-        process_page(cur_page_buffer, page_number, out_nr);
-      }
-
-      cur_page_buffer->show_timestamp = timestamp;
-      cur_page_buffer->hide_timestamp = 0;
-      memset(cur_page_buffer->text, 0x00, sizeof(cur_page_buffer->text));
-      cur_page_buffer->tainted = NO;
-      cur_page_buffer->receiving_data = YES;
-
-      primary_charset.g0_x28 = UNDEF;
-      c = (primary_charset.g0_m29 != UNDEF) ? primary_charset.g0_m29 : charset;
-      remap_g0_charset(c);
-    }
 
     if (out_nr >= 0 || ExtractAllTeletext)
     {
@@ -873,7 +849,8 @@ void process_telx_packet(/*data_unit_t data_unit_id,*/ teletext_packet_payload_t
       if (ExtractAllTeletext || flag_suppress_header == NO) {
         char page_str[15];
         uint8_t i;
-        snprintf(page_str, 15, (sub > 0) ? "%03hx|%03hx:" : "%03hx:    ", page_number, sub);
+        snprintf(page_str, 15, (sub > 0 && sub <= 0x79 && (sub & 0x0f) <= 9) ? "%03hx|%03hx:" : "%03hx:    ", page_number, sub);
+//printf("%s\n", page_str);
         for (i =  0; i < 8; i++) cur_page_text->text[0][i] = page_str[i];
         for (i =  8; i < 40; i++) cur_page_text->text[0][i] = telx_to_ucs2(packet->data[i]);
         //cur_page_buffer->tainted = YES;
@@ -887,12 +864,12 @@ void process_telx_packet(/*data_unit_t data_unit_id,*/ teletext_packet_payload_t
     cur_page_buffer = &page_buffer[out_nr];
     cur_page_text = (teletext_text_t*) cur_page_buffer->text;
   }
-  else if (ExtractAllTeletext && page_number)
-    cur_page_text = (teletext_text_t*) &page_buffer_all[hex2dec(page_number)].subpages[0].text;
+  else if (ExtractAllTeletext)
+    cur_page_text = (teletext_text_t*) &page_buffer_all[hex2dec(m << 8 | PAGE(page_number))].subpages[0].text;
   else
     return;
 
-  if (m == MAGAZINE(page_number))
+  if (m == MAGAZINE(page_number) || ExtractAllTeletext)
   {
     if (cur_page_buffer->receiving_data == YES)
     {
@@ -909,11 +886,11 @@ void process_telx_packet(/*data_unit_t data_unit_id,*/ teletext_packet_payload_t
 /* char test[41];
 memset(test, 0, sizeof(test));
 for(i = 0; i < 40; i++) {
-  test[i] = (char)telx_to_ucs2(packet->data[i]);
+  test[i] = telx_to_ucs2(packet->data[i]) & 0xff;
   if (test[i] < 0x20 && test[i] != 0 && test[i] != '\n' && test[i] != '\t') test[i] = 0x20;
 }
-if (page_number == 0x100 || page_number == 0)
-  printf("\n");
+//if (page_number == 0x100 || page_number == 0)
+//  printf("\n");
 printf("[%03hx] %03hhu: %s\n", page_number, y, test); */
 
         for (i = 0; i < 40; i++)
@@ -988,7 +965,8 @@ printf("[%03hx] %03hhu: %s\n", page_number, y, test); */
           }
           else {
             // ETS 300 706, chapter 9.4.2: Packet X/28/0 Format 1 only
-            if ((triplet0 & 0x0f) == 0x00) {
+            if ((triplet0 & 0x0f) == 0x00)
+            {
               primary_charset.g0_x28 = (triplet0 & 0x3f80) >> 7;
 //CW              remap_g0_charset(primary_charset.g0_x28);
             }
