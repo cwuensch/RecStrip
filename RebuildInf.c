@@ -1504,7 +1504,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           TtxPCR = (TtxPTS + TtxPTSOffset - 66666) / 45;
       }
 
-      if (ExtractAllTeletext)
+      if (ExtractAllTeletext >= 2)
       {
         int i;
         fseek(fMDIn, p, SEEK_SET);
@@ -1829,7 +1829,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     {
       word TeletextPID_PMT = TeletextPID;
       bool HasTeletext = FALSE;
-      int NrIterations = ExtractAllTeletext ? 10000 : 300;
+      int NrIterations = (ExtractAllTeletext >= 2) ? 10000 : 300;
       PSBuffer_Init(&PMTBuffer, 0x0011, 4096, TRUE);    // wird hier jetzt für die SDT verwendet
       PSBuffer_Init(&TtxBuffer, TeletextPID, 4096, FALSE);  // eigentlich: 1288 / 1472
       LastPMTBuffer = 0; LastEITBuffer = 0; LastTtxBuffer = 0;
@@ -1883,7 +1883,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               LastEITBuffer = EITBuffer.ValidBuffer;
             }
           }
-          if ((TtxFound <= 1 || TtxOK <= 1 || ExtractAllTeletext) && (TeletextPID != 0xffff) && (curPID == TeletextPID))
+          if ((TtxFound <= 1 || TtxOK <= 1 || ExtractAllTeletext >= 2) && (TeletextPID != 0xffff) && (curPID == TeletextPID))
           {
             PSBuffer_ProcessTSPacket(&TtxBuffer, curPacket);
             if (TtxBuffer.ValidBuffer != LastTtxBuffer)
@@ -1901,7 +1901,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                     TtxFound = res;
                   }
                 }
-                if (ExtractAllTeletext)
+                if (ExtractAllTeletext >= 2)
                   process_pes_packet(pBuffer, TtxBuffer.ValidBufLen);
               }
 /*              TtxFound = !TtxBuffer.ErrorFlag && AnalyseTtx(pBuffer, TtxBuffer.ValidBufLen, &TtxTime, &TtxTimeSec, &TtxTimeZone, (!EITOK ? RecInf->EventInfo.EventNameDescription : ((!SDTOK && !KeepHumaxSvcName) ? RecInf->ServiceInfo.ServiceName : NULL)), sizeof(RecInf->ServiceInfo.ServiceName));
@@ -1970,7 +1970,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             }
           }
 
-          if(((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT)                    || (EITOK && (SDTOK || (!RebuildInf && !DoInfFix)))) && (TtxOK>=2 || ((PMTPID || EycosSource) && TeletextPID == 0xffff)) && ((PMTPID && (!HumaxSource && !EycosSource)) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK) && (!ExtractAllTeletext || TeletextPID==(word)-1))
+          if(((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT)                    || (EITOK && (SDTOK || (!RebuildInf && !DoInfFix)))) && (TtxOK>=2 || ((PMTPID || EycosSource) && TeletextPID == 0xffff)) && ((PMTPID && (!HumaxSource && !EycosSource)) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK) && (ExtractAllTeletext <= 1 || TeletextPID==(word)-1))
             break;
           p += PACKETSIZE;
         }
@@ -1983,12 +1983,12 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         }
         if( ((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT) || (AllPidsScanned) || (EITOK && (SDTOK || (!RebuildInf && !DoInfFix)))) && (TtxOK>=2 || ((PMTPID || EycosSource) && TeletextPID == 0xffff)) && ((PMTPID && (!HumaxSource && !EycosSource)) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
         {
-          if (!ExtractAllTeletext || TeletextPID==(word)-1)
+          if (ExtractAllTeletext <= 1 || TeletextPID==(word)-1)
           {
             ret = TRUE;
             break;
           }
-          else if (ExtractAllTeletext == 1)
+          else if (ExtractAllTeletext == 2)
           {
             fseeko64(fIn, 0 + Offset, SEEK_SET);
             PSBuffer_DropCurBuffer(&TtxBuffer);

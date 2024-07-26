@@ -1874,7 +1874,7 @@ int main(int argc, const char* argv[])
       printf("  -e:        Remove also the EPG data. (can be combined with -s)\n\n");
       printf("  -t:        Remove also the teletext data. (can be combined with -s)\n");
       printf("  -tt <page> Extract subtitles from teletext. (combine with -t to remove ttx)\n");
-      printf("  -tx        Extract all teletext pages as text. (requires 10 MB of RAM)\n\n");
+      printf("  -tx        Extract all teletext pages as text. (uses 8 MB of RAM)\n\n");
       printf("  -x:        Remove packets marked as scrambled. (flag could be wrong!)\n\n");
       printf("  -o1/-o2:   Change the packet size for output-rec: \n"
              "             1: PacketSize = 188 Bytes, 2: PacketSize = 192 Bytes.\n\n");
@@ -1939,8 +1939,12 @@ int main(int argc, const char* argv[])
     }
   }
 
-  if (ExtractAllTeletext)
-    TtxProcessor_Init(0);
+  if (ExtractTeletext || ExtractAllTeletext)
+  {
+    if (ExtractAllTeletext && !DoStrip && !OutPacketSize && !DoCut && !DoMerge && !RemoveEPGStream && !RemoveTeletext && !ExtractTeletext && !DemuxAudio)
+      ExtractAllTeletext = 2;  // schon beim Start
+    TtxProcessor_Init(TeletextPage);
+  }
 
   // Variablen initialisieren
   if (DoMerge)
@@ -2494,23 +2498,22 @@ int main(int argc, const char* argv[])
     }
   }
 
-  if (ExtractAllTeletext)
-  {
-    char AbsOutFile[FBLIB_DIR_SIZE], *p;
-    int len;
-    strncpy(AbsOutFile, (*RecFileOut) ? RecFileOut : RecFileIn, sizeof(AbsOutFile));
-    if ((p = strrchr(AbsOutFile, '.')) != NULL)
-      len = (int)(p - AbsOutFile);
-    else
-      len = (int)strlen(AbsOutFile);
-    snprintf(&AbsOutFile[len], sizeof(AbsOutFile)-len, "%s", ".txt");
-    WriteAllTeletext(AbsOutFile);
-    TtxProcessor_Free();
-  }
-
   // Hier beenden, wenn View Info Only
-  if (DoInfoOnly || DoFixPMT || (ExtractAllTeletext && !DoStrip && OutPacketSize==PACKETSIZE && !DoCut && !DoMerge && !RemoveEPGStream && !RemoveTeletext && !ExtractTeletext && !DemuxAudio))
+  if (DoInfoOnly || DoFixPMT || (ExtractAllTeletext >= 2))
   {
+    if (ExtractAllTeletext)
+    {
+      char AbsOutFile[FBLIB_DIR_SIZE], *p;
+      int len;
+      strncpy(AbsOutFile, (*RecFileOut) ? RecFileOut : RecFileIn, sizeof(AbsOutFile));
+      if ((p = strrchr(AbsOutFile, '.')) != NULL)
+        len = (int)(p - AbsOutFile);
+      else
+        len = (int)strlen(AbsOutFile);
+      snprintf(&AbsOutFile[len], sizeof(AbsOutFile)-len, "%s", ".txt");
+      WriteAllTeletext(AbsOutFile);
+    }
+
     if(fIn) { fclose(fIn); fIn = NULL; }
     CloseNavFileIn();
     if(MedionMode == 1) SimpleMuxer_Close();
@@ -2528,7 +2531,7 @@ int main(int argc, const char* argv[])
   if ((DemuxAudio || ExtractTeletext) && !DoStrip && OutPacketSize==PACKETSIZE && !DoCut && !DoMerge && !RemoveEPGStream && !RemoveTeletext)
     WriteCutInf = FALSE;
 
-  ExtractAllTeletext = FALSE;
+//  ExtractAllTeletext = FALSE;
 
   // Spezialanpassung Medion (Teletext-Extraktion)
 /*  if (MedionMode)
@@ -2581,14 +2584,6 @@ int main(int argc, const char* argv[])
     TRACEEXIT;
     exit(7);
   }
-
-  if (ExtractTeletext && !MedionMode && TeletextPID == (word)-1)
-  {
-    printf("Warning: No teletext PID determined.\n");
-    ExtractTeletext = FALSE;
-  }
-  if (ExtractTeletext)
-    TtxProcessor_Init(TeletextPage);
 
   // Wenn Appending, ans Ende der nav-Datei springen
   if(DoMerge == 1) GoToEndOfNav(NULL);
@@ -3432,10 +3427,23 @@ int main(int argc, const char* argv[])
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
     exit(10);
   }
-  
+
+  if (ExtractAllTeletext)
+  {
+    char AbsOutFile[FBLIB_DIR_SIZE], *p;
+    int len;
+    strncpy(AbsOutFile, (*RecFileOut) ? RecFileOut : RecFileIn, sizeof(AbsOutFile));
+    if ((p = strrchr(AbsOutFile, '.')) != NULL)
+      len = (int)(p - AbsOutFile);
+    else
+      len = (int)strlen(AbsOutFile);
+    snprintf(&AbsOutFile[len], sizeof(AbsOutFile)-len, "%s", ".txt");
+    WriteAllTeletext(AbsOutFile);
+  }
+
   CutProcessor_Free();
-  InfProcessor_Free();
   TtxProcessor_Free();
+  InfProcessor_Free();
   if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
   if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
   if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
