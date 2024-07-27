@@ -2097,7 +2097,7 @@ int main(int argc, const char* argv[])
     } */
     printf("\n");
 
-    if (HumaxSource && !DoInfoOnly)
+    if (HumaxSource && (DoStrip || OutPacketSize!=PACKETSIZE || DoCut || DoMerge || RemoveEPGStream || RemoveTeletext))
     {
       char HumaxFile[FBLIB_DIR_SIZE + 6], *p;
       strcpy(HumaxFile, RecFileOut);

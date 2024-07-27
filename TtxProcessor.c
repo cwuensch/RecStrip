@@ -459,7 +459,7 @@ static bool GetTeletextOut(uint16_t page_number, bool AddNewPage)  // Page mit M
   uint8_t page = PAGE(page_number);
   int i;
   for (i = 0; i < NRTTXOUTPUTS; i++)
-    if(page == PAGE(pages[i])) return i;  // Magazin wird aber nicht ausgewertet
+    if(PAGE(pages[i]) == page) return i;  // Magazin wird aber nicht ausgewertet
 
   if (AddNewPage)
   {
@@ -856,12 +856,17 @@ void process_telx_packet(/*data_unit_t data_unit_id,*/ teletext_packet_payload_t
     if (ExtractTeletext && (flag_subtitle == YES) && (p < 0xff))
     {
       out_nr = GetTeletextOut(page_number, TRUE);
-      if(out_nr >= 0) cur_page_buffer = &page_buffer[out_nr];
+      if((out_nr >= 0) && ((transmission_mode == TRANSMISSION_MODE_PARALLEL) || (MAGAZINE(pages[out_nr]) == m)))
+      {
+        cur_page_buffer = &page_buffer[out_nr];
+        page_number = pages[out_nr];
+      }
+      else out_nr = -1;
     }
     else //if (flag_subtitle == NO)
       out_nr = -1;
 
-    if (out_nr >= 0 || ExtractAllTeletext)
+    if (((out_nr >= 0) && (m == MAGAZINE(page_number))) || ExtractAllTeletext)
     {
       // Charset mapping
       primary_charset.g0_x28 = UNDEF;
@@ -933,11 +938,11 @@ for(i = 0; i < 40; i++) {
 }
 graphic_mode = NO;
 hidden_mode = NO;
-if(page_number == 0x100)
-  printf("[%03hx] %03hhu: %s\n", page_number, y, test); */
+//if(page_number == 0x777)
+  printf("[%03hx] %03hhu: %s\n", page_number, y, test);*/
 
         for (i = 0; i < 40; i++)
-//          if (cur_page_text->text[y][i] == 0x00)  // CW: entfernen?
+          if (cur_page_buffer->text[y][i] == 0x00)
             cur_page_buffer->text[y][i] = telx_to_ucs2(packet->data[i]);
         cur_page_buffer->tainted = YES;
       }
@@ -1039,7 +1044,7 @@ if(page_number == 0x100)
             primary_charset.g0_m29 = (triplet0 & 0x3f80) >> 7;
             // X/28 takes precedence over M/29
             if (primary_charset.g0_x28 == UNDEF) {
-//printf("B Remap charset nr. %hhu\n", c);
+//printf("B Remap charset nr. %hhu\n", primary_charset.g0_m29);
               remap_g0_charset(primary_charset.g0_m29);
             }
           }

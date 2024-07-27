@@ -321,6 +321,12 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *const InOutServi
       fMap = fopen(LineBuf, "rb");
     }
   }
+  else if (MedionMode)
+  {
+    strncpy(&LineBuf[k], "SenderMap_Medion.txt", (int)sizeof(LineBuf) - k - 1);
+    LineBuf[sizeof(LineBuf) - 1] = '\0';
+    fMap = fopen(LineBuf, "rb");
+  }
   if (!fMap)
   {
     strncpy(&LineBuf[k], "SenderMap.txt", (int)sizeof(LineBuf) - k - 1);
@@ -450,7 +456,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, TYPE_Event_Info *OutEventI
         if (strncmp(LineBuf, p, len) == 0)
         {
           StartYear=0; StartMonth=0, StartDay=0, StartHour=0; StartMin=0; DurationH=0; DurationM=0; DescStr[0]='\0'; ExtDesc = 0;
-          if (sscanf(&LineBuf[len+1], " %*512[^;] ; %hu-%hhu-%hhu ; %hhu:%hhu ; %hhu:%hhu ; %*[^;] ; %256[^;] ; %256[^;] ; %n", &StartYear, &StartMonth, &StartDay, &StartHour, &StartMin, &DurationH, &DurationM, OutEventInfo->EventNameDescription, DescStr, &ExtDesc) >= 6)
+          if (sscanf(&LineBuf[len+1], " %*512[^;] ; %hu-%hhu-%hhu %hhu:%hhu ; %hhu:%hhu ; %*[^;] ; %256[^;] ; %256[^;] ; %n", &StartYear, &StartMonth, &StartDay, &StartHour, &StartMin, &DurationH, &DurationM, OutEventInfo->EventNameDescription, DescStr, &ExtDesc) >= 8)
           {
             time_t StartTime = MakeUnixTime(StartYear, StartMonth, StartDay, StartHour, StartMin, 0, NULL);
             if (OutEventInfo && StartYear)

@@ -286,17 +286,17 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
       #ifdef _WIN32
       {
         HANDLE hFind;
-        WIN32_FIND_DATA FindFileData;
+        WIN32_FIND_DATAA FindFileData;
         strcat(LogFile, "*.log");
         p = strrchr(LogFile, '\\');
         if(!p) p = strrchr(LogFile, '/');
         if(p) p++; else p = LogFile;
-        if ((hFind = FindFirstFile(LogFile, &FindFileData)) != INVALID_HANDLE_VALUE)
+        if ((hFind = FindFirstFileA(LogFile, &FindFileData)) != INVALID_HANDLE_VALUE)
         {
           do
             if ((strstr(FindFileData.cFileName, LogDate)) && strstr(FindFileData.cFileName, "-1 "))
               { strncpy(p, FindFileData.cFileName, sizeof(LogFile) - (p-LogFile)); break; }
-          while (FindNextFile(hFind, &FindFileData));
+          while (FindNextFileA(hFind, &FindFileData));
           FindClose(hFind);
         }
       }
