@@ -429,12 +429,13 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *const InOutServi
 bool GetEPGFromMap(char *VidFileName, word ServiceID, TYPE_Event_Info *OutEventInfo, TYPE_ExtEvent_Info *OutExtEventInfo)
 {
   FILE *fMap, *fRefEPG = NULL;
-  word StartYear;
-  byte StartMonth, StartDay, StartHour, StartMin, DurationH, DurationM;
-  char DescStr[257];
-  int ExtDesc, ReadBytes, k;
+  char DescStr[FBLIB_DIR_SIZE];
+  time_t StartTime = 0;
+  unsigned int StartYear, StartMonth, StartDay, StartHour, StartMin, DurationH, DurationM, n0=0, n1, n2, n3;
+  int ReadBytes, k;
   bool RefEPGMedion = FALSE, ret = FALSE;
   char *LineBuf = (char*) malloc(16384), *p;
+  memset(DescStr, 0, sizeof(DescStr));
 
   if (LineBuf)
   {
@@ -448,50 +449,77 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, TYPE_Event_Info *OutEventI
       int len;
       if ((p = strrchr(VidFileName, '/'))) p++;
       else if ((p = strrchr(VidFileName, '\\'))) p++;
+      if(p) strncpy(DescStr, VidFileName, p-VidFileName);
       else p = VidFileName;
       len = (int)strlen(p);
+
       while (fgets(LineBuf, 4096, fMap) != 0)
       {
         if(LineBuf[0] == '#') continue;
         if (strncmp(LineBuf, p, len) == 0)
         {
-          StartYear=0; StartMonth=0, StartDay=0, StartHour=0; StartMin=0; DurationH=0; DurationM=0; DescStr[0]='\0'; ExtDesc = 0;
-          if (sscanf(&LineBuf[len+1], " %*512[^;] ; %hu-%hhu-%hhu %hhu:%hhu ; %hhu:%hhu ; %*[^;] ; %256[^;] ; %256[^;] ; %n", &StartYear, &StartMonth, &StartDay, &StartHour, &StartMin, &DurationH, &DurationM, OutEventInfo->EventNameDescription, DescStr, &ExtDesc) >= 8)
+          StartYear=0; StartMonth=0, StartDay=0, StartHour=0; StartMin=0; DurationH=0; DurationM=0; n1=0; n2=0; n3=0;
+          printf("  Found EPGEvent in Map:\n");
+
+          if ((p = strchr(&LineBuf[len+1], ';')))
           {
-            time_t StartTime = MakeUnixTime(StartYear, StartMonth, StartDay, StartHour, StartMin, 0, NULL);
-            if (OutEventInfo && StartYear)
+            n0 = (unsigned int)(p - &LineBuf[len+1]);
+            if ((LineBuf[len+1] != ';') && (LineBuf[len+1] != '-'))
             {
-              OutEventInfo->ServiceID = ServiceID;
-              OutEventInfo->EventID = 1;
-              OutEventInfo->RunningStatus = 4;
-              OutEventInfo->StartTime = Unix2TFTime(StartTime, NULL, FALSE);
-              OutEventInfo->DurationHour = DurationH;
-              OutEventInfo->DurationMin = DurationM;
-              OutEventInfo->EventNameLength = (byte)strlen(OutEventInfo->EventNameDescription);
-              if (OutEventInfo->EventNameLength + 2 < (byte)sizeof(OutEventInfo->EventNameDescription))
-                strncpy(&OutEventInfo->EventNameDescription[OutEventInfo->EventNameLength + 1], DescStr, sizeof(OutEventInfo->EventNameDescription) - 1);
+              if (LineBuf[p-LineBuf-2] == ':')
+                RefEPGMedion = LineBuf[p-LineBuf-1] - '0';
+              if (strncmp(&LineBuf[p - LineBuf - (RefEPGMedion ? 10 : 8)], "_epg.txt", 8) == 0)
+                if(!RefEPGMedion) RefEPGMedion = 1;
+              strncat(DescStr, &LineBuf[len+1], min(n0 - (RefEPGMedion ? 2 : 0), sizeof(DescStr)-len-1));
+              if ((fRefEPG = fopen(DescStr, "rb")))
+                printf("    Loading EIT event from reference file '%s'...\n", DescStr);
+              else
+                printf("    Failed to open reference file '%s'!\n", DescStr);
             }
-            if (OutExtEventInfo && ExtDesc)
+          }
+          else continue;
+
+          if (!fRefEPG)
+          {
+            DescStr[0] = '\0';
+            if (sscanf(p+1, " %4u-%2u-%2u %2u:%2u ; %2u:%2u ; %n%256[^;] ; %n%256[^;]; %n", &StartYear, &StartMonth, &StartDay, &StartHour, &StartMin, &DurationH, &DurationM, &n1, OutEventInfo->EventNameDescription, &n2, DescStr, &n3) >= 7)
             {
-              // Remove line breaks in the end
-              k = (int)strlen(LineBuf);
-              while (k && (LineBuf[k-1] == '\r' || LineBuf[k-1] == '\n' || LineBuf[k-1] == ';'))
-                LineBuf[--k] = '\0';
-              OutExtEventInfo->ServiceID = ServiceID;
-              strncpy(OutExtEventInfo->Text, &LineBuf[ExtDesc], sizeof(OutExtEventInfo->Text) - 1);
-              OutExtEventInfo->TextLength = (word)strlen(OutExtEventInfo->Text);
+              StartTime = MakeUnixTime((word)StartYear, (byte)StartMonth, (byte)StartDay, (byte)StartHour, (byte)StartMin, 0, NULL);
+              if (OutEventInfo && StartYear)
+              {
+                OutEventInfo->ServiceID = ServiceID;
+                OutEventInfo->EventID = 1;
+                OutEventInfo->RunningStatus = 4;
+                OutEventInfo->StartTime = Unix2TFTime(StartTime, NULL, FALSE);
+                printf("    EvtStart  = %s (UTC)\n", TimeStrTF(OutEventInfo->StartTime, 0));
+                OutEventInfo->DurationHour = (byte)DurationH;
+                OutEventInfo->DurationMin = (byte)DurationM;
+                printf("    EvtDuration = %02hhu:%02hhu\n", DurationH, DurationM);
+                OutEventInfo->EndTime = AddTimeSec(OutEventInfo->StartTime, 0, NULL, 3600*DurationH + 60*DurationM);
+                if(strcmp(OutEventInfo->EventNameDescription, "-") == 0)  OutEventInfo->EventNameDescription[0] = '\0';
+                OutEventInfo->EventNameLength = (byte)strlen(OutEventInfo->EventNameDescription);
+                printf("    EventName = %s\n", OutEventInfo->EventNameDescription);
+                if ((OutEventInfo->EventNameLength + 2 < (byte)sizeof(OutEventInfo->EventNameDescription)) && (strcmp(DescStr, "-") != 0))
+                  strncpy(&OutEventInfo->EventNameDescription[OutEventInfo->EventNameLength + 1], DescStr, sizeof(OutEventInfo->EventNameDescription) - 1);
+                else
+                  OutEventInfo->EventNameDescription[OutEventInfo->EventNameLength + 1] = '\0';
+                printf("    EventDesc = %s\n", DescStr);
+              }
+              if (OutExtEventInfo)
+              {
+                // Remove line breaks in the end
+                k = (int)strlen(LineBuf);
+                while (k && (LineBuf[k-1] == '\r' || LineBuf[k-1] == '\n' || LineBuf[k-1] == ';'))
+                  LineBuf[--k] = '\0';
+                OutExtEventInfo->ServiceID = ServiceID;
+                strncpy(OutExtEventInfo->Text, &LineBuf[len + n0 + (max(max(n1+2, n2+1), n3)) + 2], sizeof(OutExtEventInfo->Text) - 1);
+                OutExtEventInfo->TextLength = (word)strlen(OutExtEventInfo->Text);
+                printf("    EPGExtEvt = %s\n", &LineBuf[len + n0 + (max(max(n1+2, n2+1), n3)) + 2]);
+              }
+              if ((p = strchr(&LineBuf[len+1], ';')))
+                *p = '\0';
+              ret = TRUE;
             }
-            printf("  Found EPGEvent in Map: Date=%s, Title=%s\n", TimeStrTF(OutEventInfo->StartTime, 0), OutEventInfo->EventNameDescription);
-            if ((p = strchr(&LineBuf[len+1], ';')))
-              *p = '\0';
-            if (LineBuf[len+1])
-            {
-              printf("  Loading EIT event from reference file '%s'...\n", &LineBuf[len+1]);
-              fRefEPG = fopen(&LineBuf[len+1], "rb");
-              if (strncmp(&LineBuf[p-LineBuf-8], "_epg.txt", 8) == 0)
-                RefEPGMedion = TRUE;
-            }
-            ret = TRUE;
             break;
           }
         }
@@ -506,26 +534,35 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, TYPE_Event_Info *OutEventI
         memset(LineBuf, 0, 16384);
         if ((ReadBytes = (int)fread(LineBuf, 1, 16384, fRefEPG)) > 0)
         {
+          int i = 0;
           char *p = LineBuf;
           while((p - LineBuf < 16380) && (*(byte*)p == 0x00)) p++;
 
           if (*(int*)p == 0x12345678)
           {
-            int EITLen = *(int*)(&p[4]);
-            if (AnalyseEIT((byte*)&p[8], ReadBytes - (int)(p-LineBuf), ServiceID, OutEventInfo, OutExtEventInfo))
+            while ((p - LineBuf < 16380) && (*(int*)p == 0x12345678))
             {
-              EPGLen = 0;
-              if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
-              if (EITLen && ((EPGBuffer = (byte*)malloc(EITLen + 1))))
+              int EITLen = *(int*)(&p[4]);
+              if(++i == RefEPGMedion)
               {
-                EPGBuffer[0] = 0;  // Pointer field (=0) vor der TableID (nur im ersten TS-Paket der Tabelle, gibt den Offset an, an der die Tabelle startet, z.B. wenn noch Reste der vorherigen am Paketanfang stehen)
-                memcpy(&EPGBuffer[1], &p[8], EITLen);
-                EPGLen = EITLen + 1;
+                if (AnalyseEIT((byte*)&p[8], ReadBytes - (int)(p-LineBuf), ServiceID, OutEventInfo, OutExtEventInfo))
+                {
+                  EPGLen = 0;
+                  if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
+                  if (EITLen && ((EPGBuffer = (byte*)malloc(EITLen + 1))))
+                  {
+                    EPGBuffer[0] = 0;  // Pointer field (=0) vor der TableID (nur im ersten TS-Paket der Tabelle, gibt den Offset an, an der die Tabelle startet, z.B. wenn noch Reste der vorherigen am Paketanfang stehen)
+                    memcpy(&EPGBuffer[1], &p[8], EITLen);
+                    EPGLen = EITLen + 1;
+                  }
+                }
+                break;
               }
+              p = p + 8 + EITLen + 53;
             }
-            else
-              printf("    -> Loading reference EIT (Medion) failed.\n");
           }
+          else
+            printf("    -> Loading reference EIT (Medion) failed.\n");
         }
         free(LineBuf);
       }

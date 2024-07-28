@@ -304,13 +304,19 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
       {
         DIR *dh = NULL;
         struct dirent *file;
+        int len;
         if ((p = strrchr(LogFile, '/')))  *p = '\0';
+//printf("DEBUG: Open folder = %s\n", (p ? LogFile : "."));
         if ((dh = opendir(p ? LogFile : ".")))
         {
           if(p) *(p++) = '/'; else p = LogFile;
+          len = strlen(p);
+//printf("DEBUG: Reference name = %s\n", p);
           while ((file = readdir(dh)))
-            if ((strncmp(file->d_name, LogFile, (p-LogFile)) == 0) && (strstr(file->d_name, LogDate)) && (strstr(file->d_name, "-1 ")) && (strcmp(&file->d_name[strlen(file->d_name)-4], ".log") == 0))
+//printf("DEBUG: File found = %s\n", file->d_name);
+            if ((strncmp(file->d_name, LogFile, len) == 0) && (strstr(file->d_name, LogDate)) && (strstr(file->d_name, "-1 ")) && (strcmp(&file->d_name[strlen(file->d_name)-4], ".log") == 0))
               { strncpy(p, file->d_name, sizeof(LogFile) - (p-LogFile)); break; }
+//printf("DEBUG: Final result = %s\n", LogFile);
           closedir(dh);
         }
       }

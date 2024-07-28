@@ -23,7 +23,8 @@ static dword            CaptionStart = 0, CaptionEnd = 0;
 bool LoadSrtFileIn(const char* AbsInSrt)
 {
   if(fSrtIn) fclose(fSrtIn);
-  fSrtIn = fopen(AbsInSrt, "rb");
+  if ((fSrtIn = fopen(AbsInSrt, "rb")))
+    printf("\nSrt file: %s\n", AbsInSrt);
   Number[0] = '\0';
   return (fSrtIn != NULL);
 }
@@ -42,8 +43,9 @@ bool SrtProcessCaptions(dword FromTimems, dword ToTimems, int TimeDiff, bool DoO
   unsigned int          hour1, minute1, second1, millisec1, hour2, minute2, second2, millisec2;
   bool                  inCaption = FALSE, ret = TRUE;
 
+  if(!fSrtOut) return FALSE;
   Buffer[0] = '\0';
-  
+
   // Walk through srt file and copy relevant parts to output files
   while (ret && ((!inCaption && CaptionEnd) || (fgets(Buffer, sizeof(Buffer), fSrtIn))))
   {

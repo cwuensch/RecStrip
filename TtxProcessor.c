@@ -766,7 +766,7 @@ static void process_page2(uint16_t page_number)
   memset(&page_buffer_in[MAGAZINE(page_number)], 0, sizeof(teletext_page_t));
 }
 
-void process_telx_packet(/*data_unit_t data_unit_id,*/ teletext_packet_payload_t *packet, uint32_t timestamp)
+static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payload_t *packet, uint32_t timestamp)
 {
   // variable names conform to ETS 300 706, chapter 7.1.2
   uint8_t address = (unham_8_4(packet->address[1]) << 4) | unham_8_4(packet->address[0]);
@@ -815,9 +815,6 @@ void process_telx_packet(/*data_unit_t data_unit_id,*/ teletext_packet_payload_t
     // having the same magazine address in parallel transmission mode, or any magazine address in serial transmission mode.
 //    transmission_mode = unham_8_4(packet->data[7]) & 0x01;
 
-    // FIXME: Well, this is not ETS 300 706 kosher, however we are interested in DATA_UNIT_EBU_TELETEXT_SUBTITLE only
-//    if ((transmission_mode == TRANSMISSION_MODE_PARALLEL) && (data_unit_id != DATA_UNIT_EBU_TELETEXT_SUBTITLE)) return;  // unnötig (?)
-
     if ( (p != PAGE(page_number)) || (transmission_mode == TRANSMISSION_MODE_SERIAL && m != MAGAZINE(page_number)) || (transmission_mode == TRANSMISSION_MODE_PARALLEL && m == MAGAZINE(page_number)) )
     {
       if (ExtractAllTeletext)
@@ -841,19 +838,22 @@ void process_telx_packet(/*data_unit_t data_unit_id,*/ teletext_packet_payload_t
             page_buffer_in[i].receiving_data = NO;
       }
 
+      // FIXME: Well, this is not ETS 300 706 kosher, however we are interested in DATA_UNIT_EBU_TELETEXT_SUBTITLE only
+      if (/*!ExtractAllTeletext &&*/ ((unham_8_4(packet->data[7]) & 0x01) == TRANSMISSION_MODE_PARALLEL) && (data_unit_id != DATA_UNIT_EBU_TELETEXT_SUBTITLE)) return;  // !! schützt vor [m=8, p=a0, t=par] Paketen bei arte HD, die ggf. Pages zu früh beenden (leider nicht bei Kombination -tt und -tx)
+
       // Subtitle Page transmission is terminated, however now we are waiting for our new page...
       if (out_nr >= 0)
         page_buffer[out_nr].receiving_data = NO;
-
-      if(((p & 0xf0) > 0x90) || ((p & 0x0f) > 0x09)) return;
     }
 
+
+    if (((p & 0xf0) > 0x90) || ((p & 0x0f) > 0x09)) return;
 
     page_number = (m << 8) | p;
     transmission_mode = (transmission_mode_t) (unham_8_4(packet->data[7]) & 0x01);
 
     // Open a new srt output file
-    if (ExtractTeletext && (flag_subtitle == YES) && (p < 0xff))
+    if (ExtractTeletext && flag_subtitle)
     {
       out_nr = GetTeletextOut(page_number, TRUE);
       if((out_nr >= 0) && ((transmission_mode == TRANSMISSION_MODE_PARALLEL) || (MAGAZINE(pages[out_nr]) == m)))
@@ -863,8 +863,7 @@ void process_telx_packet(/*data_unit_t data_unit_id,*/ teletext_packet_payload_t
       }
       else out_nr = -1;
     }
-    else //if (flag_subtitle == NO)
-      out_nr = -1;
+    else out_nr = -1;
 
     if (((out_nr >= 0) && (m == MAGAZINE(page_number))) || ExtractAllTeletext)
     {
@@ -938,8 +937,8 @@ for(i = 0; i < 40; i++) {
 }
 graphic_mode = NO;
 hidden_mode = NO;
-//if(page_number == 0x777)
-  printf("[%03hx] %03hhu: %s\n", page_number, y, test);*/
+//if(page_number == 0x888)
+  printf("[%1hx%02hx] %03hhu: %s\n", m, PAGE(page_number), y, test); */
 
         for (i = 0; i < 40; i++)
           if (cur_page_buffer->text[y][i] == 0x00)
@@ -1223,7 +1222,7 @@ uint16_t process_pes_packet(uint8_t *buffer, uint16_t size)
 //printf("  new payload\n");
 
         // FIXME: This explicit type conversion could be a problem some day -- do not need to be platform independant
-        process_telx_packet(/*(data_unit_t)data_unit_id,*/ (teletext_packet_payload_t *)&buffer[i], last_timestamp);
+        process_telx_packet((data_unit_t)data_unit_id, (teletext_packet_payload_t *)&buffer[i], last_timestamp);
       }
     }
 
