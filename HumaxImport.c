@@ -426,7 +426,7 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *const InOutServi
   return 1;
 }
 
-bool GetEPGFromMap(char *VidFileName, word ServiceID, TYPE_Event_Info *OutEventInfo, TYPE_ExtEvent_Info *OutExtEventInfo)
+bool GetEPGFromMap(char *VidFileName, word ServiceID, TYPE_RecHeader_TMSS *RecInf)
 {
   FILE *fMap, *fRefEPG = NULL;
   char DescStr[FBLIB_DIR_SIZE];
@@ -460,6 +460,9 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, TYPE_Event_Info *OutEventI
         {
           StartYear=0; StartMonth=0, StartDay=0, StartHour=0; StartMin=0; DurationH=0; DurationM=0; n1=0; n2=0; n3=0;
           printf("  Found EPGEvent in Map:\n");
+          memset(RecInf->EventInfo.EventNameDescription, 0, sizeof(RecInf->EventInfo.EventNameDescription));
+          memset(RecInf->ExtEventInfo.Text, 0, sizeof(RecInf->ExtEventInfo.Text));
+          RecInf->ExtEventInfo.TextLength = 0;
 
           if ((p = strchr(&LineBuf[len+1], ';')))
           {
@@ -482,39 +485,46 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, TYPE_Event_Info *OutEventI
           if (!fRefEPG)
           {
             DescStr[0] = '\0';
-            if (sscanf(p+1, " %4u-%2u-%2u %2u:%2u ; %2u:%2u ; %n%256[^;] ; %n%256[^;]; %n", &StartYear, &StartMonth, &StartDay, &StartHour, &StartMin, &DurationH, &DurationM, &n1, OutEventInfo->EventNameDescription, &n2, DescStr, &n3) >= 7)
+            if (sscanf(p+1, " %4u-%2u-%2u %2u:%2u ; %2u:%2u ; %n%256[^;] ; %n%256[^;]; %n", &StartYear, &StartMonth, &StartDay, &StartHour, &StartMin, &DurationH, &DurationM, &n1, RecInf->EventInfo.EventNameDescription, &n2, DescStr, &n3) >= 7)
             {
               StartTime = MakeUnixTime((word)StartYear, (byte)StartMonth, (byte)StartDay, (byte)StartHour, (byte)StartMin, 0, NULL);
-              if (OutEventInfo && StartYear)
+              if (RecInf && StartYear)
               {
-                OutEventInfo->ServiceID = ServiceID;
-                OutEventInfo->EventID = 1;
-                OutEventInfo->RunningStatus = 4;
-                OutEventInfo->StartTime = Unix2TFTime(StartTime, NULL, FALSE);
-                printf("    EvtStart  = %s (UTC)\n", TimeStrTF(OutEventInfo->StartTime, 0));
-                OutEventInfo->DurationHour = (byte)DurationH;
-                OutEventInfo->DurationMin = (byte)DurationM;
+                RecInf->EventInfo.ServiceID = ServiceID;
+                RecInf->EventInfo.EventID = 1;
+                RecInf->EventInfo.RunningStatus = 4;
+                RecInf->EventInfo.StartTime = Unix2TFTime(StartTime, NULL, FALSE);
+                printf("    EvtStart  = %s (UTC)\n", TimeStrTF(RecInf->EventInfo.StartTime, 0));
+                RecInf->EventInfo.DurationHour = (byte)DurationH;
+                RecInf->EventInfo.DurationMin = (byte)DurationM;
                 printf("    EvtDuration = %02hhu:%02hhu\n", DurationH, DurationM);
-                OutEventInfo->EndTime = AddTimeSec(OutEventInfo->StartTime, 0, NULL, 3600*DurationH + 60*DurationM);
-                if(strcmp(OutEventInfo->EventNameDescription, "-") == 0)  OutEventInfo->EventNameDescription[0] = '\0';
-                OutEventInfo->EventNameLength = (byte)strlen(OutEventInfo->EventNameDescription);
-                printf("    EventName = %s\n", OutEventInfo->EventNameDescription);
-                if ((OutEventInfo->EventNameLength + 2 < (byte)sizeof(OutEventInfo->EventNameDescription)) && (strcmp(DescStr, "-") != 0))
-                  strncpy(&OutEventInfo->EventNameDescription[OutEventInfo->EventNameLength + 1], DescStr, sizeof(OutEventInfo->EventNameDescription) - 1);
+                RecInf->EventInfo.EndTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, 3600*DurationH + 60*DurationM);
+                if(strcmp(RecInf->EventInfo.EventNameDescription, "-") == 0)  RecInf->EventInfo.EventNameDescription[0] = '\0';
+                RecInf->EventInfo.EventNameLength = (byte)strlen(RecInf->EventInfo.EventNameDescription);
+                printf("    EventName = %s\n", RecInf->EventInfo.EventNameDescription);
+                if ((RecInf->EventInfo.EventNameLength + 2 < (byte)sizeof(RecInf->EventInfo.EventNameDescription)) && (strcmp(DescStr, "-") != 0))
+                  strncpy(&RecInf->EventInfo.EventNameDescription[RecInf->EventInfo.EventNameLength + 1], DescStr, sizeof(RecInf->EventInfo.EventNameDescription) - 1);
                 else
-                  OutEventInfo->EventNameDescription[OutEventInfo->EventNameLength + 1] = '\0';
+                  RecInf->EventInfo.EventNameDescription[RecInf->EventInfo.EventNameLength + 1] = '\0';
                 printf("    EventDesc = %s\n", DescStr);
-              }
-              if (OutExtEventInfo)
-              {
+
                 // Remove line breaks in the end
                 k = (int)strlen(LineBuf);
                 while (k && (LineBuf[k-1] == '\r' || LineBuf[k-1] == '\n' || LineBuf[k-1] == ';'))
                   LineBuf[--k] = '\0';
-                OutExtEventInfo->ServiceID = ServiceID;
-                strncpy(OutExtEventInfo->Text, &LineBuf[len + n0 + (max(max(n1+2, n2+1), n3)) + 2], sizeof(OutExtEventInfo->Text) - 1);
-                OutExtEventInfo->TextLength = (word)strlen(OutExtEventInfo->Text);
-                printf("    EPGExtEvt = %s\n", &LineBuf[len + n0 + (max(max(n1+2, n2+1), n3)) + 2]);
+                RecInf->ExtEventInfo.ServiceID = ServiceID;
+
+                if(ExtEPGText) free(ExtEPGText);
+                if (!(ExtEPGText = (char*) malloc(strlen(&LineBuf[len + n0 + (max(max(n1+2, n2+1), n3)) + 2]) + 1)))
+                {
+                  printf("  Could not allocate memory for ExtEPGText.\n");
+                  return FALSE;
+                }
+                strcpy(ExtEPGText, &LineBuf[len + n0 + (max(max(n1+2, n2+1), n3)) + 2]);
+                strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, sizeof(RecInf->ExtEventInfo.Text) - 1);
+                RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] = '\0';
+                RecInf->ExtEventInfo.TextLength = (word)strlen(RecInf->ExtEventInfo.Text);
+                printf("    EPGExtEvt = %s\n", ExtEPGText);
               }
               if ((p = strchr(&LineBuf[len+1], ';')))
                 *p = '\0';
@@ -536,6 +546,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, TYPE_Event_Info *OutEventI
         {
           int i = 0;
           char *p = LineBuf;
+          tPVRTime MidTimeUTC = Unix2TFTime(TF2UnixTime(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec, TRUE) + 30*RecInf->RecHeaderInfo.DurationMin + RecInf->RecHeaderInfo.DurationSec/2, NULL, FALSE);
           while((p - LineBuf < 16380) && (*(byte*)p == 0x00)) p++;
 
           if (*(int*)p == 0x12345678)
@@ -543,20 +554,32 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, TYPE_Event_Info *OutEventI
             while ((p - LineBuf < 16380) && (*(int*)p == 0x12345678))
             {
               int EITLen = *(int*)(&p[4]);
-              if(++i == RefEPGMedion)
+              if(++i >= RefEPGMedion)
               {
-                if (AnalyseEIT((byte*)&p[8], ReadBytes - (int)(p-LineBuf), ServiceID, OutEventInfo, OutExtEventInfo))
+                // Dirty hack: Hier die ServiceID im EIT-Paket an die Aufnahme anpassen (z.B. arte -> arte HD)
+                // ToDo: Der CRC muss vermutlich ebenfalls angepasst werden!
+                tTSEIT *eit = (tTSEIT*) &p[8];
+                if (eit->TableID == 0x4e)
+                {
+                  eit->ServiceID1 = (byte)(ServiceID >> 8);
+                  eit->ServiceID2 = (byte)(ServiceID & 0xff);
+                  *(dword*)&p[8 + eit->SectionLen1*256 + eit->SectionLen2] = crc32m_tab((byte*)eit, eit->SectionLen1*256 + eit->SectionLen2);  // testen!!
+                }
+                if (AnalyseEIT((byte*)&p[8], ReadBytes - (int)(p-LineBuf), ServiceID, &RecInf->EventInfo, &RecInf->ExtEventInfo))
                 {
                   EPGLen = 0;
                   if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
                   if (EITLen && ((EPGBuffer = (byte*)malloc(EITLen + 1))))
                   {
+//                    RecInf->EventInfo.ServiceID = ServiceID;
+//                    RecInf->ExtEventInfo.ServiceID = ServiceID;
                     EPGBuffer[0] = 0;  // Pointer field (=0) vor der TableID (nur im ersten TS-Paket der Tabelle, gibt den Offset an, an der die Tabelle startet, z.B. wenn noch Reste der vorherigen am Paketanfang stehen)
                     memcpy(&EPGBuffer[1], &p[8], EITLen);
                     EPGLen = EITLen + 1;
                   }
                 }
-                break;
+                if (((RefEPGMedion > 1) && (i >= RefEPGMedion)) || (RecInf->RecHeaderInfo.StartTime && /*(RecInf->EventInfo.StartTime <= MidTimeUTC) &&*/ (RecInf->EventInfo.EndTime >= MidTimeUTC)))
+                  break;
               }
               p = p + 8 + EITLen + 53;
             }
@@ -616,11 +639,30 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, TYPE_Event_Info *OutEventI
             fseeko64(fRefEPG, FirstEPGPack * RefPacketSize, SEEK_SET);
             for (k = 0; k < NrEPGPacks; k++)
             {
-              if (fread(&EPGPacks[k*192 + (RefPacketSize == 188) ? 4 : 0], RefPacketSize, 1, fRefEPG))
-                PSBuffer_ProcessTSPacket(&EITBuffer, (tTSPacket*) (&EPGPacks[k*192 + (RefPacketSize == 188) ? 4 : 0]));
+              if (fread(&EPGPacks[k*192 + ((RefPacketSize == 188) ? 4 : 0)], RefPacketSize, 1, fRefEPG))
+              {
+                // Dirty hack: Hier die ServiceID im EIT-Paket an die Aufnahme anpassen (z.B. arte -> arte HD)
+                // ToDo: Der CRC muss vermutlich ebenfalls angepasst werden!
+                tTSPacket *pack = (tTSPacket*) &EPGPacks[k*192 + 4];
+                tTSEIT *eit = (tTSEIT*) &pack->Data[1];
+                if ((k == 0) && (eit->TableID == 0x4e))
+                {
+                  eit->ServiceID1 = (byte)(ServiceID >> 8);
+                  eit->ServiceID2 = (byte)(ServiceID & 0xff);
+                }
+                PSBuffer_ProcessTSPacket(&EITBuffer, (tTSPacket*) (&EPGPacks[k*192 + 4]));
+              }
             }
-            if (!AnalyseEIT(EITBuffer.Buffer1, EITBuffer.ValidBufLen, ServiceID, OutEventInfo, OutExtEventInfo))
-              printf("    -> Loading reference EIT from file start failed.\n");
+            if (AnalyseEIT(EITBuffer.Buffer1, EITBuffer.ValidBufLen, ServiceID, &RecInf->EventInfo, &RecInf->ExtEventInfo))
+            {
+              tTSPacket *pack = (tTSPacket*) &EPGPacks[(NrEPGPacks-1)*192 + 4];
+              tTSEIT *eit = (tTSEIT*) EITBuffer.Buffer1;
+               &pack->Data;
+               *(dword*)&pack->Data[(eit->SectionLen1*256 + eit->SectionLen2 - 183) % 184] = crc32m_tab((byte*)eit, eit->SectionLen1*256 + eit->SectionLen2);  // testen!!
+//              RecInf->EventInfo.ServiceID = ServiceID;
+//              RecInf->ExtEventInfo.ServiceID = ServiceID;
+            }
+            else printf("    -> Loading reference EIT from file start failed.\n");
           }
         }
       }

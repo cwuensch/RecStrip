@@ -187,7 +187,7 @@ bool LoadInfFromRec(char *AbsRecFileName)
     DVBViewerSrc = LoadDVBViewer(AbsRecFileName, RecInf);
 
   if (HumaxSource || EycosSource || MedionMode == 1)
-    GetEPGFromMap(AbsRecFileName, RecInf->ServiceInfo.ServiceID, &RecInf->EventInfo, &RecInf->ExtEventInfo);
+    GetEPGFromMap(AbsRecFileName, RecInf->ServiceInfo.ServiceID, RecInf);
 
   Result = GenerateInfFile(fIn, RecInf);
   

@@ -40,7 +40,7 @@
   extern long timezone;
 #endif*/
 
-byte                   *EPGBuffer = 0;
+byte                   *EPGBuffer = NULL;
 int                     EPGLen = 0;
 long long               FirstFilePCR = 0, LastFilePCR = 0;
 dword                   FirstFilePTS = 0, LastFilePTS = 0;
@@ -338,6 +338,10 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
     if ((Buffer = (char*)malloc(4096)))
     {
       ret = TRUE;
+      memset(RecInf->EventInfo.EventNameDescription, 0, sizeof(RecInf->EventInfo.EventNameDescription));
+      memset(RecInf->ExtEventInfo.Text, 0, sizeof(RecInf->ExtEventInfo.Text));
+      RecInf->ExtEventInfo.TextLength = 0;
+
       for (i = 0; ret && fgets(Buffer, 4096, fLog); i++)
       {
         // Remove line breaks in the end
@@ -397,9 +401,9 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
                 return FALSE;
               }
               strcpy(ExtEPGText, Buffer);
-              RecInf->ExtEventInfo.TextLength = (word) min(strlen(Buffer), (int)sizeof(RecInf->ExtEventInfo.Text) - 1);
-              strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, RecInf->ExtEventInfo.TextLength);
+              strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, (int)sizeof(RecInf->ExtEventInfo.Text) - 1);
               RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] = '\0';
+              RecInf->ExtEventInfo.TextLength = (word)strlen(RecInf->ExtEventInfo.Text);
               printf("    EPGExtEvt = %s\n", ExtEPGText);
               break;
             }
@@ -1283,7 +1287,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 {
   FILE                 *fIn2 = fIn;
   tPSBuffer             PMTBuffer, EITBuffer, TtxBuffer;
-  byte                 *Buffer = NULL, *pEPGBuffer = NULL;
+  byte                 *Buffer = NULL, *pEPGBuffer = EPGBuffer;
   int                   LastPMTBuffer = 0, LastEITBuffer = 0, LastTtxBuffer = 0;
   byte                  FrameType = 0;
   tPESHeader           *curPESPacket = NULL;
@@ -1568,7 +1572,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       {
         byte *p = Buffer;
         int PTSDuration = DeltaPCR(FirstFilePTS, LastFilePTS) / 45000;
-        dword MidTimeUTC = AddTimeSec(TtxTime, TtxTimeSec, NULL, TtxTimeZone + PTSDuration/2);
+        tPVRTime MidTimeUTC = AddTimeSec(TtxTime, TtxTimeSec, NULL, TtxTimeZone + PTSDuration/2);
 
         while ((p - Buffer < 16380) && (*p == 0x00))
           p++;
@@ -1592,7 +1596,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                 EPGLen = EITLen + 1;
               }
 
-              if (!IsFirst && (IsLast || !TtxOK || ((RecInf->EventInfo.StartTime <= MidTimeUTC) && (RecInf->EventInfo.EndTime >= MidTimeUTC))))
+              if (!IsFirst && (IsLast || !TtxOK || (/*(RecInf->EventInfo.StartTime <= MidTimeUTC) &&*/ (RecInf->EventInfo.EndTime >= MidTimeUTC))))
                 break;
             }
             p = p + 8 + EITLen + 53;
