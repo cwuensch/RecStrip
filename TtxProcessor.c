@@ -661,10 +661,11 @@ static void process_page(teletext_page_t *page, uint16_t page_number, int out_nr
 
 static void process_page2(uint16_t page_number)
 {
-  int page_nr = hex2dec(page_number);
-  teletext_page_t *page = (teletext_page_t*) &page_buffer_in[MAGAZINE(page_number)];
-  bool page_empty = TRUE;
   int p = 0, s, i, j;
+  bool page_empty = TRUE;
+  int page_nr = hex2dec(page_number);
+  teletext_page_t *page = (teletext_page_t*) &page_buffer_in[MAGAZINE(page_number)-1];
+  if (MAGAZINE(page_number) <= 0) return;
 
   // Check for empty / Remove control chars
   for (i = 1; i < 25; i++)
@@ -675,7 +676,7 @@ static void process_page2(uint16_t page_number)
 //      else if(page->text[i][j] != ' ') page->text[i][j] = ' ';
     }
   }
-  if(!page_nr || page_empty) return;
+  if(!page_nr || page_nr < 100 || page_nr > 899 || page_empty) return;
 
   // Find subpage from subcode
   // (If subcode specified, use subcode as place - if not, use '1' or first free place)
@@ -685,16 +686,16 @@ static void process_page2(uint16_t page_number)
       p = 10 * (page->text[0][5] - '0') + page->text[0][6] - '0';
   }
 
-  if (page_map[page_nr].subpages[p] >= 0)
+  if (page_map[page_nr-100].subpages[p] >= 0)
   {
     // Find first (almost) matching page or page with subset, otherwise first empty page
     for (s = p; s < NRSUBPAGES; s++)
     {
-      teletext_text_t *ref = &page_buffer_all[page_map[page_nr].subpages[s]];
+      teletext_text_t *ref = &page_buffer_all[page_map[page_nr-100].subpages[s]];
       bool ref_empty = TRUE;
       int nr_diff = 0, nr_content_same = 0, nr_unique_ref = 0, nr_unique_new = 0, nr_missing_ref = 0, nr_missing_new = 0;
 
-      if (page_map[page_nr].subpages[s] < 0)
+      if (page_map[page_nr-100].subpages[s] < 0)
         { p = s; break; }
 
       // Check if reference page is empty
@@ -750,20 +751,20 @@ static void process_page2(uint16_t page_number)
   // Copy the page to the desired place
   if (p >= 0 && p < NRSUBPAGES)
   {
-    int16_t place = page_map[page_nr].subpages[p];
+    int16_t place = page_map[page_nr-100].subpages[p];
     if (place < 0)
     {
       if(total_pages < NRALLTTXPAGES)
       {
         place = total_pages++;
-        page_map[page_nr].subpages[p] = place;
+        page_map[page_nr-100].subpages[p] = place;
       }
       else printf("  TTX: Warning! Teletext page buffer (4096 pages) is full!\n");
     }
     if (place >= 0)
       memcpy(&page_buffer_all[place], page->text, sizeof(teletext_text_t));
   }
-  memset(&page_buffer_in[MAGAZINE(page_number)], 0, sizeof(teletext_page_t));
+  memset(&page_buffer_in[MAGAZINE(page_number)-1], 0, sizeof(teletext_page_t));
 }
 
 static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payload_t *packet, uint32_t timestamp)
@@ -824,17 +825,17 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
         if (page_number)
         {
           if (transmission_mode == TRANSMISSION_MODE_PARALLEL)
-            for (i = 1; i <= 8; i++)
+            for (i = 0; i < 8; i++)
             {
 //              if (page_buffer_in[i].receiving_data = YES)
-                process_page2(i << 8 | PAGE(page_number));
+                process_page2((i+1) << 8 | PAGE(page_number));
               page_buffer_in[i].receiving_data = NO;
             }
           else
             process_page2(page_number);
         }
         if ((unham_8_4(packet->data[7]) & 0x01) == TRANSMISSION_MODE_PARALLEL)
-          for (i = 1; i <= 8; i++)
+          for (i = 0; i < 8; i++)
             page_buffer_in[i].receiving_data = NO;
       }
 
@@ -876,7 +877,7 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
       if (out_nr >= 0)
         cur_page_buffer = &page_buffer[out_nr];
       else if (ExtractAllTeletext && page_number)
-        cur_page_buffer = &page_buffer_in[m];
+        cur_page_buffer = &page_buffer_in[m-1];
       cur_page_buffer->receiving_data = YES;
 
       // ... Here starts the new page!
@@ -914,7 +915,7 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
   if (out_nr >= 0)
     cur_page_buffer = &page_buffer[out_nr];
   else if (ExtractAllTeletext)
-    cur_page_buffer = &page_buffer_in[m];
+    cur_page_buffer = &page_buffer_in[m-1];
   else
     return;
 
@@ -1256,7 +1257,7 @@ void SetTeletextBreak(bool NewInputFile, word SubtitlePage)
       page_buffer[k].receiving_data = NO;
     }
   }
-  memset(page_buffer_in, 0, 9 * sizeof(teletext_page_t));
+  memset(page_buffer_in, 0, 8 * sizeof(teletext_page_t));
   
   if (NewInputFile)
   {
@@ -1289,12 +1290,12 @@ void TtxProcessor_Init(word SubtitlePage)
   }
   if(ExtractAllTeletext)
   {
-    page_buffer_in = (teletext_page_t*) malloc(9 * sizeof(teletext_page_t));
+    page_buffer_in = (teletext_page_t*) malloc(8 * sizeof(teletext_page_t));
     page_buffer_all = (teletext_text_t*) malloc(NRALLTTXPAGES * sizeof(teletext_text_t));
-    page_map = (teletext_pagemap_t*) malloc(900 * sizeof(teletext_pagemap_t));
-    memset(page_buffer_in, 0, 9 * sizeof(teletext_page_t));
+    page_map = (teletext_pagemap_t*) malloc(800 * sizeof(teletext_pagemap_t));
+    memset(page_buffer_in, 0, 8 * sizeof(teletext_page_t));
     memset(page_buffer_all, 0, NRALLTTXPAGES * sizeof(teletext_text_t));
-    memset(page_map, -1, 900 * sizeof(teletext_pagemap_t));
+    memset(page_map, -1, 800 * sizeof(teletext_pagemap_t));
   }
   PSBuffer_Init(&TtxBuffer, TeletextPID, 4096, FALSE);  // eigentlich: 1288 / 1472
   LastBuffer = 0;
@@ -1352,7 +1353,7 @@ bool WriteAllTeletext(char *AbsOutFile)
   if(!f) return FALSE;
 
   memset(line, 0, sizeof(line));
-  for (p = 1; p < 900; p++)
+  for (p = 0; p < 800; p++)
   {
     // Anzahl Subpages ermitteln
     int nr_subpages = 0;
@@ -1379,7 +1380,7 @@ bool WriteAllTeletext(char *AbsOutFile)
       if(empty_page) continue;
 
       fprintf(f, "----------------------------------------\r\n");
-      fprintf(f, ((nr_subpages <= 1) ? "[%03hu]\r\n" : "[%03hu] (%d/%d)\r\n"), p, s, nr_subpages);
+      fprintf(f, ((nr_subpages <= 1) ? "[%03hu]\r\n" : "[%03hu] (%d/%d)\r\n"), p+100, s, nr_subpages);
 
       for (i = 0; i < 24; i++)
       {
