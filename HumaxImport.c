@@ -426,7 +426,7 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *const InOutServi
   return 1;
 }
 
-bool GetEPGFromMap(char *VidFileName, word ServiceID, TYPE_RecHeader_TMSS *RecInf)
+bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE_RecHeader_TMSS *RecInf)
 {
   FILE *fMap, *fRefEPG = NULL;
   char DescStr[FBLIB_DIR_SIZE];
@@ -557,15 +557,18 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, TYPE_RecHeader_TMSS *RecIn
               if(++i >= RefEPGMedion)
               {
                 // Dirty hack: Hier die ServiceID im EIT-Paket an die Aufnahme anpassen (z.B. arte -> arte HD)
-                // ToDo: Der CRC muss vermutlich ebenfalls angepasst werden!
-                tTSEIT *eit = (tTSEIT*) &p[8];
-                if (eit->TableID == 0x4e)
+                // Entfernt, denn: In vielen Fällen (z.B. Humax) ist die ServiceID gar nicht bekannt!
+/*                tTSEIT *eit = (tTSEIT*) &p[8];
+                if ((eit->TableID == 0x4e) && (eit->ServiceID1*256 + eit->ServiceID2 != ServiceID))
                 {
+                  printf("  GetEPGFromMap: Changing ServiceID from %hu to %hu.\n", eit->ServiceID1*256 + eit->ServiceID2, ServiceID);
                   eit->ServiceID1 = (byte)(ServiceID >> 8);
                   eit->ServiceID2 = (byte)(ServiceID & 0xff);
+                  eit->TS_ID1 = (byte)(TransportStreamID >> 8);
+                  eit->TS_ID2 = (byte)(TransportStreamID & 0xff);
                   *(dword*)&p[8 + eit->SectionLen1*256 + eit->SectionLen2] = crc32m_tab((byte*)eit, eit->SectionLen1*256 + eit->SectionLen2);  // testen!!
-                }
-                if (AnalyseEIT((byte*)&p[8], ReadBytes - (int)(p-LineBuf), ServiceID, &RecInf->EventInfo, &RecInf->ExtEventInfo))
+                } */
+                if (AnalyseEIT((byte*)&p[8], ReadBytes - (int)(p-LineBuf), ServiceID, OutTransportID, &RecInf->EventInfo, &RecInf->ExtEventInfo))
                 {
                   EPGLen = 0;
                   if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
@@ -613,7 +616,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, TYPE_RecHeader_TMSS *RecIn
         }
         
         PSBuffer_Init(&EITBuffer, 0x0012, 16384, TRUE);
-        memset(CurPacket, 0, sizeof(CurPacket));
+        memset(CurPacket, 0, sizeof(tTSPacket));
 
         NrEPGPacks = 0;
         fseeko64(fRefEPG, 0, SEEK_SET);
@@ -642,25 +645,25 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, TYPE_RecHeader_TMSS *RecIn
               if (fread(&EPGPacks[k*192 + ((RefPacketSize == 188) ? 4 : 0)], RefPacketSize, 1, fRefEPG))
               {
                 // Dirty hack: Hier die ServiceID im EIT-Paket an die Aufnahme anpassen (z.B. arte -> arte HD)
-                // ToDo: Der CRC muss vermutlich ebenfalls angepasst werden!
-                tTSPacket *pack = (tTSPacket*) &EPGPacks[k*192 + 4];
+                // Entfernt, denn: In vielen Fällen (z.B. Humax) ist die ServiceID gar nicht bekannt!
+/*                tTSPacket *pack = (tTSPacket*) &EPGPacks[k*192 + 4];
                 tTSEIT *eit = (tTSEIT*) &pack->Data[1];
-                if ((k == 0) && (eit->TableID == 0x4e))
+                if ((k == 0) && (eit->TableID == 0x4e) && (eit->ServiceID1*256 + eit->ServiceID2 != ServiceID))
                 {
+                  printf("  GetEPGFromMap: Changing ServiceID from %hu to %hu.\n", eit->ServiceID1*256 + eit->ServiceID2, ServiceID);
                   eit->ServiceID1 = (byte)(ServiceID >> 8);
                   eit->ServiceID2 = (byte)(ServiceID & 0xff);
-                }
+                  eit->TS_ID1 = (byte)(TransportStreamID >> 8);
+                  eit->TS_ID2 = (byte)(TransportStreamID & 0xff);
+                } */
                 PSBuffer_ProcessTSPacket(&EITBuffer, (tTSPacket*) (&EPGPacks[k*192 + 4]));
               }
             }
-            if (AnalyseEIT(EITBuffer.Buffer1, EITBuffer.ValidBufLen, ServiceID, &RecInf->EventInfo, &RecInf->ExtEventInfo))
+            if (AnalyseEIT(EITBuffer.Buffer1, EITBuffer.ValidBufLen, ServiceID, OutTransportID, &RecInf->EventInfo, &RecInf->ExtEventInfo))
             {
-              tTSPacket *pack = (tTSPacket*) &EPGPacks[(NrEPGPacks-1)*192 + 4];
+/*              tTSPacket *pack = (tTSPacket*) &EPGPacks[(NrEPGPacks-1)*192 + 4];
               tTSEIT *eit = (tTSEIT*) EITBuffer.Buffer1;
-               &pack->Data;
-               *(dword*)&pack->Data[(eit->SectionLen1*256 + eit->SectionLen2 - 183) % 184] = crc32m_tab((byte*)eit, eit->SectionLen1*256 + eit->SectionLen2);  // testen!!
-//              RecInf->EventInfo.ServiceID = ServiceID;
-//              RecInf->ExtEventInfo.ServiceID = ServiceID;
+              *(dword*)&pack->Data[(eit->SectionLen1*256 + eit->SectionLen2 - 183) % 184] = crc32m_tab((byte*)eit, eit->SectionLen1*256 + eit->SectionLen2); */
             }
             else printf("    -> Loading reference EIT from file start failed.\n");
           }

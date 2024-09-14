@@ -152,6 +152,7 @@ extern time_t           RecFileTimeStamp;
 extern SYSTEM_TYPE      SystemType;
 extern byte             PACKETSIZE, PACKETOFFSET, OutPacketSize;
 extern word             VideoPID, TeletextPID, SubtitlesPID, TeletextPage;
+extern word             TransportStreamID;
 extern tAudioTrack      AudioPIDs[];
 extern word             ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs;
 extern bool             isHDVideo, AlreadyStripped, HumaxSource, EycosSource, DVBViewerSrc;
