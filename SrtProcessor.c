@@ -33,6 +33,11 @@ bool LoadSrtFileOut(const char* AbsOutSrt)
 {
   if(fSrtOut) fclose(fSrtOut);
   fSrtOut = fopen(AbsOutSrt, (DoMerge == 1) ? "ab" : "wb");
+  if (fSrtOut && DoMerge == 1)
+  {
+    fseek(fSrtOut, 0, SEEK_END);
+    fwrite("\r\n", 1, 2, fSrtOut);
+  }
   Nr = 1;
   return (fSrtOut != NULL);
 }
@@ -43,7 +48,7 @@ bool SrtProcessCaptions(dword FromTimems, dword ToTimems, int TimeDiff, bool DoO
   unsigned int          hour1, minute1, second1, millisec1, hour2, minute2, second2, millisec2;
   bool                  inCaption = FALSE, ret = TRUE;
 
-  if(!fSrtOut) return FALSE;
+  if(DoOutput && !fSrtOut) return FALSE;
   Buffer[0] = '\0';
 
   // Walk through srt file and copy relevant parts to output files

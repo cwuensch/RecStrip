@@ -327,7 +327,8 @@ int ProcessTSPacket(unsigned char *Packet, long long FilePosition)
         NaluFillState = NALU_INIT;  // experimentell! -> sollte dann auch nach Cut gesetzt werden?
         DropAllPayload = TRUE;
         SetFirstPacketAfterBreak();
-//        SetTeletextBreak(FALSE);
+//        if (ExtractTeletext || ExtractAllTeletext)
+//          SetTeletextBreak(FALSE, FALSE, TeletextPage);
       }
     }
 //    NoContinuityCheck = FALSE;

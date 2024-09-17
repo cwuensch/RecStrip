@@ -45,6 +45,7 @@ static const dword crc_table[] = {
 };
 
 bool KeepHumaxSvcName;
+extern bool StrToUTF8(const char *SourceString, char *DestString, byte DefaultISO8859CharSet);
 
 
 dword crc32m_tab(const unsigned char *buf, size_t len)
@@ -446,17 +447,31 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
 
     if ((fMap = fopen(LineBuf, "rb")))
     {
-      int len;
+      int len_dir = 0, len_name;
       if ((p = strrchr(VidFileName, '/'))) p++;
       else if ((p = strrchr(VidFileName, '\\'))) p++;
-      if(p) strncpy(DescStr, VidFileName, p-VidFileName);
+      
+      if(p)
+      {
+        len_dir = (int)(p-VidFileName);
+        strncpy(DescStr, VidFileName, min(len_dir, (int)sizeof(DescStr)));
+      }
       else p = VidFileName;
-      len = (int)strlen(p);
+
+      #ifdef _WIN32
+        StrToUTF8(p, &DescStr[len_dir], 15);  // hier müsste Size-Check hin
+      #else
+        strncpy(&DescStr[len_dir], p, max((int)sizeof(DescStr) - len_dir, 0));
+      #endif
+
+      if(p) p = &DescStr[len_dir];
+      else p = DescStr;
+      len_name = (int)strlen(p);
 
       while (fgets(LineBuf, 4096, fMap) != 0)
       {
         if(LineBuf[0] == '#') continue;
-        if (strncmp(LineBuf, p, len) == 0)
+        if (strncmp(LineBuf, p, len_name) == 0)
         {
           StartYear=0; StartMonth=0, StartDay=0, StartHour=0; StartMin=0; DurationH=0; DurationM=0; n1=0; n2=0; n3=0;
           printf("  Found EPGEvent in Map:\n");
@@ -464,16 +479,20 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
           memset(RecInf->ExtEventInfo.Text, 0, sizeof(RecInf->ExtEventInfo.Text));
           RecInf->ExtEventInfo.TextLength = 0;
 
-          if ((p = strchr(&LineBuf[len+1], ';')))
+          if ((p = strchr(&LineBuf[len_name+1], ';')))
           {
-            n0 = (unsigned int)(p - &LineBuf[len+1]);
-            if ((LineBuf[len+1] != ';') && (LineBuf[len+1] != '-'))
+            n0 = (unsigned int)(p - &LineBuf[len_name+1]);
+            if ((LineBuf[len_name+1] != ';') && (LineBuf[len_name+1] != '-'))
             {
               if (LineBuf[p-LineBuf-2] == ':')
                 RefEPGMedion = LineBuf[p-LineBuf-1] - '0';
               if (strncmp(&LineBuf[p - LineBuf - (RefEPGMedion ? 10 : 8)], "_epg.txt", 8) == 0)
                 if(!RefEPGMedion) RefEPGMedion = 1;
-              strncat(DescStr, &LineBuf[len+1], min(n0 - (RefEPGMedion ? 2 : 0), sizeof(DescStr)-len-1));
+              #ifdef _WIN32
+                strncpy(&DescStr[len_dir], &LineBuf[len_name+1], min(n0 - (RefEPGMedion ? 2 : 0), sizeof(DescStr)-len_name-1));
+              #else
+                StrToUTF8(&LineBuf[len_name+1], &DescStr[len_dir], 15);  // hier müsste Size-Check hin
+              #endif
               if ((fRefEPG = fopen(DescStr, "rb")))
                 printf("    Loading EIT event from reference file '%s'...\n", DescStr);
               else
@@ -515,18 +534,18 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
                 RecInf->ExtEventInfo.ServiceID = ServiceID;
 
                 if(ExtEPGText) free(ExtEPGText);
-                if (!(ExtEPGText = (char*) malloc(strlen(&LineBuf[len + n0 + (max(max(n1+2, n2+1), n3)) + 2]) + 1)))
+                if (!(ExtEPGText = (char*) malloc(strlen(&LineBuf[len_name + n0 + (max(max(n1+2, n2+1), n3)) + 2]) + 1)))
                 {
                   printf("  Could not allocate memory for ExtEPGText.\n");
                   return FALSE;
                 }
-                strcpy(ExtEPGText, &LineBuf[len + n0 + (max(max(n1+2, n2+1), n3)) + 2]);
+                strcpy(ExtEPGText, &LineBuf[len_name + n0 + (max(max(n1+2, n2+1), n3)) + 2]);
                 strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, sizeof(RecInf->ExtEventInfo.Text) - 1);
                 RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] = '\0';
                 RecInf->ExtEventInfo.TextLength = (word)strlen(RecInf->ExtEventInfo.Text);
                 printf("    EPGExtEvt = %s\n", ExtEPGText);
               }
-              if ((p = strchr(&LineBuf[len+1], ';')))
+              if ((p = strchr(&LineBuf[len_name+1], ';')))
                 *p = '\0';
               ret = TRUE;
             }

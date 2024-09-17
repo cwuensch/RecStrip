@@ -223,8 +223,8 @@ void PSBuffer_DropCurBuffer(tPSBuffer *PSBuffer)
   switch(PSBuffer->ValidBuffer)
   {
     case 0:
-    case 1: PSBuffer->pBuffer = PSBuffer->Buffer1; break;
-    case 2: PSBuffer->pBuffer = PSBuffer->Buffer2; break;
+    case 2: PSBuffer->pBuffer = PSBuffer->Buffer1; break;
+    case 1: PSBuffer->pBuffer = PSBuffer->Buffer2; break;
   }
   memset(PSBuffer->pBuffer, 0, PSBuffer->BufferSize);
   PSBuffer->BufferPtr = 0;

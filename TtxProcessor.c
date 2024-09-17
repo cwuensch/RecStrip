@@ -1194,7 +1194,7 @@ uint16_t process_pes_packet(uint8_t *buffer, uint16_t size)
   }
 //CW  if (t < t0) delta = last_timestamp;
   new_timestamp = t - delta;
-  if (FirstPacketAfterBreak || /*(new_timestamp < last_timestamp) ||*/ (new_timestamp > last_timestamp + 60000))
+  if (FirstPacketAfterBreak || /*(new_timestamp < last_timestamp) ||*/ (new_timestamp > last_timestamp + 30000))
   {
     delta += new_timestamp - last_timestamp;
     new_timestamp = t - delta;
@@ -1236,7 +1236,7 @@ uint16_t process_pes_packet(uint8_t *buffer, uint16_t size)
 // ------------------------------------------------------------------------------------------------
 
 
-void SetTeletextBreak(bool NewInputFile, word SubtitlePage)
+void SetTeletextBreak(bool NewInputFile, bool NewOutputFile, word SubtitlePage)
 {
   int k;
   FirstPacketAfterBreak = TRUE;
@@ -1257,8 +1257,18 @@ void SetTeletextBreak(bool NewInputFile, word SubtitlePage)
       page_buffer[k].receiving_data = NO;
     }
   }
-  memset(page_buffer_in, 0, 8 * sizeof(teletext_page_t));
-  
+  if (ExtractAllTeletext)
+    memset(page_buffer_in, 0, 8 * sizeof(teletext_page_t));
+
+  if (NewOutputFile)
+  {
+    states.pts_initialized = NO;
+    last_timestamp = 0;
+
+    if (ExtractTeletext)
+      for (k = 0; k < NRTTXOUTPUTS; k++)
+        page_buffer[k].frames_produced = 0;
+  }
   if (NewInputFile)
   {
     states.programme_info_processed = NO;
@@ -1454,12 +1464,8 @@ bool CloseTeletextOut(void)
 
 void TtxProcessor_Free(void)
 {
-  if(page_buffer) free(page_buffer);
-  if(page_buffer_in) free(page_buffer_in);
-  if(page_buffer_all) free(page_buffer_all);
-  if(page_map) free(page_map);
-  page_buffer = NULL;
-  page_buffer_in = NULL;
-  page_buffer_all = NULL;
-  page_map = NULL;
+  if(page_buffer) { free(page_buffer); page_buffer = NULL; }
+  if(page_buffer_in) { free(page_buffer_in); page_buffer_in = NULL; }
+  if(page_buffer_all) { free(page_buffer_all); page_buffer_all = NULL; }
+  if(page_map) { free(page_map); page_map = NULL; }
 }

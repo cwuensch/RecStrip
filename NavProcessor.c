@@ -1436,7 +1436,7 @@ void GoToEndOfNav(FILE* fNav)
   TRACEENTER;
 
   if (fNav == NULL) fNav = fNavOut;
-  if (fseek(fNav, (isHDVideo ? -(int)sizeof(tnavHD) : -(int)sizeof(tnavSD)), SEEK_END) == 0)
+  if (fNav && fseek(fNav, (isHDVideo ? -(int)sizeof(tnavHD) : -(int)sizeof(tnavSD)), SEEK_END) == 0)
     if (fread(&navRec, (isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD)), 1, fNav))
       LastTimems = navRec[0].Timems;
 //      TimeOffset = 0 - LastTimems;
@@ -1503,10 +1503,9 @@ bool CloseNavFileOut(void)
     TYPE_RecHeader_TMSS *RecInf = (TYPE_RecHeader_TMSS*)InfBuffer;
     dword FirstPTSms = (dword)(FirstNavPTS/45);
     dword LastPTSms = (dword)(LastNavPTS/45);
-    int dPTS = DeltaPCR(FirstNavPTS, LastNavPTS) / 45;  /* DeltaPCR(FirstNavPTS, (LastNavPTS - PTSJump)) / 45 */
+    int dPTS = DeltaPCR(FirstNavPTS, (LastNavPTS - PTSJump)) / 45;
     RecInf->RecHeaderInfo.DurationMin = (word)(dPTS / 60000);
     RecInf->RecHeaderInfo.DurationSec = (word)abs((dPTS / 1000) % 60);
-//    dPTS = DeltaPCR(FirstNavPTS, LastNavPTS) / 45;
 printf("NewNav: FirstPTS = %u (%01u:%02u:%02u,%03u), Last: %u (%01u:%02u:%02u,%03u)\n", FirstNavPTS, (FirstPTSms/3600000), (FirstPTSms/60000 % 60), (FirstPTSms/1000 % 60), (FirstPTSms % 1000), LastNavPTS, (LastPTSms/3600000), (LastPTSms/60000 % 60), (LastPTSms/1000 % 60), (LastPTSms % 1000));
 printf("NewNav: Duration = %01d:%02u:%02u,%03u", dPTS / 3600000, abs(dPTS / 60000) % 60, abs(dPTS / 1000) % 60, abs(dPTS) % 1000);
 

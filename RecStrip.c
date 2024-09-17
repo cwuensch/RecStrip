@@ -1,6 +1,6 @@
 /*
   RecStrip for Topfield PVR
-  (C) 2016-2023 Christian Wünsch
+  (C) 2016-2024 Christian Wünsch
 
   Based on Naludump 0.1.1 by Udo Richter
   Concepts from NaluStripper (Marten Richter)
@@ -1185,6 +1185,8 @@ SONST
       GetFileNameFromRec(RecFileIn, "_audio.pes", AbsFileName);
 
     fAudioOut = fopen(AbsFileName, ((DoMerge==1) ? "ab" : "wb"));
+    if (fAudioOut && DoMerge == 1)
+      fseek(fAudioOut, 0, SEEK_END);
 
     if(DemuxAudio <= 1) DemuxAudio = AudioPIDs[0].pid;
     PSBuffer_Init(&AudioPES, DemuxAudio, 65536, FALSE);
@@ -1362,7 +1364,7 @@ int main(int argc, const char* argv[])
     setvbuf(stdout, NULL, _IOLBF, 4096);  // zeilenweises Buffering, auch bei Ausgabe in Datei
   #endif
   printf("\nRecStrip for Topfield PVR " VERSION "\n");
-  printf("(C) 2016-2023 Christian Wuensch\n");
+  printf("(C) 2016-2024 Christian Wuensch\n");
   printf("- based on Naludump 0.1.1 by Udo Richter -\n");
   printf("- based on MovieCutter 3.6 -\n");
   printf("- portions of Mpeg2cleaner (S. Poeschel), RebuildNav (Firebird) & TFTool (jkIT)\n");
@@ -2692,7 +2694,8 @@ int main(int argc, const char* argv[])
             long long SkippedBytes = (((SegmentMarker[CurSeg].Position) /* / PACKETSIZE) * PACKETSIZE */) ) - CurrentPosition;
             fseeko64(fIn, ((SegmentMarker[CurSeg].Position) /* / PACKETSIZE) * PACKETSIZE */), SEEK_SET);
             SetFirstPacketAfterBreak();
-            SetTeletextBreak(FALSE, TeletextPage);
+            if (ExtractTeletext || ExtractAllTeletext)
+              SetTeletextBreak(FALSE, FALSE, TeletextPage);
             for (k = 0; k < NrContinuityPIDs; k++)
               ContinuityCtrs[k] = -1;
             if(DoStrip)  NALUDump_Init();  // NoContinuityCheck = TRUE;
@@ -2806,6 +2809,8 @@ int main(int argc, const char* argv[])
             NavProcessor_Init();
             if(!RebuildNav && *RecFileOut && HasNavIn)  SetFirstPacketAfterBreak();
             if(DoStrip) NALUDump_Init();
+            if (ExtractTeletext || ExtractAllTeletext)
+              SetTeletextBreak(FALSE, TRUE, TeletextPage);
             LastPCR = 0;
             LastTimems = 0;
             LastTimeStamp = 0;
@@ -2884,7 +2889,8 @@ int main(int argc, const char* argv[])
                 if (CurPID == VideoPID)
                 {
                   SetFirstPacketAfterBreak();
-//                  SetTeletextBreak(FALSE);
+//                  if (ExtractTeletext || ExtractAllTeletext)
+//                    SetTeletextBreak(FALSE, FALSE, TeletextPage);
                 }
                 *CurCtr = ((tTSPacket*) &Buffer[4])->ContinuityCount;
               }
@@ -3374,7 +3380,8 @@ int main(int argc, const char* argv[])
       if (-(int)LastTimems < CutTimeOffset)
         CutTimeOffset = -(int)LastTimems;
       SetFirstPacketAfterBreak();
-      SetTeletextBreak(TRUE, TeletextPage);
+      if (ExtractTeletext || ExtractAllTeletext)
+        SetTeletextBreak(TRUE, FALSE, TeletextPage);
       if(DoStrip)  NALUDump_Init();  // NoContinuityCheck = TRUE;
       LastPCR = 0;
       LastTimeStamp = 0;
