@@ -23,10 +23,10 @@
 
 
 // Globale Variablen
-static eNaluFillState   NaluFillState = NALU_INIT;
-static bool             SliceState = TRUE;
-
 static unsigned int     History = 0xffffffff;
+
+/*static eNaluFillState   NaluFillState = NALU_INIT;
+static bool             SliceState = TRUE;
 
 //bool                    NoContinuityCheck = FALSE;
 int                     LastContinuityInput = -1;
@@ -40,7 +40,7 @@ static int              PesId = -1;
 static int              PesOffset = 0;
 
 static int              LastEndNulls = 1;
-static bool             PendingPacket = FALSE;
+static bool             PendingPacket = FALSE; */
 
 static bool             PayloadStart = FALSE;
 
@@ -63,10 +63,10 @@ void NALUDump_Init(void)
 {
   TRACEENTER;
 
-  NaluFillState = NALU_INIT;
-  SliceState = TRUE;
-
   History = 0xffffffff;
+
+/*  NaluFillState = NALU_INIT;
+  SliceState = TRUE;
 
   LastContinuityInput = -1;
   LastContinuityOutput = -1;
@@ -79,7 +79,7 @@ void NALUDump_Init(void)
   PesOffset = 0;
 
   LastEndNulls = 1;
-  PendingPacket = FALSE;
+  PendingPacket = FALSE; */
 
   PayloadStart = TRUE;
 
@@ -333,7 +333,8 @@ int ProcessTSPacket(unsigned char *Packet, long long FilePosition)
         NaluFillState = NALU_INIT;  // experimentell! -> sollte dann auch nach Cut gesetzt werden?
         DropAllPayload = TRUE;
         SetFirstPacketAfterBreak();
-//        SetTeletextBreak(FALSE);
+//        if (ExtractTeletext || ExtractAllTeletext)
+//          SetTeletextBreak(FALSE, FALSE, TeletextPage);
       }
     }
 //    NoContinuityCheck = FALSE;
@@ -403,10 +404,10 @@ int ProcessTSPacket(unsigned char *Packet, long long FilePosition)
       }
     }
 
-//#if defined(_WIN32) && defined(_DEBUG)
-  if (Info.ZerosOnly && (TSPacket->Adapt_Field_Exists && TSPacket->Data[1]==0) && (isHDVideo || SliceState) /*&& LastEndNulls>0*//*)
+/* #if defined(_WIN32) && defined(_DEBUG)
+  if (Info.ZerosOnly && (TSPacket->Adapt_Field_Exists && TSPacket->Data[1]==0) && (isHDVideo || SliceState) /*&& (LastEndNulls >= 3 || PendingPacket)*//*)
     printf("DEBUG: RecStrip 2.8b - strip a packet with empty adaptation field!\n");
-//#endif
+#endif *//*
     if (Info.ZerosOnly && (!TSPacket->Adapt_Field_Exists || TSPacket->Data[1]==0) && (isHDVideo || SliceState) /*&& LastEndNulls>0*//*)
     {
 //printf("Potential zero-byte-stuffing at position %lld", FilePosition);
@@ -428,14 +429,15 @@ int ProcessTSPacket(unsigned char *Packet, long long FilePosition)
     {
       if (PendingPacket)
       {
-//#if defined(_WIN32) && defined(_DEBUG)
+/* #if defined(_WIN32) && defined(_DEBUG)
   if (Remaining + LastEndNulls < 3)
   {
     printf("DEBUG: RecStrip 2.8b - previously buffer read over end of packet!\n");
     if (Packet[Offset]==0 && (Packet[Offset+1]==0 || LastEndNulls>=2) && (Packet[Offset+2]==0 || LastEndNulls))
       printf("DEBUG: RecStrip 2.8b - previously stripped packet re-inserted!\n");
   }
-//#endif	  
+#endif *//*
+
         if (Remaining && Packet[Offset]==0 && ((Remaining>=2 && Packet[Offset+1]==0) || LastEndNulls>=2) && ((Remaining>=3 && Packet[Offset+2]==0) || LastEndNulls))
         {
 //printf("PENDING PACKET --> confirmed by next packet!\n");

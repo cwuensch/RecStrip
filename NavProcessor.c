@@ -22,7 +22,6 @@
 // Globale Variablen
 dword                   NrFrames = 0;
 dword                   LastTimems = 0;
-int                     TimeOffset = 0;
 dword                  *pOutNextTimeStamp = NULL;
 FILE                   *fNavIn = NULL;
 static FILE            *fNavOut = NULL;
@@ -34,6 +33,7 @@ static byte             FrameCtr = 0, FrameOffset = 0;
 static bool             WaitForIFrame = TRUE, WaitForPFrame = FALSE, FirstPacketAfterCut = FALSE, FirstRecordAfterCut = TRUE;
 static dword            FirstNavPTS = 0, LastNavPTS = 0, PTSJump = 0;
 static bool             FirstNavPTSOK = FALSE;
+static int              TimeOffset = 0;
 
 //HDNAV
 static tnavHD           navHD;
@@ -141,11 +141,11 @@ static int get_ue_golomb32(/* byte *p */ dword d, byte *StartBit)
   return 0;
 } */
 
-bool GetPTS2(byte *Buffer, dword *pPTS, dword *pDTS)  // 33 bits, 90 kHz, returns divided by 2 (?)
+bool GetPTS2(byte *pBuffer, dword *pPTS, dword *pDTS)  // 33 bits, 90 kHz, returns divided by 2
 {
   bool ret = FALSE;
   TRACEENTER;
-  if (/*Buffer &&*/ (((Buffer[0] & 0xf0) == 0xe0) || (Buffer[0] >= 0xB9)) && ((Buffer[3] & 0xC0) == 0x80))
+  if (/*pBuffer &&*/ (((pBuffer[0] & 0xf0) == 0xE0) || (pBuffer[0] >= 0xB9)) && ((pBuffer[3] & 0xC0) == 0x80))
   {
     //MPEG Video Stream
     //00 00 01 E0 00 00 88 C0 0B 35 BD E9 8A 85 15 BD E9 36 25 FF
@@ -153,8 +153,8 @@ bool GetPTS2(byte *Buffer, dword *pPTS, dword *pDTS)  // 33 bits, 90 kHz, return
     //88              = PES Scrambling = no; PES Priority
     //C0              = PTS/DTS
     //0B              = PES Header Data Length
-    //35 BD E9 8A 85  = PTS  = 0 1010 1111 0111 1010 0100 0101 0100 0010 = 0AF7A4542
-    //15 BD E9 36 25  = DTS  = 0 1010 1011 0111 1010 0001 1011 0001 0010 = 0AB7A1B12
+    //35 BD E9 8A 85  = PTS  = 1010 1111 0111 1010 0100 0101 0100 0010 = AF7A4542
+    //15 BD E9 36 25  = DTS  = 1010 1011 0111 1010 0001 1011 0001 0010 = AB7A1B12
     //FF
 
     //...1010.XXXXXXXXXXXXXXXXXXXXXXXXXXXXX.
@@ -164,34 +164,92 @@ bool GetPTS2(byte *Buffer, dword *pPTS, dword *pDTS)  // 33 bits, 90 kHz, return
     //..............................1000010.
 
     //Return PTS >> 1 so that we do not need 64 bit variables
-    if ((Buffer[4] & 0x80) && ((Buffer[6] & 0xe1) ==  0x21) && (Buffer[8] & 0x01) && (Buffer[10] & 0x01))
+    if ((pBuffer[4] & 0x80) && ((pBuffer[6] & 0xe1) == 0x21) && (pBuffer[8] & 0x01) && (pBuffer[10] & 0x01))
     {
       dword PTS;
-      PTS = ((Buffer[ 6] & 0x0e) << 28) |
-            ((Buffer[ 7] & 0xff) << 21) |
-            ((Buffer[ 8] & 0xfe) << 13) |
-            ((Buffer[ 9] & 0xff) <<  6) |
-            ((Buffer[10] & 0xfe) >>  2);
+      PTS = ((pBuffer[ 6] & 0x0e) << 28) |
+            ((pBuffer[ 7] & 0xff) << 21) |
+            ((pBuffer[ 8] & 0xfe) << 13) |
+            ((pBuffer[ 9] & 0xff) <<  6) |
+            ((pBuffer[10] & 0xfe) >>  2);
       if(pPTS) *pPTS = PTS;
       if(pDTS) *pDTS = PTS;
       ret = TRUE;
     }
-    if (pDTS && (Buffer[4] & 0xC0) && ((Buffer[6] & 0xf1) ==  0x31) && ((Buffer[11] & 0xf1) == 0x11) && (Buffer[13] & 0x01) && (Buffer[15] & 0x01))
-      *pDTS = ((Buffer[11] & 0x0e) << 28) |
-              ((Buffer[12] & 0xff) << 21) |
-              ((Buffer[13] & 0xfe) << 13) |
-              ((Buffer[14] & 0xff) <<  6) |
-              ((Buffer[15] & 0xfe) >>  2);
+    if (pDTS && (pBuffer[4] & 0xC0) && ((pBuffer[6] & 0xf1) == 0x31) && ((pBuffer[11] & 0xf1) == 0x11) && (pBuffer[13] & 0x01) && (pBuffer[15] & 0x01))
+      *pDTS = ((pBuffer[11] & 0x0e) << 28) |
+              ((pBuffer[12] & 0xff) << 21) |
+              ((pBuffer[13] & 0xfe) << 13) |
+              ((pBuffer[14] & 0xff) <<  6) |
+              ((pBuffer[15] & 0xfe) >>  2);
   }
   TRACEEXIT;
   return ret;
 }
-bool GetPTS(byte *Buffer, dword *pPTS, dword *pDTS)
+bool GetPTS(byte *pBuffer, dword *pPTS, dword *pDTS)
 {
-  if(/*Buffer &&*/ (Buffer[0] == 0x00) && (Buffer[1] == 0x00) && (Buffer[2] == 0x01))
-    return GetPTS2(&Buffer[3], pPTS, pDTS);
+  if(/*pBuffer &&*/ (pBuffer[0] == 0x00) && (pBuffer[1] == 0x00) && (pBuffer[2] == 0x01))
+    return GetPTS2(&pBuffer[3], pPTS, pDTS);
   else return FALSE;
 }
+bool SetPTS2(byte *pBuffer, dword newPTS)  // 33 bits, 90 kHz, returns divided by 2
+{
+  TRACEENTER;
+  if (pBuffer && (((pBuffer[0] & 0xf0) == 0xE0) || (pBuffer[0] >= 0xB9)) && ((pBuffer[3] & 0xC0) == 0x80))
+  {
+    if ((pBuffer[4] & 0x80) && ((pBuffer[6] & 0xe0) == 0x20))
+    {
+      pBuffer[ 6] = (pBuffer[4] & 0xf0) | (newPTS >> 28) | 0x01;
+      pBuffer[ 7] = ((newPTS >> 21) & 0xff);
+      pBuffer[ 8] = ((newPTS >> 13) & 0xfe) | 0x01;
+      pBuffer[ 9] = ((newPTS >>  6) & 0xff);
+      pBuffer[10] = ((newPTS <<  2) & 0xfc) | 0x01;
+      TRACEEXIT;
+      return TRUE;
+    }
+  }
+  TRACEEXIT;
+  return FALSE;
+}
+
+/*byte* FindPTS(byte *pBuffer, int BufferLen, dword *pPTS)
+{
+  int NrNullBytes = 0;
+  byte *p = pBuffer, *BufferEnd = &pBuffer[BufferLen - 11];
+
+  while (p < BufferEnd)
+  {
+    if (*p == 0)
+    {
+      if(NrNullBytes < 2) NrNullBytes++;
+    }
+    else if ((*p == 1) && (NrNullBytes >= 2))
+    {
+      if ((((p[1] & 0xf0) == 0xE0) || (p[1] >= 0xB9)) && ((p[4] & 0xC0) == 0x80))
+        return (GetPTS2(&p[1], pPTS, NULL) ? p+1 : NULL);
+    }
+    else NrNullBytes = 0;
+  }
+  return NULL;
+} */
+byte* FindPTS(byte *pBuffer, int BufferLen, dword *pPTS)
+{
+  int Header = 0xffffffff;
+  byte *p = pBuffer, *BufferEnd = &pBuffer[BufferLen - 10];
+
+  while (p < BufferEnd)
+  {
+    Header = (Header << 8) | *p;
+    if ((((Header & 0xffffff00) == 0x00000100) && (((p[0] & 0xf0) == 0xE0) || (p[0] >= 0xB9))) && ((p[3] & 0xC0) == 0x80))
+    {
+      if (GetPTS2(p, pPTS, NULL)) return p;
+      else break;
+    }
+    p++;
+  }
+  return NULL;
+}
+
 
 bool GetPCR(byte *pBuffer, long long *pPCR)  // 33 bits (90 kHz) + 9 bits (27 MHz)
 {
@@ -251,17 +309,31 @@ bool SetPCR(byte *pBuffer, long long pPCR)
   return FALSE;
 }
 
-dword DeltaPCR(dword FirstPCR, dword SecondPCR)
+int DeltaPCR(dword FirstPCR, dword SecondPCR)
 {
-  if(FirstPCR <= SecondPCR)
+  if (FirstPCR <= SecondPCR)
     return (SecondPCR - FirstPCR);
   else
   {
-    if (FirstPCR - SecondPCR <= 1000)
-      // Erlaube "Rücksprünge", wenn weniger als 1 sek
-      return (FirstPCR - SecondPCR);
+    if (FirstPCR - SecondPCR <= 450000)
+      // Erlaube "Rücksprünge", wenn weniger als 10 sek
+      return (int)(SecondPCR - FirstPCR);
     else
-      // Überlauf des 90 kHz Counters
+      // Überlauf des 90 kHz Counters (halbiert)
+      return (0xffffffff - FirstPCR + SecondPCR + 1);
+  }
+}
+int DeltaPCRms(dword FirstPCR, dword SecondPCR)
+{
+  if (FirstPCR <= SecondPCR)
+    return (SecondPCR - FirstPCR);
+  else
+  {
+    if (FirstPCR - SecondPCR <= 10000)
+      // Erlaube "Rücksprünge", wenn weniger als 10 sek
+      return (int)(SecondPCR - FirstPCR);
+    else
+      // Überlauf des 90 kHz Counters (in Millisekunden)
       return (95443718 - FirstPCR + SecondPCR);
   }
 }
@@ -299,7 +371,26 @@ dword FindPictureHeader(byte *Buffer, int BufferLen, byte *pFrameType, int *pInO
       if (isHDVideo && ((Buffer[startcode] & 0x80) == 0x00))
       {
         // MPEG4 picture header: 
-        if(pFrameType)  *pFrameType = ((Buffer[startcode + 1] >> 5) & 7) + 1;
+        if(pFrameType)
+        {
+          *pFrameType = ((Buffer[startcode + 1] >> 5) & 7) + 1;
+          if (*pFrameType == 3)
+          {
+            while (++i < BufferLen - 4)
+            {
+              if ((Buffer[i] == 0x00) && (Buffer[i + 1] == 0x00) && (Buffer[i + 2] == 0x01))
+              {
+                byte NALType = Buffer[i + 3] & 0x1f;
+                if ((NALType >= NAL_SLICE) && (NALType <= NAL_SLICE_IDR))
+                {
+                  // byte NALRefIdc = ((Buffer[i + 4] >> 5) & 3);
+                  if (((Buffer[i + 3] >> 5) & 3) >= 2) *pFrameType = 2;
+                  break;
+                }
+              }
+            }
+          }
+        }
         TRACEEXIT;
         return startcode + 3;
       }
@@ -421,7 +512,7 @@ static void HDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
     {
       if(FirstPCR == 0) FirstPCR = PCR;
       #if DEBUGLOG != 0
-        printf("%8.8llx: PCR = 0x%8.8x, dPCR = 0x%8.8x\n", PrimaryTSOffset, PCR, DeltaPCR(FirstPCR, PCR));
+        printf("%8.8llx: PCR = 0x%8.8x, dPCR = 0x%8.8x\n", PrimaryTSOffset, PCR, DeltaPCRms(FirstPCR, PCR));
       #endif
     }
     PayloadStart = Packet->Data[0] + 1;
@@ -618,7 +709,8 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
             #endif
             GetSlicePPSID = TRUE;
             GolombFull = 0;
-            if((navHD.FrameType == 3) && (NALRefIdc > 0)) navHD.FrameType = 2;
+            if((navHD.FrameType == 3) && (NALRefIdc >= 2))
+              navHD.FrameType = 2;
             break;
           }
 
@@ -1177,7 +1269,7 @@ void QuickNavProcess(const long long CurrentPosition, const long long PositionOf
     {
       // Position anpassen
       NextPictureHeaderOffset   -= PositionOffset;
-      curSDNavRec->PHOffset      = (dword)NextPictureHeaderOffset;
+      curSDNavRec->PHOffset      = (dword)(NextPictureHeaderOffset & 0xffffffff);
       curSDNavRec->PHOffsetHigh  = (dword)(NextPictureHeaderOffset >> 32);
 
       // Zeit anpassen
@@ -1240,7 +1332,8 @@ void QuickNavProcess(const long long CurrentPosition, const long long PositionOf
 bool LoadNavFileIn(const char* AbsInNav)
 {
   unsigned long long    NavSize;
-  dword                 start = 0, skippedFrames = 0, NrFrames = 0, FirstPTS = 0, LastPTS = 0, FirstPTSms, LastPTSms, dPTS, TimemsStart = 0, TimemsEnd = 0, DurationMS;
+  dword                 start = 0, skippedFrames = 0, NrFrames = 0, FirstPTS = 0, LastPTS = 0, FirstPTSms, LastPTSms, TimemsStart = 0, TimemsEnd = 0;
+  int                   dPTS, DurationMS;
   byte                  FrameType = 0;
   byte                  FirstTimeOK = FALSE;
   tnavSD                navSD;
@@ -1312,7 +1405,7 @@ bool LoadNavFileIn(const char* AbsInNav)
     dPTS = DeltaPCR(FirstPTS, LastPTS) / 45;
     DurationMS = TimemsEnd - TimemsStart;
 printf("  NAV: FirstPTS = %u (%01u:%02u:%02u,%03u), Last: %u (%01u:%02u:%02u,%03u)\n", FirstPTS, (FirstPTSms/3600000), (FirstPTSms/60000 % 60), (FirstPTSms/1000 % 60), (FirstPTSms % 1000), LastPTS, (LastPTSms/3600000), (LastPTSms/60000 % 60), (LastPTSms/1000 % 60), (LastPTSms % 1000));
-printf("  NAV: Duration = %02d:%02d:%02d,%03d (PTS: %02d:%02d:%02d,%03d)\n", DurationMS/3600000, DurationMS/60000 % 60, DurationMS/1000 % 60, DurationMS % 1000, dPTS/3600000, dPTS/60000 % 60, dPTS/1000 % 60, dPTS % 1000);
+printf("  NAV: Duration = %02d:%02u:%02u,%03u (PTS: %02d:%02u:%02u,%03u)\n", DurationMS/3600000, abs(DurationMS/60000) % 60, abs(DurationMS/1000) % 60, abs(DurationMS) % 1000, dPTS/3600000, abs(dPTS/60000) % 60, abs(dPTS/1000) % 60, abs(dPTS) % 1000);
 printf("  NAV: Frames   = %d (%.1f fps)\n", NrFrames, NrFrames / ((double)DurationMS / 1000));
     NavFrames += NrFrames;
     NavDurationMS += DurationMS;
@@ -1346,7 +1439,7 @@ void GoToEndOfNav(FILE* fNav)
   TRACEENTER;
 
   if (fNav == NULL) fNav = fNavOut;
-  if (fseek(fNav, (isHDVideo ? -(int)sizeof(tnavHD) : -(int)sizeof(tnavSD)), SEEK_END) == 0)
+  if (fNav && fseek(fNav, (isHDVideo ? -(int)sizeof(tnavHD) : -(int)sizeof(tnavSD)), SEEK_END) == 0)
     if (fread(&navRec, (isHDVideo ? sizeof(tnavHD) : sizeof(tnavSD)), 1, fNav))
       LastTimems = navRec[0].Timems;
 //      TimeOffset = 0 - LastTimems;
@@ -1413,17 +1506,15 @@ bool CloseNavFileOut(void)
     TYPE_RecHeader_TMSS *RecInf = (TYPE_RecHeader_TMSS*)InfBuffer;
     dword FirstPTSms = (dword)(FirstNavPTS/45);
     dword LastPTSms = (dword)(LastNavPTS/45);
-    dword dPTS = DeltaPCR(FirstPTSms, ((LastNavPTS - PTSJump) / 45));
-    RecInf->RecHeaderInfo.DurationMin = (int)(dPTS / 60000);
-    RecInf->RecHeaderInfo.DurationSec = (dPTS / 1000) % 60;
-//    dPTS = DeltaPCR(FirstPTSms, LastPTSms);
+    int dPTS = DeltaPCR(FirstNavPTS, (LastNavPTS - PTSJump)) / 45;
+    RecInf->RecHeaderInfo.DurationMin = (word)(dPTS / 60000);
+    RecInf->RecHeaderInfo.DurationSec = (word)abs((dPTS / 1000) % 60);
 printf("NewNav: FirstPTS = %u (%01u:%02u:%02u,%03u), Last: %u (%01u:%02u:%02u,%03u)\n", FirstNavPTS, (FirstPTSms/3600000), (FirstPTSms/60000 % 60), (FirstPTSms/1000 % 60), (FirstPTSms % 1000), LastNavPTS, (LastPTSms/3600000), (LastPTSms/60000 % 60), (LastPTSms/1000 % 60), (LastPTSms % 1000));
-printf("NewNav: Duration = %01u:%02u:%02u,%03u", dPTS / 3600000, (dPTS / 60000) % 60, (dPTS / 1000) % 60, dPTS % 1000);
+printf("NewNav: Duration = %01d:%02u:%02u,%03u", dPTS / 3600000, abs(dPTS / 60000) % 60, abs(dPTS / 1000) % 60, abs(dPTS) % 1000);
 
 if (((dPTS = PTSJump / 45)) != 0)
-printf(" (time jumps %02d:%02u,%03u)\n", dPTS / 60000, (dPTS / 1000) % 60, dPTS % 1000);
-else
-printf("\n");
+  printf(" (time jumps %02d:%02u,%03u)\n", dPTS / 60000, abs(dPTS / 1000) % 60, abs(dPTS) % 1000);
+else printf("\n");
   }
   printf("\n");
 

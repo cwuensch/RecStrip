@@ -1,6 +1,6 @@
 /*
   RecStrip for Topfield PVR
-  (C) 2016-2023 Christian Wünsch
+  (C) 2016-2024 Christian Wünsch
 
   Based on Naludump 0.1.1 by Udo Richter
   Concepts from NaluStripper (Marten Richter)
@@ -59,6 +59,7 @@
 #include "NavProcessor.h"
 #include "CutProcessor.h"
 #include "TtxProcessor.h"
+#include "SrtProcessor.h"
 #include "RebuildInf.h"
 #include "NALUDump.h"
 #include "HumaxHeader.h"
@@ -101,7 +102,6 @@
 
 // Globale Variablen
 char                    RecFileIn[FBLIB_DIR_SIZE], RecFileOut[FBLIB_DIR_SIZE], OutDir[FBLIB_DIR_SIZE];
-char                    MDEpgName[FBLIB_DIR_SIZE], MDTtxName[FBLIB_DIR_SIZE], MDAudName[FBLIB_DIR_SIZE];
 const char             *ExePath;
 byte                   *PATPMTBuf = NULL, *EPGPacks = NULL;
 unsigned long long      RecFileSize = 0;
@@ -109,11 +109,12 @@ time_t                  RecFileTimeStamp = 0;
 SYSTEM_TYPE             SystemType = ST_UNKNOWN;
 byte                    PACKETSIZE = 192, PACKETOFFSET = 4, OutPacketSize = 0;
 word                    VideoPID = (word) -1, TeletextPID = (word) -1, SubtitlesPID = (word) -1, TeletextPage = 0;
+word                    TransportStreamID = 1;
 tAudioTrack             AudioPIDs[MAXCONTINUITYPIDS];
 word                    ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs = 1;
-bool                    isHDVideo = FALSE, AlreadyStripped = FALSE, HumaxSource = FALSE, EycosSource = FALSE;
-bool                    DoStrip = FALSE, DoSkip = FALSE, RemoveScrambled = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE, DoInfoOnly = FALSE, DoFixPMT = FALSE, MedionMode = FALSE, MedionStrip = FALSE, WriteDescPackets = TRUE, PMTatStart = FALSE;
-int                     DoCut = 0, DoMerge = 0, DoInfFix = 0;  // DoCut: 1=remove_parts, 2=copy_separate, DoMerge: 1=append, 2=merge  // DoInfFix: 1=enable, 2=inf to be fixed
+bool                    isHDVideo = FALSE, AlreadyStripped = FALSE, HumaxSource = FALSE, EycosSource = FALSE, DVBViewerSrc = FALSE;
+bool                    DoStrip = FALSE, DoSkip = FALSE, RemoveScrambled = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, ExtractAllTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE, RebuildSrt = FALSE, DoInfoOnly = FALSE, DoFixPMT = FALSE, MedionMode = FALSE, MedionStrip = FALSE, WriteDescPackets = TRUE, PMTatStart = FALSE;
+int                     DoCut = 0, DoMerge = 0, DoInfFix = 0, DemuxAudio = 0;  // DoCut: 1=remove_parts, 2=copy_separate, DoMerge: 1=append, 2=merge  // DoInfFix: 1=enable, 2=inf to be fixed
 int                     curInputFile = 0, NrInputFiles = 1, NrEPGPacks = 0;
 int                     dbg_DelBytesSinceLastVid = 0;
 
@@ -121,19 +122,23 @@ TYPE_Bookmark_Info     *BookmarkInfo = NULL;
 tSegmentMarker2        *SegmentMarker = NULL;       //[0]=Start of file, [x]=End of file
 int                     NrSegmentMarker = 0;
 int                     ActiveSegment = 0;
-dword                   InfDuration = 0, NewDurationMS = 0;
-dword                   NavDurationMS = 0, NavFrames = 0;
+dword                   InfDuration = 0, NewDurationMS = 0, NavFrames = 0;
+int                     NavDurationMS = 0;
 int                     NewStartTimeOffset = -1;
 dword                   TimeStepPerFrame = 0;
+dword                   TtxPTSOffset = 0;
 
 // Lokale Variablen
-static char             InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], InfFileFirstIn[FBLIB_DIR_SIZE], /*InfFileOld[FBLIB_DIR_SIZE],*/ NavFileOut[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE], TeletextOut[FBLIB_DIR_SIZE];
+static char             InfFileIn[FBLIB_DIR_SIZE], InfFileOut[FBLIB_DIR_SIZE], InfFileFirstIn[FBLIB_DIR_SIZE], /*InfFileOld[FBLIB_DIR_SIZE],*/ NavFileOut[FBLIB_DIR_SIZE], CutFileOut[FBLIB_DIR_SIZE]; // TeletextOut[FBLIB_DIR_SIZE];
 static bool             HasNavIn, HasNavOld, HasInfOld;
 static FILE            *fIn = NULL;
-static FILE            *fOut = NULL;
+static FILE            *fOut = NULL, *fAudioOut = NULL;
 static tPSBuffer        VideoBuffer;
 static byte            *VideoPESPack = NULL;
 static int              VideoPESLen = 0;
+static tPSBuffer        AudioPES;
+static int              LastAudBuffer = 0;
+
 long long               CurrentPosition = 0;
 
 static unsigned int     RecFileBlocks = 0;
@@ -182,7 +187,7 @@ bool HDD_FileExist(const char *AbsFileName)
 //  free(wAbsFileName);
   return (dwAttrib != INVALID_FILE_ATTRIBUTES && !(dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
 #else
-  struct stat statbuf;
+  struct stat statbuf = {0};
   return (stat(AbsFileName, &statbuf) == 0);
 #endif
 }
@@ -195,7 +200,7 @@ static bool HDD_DirExist(const char *AbsDirName)
 //  free(wAbsDirName);
   return (dwAttrib != INVALID_FILE_ATTRIBUTES && (dwAttrib & FILE_ATTRIBUTE_DIRECTORY));
 #else
-  struct stat statbuf;
+  struct stat statbuf = {0};
   return ((stat(AbsDirName, &statbuf) == 0) && (statbuf.st_mode & S_IFDIR));
 #endif
 }
@@ -215,7 +220,7 @@ bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize)
     if (ret && OutFileSize)
       *OutFileSize = (((unsigned long long)fad.nFileSizeHigh) << 32) + fad.nFileSizeLow;
 #else
-    struct stat64 statbuf;
+    struct stat64 statbuf = {0};
     ret = (stat64(AbsFileName, &statbuf) == 0);
     if (ret && OutFileSize)
       *OutFileSize = statbuf.st_size;
@@ -228,7 +233,7 @@ bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize)
 // Zeit-Angaben in UTC (Achtung! Windows führt ggf. eine eigene DST-Anpassung durch)
 static time_t HDD_GetFileDateTime(char const *AbsFileName)
 {
-  struct stat64         statbuf;
+  struct stat64         statbuf = {0};
   time_t                Result = 0;
 
   TRACEENTER;
@@ -255,7 +260,7 @@ static time_t HDD_GetFileDateTime(char const *AbsFileName)
 
       #ifdef _WIN32
       {
-        struct tm timeinfo, timeinfo_sys;
+        struct tm timeinfo = {0}, timeinfo_sys = {0};
         time_t now = time(NULL);
 
         localtime_s(&timeinfo, &Result);
@@ -264,7 +269,7 @@ static time_t HDD_GetFileDateTime(char const *AbsFileName)
 //        Result += _timezone - (timeinfo.tm_isdst ? 3600 : 0);           // Windows-Datum (local) in UTC umwandeln
 //        Result3+= _timezone - (timeinfo.tm_isdst ? 3600 : 0);
 if (Result3 != Result)
-  printf("ASSERTION ERROR! Windows API date (%llu) does not match 'correct' stat date (%llu).\n", Result3, Result);
+  printf("ASSERTION ERROR! Windows API date (%llu) does not match 'correct' stat date (%llu).\n", (unsigned long long)Result3, (unsigned long long)Result);
       }
       #endif
     }
@@ -275,8 +280,8 @@ if (Result3 != Result)
 
 static bool HDD_SetFileDateTime(char const *AbsFileName, time_t NewDateTime)
 {
-  struct stat64         statbuf;
-  struct utimbuf        timebuf;
+  struct stat64         statbuf = {0};
+  struct utimbuf        timebuf = {0};
 
   TRACEENTER;
   if(NewDateTime == 0)
@@ -287,7 +292,7 @@ static bool HDD_SetFileDateTime(char const *AbsFileName, time_t NewDateTime)
     if(stat64(AbsFileName, &statbuf) == 0)
     {
       #ifdef _WIN32
-        struct tm timeinfo, timeinfo_sys;
+        struct tm timeinfo = {0}, timeinfo_sys = {0};
         time_t now = time(NULL);
 
         localtime_s(&timeinfo, &NewDateTime);
@@ -719,8 +724,7 @@ static void AddBookmark(dword BookmarkIndex, dword BlockNr)
 static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
 {
   bool                  ret = TRUE;
-  char                  NavFileIn[FBLIB_DIR_SIZE];
-  char                  CutFileIn[FBLIB_DIR_SIZE];
+  char                  AddFileIn[FBLIB_DIR_SIZE], MDTtxName[FBLIB_DIR_SIZE];
 //  byte                 *InfBuf_tmp = NULL;
   tSegmentMarker2      *Segments_tmp = NULL;
 
@@ -774,6 +778,8 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
   }
   NrContinuityPIDs = 1;
   memset(AudioPIDs, 0, MAXCONTINUITYPIDS * sizeof(tAudioTrack));
+  for (k = 0; k < MAXCONTINUITYPIDS; k++)
+    AudioPIDs[k].streamType = STREAMTYPE_UNKNOWN;
   memset(FileDefect, 0, MAXCONTINUITYPIDS * sizeof(tContinuityError));
   NrContErrsInFile = 0;
   LastContErrPos = 0;
@@ -790,7 +796,11 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
   {
     p = strrchr(RecFileIn, '_');
     if (p && strcmp(p, "_video.pes") == 0)
+    {
       MedionMode = 1;
+      DemuxAudio = FALSE;
+      if(DoStrip) { MedionStrip = TRUE; DoStrip = FALSE; }
+    }
   }
 #ifndef LINUX
   if (HumaxSource || EycosSource)  OutCutVersion = 4;
@@ -799,19 +809,23 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
   // Spezialanpassung Medion
   if (MedionMode)
   {
-    char                MDBaseName[FBLIB_DIR_SIZE];
     char               *p;
     size_t              len;
 
-    strcpy(MDBaseName, RecFileIn);
-    if((p = strrchr(MDBaseName, '.'))) *p = '\0';
-    if(((len = strlen(MDBaseName)) > 6) && (strncmp(&MDBaseName[len-6], "_video", 6) == 0)) MDBaseName[len-6] = '\0';
-    snprintf(MDEpgName, sizeof(MDEpgName), "%s_epg.txt", MDBaseName);
-    snprintf(MDTtxName, sizeof(MDTtxName), "%s_ttx.pes", MDBaseName);
-    snprintf(MDAudName, sizeof(MDEpgName), "%s_audio1.pes", MDBaseName);
-    VideoPID = 100;          // künftig: 101   // TODO
-    AudioPIDs[0].pid = 101;  // künftig: 102
-    TeletextPID = 102;       // künftig: 104
+    strcpy(AddFileIn, RecFileIn);
+    if((p = strrchr(AddFileIn, '.'))) *p = '\0';
+    if(((len = strlen(AddFileIn)) > 6) && (strncmp(&AddFileIn[len-6], "_video", 6) == 0)) AddFileIn[len-6] = '\0';
+    if ((len = strlen(AddFileIn)) < sizeof(AddFileIn) - 11)
+    {
+      snprintf(MDTtxName, sizeof(MDTtxName), "%s_ttx.pes", AddFileIn);
+      strcat (AddFileIn, "_audio1.pes");
+    }
+    else
+      ret = FALSE;
+
+    VideoPID = 101;          // vorher: 100, künftig: 101   // TODO
+    AudioPIDs[0].pid = 102;  // vorher: 101, künftig: 102
+    TeletextPID = 104;       // vorher: 102, künftig: 104
   }
 
   printf("\nInput file: %s\n", RecFileIn);
@@ -821,6 +835,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
 
   if (HDD_GetFileSize(RecFileIn, &RecFileSize))
     fIn = fopen(RecFileIn, "rb");
+
   if (fIn)
   {
     int FileOffset = 0, PS;
@@ -829,9 +844,10 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     if (MedionMode == 1)
     {
       unsigned long long AddSize = 0;
-      if(HDD_GetFileSize(MDAudName, &AddSize))  RecFileSize += AddSize;
+      if(HDD_GetFileSize(AddFileIn, &AddSize))  RecFileSize += AddSize;
       if(HDD_GetFileSize(MDTtxName, &AddSize))  RecFileSize += AddSize;
     }
+
     RecFileBlocks = CalcBlockSize(RecFileSize);
     BlocksOnePercent = (RecFileBlocks * NrInputFiles) / 100;
 
@@ -858,9 +874,9 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
       LoadInfFromRec(RecFileIn);
       if (FirstFilePTS && LastFilePTS && !RecHeaderInfo->DurationSec)  // gute Idee??
       {
-        dword dPTS = DeltaPCR((dword)(FirstFilePTS / 45), (dword)(LastFilePTS / 45));
-        RecHeaderInfo->DurationMin = dPTS/60000;
-        RecHeaderInfo->DurationSec = dPTS/1000 % 60;
+        int dPTS = DeltaPCR(FirstFilePTS, LastFilePTS) / 45;
+        RecHeaderInfo->DurationMin = (word)(dPTS / 60000);
+        RecHeaderInfo->DurationSec = (word)abs((dPTS/1000) % 60);
       }
 
       if (EycosSource)
@@ -904,44 +920,42 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     {
       if (InfDuration)
         BlocksOneSecond = RecFileBlocks / InfDuration;
+      if (FirstTime && AlreadyStripped)
+        printf("  INFO: File has already been stripped.\n");
     }
     else
     {
       fclose(fIn); fIn = NULL;
+      if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
       ret = FALSE;
     }
 
-    if (DoStrip && (VideoPID != (word)-1) && ((TYPE_RecHeader_TMSS*)RecHeaderInfo)->ServiceInfo.PCRPID != VideoPID)
-    {
-      printf("  ASSERTION: PCR-PID (%hu) differs from VideoPID (%hu). Stripping aborted.\n", ((TYPE_RecHeader_TMSS*)RecHeaderInfo)->ServiceInfo.PCRPID, VideoPID);
-      fclose(fIn); fIn = NULL;
-      ret = FALSE;
-    }
-  }
-
-  if (ret)
-  {
-    if (FirstTime && AlreadyStripped)
-      printf("  INFO: File has already been stripped.\n");
+    if (ret && (MedionMode == 1))
+      ret = SimpleMuxer_Open(fIn, AddFileIn, MDTtxName);
 
     // ggf. nav-File öffnen
-    snprintf(NavFileIn, sizeof(NavFileIn), "%s.nav", RecFileIn);
-    printf("\nNav file: %s\n", NavFileIn);
-    HasNavIn = LoadNavFileIn(NavFileIn);
+    snprintf(AddFileIn, sizeof(AddFileIn), "%s.nav", RecFileIn);
+    printf("\nNav file: %s\n", AddFileIn);
+    HasNavIn = LoadNavFileIn(AddFileIn);
     if (!HasNavIn)
-      printf("  WARNING: Cannot open nav file %s.\n", NavFileIn);
+      printf("  WARNING: Cannot open nav file %s.\n", AddFileIn);
     else if (NavDurationMS && !RecHeaderInfo->DurationSec)  // gute Idee??
     {
-      RecHeaderInfo->DurationMin = NavDurationMS/60000;
-      RecHeaderInfo->DurationSec = NavDurationMS/1000 % 60;
+      RecHeaderInfo->DurationMin = (word)(NavDurationMS / 60000);
+      RecHeaderInfo->DurationSec = (word)(abs(NavDurationMS/1000) % 60);
     }
+    if (!ret)
+      { fclose(fNavIn); fNavIn = NULL; }
+  }
 
-    // ggf. cut-File einlesen
-    if (NrSegmentMarker <= 2 || (!EycosSource && !HumaxSource))
+  // ggf. cut-File einlesen
+  if (ret)
+  {
+    if (NrSegmentMarker <= 2 || (!EycosSource && !HumaxSource && MedionMode != 1))
     {
-      GetFileNameFromRec(RecFileIn, ".cut", CutFileIn);
-      printf("\nCut file: %s\n", CutFileIn);
-      if (!CutFileLoad(CutFileIn))
+      GetFileNameFromRec(RecFileIn, ".cut", AddFileIn);
+      printf("\nCut file: %s\n", AddFileIn);
+      if (!CutFileLoad(AddFileIn))
       {
 //        HasCutIn = FALSE;
         AddDefaultSegmentMarker();
@@ -952,18 +966,27 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     }
   }
 
-  if (ret && (MedionMode == 1))
+  // ggf. srt-File laden
+  if (ret)
   {
-    ret = SimpleMuxer_Open(fIn, MDAudName, MDTtxName, MDEpgName);
+    GetFileNameFromRec(RecFileIn, ".srt", AddFileIn);
+    RebuildSrt = (!ExtractTeletext && LoadSrtFileIn(AddFileIn));
+  }
+
+  // ggf. AudioPID für Demux Audio ermitteln
+  if (ret && DemuxAudio)
+  {
+    DemuxAudio = AudioPIDs[0].pid;
+    for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0); k++)
+      if (AudioPIDs[k].scanned && (AudioPIDs[k].streamType == 0) && (AudioPIDs[k].type == STREAM_AUDIO_MPEG4_AC3_PLUS || AudioPIDs[k].type == STREAM_AUDIO_MPEG4_AC3))
+        { DemuxAudio = AudioPIDs[k].pid; break; }
   }
 
   if (!FirstTime)
   {
-    int i;
-
     // neu ermittelte Bookmarks kopieren
-    for (i = 0; i < (int)BookmarkInfo->NrBookmarks; i++)
-      BookmarkInfo_bak->Bookmarks[BookmarkInfo_bak->NrBookmarks++] = BookmarkInfo->Bookmarks[i];
+    for (k = 0; k < (int)BookmarkInfo->NrBookmarks; k++)
+      BookmarkInfo_bak->Bookmarks[BookmarkInfo_bak->NrBookmarks++] = BookmarkInfo->Bookmarks[k];
 
     // neu ermittelte SegmentMarker kopieren
 //    if (NrSegmentMarker_bak > 2 || NrSegmentMarker > 2 || (SegmentMarker && SegmentMarker[0].pCaption))
@@ -973,8 +996,8 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
         free(SegmentMarker_bak[--NrSegmentMarker_bak].pCaption);
 
       // neue SegmentMarker kopieren
-      for (i = 0; i < NrSegmentMarker; i++)
-        SegmentMarker_bak[NrSegmentMarker_bak++] = SegmentMarker[i];
+      for (k = 0; k < NrSegmentMarker; k++)
+        SegmentMarker_bak[NrSegmentMarker_bak++] = SegmentMarker[k];
     }
 /*    else if (NrSegmentMarker_bak >= 2)
     {
@@ -1009,7 +1032,7 @@ static bool OpenOutputFiles(void)
   TRACEENTER;
 
   // ggf. Output-File öffnen
-  if (*RecFileOut)
+  if (*RecFileOut && (DoStrip || OutPacketSize!=PACKETSIZE || DoCut || DoMerge || RemoveEPGStream || RemoveTeletext || (!ExtractTeletext && !ExtractAllTeletext && !DemuxAudio)))
   {
     printf("\nOutput rec: %s\n", RecFileOut);
     if (DoMerge == 1)
@@ -1046,7 +1069,7 @@ SONST
     -> inf = NULL */
 
   HasInfOld = FALSE;
-  if (*RecFileOut)
+  if (fOut)
   {
     if (RebuildInf || *InfFileIn)
     {  
@@ -1058,7 +1081,7 @@ SONST
       }
       else
         snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf", RecFileOut);
-      if(!*InfFileIn && !HumaxSource && !EycosSource) WriteCutInf = TRUE;
+      if(!*InfFileIn && !HumaxSource && !EycosSource && MedionMode != 1) WriteCutInf = TRUE;
     }
     else
       InfFileOut[0] = '\0';
@@ -1093,7 +1116,7 @@ SONST
     -> nav = NULL */
 
   HasNavOld = FALSE;
-  if (*RecFileOut)
+  if (fOut)
   {
     if (RebuildNav || HasNavIn)
     {
@@ -1121,7 +1144,7 @@ SONST
     printf("\nNav output: %s\n", NavFileOut);
 
   // CutFileOut ermitteln
-  if (*RecFileOut)
+  if (fOut)
   {
     GetFileNameFromRec(RecFileOut, ".cut", CutFileOut);
     printf("\nCut output: %s\n", CutFileOut);
@@ -1130,14 +1153,45 @@ SONST
     CutFileOut[0] = '\0';
 
   // TeletextOut ermitteln
-  if (ExtractTeletext)
+  if (ExtractTeletext || RebuildSrt)
   {
+    char AbsFileName[FBLIB_DIR_SIZE];
     if (*RecFileOut)
-      GetFileNameFromRec(RecFileOut, ".srt", TeletextOut);
+      GetFileNameFromRec(RecFileOut, ".srt", AbsFileName);
     else
-      GetFileNameFromRec(RecFileIn, ".srt", TeletextOut);
-    if (LoadTeletextOut(TeletextOut))
-      printf("\nTeletext output: %s", TeletextOut);
+      GetFileNameFromRec(RecFileIn, ".srt", AbsFileName);
+
+    if (ExtractTeletext)
+    {
+      if (LoadTeletextOut(AbsFileName))
+        printf("Teletext output: %s\n", AbsFileName);
+      else
+        ExtractTeletext = FALSE;
+    }
+    else if (*RecFileOut && RebuildSrt)
+    {
+      if (LoadSrtFileOut(AbsFileName))
+        printf("\nSrt output: %s\n", AbsFileName);
+      else
+        RebuildSrt = FALSE;
+    }
+  }
+
+  // Demux Audio Outfile ermitteln
+  if (DemuxAudio)
+  {
+    char AbsFileName[FBLIB_DIR_SIZE];
+    if (*RecFileOut)
+      GetFileNameFromRec(RecFileOut, "_audio.pes", AbsFileName);
+    else
+      GetFileNameFromRec(RecFileIn, "_audio.pes", AbsFileName);
+
+    fAudioOut = fopen(AbsFileName, ((DoMerge==1) ? "ab" : "wb"));
+    if (fAudioOut && DoMerge == 1)
+      fseek(fAudioOut, 0, SEEK_END);
+
+    if(DemuxAudio <= 1) DemuxAudio = AudioPIDs[0].pid;
+    PSBuffer_Init(&AudioPES, DemuxAudio, 65536, FALSE, FALSE, TRUE);
   }
 
   // Header-Pakete ausgeben
@@ -1184,6 +1238,7 @@ static void CloseInputFiles(bool PrintErrors, bool SetStripFlags, bool SetStartT
       HDD_SetFileDateTime(InfFileIn, OldInfTime);
   }
   CloseNavFileIn();
+  CloseSrtFileIn();
   if(MedionMode == 1) SimpleMuxer_Close();
   if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
 
@@ -1214,10 +1269,10 @@ static bool CloseOutputFiles(void)
       printf("  ERROR: Failed closing the output file.\n");
       CutFileSave(CutFileOut);
       SaveInfFile(InfFileOut, InfFileFirstIn);
-      CloseTeletextOut(TeletextOut);
-      CutProcessor_Free();
-      InfProcessor_Free();
+      CloseTeletextOut();
+      CloseSrtFileOut();
       PSBuffer_Reset(&VideoBuffer);
+      PSBuffer_Reset(&AudioPES);
       TRACEEXIT;
       return FALSE;
     }
@@ -1239,9 +1294,18 @@ static bool CloseOutputFiles(void)
   if (*InfFileOut && !SaveInfFile(InfFileOut, InfFileFirstIn))
     printf("  WARNING: Cannot create inf %s.\n", InfFileOut);
 
-  if (ExtractTeletext && !CloseTeletextOut(TeletextOut))
-    printf("  WARNING: Cannot create teletext %s.\n", TeletextOut);
+  if (ExtractTeletext && !CloseTeletextOut())
+    printf("  WARNING: Cannot create teletext files.\n");
 
+  if (!CloseSrtFileOut())
+    printf("  WARNING: Cannot create srt output file.\n");
+
+  if (fAudioOut)
+  {
+    PSBuffer_Reset(&AudioPES);
+    fclose(fAudioOut);
+    fAudioOut = NULL;
+  }
 
   if (*RecFileOut)
     HDD_SetFileDateTime(RecFileOut, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE));
@@ -1299,7 +1363,7 @@ FILE *fDbg;
     setvbuf(stdout, NULL, _IOLBF, 4096);  // zeilenweises Buffering, auch bei Ausgabe in Datei
   #endif
   printf("\nRecStrip for Topfield PVR " VERSION "\n");
-  printf("(C) 2016-2023 Christian Wuensch\n");
+  printf("(C) 2016-2024 Christian Wuensch\n");
   printf("- based on Naludump 0.1.1 by Udo Richter -\n");
   printf("- based on MovieCutter 3.6 -\n");
   printf("- portions of Mpeg2cleaner (S. Poeschel), RebuildNav (Firebird) & TFTool (jkIT)\n");
@@ -1310,7 +1374,7 @@ FILE *fDbg;
 #ifndef LINUX
   {
     char RealExePath[FBLIB_DIR_SIZE];
-    struct tm timeinfo;
+    struct tm timeinfo = {0};
     time_t curTime = time(NULL);
 
     if (FindExePath(argv[0], RealExePath, sizeof(RealExePath)))
@@ -1353,11 +1417,11 @@ FILE *fDbg;
   tPSBuffer   Streams[4];
   FILE       *out[4], *in;
   int         PIDs[4];
-  bool        LastBuffer[4]  = { 0, 0, 0, 0 };
+  int         LastBuffer[4]  = { 0, 0, 0, 0 };
   int         FileOffset, i;
   int         ret = 0;
-  char       *p;
-  
+  const char *p;
+
 //  const char *p = strrchr(DemuxInFile, '/');
 //  if(!p)      p = strrchr(DemuxInFile, '\\');
 
@@ -1454,7 +1518,7 @@ FILE *fDbg;
   }
   fclose(in);
   exit(ret);
-}*/
+} */
 
 /* // Humax-Fix (falsche PMT-Pid und ServiceInfo in inf-Datei und Timestamps)
 {
@@ -1464,7 +1528,7 @@ FILE *fDbg;
   tTSPacket            *Packet = NULL;
   tTSPAT               *PAT = NULL;
   TYPE_RecHeader_TMSS  *RecInf = NULL;
-  struct stat64         statbuf;
+  struct stat64         statbuf = {0};
   word                  PMTPid = 0;
   int                   InfSize = 0;
   time_t                RecDate = 0;
@@ -1658,7 +1722,7 @@ FILE *fDbg;
   for (i = 0; i < MAXCONTINUITYPIDS; i++)
     if(AudioPIDs[i].pid) AudioPIDs[i].scanned = TRUE; else break;
 
-  GeneratePatPmt(Buffer2, RecInf.ServiceInfo.ServiceID, 100, VideoPID, VideoPID, AudioPIDs[0].pid, TeletextPID, SubtitlesPID, AudioPIDs, FALSE);
+  GeneratePatPmt(Buffer2, RecInf.ServiceInfo.ServiceID, 1, 100, VideoPID, VideoPID, AudioPIDs[0].pid, TeletextPID, SubtitlesPID, AudioPIDs, FALSE);
 //  if ((fPMT = fopen("D:/Test/pmts/28396_1601_1602_2008-12-25_17-00_EinsFestivalHD_out2.pmt", "wb")))
 //  if ((fPMT = fopen("D:/Test/pmts/28385_1201_1202_2022-12-01_13-09_Radio Bremen TV_out.pmt", "wb")))
 //  if ((fPMT = fopen("D:/Test/pmts/17501_511_33_2022-11-28_10-17_ProSieben_out.pmt", "wb")))
@@ -1701,6 +1765,8 @@ FILE *fDbg;
                       argc--;
                     }
                   }
+                  else if(argv[1][2] == 'x')
+                    ExtractAllTeletext = TRUE;
                   else RemoveTeletext = TRUE;
                   break;
       case 'x':   RemoveScrambled = TRUE; break;
@@ -1708,6 +1774,7 @@ FILE *fDbg;
       case 'M':   MedionMode = TRUE;      break;
       case 'f':   DoInfFix = 1;           break;
       case 'p':   DoFixPMT = TRUE;        break;
+      case 'd':   DemuxAudio = TRUE;      break;
       case 'v':   DoInfoOnly = TRUE;      break;
       case 'h':
       case '?':   ret = FALSE; AbortProcess = TRUE; break;
@@ -1770,6 +1837,8 @@ FILE *fDbg;
     { printf("\nFix PAT/PMT (-p) disables any other option!\n"); }
   if (MedionMode==1 && DoStrip)
     { MedionStrip = TRUE; DoStrip = FALSE; }
+  if (MedionMode)
+    { printf("\nMedion Mode (-M) disables DemuxAudio (-d)!\n"); DemuxAudio = FALSE; }
 //  if (ExtractTeletext && DoStrip)
 //    { RemoveTeletext = TRUE; }
   #ifndef LINUX
@@ -1806,13 +1875,15 @@ FILE *fDbg;
       printf("  -ss:       Strip and skip. Same as -s, but skips already stripped files.\n\n");
       printf("  -e:        Remove also the EPG data. (can be combined with -s)\n\n");
       printf("  -t:        Remove also the teletext data. (can be combined with -s)\n");
-      printf("  -tt <page> Extract subtitles from teletext. (combine with -t to remove ttx)\n\n");
+      printf("  -tt <page> Extract subtitles from teletext. (combine with -t to remove ttx)\n");
+      printf("  -tx        Extract all teletext pages as text. (uses 8 MB of RAM)\n\n");
       printf("  -x:        Remove packets marked as scrambled. (flag could be wrong!)\n\n");
       printf("  -o1/-o2:   Change the packet size for output-rec: \n"
              "             1: PacketSize = 188 Bytes, 2: PacketSize = 192 Bytes.\n\n");
       printf("  -v:        View rec information only. Disables any other option.\n\n");
       printf("  -p:        Fix PAT/PMT of output file. Disables any other option.\n\n");
       printf("  -f:        Fix start time in source inf. Set source-file timestamps.\n\n");
+      printf("  -d:        Demux first audio track to OutFile_audio.pes (not with -M)\n\n");
       printf("  -M:        Medion Mode: Multiplexes 4 separate PES-Files into output.\n");
       printf("             (With InFile=<name>_video.pes, _audio1, _ttx, _epg are used.)\n");
       printf("\nExamples:\n---------\n");
@@ -1871,6 +1942,13 @@ FILE *fDbg;
     }
   }
 
+  if (ExtractTeletext || ExtractAllTeletext)
+  {
+    if (ExtractAllTeletext && !DoStrip && !OutPacketSize && !DoCut && !DoMerge && !RemoveEPGStream && !RemoveTeletext && !ExtractTeletext && !DemuxAudio)
+      ExtractAllTeletext = 2;  // schon beim Start
+    TtxProcessor_Init(TeletextPage);
+  }
+
   // Variablen initialisieren
   if (DoMerge)
   {
@@ -1894,6 +1972,7 @@ FILE *fDbg;
       printf("--> already stripped.\n");
       CutProcessor_Free();
       InfProcessor_Free();
+      TtxProcessor_Free();
       PSBuffer_Reset(&VideoBuffer);
       if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
       printf("\nRecStrip finished. No files to process.\n");
@@ -1909,6 +1988,7 @@ FILE *fDbg;
     {
       CutProcessor_Free();
       InfProcessor_Free();
+      TtxProcessor_Free();
       PSBuffer_Reset(&VideoBuffer);
       if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
       if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
@@ -1936,9 +2016,11 @@ FILE *fDbg;
   {
     CutProcessor_Free();
     InfProcessor_Free();
+    TtxProcessor_Free();
     PSBuffer_Reset(&VideoBuffer);
     if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
+    if(ExtEPGText) { free(ExtEPGText); ExtEPGText = NULL; }
     printf("ERROR: Cannot open input %s.\n", RecFileIn);
     TRACEEXIT;
     exit(4);
@@ -1950,18 +2032,14 @@ FILE *fDbg;
 /*    CloseInputFiles(FALSE, FALSE, FALSE);
     CutProcessor_Free();
     InfProcessor_Free();
+    TtxProcessor_Free();
     PSBuffer_Reset(&VideoBuffer);
     if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
+    if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
+    if(ExtEPGText) { free(ExtEPGText); ExtEPGText = NULL; }
     TRACEEXIT;
     exit(6);  */
-  }
-
-  TtxProcessor_Init(TeletextPage);
-  if (ExtractTeletext && !MedionMode && TeletextPID == (word)-1)
-  {
-    printf("Warning: No teletext PID determined.\n");
-    ExtractTeletext = FALSE;
   }
 
   // Spezialanpassung Humax / Medion
@@ -2011,8 +2089,8 @@ FILE *fDbg;
     if (/*DoFixPMT ||*/ MedionMode || !pmt_used)
     {
       printf("Generate new %s for Humax/Medion/Eycos recording.\n", ((PATPMTBuf[192+4]=='G') ? "PAT" : "PAT/PMT"));
-//      GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, 256, VideoPID, VideoPID, 101, TeletextPID, AudioPIDs);
-      GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID, VideoPID, VideoPID, AudioPIDs, (PATPMTBuf[192+4]=='G'));
+//      GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, 1, 256, VideoPID, VideoPID, 101, TeletextPID, AudioPIDs);
+      GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, TransportStreamID, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID, VideoPID, VideoPID, AudioPIDs, (PATPMTBuf[192+4]=='G'));
     }
 
 /*    if (MedionMode == 1)
@@ -2022,7 +2100,7 @@ FILE *fDbg;
     } */
     printf("\n");
 
-    if (HumaxSource && !DoInfoOnly)
+    if (HumaxSource && (DoStrip || OutPacketSize!=PACKETSIZE || DoCut || DoMerge || RemoveEPGStream || RemoveTeletext))
     {
       char HumaxFile[FBLIB_DIR_SIZE + 6], *p;
       strcpy(HumaxFile, RecFileOut);
@@ -2044,11 +2122,11 @@ FILE *fDbg;
     memset(EventName, 0, sizeof(EventName));
 
     if (NavDurationMS)
-      snprintf(DurationStr, sizeof(DurationStr), "%02u:%02u:%02u,%03u", NavDurationMS/3600000, NavDurationMS/60000 % 60, NavDurationMS/1000 % 60, NavDurationMS % 1000);
+      snprintf(DurationStr, sizeof(DurationStr), "%02d:%02u:%02u.%03u", NavDurationMS/3600000, abs(NavDurationMS/60000) % 60, abs(NavDurationMS/1000) % 60, abs(NavDurationMS) % 1000);
     else if (FirstFilePTS && LastFilePTS)
     {
-      dword dPTS = DeltaPCR((dword)(FirstFilePTS / 45), (dword)(LastFilePTS / 45));
-      snprintf(DurationStr, sizeof(DurationStr), "%02u:%02u:%02u,%03u", dPTS/3600000, dPTS/60000 % 60, dPTS/1000 % 60, dPTS % 1000);
+      int dPTS = DeltaPCR(FirstFilePTS, LastFilePTS) / 45;
+      snprintf(DurationStr, sizeof(DurationStr), "%02d:%02u:%02u.%03u", dPTS/3600000, abs(dPTS/60000) % 60, abs(dPTS/1000) % 60, abs(dPTS) % 1000);
     }
     else
       snprintf(DurationStr, sizeof(DurationStr), "%02hu:%02hu:%02hu", Inf_TMSS->RecHeaderInfo.DurationMin/60, Inf_TMSS->RecHeaderInfo.DurationMin % 60, Inf_TMSS->RecHeaderInfo.DurationSec);
@@ -2071,7 +2149,7 @@ FILE *fDbg;
       for (p = 0; p < NrSegmentMarker; p++)
       {
         float Percent = (float)(((float)SegmentMarker[p].Position / RecFileSize) * 100.0);
-        snprintf(DurationStr, sizeof(DurationStr), "%u:%02u:%02u,%03u", SegmentMarker[p].Timems/3600000, SegmentMarker[p].Timems/60000 % 60, SegmentMarker[p].Timems/1000 % 60, SegmentMarker[p].Timems % 1000);
+        snprintf(DurationStr, sizeof(DurationStr), "%u:%02u:%02u.%03u", SegmentMarker[p].Timems/3600000, SegmentMarker[p].Timems/60000 % 60, SegmentMarker[p].Timems/1000 % 60, SegmentMarker[p].Timems % 1000);
 
         // Ersetze eventuelles '\t', ' | ' in der Caption
         if (SegmentMarker[p].pCaption)
@@ -2100,7 +2178,7 @@ FILE *fDbg;
         if (TimeStamps)
         {
           dword Timems = NavGetPosTimeStamp(TimeStamps, NrTimeStamps, BookmarkInfo->Bookmarks[p] * 9024LL);
-          snprintf(DurationStr, sizeof(DurationStr), "%u:%02u:%02u,%03u", Timems/3600000, Timems/60000 % 60, Timems/1000 % 60, Timems % 1000);
+          snprintf(DurationStr, sizeof(DurationStr), "%u:%02u:%02u.%03u", Timems/3600000, Timems/60000 % 60, Timems/1000 % 60, Timems % 1000);
           fprintf(stderr, ((p > 0) ? " | %u; %s" : "%u; %s"), BookmarkInfo->Bookmarks[p], DurationStr);
         }
         else
@@ -2113,16 +2191,18 @@ FILE *fDbg;
     fprintf(stderr, "\t");
 
     // EPG:    EventName;  EventDesc;  EventStart (DateTime);  EventEnd (DateTime);  EventDuration (hh:mm);  ExtEventText (inkl. ItemizedItems, ohne '\n', '\t')
+    Inf_TMSS->EventInfo.EventNameDescription[sizeof(Inf_TMSS->EventInfo.EventNameDescription) - 1] = '\0';
+    Inf_TMSS->ExtEventInfo.Text[max(Inf_TMSS->ExtEventInfo.TextLength, sizeof(Inf_TMSS->ExtEventInfo.Text) - 1)] = '\0';
     fprintf(stderr, "%s\t%s\t", EventName,  &Inf_TMSS->EventInfo.EventNameDescription[Inf_TMSS->EventInfo.EventNameLength]);
     if (Inf_TMSS->EventInfo.StartTime != 0)
     {
       fprintf(stderr, "%s\t", TimeStr_DB(EPG2TFTime(Inf_TMSS->EventInfo.StartTime, NULL), 0));
-      fprintf(stderr, "%s\t%02hhu:%02hhu\t%s\n", TimeStr_DB(EPG2TFTime(Inf_TMSS->EventInfo.EndTime, NULL), 0),  Inf_TMSS->EventInfo.DurationHour,  Inf_TMSS->EventInfo.DurationMin,  (ExtEPGText ? ExtEPGText : ""));
+      fprintf(stderr, "%s\t%02hhu:%02hhu\t%s\n", TimeStr_DB(EPG2TFTime(Inf_TMSS->EventInfo.EndTime, NULL), 0),  Inf_TMSS->EventInfo.DurationHour,  Inf_TMSS->EventInfo.DurationMin,  (ExtEPGText ? ExtEPGText : Inf_TMSS->ExtEventInfo.Text));
     }
     else
       fprintf(stderr, "\t\t\t%s\n",  (ExtEPGText ? ExtEPGText : ""));
-    if(ExtEPGText) free(ExtEPGText);
   }
+  if(ExtEPGText) { free(ExtEPGText); ExtEPGText = NULL; }
 
 
   // SPECIAL FEATURE: Fix PAT/PMT of output file (-p)
@@ -2175,9 +2255,12 @@ FILE *fDbg;
         if(MedionMode == 1) SimpleMuxer_Close();
         CutProcessor_Free();
         InfProcessor_Free();
+        TtxProcessor_Free();
         PSBuffer_Reset(&VideoBuffer);
         if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
+        if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
         if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
+        if(ExtEPGText) { free(ExtEPGText); ExtEPGText = NULL; }
         TRACEEXIT;
         exit(7);
       }
@@ -2419,21 +2502,39 @@ FILE *fDbg;
   }
 
   // Hier beenden, wenn View Info Only
-  if (DoInfoOnly || DoFixPMT)
+  if (DoInfoOnly || DoFixPMT || (ExtractAllTeletext >= 2))
   {
+    if (ExtractAllTeletext)
+    {
+      char AbsOutFile[FBLIB_DIR_SIZE], *p;
+      int len;
+      strncpy(AbsOutFile, (*RecFileOut) ? RecFileOut : RecFileIn, sizeof(AbsOutFile));
+      if ((p = strrchr(AbsOutFile, '.')) != NULL)
+        len = (int)(p - AbsOutFile);
+      else
+        len = (int)strlen(AbsOutFile);
+      snprintf(&AbsOutFile[len], sizeof(AbsOutFile)-len, "%s", ".txt");
+      WriteAllTeletext(AbsOutFile);
+    }
+
     if(fIn) { fclose(fIn); fIn = NULL; }
     CloseNavFileIn();
     if(MedionMode == 1) SimpleMuxer_Close();
     CutProcessor_Free();
     InfProcessor_Free();
+    TtxProcessor_Free();
     PSBuffer_Reset(&VideoBuffer);
     if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
+    if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
     printf("\nRecStrip finished. View information / fix PMT only.\n");
     TRACEEXIT;
     exit(0);
   }
+  if ((DemuxAudio || ExtractTeletext) && !DoStrip && OutPacketSize==PACKETSIZE && !DoCut && !DoMerge && !RemoveEPGStream && !RemoveTeletext)
+    WriteCutInf = FALSE;
 
+//  ExtractAllTeletext = FALSE;
 
   // Spezialanpassung Medion (Teletext-Extraktion)
 /*  if (MedionMode)
@@ -2463,7 +2564,7 @@ FILE *fDbg;
           }
         }
         fclose(fMDIn);
-        CloseTeletextOut(TeletextOut);
+        CloseTeletextOut();
       }
     }
   } */
@@ -2478,8 +2579,10 @@ FILE *fDbg;
     if(MedionMode == 1) SimpleMuxer_Close();
     CutProcessor_Free();
     InfProcessor_Free();
+    TtxProcessor_Free();
     PSBuffer_Reset(&VideoBuffer);
     if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
+    if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
     printf("ERROR: Cannot write output %s.\n", RecFileOut);
     TRACEEXIT;
@@ -2568,15 +2671,22 @@ FILE *fDbg;
                 if(!ResumeSet) BookmarkInfo->Resume = 0;
               }
 
+              // ### SRT-Subtitles bis hierher ausgeben
+              if (RebuildSrt)
+                SrtProcessCaptions(0, SegmentMarker[CurSeg].Timems, NewStartTimeOffset, TRUE);
+
               // aktuelle Output-Files schließen
               if (!CloseOutputFiles())
               {
-                CloseInputFiles(TRUE, FALSE, FALSE);
+                CloseInputFiles(!MedionMode, FALSE, FALSE);
                 CutProcessor_Free();
                 InfProcessor_Free();
+                TtxProcessor_Free();
                 PSBuffer_Reset(&VideoBuffer);
                 if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
+                if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
                 if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
+                PSBuffer_Reset(&AudioPES);
                 exit(10);
               }
 
@@ -2606,7 +2716,8 @@ FILE *fDbg;
                 long long SkippedBytes = (((SegmentMarker[CurSeg].Position) /* / PACKETSIZE) * PACKETSIZE */) ) - CurrentPosition;
                 fseeko64(fIn, ((SegmentMarker[CurSeg].Position) /* / PACKETSIZE) * PACKETSIZE */), SEEK_SET);
                 SetFirstPacketAfterBreak();
-                SetTeletextBreak(FALSE, TeletextPage);
+                if (ExtractTeletext || ExtractAllTeletext)
+                  SetTeletextBreak(FALSE, FALSE, TeletextPage);
                 for (k = 0; k < NrContinuityPIDs; k++)
                   ContinuityCtrs[k] = -1;
                 LastPCR = 0;
@@ -2634,6 +2745,10 @@ FILE *fDbg;
                   DeleteBookmark(j);
                 break;
               }
+
+              // ### SRT-Subtitles im Segment überspringen
+              if (RebuildSrt)
+                SrtProcessCaptions(0, SegmentMarker[CurSeg].Timems, 0, FALSE);
             }
 
 
@@ -2672,6 +2787,10 @@ FILE *fDbg;
                   NewStartTimeOffset = SegmentMarker[CurSeg].Timems;
                 NewDurationMS += (SegmentMarker[CurSeg+1].Timems - SegmentMarker[CurSeg].Timems);
 
+                // ### bisherige SRT-Subtitles ausgeben
+                if (RebuildSrt)
+                  SrtProcessCaptions(SegmentMarker[CurSeg].Timems, (CurSeg < NrSegmentMarker-1) ? SegmentMarker[CurSeg+1].Timems : 0xffffffff, CutTimeOffset, TRUE);
+
                 // Header-Pakete ausgeben 2 (experimentell)
                 if (CurrentPosition-PositionOffset > (2 + NrEPGPacks) * OutPacketSize)
                   DoOutputHeaderPacks = TRUE;
@@ -2701,12 +2820,16 @@ FILE *fDbg;
                 {
                   fclose(fIn); fIn = NULL;
                   CloseNavFileIn();
-                  CloseTeletextOut(TeletextOut);
+                  CloseTeletextOut();
+                  CloseSrtFileIn();
+                  CloseSrtFileOut();
                   if(MedionMode == 1) SimpleMuxer_Close();
                   CutProcessor_Free();
                   InfProcessor_Free();
+                  TtxProcessor_Free();
                   PSBuffer_Reset(&VideoBuffer);
                   if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
+                  if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
                   if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
                   printf("ERROR: Cannot create %s.\n", RecFileOut);
                   TRACEEXIT;
@@ -2716,6 +2839,8 @@ FILE *fDbg;
                 NavProcessor_Init();
                 if(!RebuildNav && *RecFileOut && HasNavIn)  SetFirstPacketAfterBreak();
                 if(DoStrip) NALUDump_Init();
+                if (ExtractTeletext || ExtractAllTeletext)
+                  SetTeletextBreak(FALSE, TRUE, TeletextPage);
                 LastPCR = 0;
                 LastTimems = 0;
                 LastTimeStamp = 0;
@@ -2894,7 +3019,8 @@ FILE *fDbg;
                 if (CurPID == VideoPID)
                 {
                   SetFirstPacketAfterBreak();
-//                  SetTeletextBreak(FALSE);
+//                  if (ExtractTeletext || ExtractAllTeletext)
+//                    SetTeletextBreak(FALSE, FALSE, TeletextPage);
                 }
                 *CurCtr = ((tTSPacket*) &Buffer[4])->ContinuityCount;
               }
@@ -2933,7 +3059,7 @@ FILE *fDbg;
           if (CurPID == TeletextPID)
           {
             // Extract Teletext Subtitles
-            if (/*ExtractTeletext &&*/ fTtxOut)
+            if (ExtractTeletext /*&& fTtxOut*/)
               ProcessTtxPacket((tTSPacket*) &Buffer[4], CurrentPosition);
 
             // Remove Teletext packets
@@ -2942,12 +3068,20 @@ FILE *fDbg;
               NrDroppedTxtPid++;
               DropCurPacket = TRUE;
             }
+            else if (TtxPTSOffset && ((tTSPacket*) &Buffer[4])->Payload_Unit_Start)
+            {
+              tTSPacket* curPacket = (tTSPacket*) &Buffer[4];
+              byte *p = &curPacket->Data[curPacket->Adapt_Field_Exists ? curPacket->Data[0] : 0];
+              dword oldPTS = 0;
+              if ((p = FindPTS(p, 192 - (int)(p-Buffer), &oldPTS)) && oldPTS)
+                SetPTS2(p, oldPTS + TtxPTSOffset);
+            }
           }
 
           // Remove EPG stream
           else if (CurPID == 0x12 && RemoveEPGStream)
           {
-            if (!PMTatStart || AfterFirstEPGPacks || (CurPosBlocks > 0) || (CurBlockBytes >= 10*(int)PACKETSIZE))
+            if ((!PMTatStart && MedionMode!=1) || AfterFirstEPGPacks || (CurPosBlocks > 0) || (CurBlockBytes >= 10*(int)PACKETSIZE))
             {
               NrDroppedEPGPid++;
               DropCurPacket = TRUE;
@@ -2966,6 +3100,21 @@ FILE *fDbg;
             {
               NrDroppedAdaptation++;
               DropCurPacket = TRUE;
+            }
+          }
+
+          // Demux first audio track
+          if (DemuxAudio && (CurPID == DemuxAudio) && fAudioOut)
+          {
+//            tTSPacket* curPacket = (tTSPacket*) &Buffer[4];
+//            byte *p = &curPacket->Data[curPacket->Adapt_Field_Exists ? curPacket->Data[0] : 0];
+//            fwrite(p, 1, 192 - (int)(p-Buffer), fAudioOut);
+            PSBuffer_ProcessTSPacket(&AudioPES, (tTSPacket*)(&Buffer[4]), CurrentPosition);
+
+            if((AudioPES.ValidBuffer != LastAudBuffer) && (AudioPES.ValidBuffer > 0))
+            {
+              fwrite(((AudioPES.ValidBuffer == 1) ? AudioPES.Buffer1 : AudioPES.Buffer2), 1, AudioPES.ValidBufLen, fAudioOut);
+              LastAudBuffer = AudioPES.ValidBuffer;
             }
           }
 
@@ -3238,13 +3387,18 @@ FILE *fDbg;
             CutFileSave(CutFileOut);
             SaveInfFile(InfFileOut, InfFileFirstIn);
           }
-          CloseTeletextOut(TeletextOut);
+          CloseTeletextOut();
+          CloseSrtFileIn();
+          CloseSrtFileOut();
           if(MedionMode == 1) SimpleMuxer_Close();
           CutProcessor_Free();
           InfProcessor_Free();
+          TtxProcessor_Free();
           PSBuffer_Reset(&VideoBuffer);
           if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
+          if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
           if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
+          PSBuffer_Reset(&AudioPES);
           printf("\n RecStrip aborted.\n");
           TRACEEXIT;
           exit(8);
@@ -3285,9 +3439,13 @@ FILE *fDbg;
       NrPackets += (CurrentPosition-PositionOffset) / OutPacketSize;  // (SegmentMarker[1].Position / OutPacketSize);
     NrScrambledPackets += CurScrambledPackets;
 
+    // ### restliche SRT-Subtitles noch ausgeben
+    if (RebuildSrt)
+      SrtProcessCaptions(0, 0xffffffff, CutTimeOffset, TRUE);
+
     if (DoMerge && (curInputFile < NrInputFiles-1))
     {
-      CloseInputFiles(TRUE, TRUE, FALSE);
+      CloseInputFiles(!MedionMode, TRUE, FALSE);
 
       // nächstes Input-File aus Parameter-String ermitteln
       strncpy(RecFileIn, argv[curInputFile+1], sizeof(RecFileIn));
@@ -3302,7 +3460,8 @@ FILE *fDbg;
       if (-(int)LastTimems < CutTimeOffset)
         CutTimeOffset = -(int)LastTimems;
       SetFirstPacketAfterBreak();
-      SetTeletextBreak(TRUE, TeletextPage);
+      if (ExtractTeletext || ExtractAllTeletext)
+        SetTeletextBreak(TRUE, FALSE, TeletextPage);
       if(DoStrip)  NALUDump_Init();  // NoContinuityCheck = TRUE;
       LastPCR = 0;
       LastTimeStamp = 0;
@@ -3313,8 +3472,10 @@ FILE *fDbg;
         CloseOutputFiles();
         CutProcessor_Free();
         InfProcessor_Free();
+        TtxProcessor_Free();
         PSBuffer_Reset(&VideoBuffer);
         if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
+        if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
         if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
         printf("ERROR: Cannot open input %s.\n", RecFileIn);
         TRACEEXIT;
@@ -3345,19 +3506,34 @@ FILE *fDbg;
     printf("Max. Video PES length: %u\n", VideoBuffer.maxPESLen);
 #endif
 
+  CloseInputFiles(!MedionMode, TRUE, (!*RecFileOut));
   if ((fOut || (DoCut != 2)) && !CloseOutputFiles())
   {
-    CloseInputFiles(TRUE, TRUE, (!*RecFileOut));
     CutProcessor_Free();
     InfProcessor_Free();
+    TtxProcessor_Free();
     PSBuffer_Reset(&VideoBuffer);
     if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
+    if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
     exit(10);
   }
-  CloseInputFiles(TRUE, TRUE, (!*RecFileOut));
+
+  if (ExtractAllTeletext)
+  {
+    char AbsOutFile[FBLIB_DIR_SIZE], *p;
+    int len;
+    strncpy(AbsOutFile, (*RecFileOut) ? RecFileOut : RecFileIn, sizeof(AbsOutFile));
+    if ((p = strrchr(AbsOutFile, '.')) != NULL)
+      len = (int)(p - AbsOutFile);
+    else
+      len = (int)strlen(AbsOutFile);
+    snprintf(&AbsOutFile[len], sizeof(AbsOutFile)-len, "%s", ".txt");
+    WriteAllTeletext(AbsOutFile);
+  }
 
   CutProcessor_Free();
+  TtxProcessor_Free();
   InfProcessor_Free();
   PSBuffer_Reset(&VideoBuffer);
   if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }

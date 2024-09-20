@@ -72,8 +72,8 @@ void PSBuffer_DropCurBuffer(tPSBuffer *PSBuffer)
   switch(PSBuffer->ValidBuffer)
   {
     case 0:
-    case 1: PSBuffer->pBuffer = PSBuffer->Buffer1; break;
-    case 2: PSBuffer->pBuffer = PSBuffer->Buffer2; break;
+    case 2: PSBuffer->pBuffer = PSBuffer->Buffer1; break;
+    case 1: PSBuffer->pBuffer = PSBuffer->Buffer2; break;
   }
   memset(PSBuffer->pBuffer, 0, PSBuffer->BufferSize);
   PSBuffer->BufferPtr = 0;
@@ -95,6 +95,9 @@ void PSBuffer_StartNewBuffer(tPSBuffer *PSBuffer, bool SkipFirstIncomplete, bool
 //      tPESHeader *CurPESpack = (tPESHeader*)(PSBuffer->pBuffer - PSBuffer->BufferPtr);
       byte *CurPESpack = (PSBuffer->pBuffer - PSBuffer->BufferPtr);
 //      int HeaderLen = 6;
+
+      if (PSBuffer->NewDiscontinue == 1)
+        SetFirstPacketAfterBreak();
 
       // Strippen
       if (NALUDump_PES((byte*) CurPESpack, &PSBuffer->BufferPtr) == FALSE)
@@ -163,7 +166,11 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet, long long 
       {
         printf("  PESProcessor: TS continuity mismatch (PID=%hd, pos=%lld, expect=%hhu, found=%hhu)\n", PSBuffer->PID, FilePosition, ((PSBuffer->LastCCCounter + 1) % 16), Packet->ContinuityCount);
         if (PSBuffer->PID == VideoPID)
+        {
           AddContinuityError(PSBuffer->PID, FilePosition, ((PSBuffer->LastCCCounter + 1) % 16), Packet->ContinuityCount);
+//          if (ExtractTeletext || ExtractAllTeletext)
+//            SetTeletextBreak(FALSE, FALSE, TeletextPage);
+        }
         if (PSBuffer->IgnoreContErrors)
           PSBuffer_StartNewBuffer(PSBuffer, FALSE, TRUE);
         else
@@ -192,7 +199,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet, long long 
           PSBuffer_StartNewBuffer(PSBuffer, FALSE, TRUE);
         else
           PSBuffer_DropCurBuffer(PSBuffer);
-        PSBuffer->NewDiscontinue = TRUE;
+        PSBuffer->NewDiscontinue = 2;
       }
     }
 

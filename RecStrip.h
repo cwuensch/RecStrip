@@ -2,8 +2,9 @@
 #define __RECSTRIPH__
 
 #include "RecHeader.h"
+#include <time.h>
 
-#define VERSION                  "v3.1"
+#define VERSION                  "v3.2"
 
 #define NRBOOKMARKS                177   // eigentlich werden nur 48 Bookmarks unterstützt!! (SRP2401)
 #define NRSEGMENTMARKER            101
@@ -37,6 +38,14 @@ typedef enum
   STREAM_VIDEO_VC1SM            = 0xEB,
   STREAM_UNKNOWN                = 0xFF
 } tVideoStreamFmt;
+
+typedef enum
+{
+  STREAMTYPE_UNKNOWN            = 0,
+  STREAMTYPE_AUDIO              = 1,
+  STREAMTYPE_TELETEXT           = 2,
+  STREAMTYPE_SUBTITLE           = 3
+} tStreamType;
 
 
 #if defined(WIN32) || defined(_WIN32) 
@@ -134,7 +143,7 @@ typedef struct
 
 
 // Globale Variablen
-extern char             RecFileIn[], RecFileOut[], MDEpgName[], MDTtxName[], MDAudName[];
+extern char             RecFileIn[], RecFileOut[];
 extern byte            *PATPMTBuf, *EPGPacks;
 extern const char      *ExePath;
 extern unsigned long long RecFileSize;
@@ -142,11 +151,12 @@ extern time_t           RecFileTimeStamp;
 extern SYSTEM_TYPE      SystemType;
 extern byte             PACKETSIZE, PACKETOFFSET, OutPacketSize;
 extern word             VideoPID, TeletextPID, SubtitlesPID, TeletextPage;
+extern word             TransportStreamID;
 extern tAudioTrack      AudioPIDs[];
 extern word             ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs;
-extern bool             isHDVideo, AlreadyStripped, HumaxSource, EycosSource;
-extern bool             DoStrip, DoSkip, RemoveEPGStream, ExtractTeletext, RemoveTeletext, RebuildNav, RebuildInf, DoInfoOnly, DoFixPMT, MedionMode, MedionStrip, WriteDescPackets, PMTatStart;
-extern int              DoCut, DoMerge, DoInfFix;
+extern bool             isHDVideo, AlreadyStripped, HumaxSource, EycosSource, DVBViewerSrc;
+extern bool             DoStrip, DoSkip, RemoveEPGStream, ExtractTeletext, ExtractAllTeletext, RemoveTeletext, RebuildNav, RebuildInf, RebuildSrt, DoInfoOnly, DoFixPMT, MedionMode, MedionStrip, WriteDescPackets, PMTatStart;
+extern int              DoCut, DoMerge, DoInfFix, DemuxAudio;
 extern int              NrEPGPacks;
 extern int              dbg_DelBytesSinceLastVid;
 
@@ -155,9 +165,10 @@ extern tSegmentMarker2 *SegmentMarker;       //[0]=Start of file, [x]=End of fil
 extern int              NrSegmentMarker;
 extern long long        NrDroppedFillerNALU, NrDroppedZeroStuffing;
 extern int              ActiveSegment;
-extern dword            InfDuration, NewDurationMS;
-extern dword            NavDurationMS, NavFrames;
+extern dword            InfDuration, NewDurationMS, NavFrames;
+extern int              NavDurationMS;
 extern int              NewStartTimeOffset;
+extern dword            TtxPTSOffset;
 extern dword            TimeStepPerFrame;
 extern long long        CurrentPosition;
 extern char            *ExtEPGText;

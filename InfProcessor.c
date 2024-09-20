@@ -171,6 +171,8 @@ bool LoadInfFromRec(char *AbsRecFileName)
     return FALSE;
   }
 
+  InitInfStruct(RecInf);
+
   if (HumaxSource)
   {
     Result = LoadHumaxHeader(fIn, RecInf);
@@ -181,6 +183,11 @@ bool LoadInfFromRec(char *AbsRecFileName)
     Result = LoadEycosHeader(AbsRecFileName, RecInf);
     if (!Result) EycosSource = FALSE;
   }
+  else if (strcmp(&AbsRecFileName[strlen(AbsRecFileName)-3], ".ts") == 0)
+    DVBViewerSrc = LoadDVBViewer(AbsRecFileName, RecInf);
+
+  if (HumaxSource || EycosSource || DVBViewerSrc || MedionMode == 1 )
+    GetEPGFromMap(AbsRecFileName, RecInf->ServiceInfo.ServiceID, &TransportStreamID, RecInf);
 
   Result = GenerateInfFile(fIn, RecInf);
   
@@ -197,9 +204,6 @@ printf("ASSERTION: AudioTypeFlag should be 0 or 1, but is %hd!\n", RecInf->Servi
         RecInf->ServiceInfo.AudioTypeFlag = 1;
     }
     SortAudioPIDs(AudioPIDs);
-
-    if ((HumaxSource || EycosSource) && !RecInf->EventInfo.StartTime)
-      GetEPGFromMap(AbsRecFileName, RecInf->ServiceInfo.ServiceID, &RecInf->EventInfo, &RecInf->ExtEventInfo);
   }
 
 //  CurrentStartTime = ((TYPE_RecHeader_Info*)InfBuffer)->StartTime;
@@ -658,7 +662,7 @@ bool SaveInfFile(const char *AbsDestInf, const char *AbsSourceInf)
 void InfProcessor_Free()
 {
   TRACEENTER;
-  free(InfBuffer); InfBuffer = NULL;
+  if(InfBuffer) { free(InfBuffer); InfBuffer = NULL; }
   RecHeaderInfo = NULL;
   BookmarkInfo = NULL;
   TRACEEXIT;

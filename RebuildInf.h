@@ -405,22 +405,28 @@ typedef struct
 #define                 EPGBUFFERSIZE 4097
 
 //extern FILE            *fIn;  // dirty Hack
+extern byte            *EPGBuffer;
+extern int              EPGLen;
 extern long long        FirstFilePCR, LastFilePCR;
 extern dword            FirstFilePTS, LastFilePTS;
 extern int              VideoHeight, VideoWidth;
 extern double           VideoFPS, VideoDAR;
 //extern int              TtxTimeZone;
 
+time_t MakeUnixTime(const word year, const byte month, const byte day, const byte hour, const byte minute, const byte second, int *const out_timeoffset);
 time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec, bool convertToUTC);
 tPVRTime Unix2TFTime(time_t UnixTimeStamp, byte *const outSec, bool convertToLocal);
 tPVRTime EPG2TFTime(tPVRTime TFTimeStamp, int *const out_timeoffset);
 tPVRTime AddTimeSec(tPVRTime pvrTime, byte pvrTimeSec, byte *const outSec, int addSeconds);
 word GetMinimalAudioPID(tAudioTrack AudioPIDs[]);
+bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf);
+bool AnalyseEIT(byte *Buffer, int BufSize, word ServiceID, word *OutTransportID, TYPE_Event_Info *OutEventInfo, TYPE_ExtEvent_Info *OutExtEventInfo);
+
 void InitInfStruct(TYPE_RecHeader_TMSS *RecInf);
 bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf);
 //bool AnalysePMT(byte *PSBuffer, int BufSize, TYPE_RecHeader_TMSS *RecInf);
 
 void SortAudioPIDs(tAudioTrack AudioPIDs[]);
-void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word PMTPID, word VideoPID, word PCRPID, tAudioTrack AudioPIDs[], bool PATonly);
+void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word TransportID, word PMTPID, word VideoPID, word PCRPID, tAudioTrack AudioPIDs[], bool PATonly);
 
 #endif

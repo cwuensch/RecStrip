@@ -16,8 +16,6 @@
 
 tPESStream              PESVideo;
 static tPESStream       PESAudio, PESTeletxt;
-byte                   *EPGBuffer = 0;
-int                     EPGLen = 0;
 static word             PIDs[4] = {100, 101, 102, 0x12};  // künftig: {101, 102, 104, 0x12};  // TODO
 static byte             ContCtr[4] = {1, 1, 1, 1};
 static bool             DoEITOutput = TRUE;
@@ -209,6 +207,7 @@ byte* PESStream_GetNextPacket(tPESStream *PESStream)
     PESStream->curPacketLength = (dword)fread(&PESStream->Buffer[6], 1, PESStream->curPacketLength, PESStream->fSrc);
   PESStream->curPacketLength += 6;
 
+  // PES-Paket einlesen
   PESStream->NextStartCodeFound = PESStream_FindPacketStart(PESStream, PESStream->curPacketLength);
 #ifdef _DEBUG
   if (PESStream->curPacketLength > (dword)PESStream->maxPESLen)
@@ -275,10 +274,10 @@ static bool           FirstRun = 2;
 static dword          LastVidDTS = 0;
 static word           curPid = 0;
 static int            StreamNr = 0;
-
+//static dword          TtxPTSOffset = 0;
 
 // Simple Muxer
-bool SimpleMuxer_Open(FILE *fIn, char const* PESAudName, char const* PESTtxName, char const* EITName)  // fIn ist ein PES Video Stream
+bool SimpleMuxer_Open(FILE *fIn, char const* PESAudName, char const* PESTtxName /*, char const* EITName*/)  // fIn ist ein PES Video Stream
 {
   FILE *aud = NULL, *ttx = NULL;  //, *eit = NULL;
   TRACEENTER;
@@ -317,8 +316,8 @@ bool SimpleMuxer_Open(FILE *fIn, char const* PESAudName, char const* PESTtxName,
       }
     fclose(eit);
   } */
-  if (EITName && !EPGLen)
-    printf("  SimpleMuxer: Cannot open file %s.\n", EITName);
+//  if (EITName && !EPGLen)
+//    printf("  SimpleMuxer: Cannot open file %s.\n", EITName);
 
   if (PESStream_Open(&PESVideo, fIn, VIDEOBUFSIZE) && PESStream_Open(&PESAudio, aud, 131027) && PESStream_Open(&PESTeletxt, ttx, 32768))
   {
@@ -385,18 +384,32 @@ bool SimpleMuxer_NextTSPacket(tTSPacket *pack)
       else
         PESStream_GetNextPacket(&PESVideo);
 
-    // Skip audio and teletext packets with DTS > 2 sec before first video packet
-    if (!PESVideo.FileAtEnd && PESVideo.curPacketDTS >= 90000)
+    if (!PESVideo.FileAtEnd)
     {
       dword AudioSkipped = 0, TtxSkipped = 0;
-      while (!PESAudio.FileAtEnd && (PESAudio.curPacketDTS + 90000 < PESVideo.curPacketDTS))
-        { PESStream_GetNextPacket(&PESAudio); AudioSkipped++; }
-      while (!PESTeletxt.FileAtEnd && (PESTeletxt.curPacketDTS + 90000 < PESVideo.curPacketDTS))
-        { PESStream_GetNextPacket(&PESTeletxt); TtxSkipped++; }
 
-      if (AudioSkipped || TtxSkipped)
-        printf("  SimpleMuxer: %u audio packets, %u teletext packets skipped at beginning.\n", AudioSkipped, TtxSkipped);
+      // Skip audio packets with DTS > 2 sec before first video packet
+      while (!PESAudio.FileAtEnd && ((int)(PESVideo.curPacketDTS - PESAudio.curPacketDTS) > 90000))
+        { PESStream_GetNextPacket(&PESAudio); AudioSkipped++; }
+      if (AudioSkipped)
+        printf("SimpleMuxer: %u audio packets skipped at beginning.\n", AudioSkipped);
+
+      // For Teletext-Stream with unmatched PTS -> enable special mode with offset
+      if (!PESTeletxt.FileAtEnd && (abs((int)(PESTeletxt.curPacketDTS - PESVideo.curPacketDTS)) > 450000))
+      {
+        TtxPTSOffset = PESVideo.curPacketDTS - PESTeletxt.curPacketDTS;
+        printf("SimpleMuxer: Enable special muxing mode, Teletext PTS offset=%u.\n", TtxPTSOffset);
+      }
+      // Skip teletext packets with DTS > 2 sec before first video packet
+      else
+      {
+        while (!PESTeletxt.FileAtEnd && ((int)(PESVideo.curPacketDTS - PESTeletxt.curPacketDTS) > 90000))
+          { PESStream_GetNextPacket(&PESTeletxt); TtxSkipped++; }
+        if (TtxSkipped)
+          printf("SimpleMuxer: %u teletext packets skipped at beginning.\n", TtxSkipped);
+      }
     }
+
     FirstRun = 0;
   }
 
@@ -409,9 +422,6 @@ bool SimpleMuxer_NextTSPacket(tTSPacket *pack)
       pack->Payload_Unit_Start = FALSE;
     else
     {
-      if ((PESVideo.DTSOverflow /*|| PESVideo.FileAtEnd*/) && (PESAudio.DTSOverflow /*|| PESAudio.FileAtEnd*/) && (PESTeletxt.DTSOverflow /*|| PESTeletxt.FileAtEnd*/))
-        PESVideo.DTSOverflow = PESAudio.DTSOverflow = PESTeletxt.DTSOverflow = FALSE;
-
       if (DoEITOutput && EPGLen)
       {
         p = EPGBuffer;
@@ -419,7 +429,7 @@ bool SimpleMuxer_NextTSPacket(tTSPacket *pack)
         StreamNr = 3;
         DoEITOutput = FALSE;
       }
-      else if (!PESVideo.FileAtEnd && (/*FirstRun ||*/ ((PESVideo.curPacketDTS <= PESAudio.curPacketDTS || PESAudio.DTSOverflow) && (PESVideo.curPacketDTS <= PESTeletxt.curPacketDTS || PESTeletxt.DTSOverflow) && !PESVideo.DTSOverflow)))
+      else if (!PESVideo.FileAtEnd && (/*FirstRun ||*/ PESAudio.FileAtEnd || ((int)(PESAudio.curPacketDTS - PESVideo.curPacketDTS) >= 0)) && (PESTeletxt.FileAtEnd || ((int)(PESTeletxt.curPacketDTS + TtxPTSOffset - PESVideo.curPacketDTS) >= 0)))
       {
         // Start with video packet ----^
 //        FirstRun = 0;
@@ -436,17 +446,19 @@ bool SimpleMuxer_NextTSPacket(tTSPacket *pack)
         }
         LastVidDTS = PESVideo.curPacketDTS;
       }
-      else if (!PESAudio.FileAtEnd && (PESAudio.curPacketDTS <= PESTeletxt.curPacketDTS || PESTeletxt.DTSOverflow) && !PESAudio.DTSOverflow)
+      else if (!PESAudio.FileAtEnd && (PESTeletxt.FileAtEnd || ((int)(PESTeletxt.curPacketDTS + TtxPTSOffset - PESAudio.curPacketDTS) >= 0)))
       {
         p = PESAudio.Buffer;
         len = PESAudio.curPacketLength;
         StreamNr = 1;
       }
-      else if (!PESTeletxt.FileAtEnd && !PESTeletxt.DTSOverflow)
+      else if (!PESTeletxt.FileAtEnd)
       {
         p = PESTeletxt.Buffer;
         len = PESTeletxt.curPacketLength;
         StreamNr = 2;
+//        if (TtxPTSOffset && PESTeletxt.curPacketDTS)
+//          SetPTS2(&p[3], PESTeletxt.curPacketDTS + TtxPTSOffset);
       }
       pack->Payload_Unit_Start = TRUE;
       curPid = PIDs[StreamNr];
@@ -533,9 +545,9 @@ void SimpleMuxer_Close(void)
   PESStream_Close(&PESVideo);
   PESStream_Close(&PESAudio);
   PESStream_Close(&PESTeletxt);
-  free(EPGBuffer);
-  EPGBuffer = NULL;
-  EPGLen = 0;
+//  free(EPGBuffer);
+//  EPGBuffer = NULL;
+//  EPGLen = 0;
 
   TRACEEXIT;
 }

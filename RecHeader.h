@@ -178,15 +178,15 @@ typedef struct
 
 typedef struct
 {
-  TYPE_RecHeader_Info   RecHeaderInfo;
-  TYPE_Service_Info     ServiceInfo;
-  TYPE_Event_Info       EventInfo;
-  TYPE_ExtEvent_Info    ExtEventInfo;
-  TYPE_TpInfo_TMSS      TransponderInfo;
-  TYPE_Bookmark_Info    BookmarkInfo;
+  TYPE_RecHeader_Info   RecHeaderInfo;          //   28 byte
+  TYPE_Service_Info     ServiceInfo;            //   40 byte
+  TYPE_Event_Info       EventInfo;              //  292 byte
+  TYPE_ExtEvent_Info    ExtEventInfo;           // 1036 byte
+  TYPE_TpInfo_TMSS      TransponderInfo;        //   16 byte / 16 byte / 14 byte (TMS-C)
+  TYPE_Bookmark_Info    BookmarkInfo;           //  716 byte
 //  byte                  HeaderUnused[8192];
-  tPreviewImages        PreviewImages;
-} TYPE_RecHeader_TMSS;
+  tPreviewImages        PreviewImages;          //    4 byte
+} TYPE_RecHeader_TMSS;                          //=2132 byte
 
 typedef struct
 {

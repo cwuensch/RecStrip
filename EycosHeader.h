@@ -99,7 +99,7 @@ typedef struct
   dword                 Bookmarks[32];
   byte                  Unknown5[12];
   word                  ConstantT2;     // "T#"
-  word                  AudioNames[32];
+  char                  AudioNames[64];
 }__attribute__((packed)) tEycosHeader;
 
 typedef struct
