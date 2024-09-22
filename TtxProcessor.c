@@ -67,7 +67,7 @@ ETS 300 708 (March 1997)
 ISO/IEC STANDARD 13818-1 Second edition (2000-12-01)
   Information technology - Generic coding of moving pictures and associated audio information: Systems
 ISO/IEC STANDARD 6937 Third edition (2001-12-15)
-  Information technology - Coded graphic character set for text communication � Latin alphabet
+  Information technology - Coded graphic character set for text communication - Latin alphabet
 Werner Br�ckner -- Teletext in digital television
 */
 #define TELXCC_VERSION "2.6.0"
@@ -114,9 +114,25 @@ typedef enum {
   TRANSMISSION_MODE_SERIAL = 1
 } transmission_mode_t;
 
+typedef enum {
+  COLOR_BLACK   = 0,
+  COLOR_RED     = 1,
+  COLOR_GREEN   = 2,
+  COLOR_YELLOW  = 3,
+  COLOR_BLUE    = 4,
+  COLOR_MAGENTA = 5,
+  COLOR_CYAN    = 6,
+  COLOR_WHITE   = 7
+} color_t;
+
 static const char* TTXT_COLOURS[8] = {
-  //black,   red,     green,   yellow,  blue,    magenta,   cyan,    white
+  // black,     red,      green,    yellow,     blue,     magenta,    cyan,     white
   "#000000", "#ff0000", "#00ff00", "#ffff00", "#0000ff", "#ff00ff", "#00ffff", "#ffffff"
+};
+
+static const word TTXT_COLORSYMBOLS[2][8] = {
+  { 0x25CF, 0x25D0, 0x25D1, 0x25D2, 0x25D3, 0x25D4, 0x25D5, 0x25CB },  // Foreground: ● Black, ◐ Red, ◑ Green, ◒ Yellow, ◓ Blue, ◔ Magenta, ◕ Cyan, ○ White*
+  { 0x25A0, 0x25A4, 0x25A5, 0x25A6, 0x25A7, 0x25A8, 0x25A9, 0x25A1 }   // Background: ■ Black*, ▤ Red, ▥ Green, ▦ Yellow, ▧ Blue, ▨ Magenta, ▩ Cyan, □ White
 };
 
 typedef struct {
@@ -662,6 +678,8 @@ static void process_page(teletext_page_t *page, uint16_t page_number, int out_nr
 static void process_page2(uint16_t page_number)
 {
   int p = 0, s, i, j;
+  uint16_t *c;
+  color_t foreground_color, background_color;
   bool page_empty = TRUE;
   int page_nr = hex2dec(page_number);
   teletext_page_t *page = (teletext_page_t*) &page_buffer_in[MAGAZINE(page_number)-1];
@@ -670,10 +688,29 @@ static void process_page2(uint16_t page_number)
   // Check for empty / Remove control chars
   for (i = 1; i < 25; i++)
   {
+    foreground_color = COLOR_WHITE;
+    background_color = COLOR_BLACK;
     for (j = 0; j < 40; j++)
     {
-      if(page->text[i][j] > 0x20) { page_empty = FALSE; /*line_empty = FALSE;*/ break; }
-//      else if(page->text[i][j] != ' ') page->text[i][j] = ' ';
+      c = &page->text[i][j];
+      if (*c < 0x20)
+      {
+        if ((*c <= 0x07) || (*c >= 0x10 && *c <= 0x17))
+        {
+          if (*c <= 0x07)
+            foreground_color = (color_t) *c;
+          else
+            foreground_color = (color_t) (*c - 0x10);
+          *c = (uint16_t) TTXT_COLORSYMBOLS[0][foreground_color];
+        }
+        else if (*c == 0x1c && background_color != COLOR_BLACK)
+          *c = (uint16_t) TTXT_COLORSYMBOLS[1][COLOR_BLACK];
+        else if (*c == 0x1d)
+          *c = (uint16_t) TTXT_COLORSYMBOLS[1][foreground_color];
+        *c = ' ';
+      }
+      else if (*c > 0x20)
+        page_empty = FALSE;  // break;
     }
   }
   if(!page_nr || page_nr < 100 || page_nr > 899 || page_empty) return;

@@ -1162,7 +1162,7 @@ SONST
     if (ExtractTeletext)
     {
       if (LoadTeletextOut(AbsFileName))
-        printf("Teletext output: %s\n", AbsFileName);
+        printf("Subtitles output: %s\n", AbsFileName);
       else
         ExtractTeletext = FALSE;
     }
@@ -1185,8 +1185,11 @@ SONST
       GetFileNameFromRec(RecFileIn, "_audio.pes", AbsFileName);
 
     fAudioOut = fopen(AbsFileName, ((DoMerge==1) ? "ab" : "wb"));
-    if (fAudioOut && DoMerge == 1)
-      fseek(fAudioOut, 0, SEEK_END);
+    if (fAudioOut)
+    {
+      printf("Demux audio output: %s\n", AbsFileName);
+      if(DoMerge == 1)  fseek(fAudioOut, 0, SEEK_END);
+    }
 
     if(DemuxAudio <= 1) DemuxAudio = AudioPIDs[0].pid;
     PSBuffer_Init(&AudioPES, DemuxAudio, 65536, FALSE);
@@ -2514,6 +2517,7 @@ int main(int argc, const char* argv[])
       else
         len = (int)strlen(AbsOutFile);
       snprintf(&AbsOutFile[len], sizeof(AbsOutFile)-len, "%s", ".txt");
+      printf("Writing teletext to: %s\n", AbsOutFile);
       WriteAllTeletext(AbsOutFile);
     }
 
@@ -3446,6 +3450,7 @@ int main(int argc, const char* argv[])
     else
       len = (int)strlen(AbsOutFile);
     snprintf(&AbsOutFile[len], sizeof(AbsOutFile)-len, "%s", ".txt");
+    printf("Writing teletext to: %s\n", AbsOutFile);
     WriteAllTeletext(AbsOutFile);
   }
 

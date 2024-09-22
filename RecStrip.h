@@ -174,6 +174,8 @@ extern long long        CurrentPosition;
 extern char            *ExtEPGText;
 
 
+bool StrToUTF8(char *destination, const char *source, size_t num, byte DefaultISO8859CharSet);
+
 dword CalcBlockSize(long long Size);
 bool HDD_FileExist(const char *AbsFileName);
 bool HDD_GetFileSize(const char *AbsFileName, unsigned long long *OutFileSize);
