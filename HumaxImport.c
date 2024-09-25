@@ -520,8 +520,8 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
                 if(strcmp(RecInf->EventInfo.EventNameDescription, "-") == 0)  RecInf->EventInfo.EventNameDescription[0] = '\0';
                 RecInf->EventInfo.EventNameLength = (byte)strlen(RecInf->EventInfo.EventNameDescription);
                 printf("    EventName = %s\n", RecInf->EventInfo.EventNameDescription);
-                if ((RecInf->EventInfo.EventNameLength + 2 < (byte)sizeof(RecInf->EventInfo.EventNameDescription)) && (strcmp(DescStr, "-") != 0))
-                  strncpy(&RecInf->EventInfo.EventNameDescription[RecInf->EventInfo.EventNameLength + 1], DescStr, sizeof(RecInf->EventInfo.EventNameDescription) - 1);
+                if ((RecInf->EventInfo.EventNameLength + 1 < (byte)sizeof(RecInf->EventInfo.EventNameDescription)) && (strcmp(DescStr, "-") != 0))
+                  strncpy(&RecInf->EventInfo.EventNameDescription[RecInf->EventInfo.EventNameLength], DescStr, sizeof(RecInf->EventInfo.EventNameDescription)-1);
                 else
                   RecInf->EventInfo.EventNameDescription[RecInf->EventInfo.EventNameLength + 1] = '\0';
                 printf("    EventDesc = %s\n", DescStr);

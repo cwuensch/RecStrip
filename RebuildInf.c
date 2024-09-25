@@ -365,11 +365,11 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
               break;
             case 2:
               NameLen = (int) min(strlen(Buffer), sizeof(RecInf->EventInfo.EventNameDescription) - 1);
-              StrToUTF8(RecInf->EventInfo.EventNameDescription, Buffer, NameLen + 1, 0);
+              StrToUTF8(RecInf->EventInfo.EventNameDescription, Buffer, 4096, 0);
 //              RecInf->EventInfo.EventNameDescription[NameLen] = '\0';
               NameLen = (int)strlen(RecInf->EventInfo.EventNameDescription);
-              RecInf->EventInfo.EventNameLength = NameLen + 1;
-              printf("    EventName = %s\n", Buffer);
+              RecInf->EventInfo.EventNameLength = NameLen;
+              printf("    EventName = %s\n", RecInf->EventInfo.EventNameDescription);
               break;
             case 3:
               if (sscanf(Buffer, "%2u:%2u..%2u:%2u", &startH, &startM, &endH, &endM) == 4)
@@ -386,10 +386,10 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
               else i = 8;
               break;
             case 5:
-              if (NameLen < (int)sizeof(RecInf->EventInfo.EventNameDescription) - 1)
+              if (NameLen + 1 < (int)sizeof(RecInf->EventInfo.EventNameDescription))
               {
-                StrToUTF8(&RecInf->EventInfo.EventNameDescription[NameLen + 1], Buffer, sizeof(RecInf->EventInfo.EventNameDescription) - NameLen - 1, 0);
-                printf("    EventDesc = %s\n", Buffer);
+                StrToUTF8(&RecInf->EventInfo.EventNameDescription[NameLen], Buffer, sizeof(RecInf->EventInfo.EventNameDescription) - NameLen, 0);
+                printf("    EventDesc = %s\n", &RecInf->EventInfo.EventNameDescription[NameLen]);
               }
               break;
             case 7:
@@ -842,14 +842,14 @@ printf("  TS: EvtDuration = %02d:%02d\n", OutEventInfo->DurationHour, OutEventIn
             Name[NameLen] = tmp;
 
             NameLen = (int)strlen(OutEventInfo->EventNameDescription);
-            OutEventInfo->EventNameLength = NameLen + 1;
+            OutEventInfo->EventNameLength = NameLen;
 printf("  TS: EventName = %s\n", OutEventInfo->EventNameDescription);
 
             tmp = Text[TextLen];
             Text[TextLen] = '\0';
-            StrToUTF8(&OutEventInfo->EventNameDescription[NameLen + 1], Text, sizeof(OutEventInfo->EventNameDescription) - NameLen - 1, 0);
+            StrToUTF8(&OutEventInfo->EventNameDescription[NameLen], Text, sizeof(OutEventInfo->EventNameDescription) - NameLen, 0);
             Text[TextLen] = tmp;
-printf("  TS: EventDesc = %s\n", &OutEventInfo->EventNameDescription[NameLen + 1]);
+printf("  TS: EventDesc = %s\n", &OutEventInfo->EventNameDescription[NameLen]);
           }
 
           else if(Desc->DescrTag == DESC_EITExtEvent)

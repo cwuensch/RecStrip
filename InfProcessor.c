@@ -438,8 +438,8 @@ printf("  INF: ServiceName = %s\n", ServiceInfo->ServiceName);
       StrToUTF8(RecHeader->EventInfo.EventNameDescription, TempString, sizeof(RecHeader->EventInfo.EventNameDescription), 0);
       TempString[RecHeader->EventInfo.EventNameLength] = tmp;
 
-      p = (int)strlen(RecHeader->EventInfo.EventNameDescription) + 1;
-      if (p < sizeof(RecHeader->EventInfo.EventNameDescription))
+      p = (int)strlen(RecHeader->EventInfo.EventNameDescription);
+      if (p + 1 < sizeof(RecHeader->EventInfo.EventNameDescription))
         StrToUTF8(&RecHeader->EventInfo.EventNameDescription[p], &TempString[RecHeader->EventInfo.EventNameLength], sizeof(RecHeader->EventInfo.EventNameDescription) - p, 0);
       RecHeader->EventInfo.EventNameLength = (byte)p;
       

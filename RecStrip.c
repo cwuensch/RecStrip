@@ -2378,7 +2378,7 @@ int main(int argc, const char* argv[])
             EventInfo_out.DurationHour    = RecHeader->EventInfo.DurationHour;
             EventInfo_out.DurationMin     = RecHeader->EventInfo.DurationMin;
             EventInfo_out.EventNameLength = RecHeader->EventInfo.EventNameLength;
-            strncpy(EventInfo_out.EventNameDescription, RecHeader->EventInfo.EventNameDescription, sizeof(EventInfo_out.EventNameDescription));
+            memcpy(EventInfo_out.EventNameDescription, RecHeader->EventInfo.EventNameDescription, sizeof(EventInfo_out.EventNameDescription));
             
             if (RecHeader->ExtEventInfo.TextLength > 0)
             {

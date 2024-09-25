@@ -221,14 +221,14 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
       EycosEvent.Title[sizeof(EycosEvent.Title) - 1] = '\0';
       StrToUTF8(RecInf->EventInfo.EventNameDescription, EycosEvent.Title, sizeof(RecInf->EventInfo.EventNameDescription), 0);
 //      RecInf->EventInfo.EventNameDescription[NameLen] = '\0';
-      TextLen = (int)strlen(RecInf->EventInfo.EventNameDescription) + 1;
+      printf("    EventName = %s\n", RecInf->EventInfo.EventNameDescription);
 
+      TextLen = (int)strlen(RecInf->EventInfo.EventNameDescription);
       RecInf->EventInfo.EventNameLength = TextLen;
       EycosEvent.ShortDesc[sizeof(EycosEvent.ShortDesc) - 1] = '\0';
       StrToUTF8(&RecInf->EventInfo.EventNameDescription[TextLen], EycosEvent.ShortDesc, sizeof(RecInf->EventInfo.EventNameDescription) - TextLen, 0);
 //      RecInf->EventInfo.EventNameDescription[sizeof(RecInf->EventInfo.EventNameDescription) - 1] = '\0';
-      printf("    EventName = %s\n", RecInf->EventInfo.EventNameDescription);
-      printf("    EventDesc = %s\n", &RecInf->EventInfo.EventNameDescription[RecInf->EventInfo.EventNameLength]);
+      printf("    EventDesc = %s\n", &RecInf->EventInfo.EventNameDescription[TextLen]);
 
       if(ExtEPGText) free(ExtEPGText);
       if ((ExtEPGText = (char*) malloc(2561)))
