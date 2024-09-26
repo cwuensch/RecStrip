@@ -31,7 +31,7 @@ static char             TeletextOut[FBLIB_DIR_SIZE];
 static int              TeletextOutLen = 0;
 static tPSBuffer        TtxBuffer;
 static int              LastBuffer = 0;
-static bool             FirstPacketAfterBreak = TRUE;
+static bool             FirstPacketAfterBreak = TRUE, ExtractAllOverwrite = FALSE;
 static uint16_t         pages[] = { 0x777, 0x150, 0x151, 0x888, 0x160, 0x161, 0x152, 0x149, 0x571, 0 };
 
 // global TS PCR value
@@ -67,7 +67,7 @@ ETS 300 708 (March 1997)
 ISO/IEC STANDARD 13818-1 Second edition (2000-12-01)
   Information technology - Generic coding of moving pictures and associated audio information: Systems
 ISO/IEC STANDARD 6937 Third edition (2001-12-15)
-  Information technology - Coded graphic character set for text communication � Latin alphabet
+  Information technology - Coded graphic character set for text communication - Latin alphabet
 Werner Br�ckner -- Teletext in digital television
 */
 #define TELXCC_VERSION "2.6.0"
@@ -114,9 +114,25 @@ typedef enum {
   TRANSMISSION_MODE_SERIAL = 1
 } transmission_mode_t;
 
+typedef enum {
+  COLOR_BLACK   = 0,
+  COLOR_RED     = 1,
+  COLOR_GREEN   = 2,
+  COLOR_YELLOW  = 3,
+  COLOR_BLUE    = 4,
+  COLOR_MAGENTA = 5,
+  COLOR_CYAN    = 6,
+  COLOR_WHITE   = 7
+} color_t;
+
 static const char* TTXT_COLOURS[8] = {
-  //black,   red,     green,   yellow,  blue,    magenta,   cyan,    white
+  // black,     red,      green,    yellow,     blue,     magenta,    cyan,     white
   "#000000", "#ff0000", "#00ff00", "#ffff00", "#0000ff", "#ff00ff", "#00ffff", "#ffffff"
+};
+
+static const word TTXT_COLORSYMBOLS[2][8] = {
+  { 0x25CF, 0x25D0, 0x25D1, 0x25D2, 0x25D3, 0x25D4, 0x25D5, 0x25CB },  // Foreground: ● Black, ◐ Red, ◑ Green, ◒ Yellow, ◓ Blue, ◔ Magenta, ◕ Cyan, ○ White*
+  { 0x25A0, 0x25A4, 0x25A5, 0x25A6, 0x25A7, 0x25A8, 0x25A9, 0x25A1 }   // Background: ■ Black*, ▤ Red, ▥ Green, ▦ Yellow, ▧ Blue, ▨ Magenta, ▩ Cyan, □ White
 };
 
 typedef struct {
@@ -661,7 +677,9 @@ static void process_page(teletext_page_t *page, uint16_t page_number, int out_nr
 
 static void process_page2(uint16_t page_number)
 {
-  int p = 0, s, i, j;
+  int p = 0, s, i, j, counter;
+  uint16_t *c, *lastchar;
+  color_t foreground_color, background_color;
   bool page_empty = TRUE;
   int page_nr = hex2dec(page_number);
   teletext_page_t *page = (teletext_page_t*) &page_buffer_in[MAGAZINE(page_number)-1];
@@ -670,11 +688,64 @@ static void process_page2(uint16_t page_number)
   // Check for empty / Remove control chars
   for (i = 1; i < 25; i++)
   {
+    foreground_color = COLOR_WHITE;
+    background_color = COLOR_BLACK;
+    counter = 0;
+    lastchar = NULL;
     for (j = 0; j < 40; j++)
     {
-      if(page->text[i][j] > 0x20) { page_empty = FALSE; /*line_empty = FALSE;*/ break; }
-//      else if(page->text[i][j] != ' ') page->text[i][j] = ' ';
+      c = &page->text[i][j];
+      if (*c <= 0x20)
+      {
+        if (*c == 0 && j == 0)
+        {
+          foreground_color = COLOR_BLACK;
+          *c = ' ';
+          counter = 1;
+          lastchar = c;
+        }
+        else if ((*c <= 0x07) && (foreground_color != (color_t) *c))
+        {
+          foreground_color = (color_t) *c;
+          *c = (uint16_t) TTXT_COLORSYMBOLS[0][foreground_color];
+          if(counter == 2)  *(c-2) = ' ';
+          if(lastchar)  *lastchar = ' ';
+          counter = 1;
+          lastchar = c;
+        }
+        else if ((*c >= 0x10 && *c <= 0x17) && (foreground_color != (color_t) (*c - 0x10)))
+        {
+          foreground_color = (color_t) (*c - 0x10);
+          *c = (uint16_t) TTXT_COLORSYMBOLS[0][foreground_color];
+          if(counter == 2)   *(c-2) = ' ';
+          if(lastchar)  *lastchar = ' ';
+          counter = 1;
+          lastchar = c;
+        }
+        else if (*c == 0x1c && background_color != COLOR_BLACK)
+        {
+          *c = (uint16_t) TTXT_COLORSYMBOLS[1][COLOR_BLACK];
+          if(counter == 1) counter = 2;
+        }
+        else if (*c == 0x1d)
+        {
+          *c = (uint16_t) TTXT_COLORSYMBOLS[1][foreground_color];
+          if(counter == 1) counter = 2;
+        }
+        else
+        {
+          *c = ' ';
+          counter = 0;
+        }
+      }
+      else // if (*c > 0x20)
+      {
+        page_empty = FALSE;  // break;
+        counter = 0;
+        lastchar = NULL;
+      }
     }
+    if(lastchar) *lastchar = ' ';
   }
   if(!page_nr || page_nr < 100 || page_nr > 899 || page_empty) return;
 
@@ -740,7 +811,8 @@ static void process_page2(uint16_t page_number)
         }
 
         // ref und new stimmen �berein
-        if ((nr_unique_new > nr_unique_ref + 40) || ((nr_missing_new < nr_missing_ref) && (nr_unique_new + 10 >= nr_unique_ref)) || ((nr_unique_new > nr_unique_ref) && (nr_missing_new == nr_missing_ref)))  p = s;
+        if ((nr_unique_new > nr_unique_ref + 40) || ((nr_missing_new < nr_missing_ref) && (nr_unique_new + 10 >= nr_unique_ref)) || ((nr_unique_new > nr_unique_ref) && (nr_missing_new == nr_missing_ref)) || ExtractAllOverwrite)
+          p = s;
         else  p = -1;
         break;
       }
@@ -836,7 +908,12 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
         }
         if ((unham_8_4(packet->data[7]) & 0x01) == TRANSMISSION_MODE_PARALLEL)
           for (i = 0; i < 8; i++)
+          {
             page_buffer_in[i].receiving_data = NO;
+            memset(page_buffer_in[i].text, 0x00, sizeof((teletext_page_t*)NULL)->text);
+          }
+        else
+          memset(page_buffer_in[m-1].text, 0x00, sizeof((teletext_page_t*)NULL)->text);
       }
 
       // FIXME: Well, this is not ETS 300 706 kosher, however we are interested in DATA_UNIT_EBU_TELETEXT_SUBTITLE only
@@ -1213,7 +1290,7 @@ uint16_t process_pes_packet(uint8_t *buffer, uint16_t size)
     uint8_t data_unit_id = buffer[i++];
     uint8_t data_unit_len = buffer[i++];
 
-    if ((data_unit_id == DATA_UNIT_EBU_TELETEXT_NONSUBTITLE) || (data_unit_id == DATA_UNIT_EBU_TELETEXT_SUBTITLE)) {
+    if ((data_unit_id == DATA_UNIT_EBU_TELETEXT_NONSUBTITLE) || (data_unit_id == DATA_UNIT_EBU_TELETEXT_SUBTITLE) || (ExtractAllTeletext == 1)) {
       // teletext payload has always size 44 bytes
       if (data_unit_len == 44) {
         // reverse endianess (via lookup table), ETS 300 706, chapter 7.1
@@ -1234,7 +1311,6 @@ uint16_t process_pes_packet(uint8_t *buffer, uint16_t size)
 
 
 // ------------------------------------------------------------------------------------------------
-
 
 void SetTeletextBreak(bool NewInputFile, bool NewOutputFile, word SubtitlePage)
 {
@@ -1284,6 +1360,11 @@ void SetTeletextBreak(bool NewInputFile, bool NewOutputFile, word SubtitlePage)
           printf("  TTX: Warning! User page %03x conflicts with default page %03x.\n\n", config.page, pages[k]);  // only relevant for transmission_mode=PARALLEL
     }
   }
+}
+
+void TtxProcessor_SetOverwrite(bool DoOverwrite)
+{
+  ExtractAllOverwrite = DoOverwrite;
 }
 
 void TtxProcessor_Init(word SubtitlePage)

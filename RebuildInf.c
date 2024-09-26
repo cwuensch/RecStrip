@@ -359,16 +359,17 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
               {
                 ret = ret && (sscanf(&Buffer[c-10], "%2u.%2u.%4u", &day, &month, &year) == 3);
                 Buffer[c-11] = '\0';
-                strncpy(RecInf->ServiceInfo.ServiceName, Buffer, sizeof(RecInf->ServiceInfo.ServiceName) - 1);
+                StrToUTF8(RecInf->ServiceInfo.ServiceName, Buffer, sizeof(RecInf->ServiceInfo.ServiceName), 0);
                 printf("    ServiceName=%s\n", RecInf->ServiceInfo.ServiceName);
               }
               break;
             case 2:
               NameLen = (int) min(strlen(Buffer), sizeof(RecInf->EventInfo.EventNameDescription) - 1);
-              RecInf->EventInfo.EventNameLength = NameLen + 1;
-              strncpy(RecInf->EventInfo.EventNameDescription, Buffer, NameLen);
-              RecInf->EventInfo.EventNameDescription[NameLen] = '\0';
-              printf("    EventName = %s\n", Buffer);
+              StrToUTF8(RecInf->EventInfo.EventNameDescription, Buffer, 4096, 0);
+//              RecInf->EventInfo.EventNameDescription[NameLen] = '\0';
+              NameLen = (int)strlen(RecInf->EventInfo.EventNameDescription);
+              RecInf->EventInfo.EventNameLength = NameLen;
+              printf("    EventName = %s\n", RecInf->EventInfo.EventNameDescription);
               break;
             case 3:
               if (sscanf(Buffer, "%2u:%2u..%2u:%2u", &startH, &startM, &endH, &endM) == 4)
@@ -385,10 +386,10 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
               else i = 8;
               break;
             case 5:
-              if (NameLen < (int)sizeof(RecInf->EventInfo.EventNameDescription) - 1)
+              if (NameLen + 1 < (int)sizeof(RecInf->EventInfo.EventNameDescription))
               {
-                strncpy(&RecInf->EventInfo.EventNameDescription[NameLen + 1], Buffer, sizeof(RecInf->EventInfo.EventNameDescription) - NameLen - 2);
-                printf("    EventDesc = %s\n", Buffer);
+                StrToUTF8(&RecInf->EventInfo.EventNameDescription[NameLen], Buffer, sizeof(RecInf->EventInfo.EventNameDescription) - NameLen, 0);
+                printf("    EventDesc = %s\n", &RecInf->EventInfo.EventNameDescription[NameLen]);
               }
               break;
             case 7:
@@ -401,8 +402,8 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
                 return FALSE;
               }
               strcpy(ExtEPGText, Buffer);
-              strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, (int)sizeof(RecInf->ExtEventInfo.Text) - 1);
-              RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] = '\0';
+              StrToUTF8(RecInf->ExtEventInfo.Text, ExtEPGText, (int)sizeof(RecInf->ExtEventInfo.Text), 0);
+//              RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] = '\0';
               RecInf->ExtEventInfo.TextLength = (word)strlen(RecInf->ExtEventInfo.Text);
               printf("    EPGExtEvt = %s\n", ExtEPGText);
               break;
@@ -464,7 +465,7 @@ void InitInfStruct(TYPE_RecHeader_TMSS *RecInf)
   RecInf->ServiceInfo.AudioStreamType = 0xff;
   RecInf->ServiceInfo.AudioPID        = 0xfff;
   RecInf->ServiceInfo.AudioTypeFlag   = 3;  // unknown
-  strcpy(RecInf->ServiceInfo.ServiceName, "");  // "RecStrip"
+//  strcpy(RecInf->ServiceInfo.ServiceName, "RecStrip");
   TRACEEXIT;
 }
 
@@ -724,7 +725,8 @@ static bool AnalyseSDT(byte *PSBuffer, int BufSize, word ServiceID, TYPE_RecHead
   tTSSDT               *SDT = (tTSSDT*)PSBuffer;
   tTSService           *pService = NULL;
   tTSServiceDesc       *pServiceDesc = NULL;
-  int                   SectionLength, p;
+  int                   SectionLength, p, SvcLen;
+  char                 *Svc, tmp;
 
   TRACEENTER;
 
@@ -737,20 +739,26 @@ static bool AnalyseSDT(byte *PSBuffer, int BufSize, word ServiceID, TYPE_RecHead
     while (p + (int)sizeof(tTSService) <= SectionLength)
     {
       pService = (tTSService*) &PSBuffer[p];
-      pServiceDesc = (tTSServiceDesc*) &PSBuffer[p + sizeof(tTSService)];
+      p += sizeof(tTSService);
+      pServiceDesc = (tTSServiceDesc*) &PSBuffer[p];
       
       if (pServiceDesc->DescrTag==DESC_Service)
       {
         if ((pService->ServiceID1 * 256 | pService->ServiceID2) == ServiceID)
         {
-          memset(RecInf->ServiceInfo.ServiceName, 0, sizeof(RecInf->ServiceInfo.ServiceName));
-          strncpy(RecInf->ServiceInfo.ServiceName, (&pServiceDesc->ProviderName + pServiceDesc->ProviderNameLen+1), min((&pServiceDesc->ProviderNameLen)[pServiceDesc->ProviderNameLen+1], sizeof(RecInf->ServiceInfo.ServiceName)-1));
+//          memset(RecInf->ServiceInfo.ServiceName, 0, sizeof(RecInf->ServiceInfo.ServiceName));
+          Svc = &pServiceDesc->ProviderName + pServiceDesc->ProviderNameLen + 1;
+          SvcLen = min((&pServiceDesc->ProviderName)[pServiceDesc->ProviderNameLen], BufSize - p - 1);
+          tmp = (&pServiceDesc->ProviderName)[SvcLen];
+          Svc[SvcLen] = '\0';
+          StrToUTF8(RecInf->ServiceInfo.ServiceName, Svc, sizeof(RecInf->ServiceInfo.ServiceName), 0);
+          Svc[SvcLen] = tmp;
 printf("  TS: SvcName   = %s\n", RecInf->ServiceInfo.ServiceName);
           TRACEEXIT;
           return TRUE;
         }
       }
-      p += sizeof(tTSService) + (pService->DescriptorsLen1 * 256 | pService->DescriptorsLen2);
+      p += (pService->DescriptorsLen1 * 256 | pService->DescriptorsLen2);
     }
   }
   TRACEEXIT;
@@ -808,7 +816,8 @@ bool AnalyseEIT(byte *Buffer, int BufSize, word ServiceID, word *OutTransportID,
           if(Desc->DescrTag == DESC_EITShortEvent)
           {
             // Short Event Descriptor
-            byte        NameLen, TextLen;
+            int         NameLen, TextLen;
+            char       *Name, *Text, tmp;
             ShortDesc = (tShortEvtDesc*) Desc;
 
             OutEventInfo->ServiceID = ServiceID;
@@ -822,40 +831,79 @@ bool AnalyseEIT(byte *Buffer, int BufSize, word ServiceID, word *OutTransportID,
 printf("  TS: EvtStart  = %s (UTC)\n", TimeStrTF(OutEventInfo->StartTime, 0));
 printf("  TS: EvtDuration = %02d:%02d\n", OutEventInfo->DurationHour, OutEventInfo->DurationMin);
 
-            NameLen = ShortDesc->EvtNameLen;
-            TextLen = min((byte)Buffer[p + sizeof(tShortEvtDesc) + NameLen], (byte)(sizeof(OutEventInfo->EventNameDescription) - NameLen - 2));
-            OutEventInfo->EventNameLength = NameLen + 1;
-            strncpy(OutEventInfo->EventNameDescription, (char*)&Buffer[p + sizeof(tShortEvtDesc)], NameLen);
-            OutEventInfo->EventNameDescription[NameLen] = '\0';
+            Name = (char*)&Buffer[p + sizeof(tShortEvtDesc)];
+            NameLen = min(ShortDesc->EvtNameLen, BufSize - p - 1);
+            Text = (char*) &Buffer[p + sizeof(tShortEvtDesc) + NameLen + 1];
+            TextLen = min((byte) Buffer[p + sizeof(tShortEvtDesc) + NameLen], BufSize - p - 1);
+
+            tmp = Name[NameLen];
+            Name[NameLen] = '\0';
+            StrToUTF8(OutEventInfo->EventNameDescription, Name, sizeof(OutEventInfo->EventNameDescription), 0);
+            Name[NameLen] = tmp;
+
+            NameLen = (int)strlen(OutEventInfo->EventNameDescription);
+            OutEventInfo->EventNameLength = NameLen;
 printf("  TS: EventName = %s\n", OutEventInfo->EventNameDescription);
 
-            strncpy(&OutEventInfo->EventNameDescription[NameLen + 1], (char*)&Buffer[p + sizeof(tShortEvtDesc) + NameLen + 1], TextLen);
-            OutEventInfo->EventNameDescription[sizeof(OutEventInfo->EventNameDescription) - 1] = '\0';
-printf("  TS: EventDesc = %s\n", &OutEventInfo->EventNameDescription[NameLen + 1]);
-
-//            StrMkUTF8(OutRecInfEventInfo->EventNameAndDescription, 9);
+            tmp = Text[TextLen];
+            Text[TextLen] = '\0';
+            StrToUTF8(&OutEventInfo->EventNameDescription[NameLen], Text, sizeof(OutEventInfo->EventNameDescription) - NameLen, 0);
+            Text[TextLen] = tmp;
+printf("  TS: EventDesc = %s\n", &OutEventInfo->EventNameDescription[NameLen]);
           }
 
           else if(Desc->DescrTag == DESC_EITExtEvent)
           {
             // Extended Event Descriptor
+            byte        NameLen, TextLen, tmp, *s;
+            char       *Name, *Text;
+            int         i;
+
             ExtDesc = (tExtEvtDesc*) Desc;
             OutExtEventInfo->ServiceID = ServiceID;
 //            RecInf->ExtEventInfo.EventID = EventID;
-            if ((ExtEPGTextLen > 0) && ((byte)ExtDesc->ItemDesc < 0x20))
+
+            OutExtEventInfo->NrItemizedPairs = ExtDesc->ItemsLen;
+if (ExtDesc->ItemsLen > 0)
+  printf("  TS: Number of detected EPG Itemized Pairs: %d\n", OutExtEventInfo->NrItemizedPairs);
+
+            // EPG Text kopieren
+            s = (byte*) &ExtDesc->ItemDescLen;
+            for (i = 0; i < ExtDesc->ItemsLen; i++)
             {
-              if (ExtEPGTextLen < EPGBUFFERSIZE - 1)
-              {
-                strncpy(&ExtEPGText[ExtEPGTextLen], (&ExtDesc->ItemDesc) + 1, min(ExtDesc->ItemDescLen - 1, EPGBUFFERSIZE - ExtEPGTextLen - 1));
-                ExtEPGTextLen = min(ExtEPGTextLen + ExtDesc->ItemDescLen - 1, EPGBUFFERSIZE - 1);
-              }
+              NameLen = *(s++);  s += NameLen;
+              TextLen = *(s++);  s += TextLen;
             }
-            else
+            TextLen = *(s++);
+            tmp = s[TextLen];
+            s[TextLen] = '\0';
+            StrToUTF8(&ExtEPGText[ExtEPGTextLen], (char*) s, EPGBUFFERSIZE - ExtEPGTextLen, 0);
+            s[TextLen] = tmp;
+            ExtEPGTextLen += (int)strlen(&ExtEPGText[ExtEPGTextLen]);
+
+            // Itemized Strings kopieren
+            s = (byte*) &ExtDesc->ItemDescLen;
+            for (i = 0; i < ExtDesc->ItemsLen; i++)
             {
-              strncpy(&ExtEPGText[ExtEPGTextLen], &ExtDesc->ItemDesc, min(ExtDesc->ItemDescLen, EPGBUFFERSIZE - ExtEPGTextLen - 1));
-              ExtEPGTextLen = min(ExtEPGTextLen + ExtDesc->ItemDescLen, EPGBUFFERSIZE - 1);
+              NameLen = *(s++);
+              Name = (char*) s;
+              s += NameLen;
+              TextLen = *(s++);
+              Text = (char*) s;
+              s += TextLen;
+
+              snprintf (&ExtEPGText[ExtEPGTextLen], EPGBUFFERSIZE - ExtEPGTextLen, "\xC2\x8A");  ExtEPGTextLen += 2;
+              tmp = Name[NameLen];
+              Name[NameLen] = '\0';
+              StrToUTF8(&ExtEPGText[ExtEPGTextLen], Name, EPGBUFFERSIZE - ExtEPGTextLen, 0);  ExtEPGTextLen += (int)strlen(&ExtEPGText[ExtEPGTextLen]);
+              Name[NameLen] = tmp;
+
+              snprintf (&ExtEPGText[ExtEPGTextLen], EPGBUFFERSIZE - ExtEPGTextLen, ": ");        ExtEPGTextLen += 2;
+              tmp = Text[TextLen];
+              Text[TextLen] = '\0';
+              StrToUTF8(&ExtEPGText[ExtEPGTextLen], Text, EPGBUFFERSIZE - ExtEPGTextLen, 0);  ExtEPGTextLen += (int)strlen(&ExtEPGText[ExtEPGTextLen]);
+              Text[TextLen] = tmp;
             }
-            ExtEPGText[ExtEPGTextLen] = '\0';
           }
 
           DescriptorLoopLen -= (Desc->DescrLength + sizeof(tTSDesc));
@@ -868,12 +916,21 @@ printf("  TS: EPGExtEvt = %s\n", ExtEPGText);
 
         if (DoInfoOnly)
         {
-          char *c;
+          char *c, *d;
 
           // Ersetze eventuelles '\n', '\t' im Output
           for (c = ExtEPGText; *c != '\0'; c++)
           {
-            if (*c == '\n') *c = 0x8A;
+            if (*c == '\n')
+            {
+              *c = 0x8A;
+              if (ExtEPGTextLen < EPGBUFFERSIZE)
+              {
+                for(d = &ExtEPGText[ExtEPGTextLen]; d >= c; d--)  *(d+1) = *d;
+                *c = 0xC2;
+                ExtEPGTextLen++;
+              }
+            }
             if (*c == '\t') *c = ' ';
           }
         }
@@ -959,8 +1016,8 @@ static bool AnalyseTtx(byte *PSBuffer, int BufSize, bool AcceptTimeString, tPVRT
               {
                 if(ServiceName && !KeepHumaxSvcName)
                 {
-                  strncpy(ServiceName, programme, SvcNameLen-1);
-                  ServiceName[SvcNameLen-1] = '\0';
+                  StrToUTF8(ServiceName, programme, SvcNameLen, 0);
+//                  ServiceName[SvcNameLen-1] = '\0';
                 }
 printf("  TS: Teletext Programme Identification Data: '%s'\n", programme);
               }
@@ -1520,6 +1577,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       {
         int i;
         fseek(fMDIn, p, SEEK_SET);
+        TtxProcessor_SetOverwrite(TRUE);
 
         for (i = 0; i < 300; i++)
         {

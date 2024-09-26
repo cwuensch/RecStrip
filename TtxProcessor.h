@@ -31,6 +31,7 @@ char* TimeStr(time_t UnixTimeStamp);
 char* TimeStrTF(tPVRTime TFTimeStamp, byte TFTimeSec);
 char* TimeStr_DB(tPVRTime TFTimeStamp, byte TFTimeSec);
 void SetTeletextBreak(bool NewInputFile, bool NewOutputFile, word SubtitlePage);
+void TtxProcessor_SetOverwrite(bool DoOverwrite);
 void TtxProcessor_Init(word SubtitlePage);
 bool LoadTeletextOut(const char* AbsOutFile);
 void ProcessTtxPacket(tTSPacket *Packet, long long FilePos);
