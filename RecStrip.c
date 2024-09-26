@@ -2713,6 +2713,7 @@ int main(int argc, const char* argv[])
             Percent = (100 * curInputFile / NrInputFiles) + ((100 * CurPosBlocks) / (RecFileBlocks * NrInputFiles));
             CurBlockBytes = 0;
             BlocksSincePercent = 0;
+            if(ExtractAllTeletext) TtxProcessor_SetOverwrite((Percent > 25) && (Percent <= 80));
           }
           else
           {
@@ -2937,7 +2938,7 @@ int main(int argc, const char* argv[])
           if (CurPID == TeletextPID)
           {
             // Extract Teletext Subtitles
-            if (ExtractTeletext /*&& fTtxOut*/)
+            if (ExtractTeletext /*&& fTtxOut*/ || ExtractAllTeletext == 1)
               ProcessTtxPacket((tTSPacket*) &Buffer[4]);
 
             // Remove Teletext packets
@@ -3339,6 +3340,11 @@ int main(int argc, const char* argv[])
         {
           Percent++;
           BlocksSincePercent = 0;
+          if (ExtractAllTeletext)
+          {
+            if(Percent == 25) TtxProcessor_SetOverwrite(TRUE);
+            else if(Percent == 80) TtxProcessor_SetOverwrite(FALSE);
+          }
           fprintf(stderr, "%3u %%\r", Percent);
         }
       }

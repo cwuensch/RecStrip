@@ -1577,6 +1577,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       {
         int i;
         fseek(fMDIn, p, SEEK_SET);
+        TtxProcessor_SetOverwrite(TRUE);
 
         for (i = 0; i < 300; i++)
         {
