@@ -985,7 +985,7 @@ hidden_mode = NO;
         {
           if (cur_page_buffer->text[y][i] == 0x00)
             cur_page_buffer->text[y][i] = telx_to_ucs2(packet->data[i]);
-          if ((cur_page_buffer->text[y][i] > ' ') && (cur_page_buffer->text[y][i] < 0x2588))
+          if (cur_page_buffer->text[y][i] > ' ')
             line_empty = FALSE;
         }
         if(line_empty)  // CW: line_empty eher unnötig - eingeführt, um Wiederholung von Untertiteln vermeiden zu können
@@ -1418,8 +1418,7 @@ bool WriteAllTeletext(char *AbsOutFile)
   int p, s, i, j, col_stop;
   uint16_t *c, *last_coltag;
   color_t foreground_color, background_color;
-//  bool hold_mosaic = FALSE;
-  bool ret = TRUE;
+  bool hold_mosaic = FALSE, ret = TRUE;
   FILE *f = fopen(AbsOutFile, "wb");
   if(!f) return FALSE;
 
@@ -1435,7 +1434,7 @@ bool WriteAllTeletext(char *AbsOutFile)
       if (page_map[p].subpages[s] >= 0)
         for (i = 1; i < 25 && empty_page; i++)
           for (j = 0; j < 40; j++)
-            if((page->text[i][j] > 0x20) && (page->text[i][j] < 0x2588))  { empty_page = FALSE; break; }
+            if(page->text[i][j] > 0x20)  { empty_page = FALSE; break; }
       if(!empty_page) nr_subpages++;
     }
 
@@ -1447,7 +1446,7 @@ bool WriteAllTeletext(char *AbsOutFile)
       if (page_map[p].subpages[s] >= 0)
         for (i = 0; i < 25 && empty_page; i++)
           for (j = 0; j < 40; j++)
-            if((page->text[i][j] > 0x20) && (page->text[i][j] < 0x2588))  { empty_page = FALSE; break; }
+            if(page->text[i][j] > 0x20)  { empty_page = FALSE; break; }
       if(empty_page) continue;
 
       fprintf(f, "----------------------------------------\r\n");
@@ -1457,7 +1456,7 @@ bool WriteAllTeletext(char *AbsOutFile)
       {
         foreground_color = COLOR_WHITE;
         background_color = COLOR_BLACK;
-//        hold_mosaic = FALSE;
+        hold_mosaic = FALSE;
         last_coltag = NULL;
 
         // Steuerzeichen entfernen
@@ -1472,18 +1471,18 @@ bool WriteAllTeletext(char *AbsOutFile)
               *c = ' ';
               last_coltag = c;
             }
-            else if ((*c <= 0x07) && (/*hold_mosaic ||*/ (foreground_color != (color_t) *c)))
+            else if ((*c <= 0x07) && (hold_mosaic || (foreground_color != (color_t) *c)))
             {
               foreground_color = (color_t) *c;
               *c = (uint16_t) TTXT_COLORSYMBOLS[0][foreground_color];
-              if(last_coltag /*&& !hold_mosaic*/)  *last_coltag = ' ';
+              if(last_coltag && !hold_mosaic)  *last_coltag = ' ';
               last_coltag = c;
             }
-            else if ((*c >= 0x10 && *c <= 0x17) && (/*hold_mosaic ||*/ (foreground_color != (color_t) (*c - 0x10))))
+            else if ((*c >= 0x10 && *c <= 0x17) && (hold_mosaic || (foreground_color != (color_t) (*c - 0x10))))
             {
               foreground_color = (color_t) (*c - 0x10);
               *c = (uint16_t) TTXT_COLORSYMBOLS[0][foreground_color];
-              if(last_coltag /*&& !hold_mosaic*/)  *last_coltag = ' ';
+              if(last_coltag && !hold_mosaic)  *last_coltag = ' ';
               last_coltag = c;
             }
             else if (*c == 0x1c && (background_color != COLOR_BLACK))
@@ -1496,7 +1495,7 @@ bool WriteAllTeletext(char *AbsOutFile)
               background_color = foreground_color;
               *c = (uint16_t) TTXT_COLORSYMBOLS[1][foreground_color];
             }
-/*            else if (*c == 0x1e)
+            else if (*c == 0x1e)
             {
               *c = 0x25c6;  // hold mosaic
               hold_mosaic = TRUE;
@@ -1507,21 +1506,19 @@ bool WriteAllTeletext(char *AbsOutFile)
               *c = 0x25c7;  // release mosaic
               hold_mosaic = FALSE;
               last_coltag = NULL;
-            } */
+            }
             else
               *c = ' ';
           }
-          else if (((*c >= 0x2588) && (*c <= 0x2590)) || (*c >= 0xfb00))  // CW: hier ASCII-Art entfernen
-            *c = ' ';
           else
             last_coltag = NULL;
         }
-        if(last_coltag /*&& !hold_mosaic*/) *last_coltag = ' ';
+        if(last_coltag && !hold_mosaic) *last_coltag = ' ';
 
         // Ende der Zeile ermitteln
         col_stop = 0;
         for (j = 39; j >= 0; j--)
-          if((page->text[i][j] > 0x20) && (page->text[i][j] < 0x2588))
+          if(page->text[i][j] > 0x20)
           {
             col_stop = j + 1;
             break;
