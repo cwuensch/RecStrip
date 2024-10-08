@@ -101,6 +101,8 @@ def replace_colors(line, colorize_output):
       line[i] = last_c if (hold_mosaic) else ' '
     elif (ord(c) >= 0x2588):
       last_c = c
+    elif (c.isalpha() and c != 'm'):
+      last_c = ' ' 
 
   return("".join(line))
 

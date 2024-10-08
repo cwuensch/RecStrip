@@ -418,7 +418,7 @@ char* TimeStr_DB(tPVRTime TFTimeStamp, byte TFTimeSec)
 }
 
 // UCS-2 (16 bits) to UTF-8 (Unicode Normalization Form C (NFC)) conversion
-int ucs2_to_utf8(char *r, uint16_t ch)
+int ucs2_to_utf8(char *r, uint32_t ch)
 {
   if (ch < 0x80) {
     r[0] = ch & 0x7f;
@@ -434,12 +434,19 @@ int ucs2_to_utf8(char *r, uint16_t ch)
     r[3] = 0;
     return 2;
   }
-  else {
+  else if (ch < 0x10000) {
     r[0] = (ch >> 12) | 0xe0;
     r[1] = ((ch >> 6) & 0x3f) | 0x80;
     r[2] = (ch & 0x3f) | 0x80;
     r[3] = 0;
     return 3;
+  }
+  else {
+    r[0] = (ch >> 18) | 0xf0;
+    r[1] = ((ch >> 12) & 0x3f) | 0x80;
+    r[2] = ((ch >>  6) & 0x3f) | 0x80;
+    r[3] = (ch & 0x3f) | 0x80;
+	return 4;
   }
 }
 
@@ -560,10 +567,10 @@ static void process_page(teletext_page_t *page, uint16_t page_number, int out_nr
     if (col_stop > 39) continue;
 
     // line is corrupted
-    for (col = col_start; col <= col_stop; col++)
+/*    for (col = col_start; col <= col_stop; col++)
       if (page->last_text[row][col] == 0x2588)
         { line_is_empty = YES; break; }
-    if (line_is_empty) continue;
+    if (line_is_empty) continue; */
 
     // print timestamps, (only) if a non-empty line exists
     if (!first_line_written)
@@ -658,6 +665,7 @@ static void process_page(teletext_page_t *page, uint16_t page_number, int out_nr
 
         if (v >= 0x20) {
           char u[4] = { 0, 0, 0, 0 };
+          if(v >= 0x2588) v = 0x20;
           ucs2_to_utf8(u, v);
           fprintf(fOut, "%s", u);
         }
@@ -682,78 +690,18 @@ static void process_page(teletext_page_t *page, uint16_t page_number, int out_nr
 
 static void process_page2(uint16_t page_number)
 {
-  int p = 0, s, i, j, counter;
-  uint16_t *c, *lastchar;
-  color_t foreground_color, background_color;
+  int p = 0, s, i, j;
   bool page_empty = TRUE;
   int page_nr = hex2dec(page_number);
   teletext_page_t *page = (teletext_page_t*) &page_buffer_in[MAGAZINE(page_number)-1];
   if (MAGAZINE(page_number) <= 0) return;
 
-  // Check for empty / Remove control chars
-  for (i = 0; i < 25; i++)
-  {
-    foreground_color = COLOR_WHITE;
-    background_color = COLOR_BLACK;
-    counter = 0;
-    lastchar = NULL;
+  // Check for empty
+  for (i = 1; i < 25 && page_empty; i++)
     for (j = 0; j < 40; j++)
-    {
-      c = &page->text[i][j];
-      if (*c <= 0x20)
-      {
-        if (*c == 0 && j == 0)
-        {
-          foreground_color = COLOR_BLACK;
-          *c = ' ';
-          counter = 1;
-          lastchar = c;
-        }
-        else if ((*c <= 0x07) && (foreground_color != (color_t) *c))
-        {
-          foreground_color = (color_t) *c;
-          *c = (uint16_t) TTXT_COLORSYMBOLS[0][foreground_color];
-          if(counter == 2)  *(c-2) = ' ';
-          if(lastchar)  *lastchar = ' ';
-          counter = 1;
-          lastchar = c;
-        }
-        else if ((*c >= 0x10 && *c <= 0x17) && (foreground_color != (color_t) (*c - 0x10)))
-        {
-          foreground_color = (color_t) (*c - 0x10);
-          *c = (uint16_t) TTXT_COLORSYMBOLS[0][foreground_color];
-          if(counter == 2)   *(c-2) = ' ';
-          if(lastchar)  *lastchar = ' ';
-          counter = 1;
-          lastchar = c;
-        }
-        else if (*c == 0x1c && (background_color != COLOR_BLACK))
-        {
-          background_color = COLOR_BLACK;
-          *c = (uint16_t) TTXT_COLORSYMBOLS[1][COLOR_BLACK];
-          if(counter == 1) counter = 2;
-        }
-        else if (*c == 0x1d)
-        {
-          background_color = foreground_color;
-          *c = (uint16_t) TTXT_COLORSYMBOLS[1][foreground_color];
-          if(counter == 1) counter = 2;
-        }
-        else
-        {
-          *c = ' ';
-          counter = 0;
-        }
-      }
-      else if (*c != 0x2588)
-      {
-        if(i >= 1) page_empty = FALSE;  // break;
-        counter = 0;
-        lastchar = NULL;
-      }
-    }
-    if(lastchar) *lastchar = ' ';
-  }
+      if ((page->text[i][j] > 0x20) && (page->text[i][j] != 0x2588))
+        { page_empty = FALSE; break; }
+
   if(!page_nr || page_nr < 100 || page_nr > 899 || page_empty) return;
 
   // Find subpage from subcode
@@ -1037,7 +985,7 @@ hidden_mode = NO;
         {
           if (cur_page_buffer->text[y][i] == 0x00)
             cur_page_buffer->text[y][i] = telx_to_ucs2(packet->data[i]);
-          if ((cur_page_buffer->text[y][i] > ' ') && (cur_page_buffer->text[y][i] != 0x2588))
+          if ((cur_page_buffer->text[y][i] > ' ') && (cur_page_buffer->text[y][i] < 0x2588))
             line_empty = FALSE;
         }
         if(line_empty)  // CW: line_empty eher unnötig - eingeführt, um Wiederholung von Untertiteln vermeiden zu können
@@ -1158,7 +1106,6 @@ hidden_mode = NO;
     if (states.programme_info_processed == NO) {
       // ETS 300 706, chapter 9.8.1: Packet 8/30 Format 1
       if (unham_8_4(packet->data[0]) < 2) {
-        uint8_t i;
         uint32_t t;
         time_t t0;
 
@@ -1468,7 +1415,10 @@ void ProcessTtxPacket(tTSPacket *Packet)
 bool WriteAllTeletext(char *AbsOutFile)
 {
   uint16_t line[41];
-  int p, s, i, j;
+  int p, s, i, j, col_stop;
+  uint16_t *c, *last_coltag;
+  color_t foreground_color, background_color;
+//  bool hold_mosaic = FALSE;
   bool ret = TRUE;
   FILE *f = fopen(AbsOutFile, "wb");
   if(!f) return FALSE;
@@ -1485,7 +1435,7 @@ bool WriteAllTeletext(char *AbsOutFile)
       if (page_map[p].subpages[s] >= 0)
         for (i = 1; i < 25 && empty_page; i++)
           for (j = 0; j < 40; j++)
-            if((page->text[i][j] > 0x20) && (page->text[i][j] != 0x2588))  { empty_page = FALSE; break; }
+            if((page->text[i][j] > 0x20) && (page->text[i][j] < 0x2588))  { empty_page = FALSE; break; }
       if(!empty_page) nr_subpages++;
     }
 
@@ -1497,7 +1447,7 @@ bool WriteAllTeletext(char *AbsOutFile)
       if (page_map[p].subpages[s] >= 0)
         for (i = 0; i < 25 && empty_page; i++)
           for (j = 0; j < 40; j++)
-            if((page->text[i][j] > 0x20) && (page->text[i][j] != 0x2588))  { empty_page = FALSE; break; }
+            if((page->text[i][j] > 0x20) && (page->text[i][j] < 0x2588))  { empty_page = FALSE; break; }
       if(empty_page) continue;
 
       fprintf(f, "----------------------------------------\r\n");
@@ -1505,10 +1455,73 @@ bool WriteAllTeletext(char *AbsOutFile)
 
       for (i = 0; i < 24; i++)
       {
+        foreground_color = COLOR_WHITE;
+        background_color = COLOR_BLACK;
+//        hold_mosaic = FALSE;
+        last_coltag = NULL;
+
+        // Steuerzeichen entfernen
+        for (j = 0; j < 40; j++)
+        {
+          c = &page->text[i][j];
+          if (*c <= 0x20)
+          {
+            if (*c == 0 && j == 0)
+            {
+              foreground_color = COLOR_BLACK;
+              *c = ' ';
+              last_coltag = c;
+            }
+            else if ((*c <= 0x07) && (/*hold_mosaic ||*/ (foreground_color != (color_t) *c)))
+            {
+              foreground_color = (color_t) *c;
+              *c = (uint16_t) TTXT_COLORSYMBOLS[0][foreground_color];
+              if(last_coltag /*&& !hold_mosaic*/)  *last_coltag = ' ';
+              last_coltag = c;
+            }
+            else if ((*c >= 0x10 && *c <= 0x17) && (/*hold_mosaic ||*/ (foreground_color != (color_t) (*c - 0x10))))
+            {
+              foreground_color = (color_t) (*c - 0x10);
+              *c = (uint16_t) TTXT_COLORSYMBOLS[0][foreground_color];
+              if(last_coltag /*&& !hold_mosaic*/)  *last_coltag = ' ';
+              last_coltag = c;
+            }
+            else if (*c == 0x1c && (background_color != COLOR_BLACK))
+            {
+              background_color = COLOR_BLACK;
+              *c = (uint16_t) TTXT_COLORSYMBOLS[1][COLOR_BLACK];
+            }
+            else if (*c == 0x1d && (background_color != foreground_color))
+            {
+              background_color = foreground_color;
+              *c = (uint16_t) TTXT_COLORSYMBOLS[1][foreground_color];
+            }
+/*            else if (*c == 0x1e)
+            {
+              *c = 0x25c6;  // hold mosaic
+              hold_mosaic = TRUE;
+              last_coltag = NULL;
+            }
+            else if (*c == 0x1f)
+            {
+              *c = 0x25c7;  // release mosaic
+              hold_mosaic = FALSE;
+              last_coltag = NULL;
+            } */
+            else
+              *c = ' ';
+          }
+          else if (((*c >= 0x2588) && (*c <= 0x2590)) || (*c >= 0xfb00))  // CW: hier ASCII-Art entfernen
+            *c = ' ';
+          else
+            last_coltag = NULL;
+        }
+        if(last_coltag /*&& !hold_mosaic*/) *last_coltag = ' ';
+
         // Ende der Zeile ermitteln
-        int col_stop = 0;
+        col_stop = 0;
         for (j = 39; j >= 0; j--)
-          if((page->text[i][j] > 0x20) && (page->text[i][j] != 0x2588))
+          if((page->text[i][j] > 0x20) && (page->text[i][j] < 0x2588))
           {
             col_stop = j + 1;
             break;
@@ -1518,9 +1531,11 @@ bool WriteAllTeletext(char *AbsOutFile)
         // Zeile ausgeben
         for (j = 0; j < col_stop; j++)
         {
-          char u[4] = { 0, 0, 0, 0 };
+          char u[5] = { 0, 0, 0, 0, 0 };
 
-          if(page->text[i][j] >= 0x20)
+          if((page->text[i][j] & 0xff00) == 0xfb00)
+            ucs2_to_utf8(u, 0x10000 + page->text[i][j]);
+          else if(page->text[i][j] >= 0x20)
             ucs2_to_utf8(u, page->text[i][j]);
           else
             { u[0] = ' '; u[1] = '\0'; }

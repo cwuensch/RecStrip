@@ -36,7 +36,7 @@ void TtxProcessor_Init(word SubtitlePage);
 bool LoadTeletextOut(const char* AbsOutFile);
 void ProcessTtxPacket(tTSPacket *Packet);
 word telx_to_ucs2(byte c);
-int  ucs2_to_utf8(char *r, word ch);
+int  ucs2_to_utf8(char *r, dword ch);
 //void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payload_t *packet, uint32_t timestamp);
 uint16_t process_pes_packet(byte *buffer, word size);
 bool WriteAllTeletext(char *AbsOutFile);
