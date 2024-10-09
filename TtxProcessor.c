@@ -418,25 +418,28 @@ char* TimeStr_DB(tPVRTime TFTimeStamp, byte TFTimeSec)
 }
 
 // UCS-2 (16 bits) to UTF-8 (Unicode Normalization Form C (NFC)) conversion
-void ucs2_to_utf8(char *r, uint16_t ch)
+int ucs2_to_utf8(char *r, uint16_t ch)
 {
   if (ch < 0x80) {
     r[0] = ch & 0x7f;
     r[1] = 0;
     r[2] = 0;
     r[3] = 0;
+    return 1;
   }
   else if (ch < 0x800) {
     r[0] = (ch >> 6) | 0xc0;
     r[1] = (ch & 0x3f) | 0x80;
     r[2] = 0;
     r[3] = 0;
+    return 2;
   }
   else {
     r[0] = (ch >> 12) | 0xe0;
     r[1] = ((ch >> 6) & 0x3f) | 0x80;
     r[2] = (ch & 0x3f) | 0x80;
     r[3] = 0;
+    return 3;
   }
 }
 
@@ -1159,7 +1162,7 @@ hidden_mode = NO;
         uint32_t t;
         time_t t0;
 
-//        printf("  TTX: Programme Identification Data = ");
+/*        printf("  TTX: Programme Identification Data = ");
         for (i = 20; i < 40; i++) {
           char u[4] = { 0, 0, 0, 0 };
           uint16_t c = telx_to_ucs2(packet->data[i]);
@@ -1167,9 +1170,9 @@ hidden_mode = NO;
           if (c < 0x20) continue;
 
           ucs2_to_utf8(u, c);
-//          printf("%s", u);
+          printf("%s", u);
         }
-//        printf("\n");
+        printf("\n"); */
 
         // OMG! ETS 300 706 stores timestamp in 7 bytes in Modified Julian Day in BCD format + HH:MM:SS in BCD format
         // + timezone as 5-bit count of half-hours from GMT with 1-bit sign

@@ -985,7 +985,7 @@ static bool AnalyseTtx(byte *PSBuffer, int BufSize, bool AcceptTimeString, tPVRT
 
           if ((magazin == 8 && row == 30 && data_block[1] == 0xA8) || (AcceptTimeString && magazin < 8 && row == 0))
           {
-            int i;
+            int i, len = 0;
             byte packet_format = hamming_decode_rev(data_block[0]) & 0x0e;
 
             if (packet_format <= 2)
@@ -1001,13 +1001,13 @@ static bool AnalyseTtx(byte *PSBuffer, int BufSize, bool AcceptTimeString, tPVRT
 */
               // Programme Identification
               programme[0] = '\0';
-              for (i = 20; i < 40; i++)
+              for (i = 20; i < 40 && len+3 < sizeof(programme); i++)
               {
                 char u[4] = { 0, 0, 0, 0 };
                 word c = telx_to_ucs2(byte_reverse(data_block[i]));
                 // strip any control codes from PID, eg. TVP station
                 if (c < 0x20) continue;
-                ucs2_to_utf8(u, c);
+                len += ucs2_to_utf8(u, c);
                 strcat(programme, u);
               }
               rtrim(programme);
@@ -1953,7 +1953,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               LastEITBuffer = EITBuffer.ValidBuffer;
             }
           }
-          if ((TtxFound <= 1 || TtxOK <= 1 || ExtractAllTeletext >= 2) && (TeletextPID != 0xffff) && (curPID == TeletextPID))
+          if ((!TtxOK || TtxOK < TtxFound || (TtxOK < 2 && i < 56) || ExtractAllTeletext >= 2) && (TeletextPID != 0xffff) && (curPID == TeletextPID))
           {
             PSBuffer_ProcessTSPacket(&TtxBuffer, curPacket);
             if (TtxBuffer.ValidBuffer != LastTtxBuffer)
@@ -2040,7 +2040,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             }
           }
 
-          if(((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT)                    || (EITOK && (SDTOK || (!RebuildInf && !DoInfFix)))) && (TtxOK>=2 || ((PMTPID || EycosSource) && TeletextPID == 0xffff)) && ((PMTPID && (!HumaxSource && !EycosSource)) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK) && (ExtractAllTeletext <= 1 || TeletextPID==(word)-1))
+          if(((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT)                    || (EITOK && (SDTOK || (!RebuildInf && !DoInfFix)))) && (TtxOK>=2 ||                    ((PMTPID || EycosSource) && TeletextPID == 0xffff)) && ((PMTPID && (!HumaxSource && !EycosSource)) || AudOK>=3)                          && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK) && (ExtractAllTeletext <= 1 || TeletextPID==(word)-1))
             break;
           p += PACKETSIZE;
         }
@@ -2051,7 +2051,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0) && AllPidsScanned; k++)
             if (!AudioPIDs[k].scanned) AllPidsScanned = FALSE;
         }
-        if( ((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT) || (AllPidsScanned) || (EITOK && (SDTOK || (!RebuildInf && !DoInfFix)))) && (TtxOK>=2 || ((PMTPID || EycosSource) && TeletextPID == 0xffff)) && ((PMTPID && (!HumaxSource && !EycosSource)) || AudOK>=3) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
+        if( ((PMTatStart && !RebuildInf && !DoInfoOnly && !DoInfFix && !DoFixPMT) || (AllPidsScanned) || (EITOK && (SDTOK || (!RebuildInf && !DoInfFix)))) && (TtxOK>=2 || (TtxOK && i>56) || ((PMTPID || EycosSource) && TeletextPID == 0xffff)) && ((PMTPID && (!HumaxSource && !EycosSource)) || AudOK>=3 || (HumaxSource && i>56)) && ((PMTPID && !DoInfoOnly && !DoFixPMT) || VidOK))
         {
           if (ExtractAllTeletext <= 1 || TeletextPID==(word)-1)
           {
@@ -2060,10 +2060,13 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           }
           else if (ExtractAllTeletext == 2)
           {
-            fseeko64(fIn, 0 + Offset, SEEK_SET);
-            PSBuffer_DropCurBuffer(&TtxBuffer);
             ExtractAllTeletext++;
-            continue;
+            if (RecFileSize < 2 * NrIterations * PACKETSIZE * 168)
+            {
+              fseeko64(fIn, 0 + Offset, SEEK_SET);
+              PSBuffer_DropCurBuffer(&TtxBuffer);
+              continue;
+            }
           }
         }
         if(HumaxSource)
