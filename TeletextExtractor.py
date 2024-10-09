@@ -12,6 +12,11 @@ except ImportError:
     import termios
     import tty
 
+colors = {
+  '●':30, '◐':31, '◑':32, '◒':33, '◓':34, '◔':35, '◕':36, '○':37,
+  '▣':40, '▤':41, '▥':42, '▦':43, '▧':44, '▨':45, '▩':46, '□':47
+}
+
 def getch():
   """
   Read a key press and return the result. Nothing is echoed to the console.
@@ -63,18 +68,41 @@ def mytrim2(line):
   return(line)
 
 def mytrim(line):
+  line = list(line)
+  for i, c in enumerate(line):
+    if (c < ' ' or c >= '█'):
+      line[i] = ' '
+  line = "".join(line)
+
   while (len(line) > 0 and line[0] in "█ "):
     line = line[1:]
   while (len(line) >= 1 and line[-1] in "█ "):
     line = line[:-1]
-  line = list(line)
-  for i, c in enumerate(line):
-    if (c < ' '):
-      line[i] = ' '
-  line = "".join(line)
 #  line = str.lstrip(line)
 #  line = str.rstrip(line)
   return(line)
+
+def replace_colors(line, colorize_output):
+  hold_mosaic = False
+  last_c = ' '
+
+  if (colorize_output):
+    for old, new in colors.items():
+      line = line.replace(old, "%s\033[%dm%s" % ((old if (new<40) else ''), new, (old if (new>=40) else ''))) + "\033[0m"
+
+  line = list(line)
+  for i, c in enumerate(line):
+    if (c == '◆'):
+      hold_mosaic = True
+    elif (c == '◇'):
+      hold_mosaic = False
+
+    if (c in colors.keys() or c in "◆◇"):
+      line[i] = last_c if (hold_mosaic) else ' '
+    elif (ord(c) >= 0x2588):
+      last_c = c
+
+  return("".join(line))
 
 # Funktion zur Text-Extraktion einer Teletext-Seite
 def extract_text(page):
@@ -83,24 +111,21 @@ def extract_text(page):
   line_buf = ""
 
   # 1. Schritt: Zeilen trimmen, tokenisieren und von Navigations-Zeilen befreien
-  i = 0
-  while (i < len(page)):
-    line = mytrim(page[i])
+  for i, line in enumerate(page):
     line = line.replace("  VPS  ", " VPS ")
 #    line = line.replace(" bis ", "  bis ")
     line = line.replace("tag  ", "tag, ")
     line = line.replace("woch  ", "woch, ")
 
-    if (i > 1 and "  " in line):
-      parts = line.split("  ")
-      for part in parts:
+    if (i >= 2 and ("●" in line or "◐" in line or "◑" in line or "◒" in line or "◓" in line or "◔" in line or "◕" in line or "○" in line)):
+      parts = re.split("●|◐|◑|◒|◓|◔|◕|○", line)
+      for nr, part in enumerate(parts):
         part = mytrim(part)
         if (len(part) > 0):
-          if (not re.search("(\.\.\.)|(>>?) ?\d{3}", part) and not re.search("^ *\d{3} ?<<?", part) and not ("Übersicht" in line and len(line) <= 13)):
-            trimmed_page.append(part)
+          if (not re.search("((\.\.\.)|(>>?)) ?\d{3}", line) and not re.search("^ *\d{3} ?<<?", line) and not ("VPS" in part and len(part) <= 10) and not ("Übersicht" in line and len(line) <= 13)):
+            trimmed_page.append(("!" if (nr % 2 > 0) else "") + part)
     else:
-      trimmed_page.append(line)
-    i = i + 1
+      trimmed_page.append(mytrim(line))
 
   # 2. Schritt: Zeilenumbrüche entfernen und getrennte Wörter zusammensetzen
   i = 0
@@ -109,6 +134,7 @@ def extract_text(page):
     line = trimmed_page[i]
     next_line = trimmed_page[i+1] if (i+1 < len(trimmed_page)) else ""
     getrennt = False
+    same_col = True
 
     if (len(line) > 1 and (line != ">> ")):
       if (line[-1] == " "):
@@ -122,9 +148,15 @@ def extract_text(page):
       if (len(line_buf) > 1 and not textstart):
         out_page.append("")
         textstart = True
+
+      if (line and line_buf and (line[0] == "!") and (line_buf[0] == "!")):
+        line = line[1:]
       line_buf = line_buf + line
 
-      if (((len(line) <= 20) or (len(next_line) <= 1) or (len(next_line.split(" ")[0]) < 38-len(line)) or not any(map(str.islower, line)) or "16:9" in next_line) and not getrennt):
+      if (line_buf and next_line):
+        same_col = ((line_buf[0] == "!" and next_line[0] == "!") or (line_buf[0] != "!" and next_line[0] != "!"))
+
+      if (not getrennt and (i <= 2 or not same_col or (len(line) <= 20) or (len(next_line) <= 1) or (len(next_line.split(" ")[0]) < 38-len(line)) or not any(map(str.islower, line)) or "16:9" in next_line)):
         out_page.append(line_buf)
         line_buf = ""
     i = i + 1
@@ -136,9 +168,10 @@ def extract_text(page):
   titel = ""
   subtitel = ""
 
-  datum = mytrim(out_page[1][-18:-9])
-  zeit = mytrim(out_page[1][-9:-1])
-  out_page[0] = "[NOW]   " + datum + ", " + zeit
+  datum = ""  # mytrim(out_page[1][-18:-9])
+  zeit = ""   # mytrim(out_page[1][-9:-1])
+
+  out_page[0] = "[NOW]   " + mytrim(out_page[1][-18:-9]) + ", " + mytrim(out_page[1][-9:-1])
 
   sender = mytrim(out_page[1][12:-18])
   out_page[1] = "[SENDR] " + sender
@@ -164,7 +197,7 @@ def extract_text(page):
       if (sender == ""):
         sender = line
         out_page[i] = "[SENDR] " + line
-    elif ((titel == "" or not any(map(str.islower, line))) and (datum != "" or zeit != "" or len(line) > 15) and len(line) >= 8 and len(set(line)) >= 4 and not line.startswith("1D1") and not line.startswith("VPS")):
+    elif ((titel == "" or not any(map(str.islower, line))) and (datum != "" or zeit != "" or len(line) > 15) and len(line) >= 8 and len(set(line)) >= 4 and not line.startswith("!1D1") and not line.startswith("VPS")):
       titel = line
       out_page[i] = "[TITEL] " + line
     elif (titel != "" and len(line) >= 8 and not line.startswith("1D1") and not line.startswith("VPS")):
@@ -181,8 +214,9 @@ def process_page(all_pages, new_text):
     all_pages[page_nr] = {}
 
   subpage_nr = 0
-  if (new_text[1][3] == "|"):
-    subpage_nr = int(new_text[1][4:7])
+  if (new_text[1] and new_text[1][3] == "|"):
+    if (new_text[1][4:7].isnumeric()):
+      subpage_nr = int(new_text[1][4:7])
 
   for sub, old_text in all_pages[page_nr].items():
     if (subpage_nr > 0 and subpage_nr not in all_pages[page_nr]):
@@ -200,12 +234,12 @@ def process_page(all_pages, new_text):
       new_text = None
       break
 
-    nr_diff = sum( sum( (old_text[i][j] != new_text[i][j] and old_text[i][j] > ' ' and new_text[i][j] > ' ') for j in range(0, min(len(old_text[i]), len(new_text[i]))) ) for i in range(1, len(old_text)) )
-    nr_same = sum( sum( (old_text[i][j] == new_text[i][j]) for j in range(0, min(len(old_text[i]), len(new_text[i]))) ) for i in range(0, len(old_text)) )
-    nr_missing_ref = sum( old_text[i].count('█') for i in range(0, len(old_text)) )
-    nr_missing_new = sum( new_text[i].count('█') for i in range(0, len(new_text)) )
-    nr_unique_ref  = sum( sum( (old_text[i][j] > ' ' and new_text[i][j] <= ' ') for j in range(0, min(len(old_text[i]), len(new_text[i]))) ) for i in range(1, len(old_text)) )
-    nr_unique_new  = sum( sum( (new_text[i][j] > ' ' and old_text[i][j] <= ' ') for j in range(0, min(len(old_text[i]), len(new_text[i]))) ) for i in range(1, len(new_text)) )
+    nr_diff = sum( sum( (old_text[i][j] != new_text[i][j] and old_text[i][j] > ' ' and new_text[i][j] > ' ') for j in range(0, min(len(old_text[i]), len(new_text[i]))) ) for i in range(2, len(old_text)) )
+    nr_same = sum( sum( (old_text[i][j] == new_text[i][j]) for j in range(0, min(len(old_text[i]), len(new_text[i]))) ) for i in range(1, len(old_text)) )
+    nr_missing_ref = sum( old_text[i].count('█') for i in range(1, len(old_text)) )
+    nr_missing_new = sum( new_text[i].count('█') for i in range(1, len(new_text)) )
+    nr_unique_ref  = sum( sum( (old_text[i][j] > ' ' and new_text[i][j] <= ' ') for j in range(0, min(len(old_text[i]), len(new_text[i]))) ) + max(len(old_text[i])-len(new_text[i]), 0) for i in range(2, len(old_text)) )
+    nr_unique_new  = sum( sum( (new_text[i][j] > ' ' and old_text[i][j] <= ' ') for j in range(0, min(len(old_text[i]), len(new_text[i]))) ) + max(len(new_text[i])-len(old_text[i]), 0) for i in range(2, len(new_text)) )
 
 
     # Wenn ref = new oder ref Teilmenge von new oder umgekehrt
@@ -245,7 +279,13 @@ def process_page(all_pages, new_text):
   if (new_text != None):
     if (subpage_nr == 0):
       subpage_nr = len(all_pages[page_nr]) + 1
+      if (subpage_nr > 1):
+        for s, p in all_pages[page_nr].items():
+          p[0] = "%s (%d)" % (p[0][:11], subpage_nr)
+          all_pages[page_nr][s] = p
+        new_text[0] = "%s (%d)" % (new_text[0][:11], subpage_nr)
     all_pages[page_nr][subpage_nr] = new_text
+
 
 # Funktion zum (ergänzenden) Einlesen einer Teletext-Datei
 def load_teletext(all_pages, file_text):
@@ -275,13 +315,6 @@ def load_teletext(all_pages, file_text):
       page_start = False
       if (new_text != None):
         new_text.append(line)
-  
-#  for page_nr, page in all_pages.items():
-#    for sub_nr, subpage in page.items():
-#      print(f"{page_nr} | {sub_nr}")
-#  if ("687" in all_pages):
-#    print(all_pages["687"].keys())
-#    print(all_pages["687"][8])
 
   return(all_pages)
 
@@ -314,11 +347,12 @@ def print_page(all_pages, page_nr, sub_nr, do_extract, searchstr):
     if (do_extract):
       str = "\n".join(extract_text(page[subpages[sub_nr]]))
     else:
-      str = "\n".join(page[subpages[sub_nr]])
+      str = map(lambda x: replace_colors(x, True), page[subpages[sub_nr]])
+      str = "\n".join(str)
     if (searchstr == ""):
       print(str)
     else:
-      print(re.sub(searchstr, "\033[92m" + searchstr + "\033[0m", str, flags=re.IGNORECASE))
+      print(re.sub(searchstr, "\033[92m" + searchstr + "\033[0m", replace_colors(str, False), flags=re.IGNORECASE))
   else:
     print (f"no data ({page_nr})")
   return(sub_nr)
@@ -330,13 +364,13 @@ def do_search(all_pages, searchstr):
     for sub_nr, subpage in page.items():
       page_found = False
       for line_nr, line in enumerate(subpage):
-        if (searchstr_low in line.lower()):
+        if (searchstr_low in replace_colors(line.lower(), False)):
           if (not page_found):
             print(subpage[0])
-          print(subpage[line_nr-1])
-          print(re.sub(searchstr, "\033[92m" + searchstr + "\033[0m", line, flags=re.IGNORECASE))
+          print(replace_colors(subpage[line_nr-1], False))
+          print(re.sub(searchstr, "\033[92m" + searchstr + "\033[0m", replace_colors(line, False), flags=re.IGNORECASE))
           if (line_nr+1 < len(subpage)):
-            print(subpage[line_nr+1])
+            print(replace_colors(subpage[line_nr+1], False))
           page_found = True
       if (page_found):
         print()
@@ -444,11 +478,12 @@ def main():
       else:
         page = "100"
         last_page = get_page(all_pages, "333")
-        if (last_page != None and len(last_page) > 0 and str.rstrip(last_page[1][1])=="" and str.rstrip(last_page[1][2])=="" and str.rstrip(last_page[1][3])==""):
+
+        if (last_page != None and (1 in last_page) and str.rstrip(last_page[1][2])=="" and str.rstrip(last_page[1][3])=="" and str.rstrip(last_page[1][4])==""):
           page = "333"
         else:
           last_page = get_page(all_pages, "368")  # arte
-          if (last_page != None and len(last_page) > 0 and str.rstrip(last_page[1][1])=="" and str.rstrip(last_page[1][2])=="" and str.rstrip(last_page[1][3])==""):
+          if (last_page != None and (1 in last_page) and str.rstrip(last_page[1][2])=="" and str.rstrip(last_page[1][3])=="" and str.rstrip(last_page[1][4])==""):
             page = "368"
           else:
             last_page = get_page(all_pages, "300")  # terranova
@@ -469,7 +504,7 @@ def main():
       cur_page = get_page(all_pages, page)
       if (cur_page != None and len(cur_page) > 0):
         subpages = list(cur_page.keys())
-        subpage = [key for key, value in cur_page.iteritems() if value == subpage]
+        subpage = next((key for key, value in enumerate(subpages) if value == subpage), 0)
 
       searchstr = ""
       answer = ""
@@ -487,12 +522,13 @@ def main():
 
         print("----------------------------------------")
         if (comment):
-          print("\033[93m > Kommentar: " + comment + "\033[0m")
+          print("\033[43;30m > Kommentar: " + comment + "\033[0m")
 
         print(f"Seitenzahl eingeben, oder <>, [Leer], [Enter], [z]urück / [f]inden / [c]omment / [e]dit / [s]peichern / [q]uit: ", end="", flush=True)
 
         answer = ""
         newpage = ""
+        searchstr = ""
         while (answer=='' or answer in [b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'\x08']):
           if (answer == b'\x08'):  # Backspace
             newpage = newpage[:-1]
@@ -534,10 +570,16 @@ def main():
           subpage = subpage + 1
 
         elif (answer == b'H'):  # Arrow up
-          page = str(int(page) + 1)
+          if (int(page) < 999):
+            page = str(int(page) + 1)
+          if (int(page) < 100):
+            page = "100"
           subpage = 0
         elif (answer == b'P'):  # Arrow down
-          page = str(int(page) - 1)
+          if (int(page) >= 100):
+            page = str(int(page) - 1)
+          if (int(page) < 100):
+            page = "0"
           subpage = 0
 
         elif (answer == b'z' and i > 0):
@@ -552,9 +594,9 @@ def main():
           if (answer == b'n'):
             page = "0"
             subpage = 0
-          if (page != "0"):
+          if (page != "0" and page in all_pages):
             subpages = list(all_pages[page].keys())
-          outlist.append([file_names, page, subpages[subpage] if (subpage >= 0) else 0, comment])
+          outlist.append([file_names, page, subpages[subpage] if (page != "0" and subpage >= 0) else 0, comment])
           break
 
       if (answer == b'q'):

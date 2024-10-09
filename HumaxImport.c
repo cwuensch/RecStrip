@@ -45,7 +45,6 @@ static const dword crc_table[] = {
 };
 
 bool KeepHumaxSvcName;
-extern bool StrToUTF8(const char *SourceString, char *DestString, byte DefaultISO8859CharSet);
 
 
 dword crc32m_tab(const unsigned char *buf, size_t len)
@@ -459,7 +458,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
       else p = VidFileName;
 
       #ifdef _WIN32
-        StrToUTF8(p, &DescStr[len_dir], 15);  // hier müsste Size-Check hin
+        StrToUTF8(&DescStr[len_dir], p, max((int)sizeof(DescStr) - len_dir, 0), 15);
       #else
         strncpy(&DescStr[len_dir], p, max((int)sizeof(DescStr) - len_dir, 0));
       #endif
@@ -491,7 +490,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
               #ifdef _WIN32
                 strncpy(&DescStr[len_dir], &LineBuf[len_name+1], min(n0 - (RefEPGMedion ? 2 : 0), sizeof(DescStr)-len_name-1));
               #else
-                StrToUTF8(&LineBuf[len_name+1], &DescStr[len_dir], 15);  // hier müsste Size-Check hin
+                StrToUTF8(&DescStr[len_dir], &LineBuf[len_name+1], min(n0 - (RefEPGMedion ? 2 : 0), sizeof(DescStr)-len_name-1), 15);
               #endif
               if ((fRefEPG = fopen(DescStr, "rb")))
                 printf("    Loading EIT event from reference file '%s'...\n", DescStr);
@@ -521,8 +520,8 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
                 if(strcmp(RecInf->EventInfo.EventNameDescription, "-") == 0)  RecInf->EventInfo.EventNameDescription[0] = '\0';
                 RecInf->EventInfo.EventNameLength = (byte)strlen(RecInf->EventInfo.EventNameDescription);
                 printf("    EventName = %s\n", RecInf->EventInfo.EventNameDescription);
-                if ((RecInf->EventInfo.EventNameLength + 2 < (byte)sizeof(RecInf->EventInfo.EventNameDescription)) && (strcmp(DescStr, "-") != 0))
-                  strncpy(&RecInf->EventInfo.EventNameDescription[RecInf->EventInfo.EventNameLength + 1], DescStr, sizeof(RecInf->EventInfo.EventNameDescription) - 1);
+                if ((RecInf->EventInfo.EventNameLength + 1 < (byte)sizeof(RecInf->EventInfo.EventNameDescription)) && (strcmp(DescStr, "-") != 0))
+                  strncpy(&RecInf->EventInfo.EventNameDescription[RecInf->EventInfo.EventNameLength], DescStr, sizeof(RecInf->EventInfo.EventNameDescription)-1);
                 else
                   RecInf->EventInfo.EventNameDescription[RecInf->EventInfo.EventNameLength + 1] = '\0';
                 printf("    EventDesc = %s\n", DescStr);
@@ -537,6 +536,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
                 if (!(ExtEPGText = (char*) malloc(strlen(&LineBuf[len_name + n0 + (max(max(n1+2, n2+1), n3)) + 2]) + 1)))
                 {
                   printf("  Could not allocate memory for ExtEPGText.\n");
+                  free(LineBuf);
                   return FALSE;
                 }
                 strcpy(ExtEPGText, &LineBuf[len_name + n0 + (max(max(n1+2, n2+1), n3)) + 2]);
@@ -689,6 +689,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
         }
       }
     }
+    else free(LineBuf);
   }
   return ret;
 }
@@ -774,8 +775,8 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           printf("    Start Time: %s\n", TimeStrTF(RecInf->RecHeaderInfo.StartTime, 0));
 
           if(p) *p = '\0';
-          strncpy(FirstSvcName, HumaxHeader.Allgemein.Dateiname, sizeof(FirstSvcName));
-          FirstSvcName[sizeof(FirstSvcName)-1] = '\0';
+          StrToUTF8(FirstSvcName, HumaxHeader.Allgemein.Dateiname, sizeof(FirstSvcName), 0);
+//          FirstSvcName[sizeof(FirstSvcName)-1] = '\0';
 // manuelle Ausnahme (IMGARTENEDEN2_0601112255.vid), da falscher Teletext bei ZDFdoku:
 //if(VideoPID == 660 && TeletextPID == 130 && ExtractTeletext && DoStrip) RemoveTeletext = TRUE;
         }
@@ -785,8 +786,8 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           if(p) *p = '\0';
           if (strcmp(HumaxHeader.Allgemein.Dateiname, FirstSvcName) != 0)
           {
-            strncpy(RecInf->ServiceInfo.ServiceName, HumaxHeader.Allgemein.Dateiname, sizeof(RecInf->ServiceInfo.ServiceName));
-            RecInf->ServiceInfo.ServiceName[sizeof(RecInf->ServiceInfo.ServiceName)-1] = '\0';
+            StrToUTF8(RecInf->ServiceInfo.ServiceName, HumaxHeader.Allgemein.Dateiname, sizeof(RecInf->ServiceInfo.ServiceName), 0);
+//            RecInf->ServiceInfo.ServiceName[sizeof(RecInf->ServiceInfo.ServiceName)-1] = '\0';
           }
           else
             printf("    Assertion error: Humax rec name without sender!\n");

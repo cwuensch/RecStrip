@@ -1164,7 +1164,7 @@ SONST
     if (ExtractTeletext)
     {
       if (LoadTeletextOut(AbsFileName))
-        printf("Teletext output: %s\n", AbsFileName);
+        printf("Subtitles output: %s\n", AbsFileName);
       else
         ExtractTeletext = FALSE;
     }
@@ -1187,8 +1187,11 @@ SONST
       GetFileNameFromRec(RecFileIn, "_audio.pes", AbsFileName);
 
     fAudioOut = fopen(AbsFileName, ((DoMerge==1) ? "ab" : "wb"));
-    if (fAudioOut && DoMerge == 1)
-      fseek(fAudioOut, 0, SEEK_END);
+    if (fAudioOut)
+    {
+      printf("Demux audio output: %s\n", AbsFileName);
+      if(DoMerge == 1)  fseek(fAudioOut, 0, SEEK_END);
+    }
 
     if(DemuxAudio <= 1) DemuxAudio = AudioPIDs[0].pid;
     PSBuffer_Init(&AudioPES, DemuxAudio, 65536, FALSE, FALSE, TRUE);
@@ -2375,7 +2378,7 @@ FILE *fDbg;
             EventInfo_out.DurationHour    = RecHeader->EventInfo.DurationHour;
             EventInfo_out.DurationMin     = RecHeader->EventInfo.DurationMin;
             EventInfo_out.EventNameLength = RecHeader->EventInfo.EventNameLength;
-            strncpy(EventInfo_out.EventNameDescription, RecHeader->EventInfo.EventNameDescription, sizeof(EventInfo_out.EventNameDescription));
+            memcpy(EventInfo_out.EventNameDescription, RecHeader->EventInfo.EventNameDescription, sizeof(EventInfo_out.EventNameDescription));
             
             if (RecHeader->ExtEventInfo.TextLength > 0)
             {
@@ -2514,6 +2517,7 @@ FILE *fDbg;
       else
         len = (int)strlen(AbsOutFile);
       snprintf(&AbsOutFile[len], sizeof(AbsOutFile)-len, "%s", ".txt");
+      printf("Writing teletext to: %s\n", AbsOutFile);
       WriteAllTeletext(AbsOutFile);
     }
 
@@ -2737,6 +2741,7 @@ FILE *fDbg;
                 Percent = (100 * curInputFile / NrInputFiles) + ((100 * CurPosBlocks) / (RecFileBlocks * NrInputFiles));
                 CurBlockBytes = 0;
                 BlocksSincePercent = 0;
+                if(ExtractAllTeletext) TtxProcessor_SetOverwrite((Percent > 25) && (Percent <= 80));
               }
               else
               {
@@ -3059,7 +3064,7 @@ FILE *fDbg;
           if (CurPID == TeletextPID)
           {
             // Extract Teletext Subtitles
-            if (ExtractTeletext /*&& fTtxOut*/)
+            if (ExtractTeletext /*&& fTtxOut*/ || ExtractAllTeletext == 1)
               ProcessTtxPacket((tTSPacket*) &Buffer[4], CurrentPosition);
 
             // Remove Teletext packets
@@ -3415,6 +3420,11 @@ FILE *fDbg;
         {
           Percent++;
           BlocksSincePercent = 0;
+          if (ExtractAllTeletext)
+          {
+            if(Percent == 25) TtxProcessor_SetOverwrite(TRUE);
+            else if(Percent == 80) TtxProcessor_SetOverwrite(FALSE);
+          }
           fprintf(stderr, "%3u %%\r", Percent);
         }
       }
@@ -3529,6 +3539,7 @@ FILE *fDbg;
     else
       len = (int)strlen(AbsOutFile);
     snprintf(&AbsOutFile[len], sizeof(AbsOutFile)-len, "%s", ".txt");
+    printf("Writing teletext to: %s\n", AbsOutFile);
     WriteAllTeletext(AbsOutFile);
   }
 
