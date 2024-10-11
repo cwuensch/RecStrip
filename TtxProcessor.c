@@ -545,7 +545,7 @@ static void process_page(teletext_page_t *page, uint16_t page_number, int out_nr
     uint8_t col_stop = 40;
     uint8_t foreground_color = 0x7;
     uint8_t font_tag_opened = NO;
-    uint8_t line_is_empty = NO;
+//    uint8_t line_is_empty = NO;
 
     for (col = 39; col > 0; col--) {
       if (page->last_text[row][col] == 0xb) {

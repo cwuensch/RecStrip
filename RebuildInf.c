@@ -1001,7 +1001,7 @@ static bool AnalyseTtx(byte *PSBuffer, int BufSize, bool AcceptTimeString, tPVRT
 */
               // Programme Identification
               programme[0] = '\0';
-              for (i = 20; i < 40 && len+3 < sizeof(programme); i++)
+              for (i = 20; i < 40 && len+3 < (int)sizeof(programme); i++)
               {
                 char u[4] = { 0, 0, 0, 0 };
                 word c = telx_to_ucs2(byte_reverse(data_block[i]));
@@ -2061,7 +2061,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           else if (ExtractAllTeletext == 2)
           {
             ExtractAllTeletext++;
-            if (RecFileSize < 2 * NrIterations * PACKETSIZE * 168)
+            if ((long long int)RecFileSize < 2 * NrIterations * PACKETSIZE * 168)
             {
               fseeko64(fIn, 0 + Offset, SEEK_SET);
               PSBuffer_DropCurBuffer(&TtxBuffer);
