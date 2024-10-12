@@ -457,7 +457,7 @@ uint16_t telx_to_ucs2(uint8_t c)
 
   if (PARITY_8[c] == 0) {
 //    VERBOSE_ONLY printf("  ! Unrecoverable data error; PARITY(%02x)\n", c);
-    return 0x2588;
+    return 0x2370;
   }
 
   if (r <= 0x07)
@@ -545,7 +545,7 @@ static void process_page(teletext_page_t *page, uint16_t page_number, int out_nr
     uint8_t col_stop = 40;
     uint8_t foreground_color = 0x7;
     uint8_t font_tag_opened = NO;
-//    uint8_t line_is_empty = NO;
+    uint8_t nr_missing = 0;
 
     for (col = 39; col > 0; col--) {
       if (page->last_text[row][col] == 0xb) {
@@ -557,7 +557,7 @@ static void process_page(teletext_page_t *page, uint16_t page_number, int out_nr
     if (col_start > 39) continue;
 
     for (col = col_start + 1; col <= 39; col++) {
-      if (page->last_text[row][col] > 0x20) {
+      if ((page->last_text[row][col] > 0x20) && (page->last_text[row][col] < 0x2370)) {
         if (col_stop > 39) col_start = col;
         col_stop = col;
       }
@@ -567,10 +567,11 @@ static void process_page(teletext_page_t *page, uint16_t page_number, int out_nr
     if (col_stop > 39) continue;
 
     // line is corrupted
-/*    for (col = col_start; col <= col_stop; col++)
-      if (page->last_text[row][col] == 0x2588)
-        { line_is_empty = YES; break; }
-    if (line_is_empty) continue; */
+    for (col = col_start; col <= col_stop; col++)
+      if(page->last_text[row][col] == 0x2370)
+        nr_missing++;
+    if (nr_missing >= 3)
+      continue;
 
     // print timestamps, (only) if a non-empty line exists
     if (!first_line_written)
@@ -600,7 +601,8 @@ static void process_page(teletext_page_t *page, uint16_t page_number, int out_nr
     // white is default as stated in ETS 300 706, chapter 12.2
     // black(0), red(1), green(2), yellow(3), blue(4), magenta(5), cyan(6), white(7)
 
-/*{
+/* if(page->last_show_timestamp >= 3053239)
+{
   char dbgstr[44]; int k;
   if (page->last_text[row][0])
   {
@@ -611,7 +613,7 @@ static void process_page(teletext_page_t *page, uint16_t page_number, int out_nr
     dbgstr[40] = '\0';
     printf("      new line: %s\n", dbgstr);
   }
-}*/
+} */
 
     for (col = 0; col <= col_stop; col++) {
       // v is just a shortcut
@@ -665,7 +667,7 @@ static void process_page(teletext_page_t *page, uint16_t page_number, int out_nr
 
         if (v >= 0x20) {
           char u[4] = { 0, 0, 0, 0 };
-          if(v >= 0x2588) v = 0x20;
+          if(v >= 0x2370) v = 0x20;
           ucs2_to_utf8(u, v);
           fprintf(fOut, "%s", u);
         }
@@ -699,7 +701,7 @@ static void process_page2(uint16_t page_number)
   // Check for empty
   for (i = 1; i < 25 && page_empty; i++)
     for (j = 0; j < 40; j++)
-      if ((page->text[i][j] > 0x20) && (page->text[i][j] != 0x2588))
+      if ((page->text[i][j] > 0x20) && (page->text[i][j] != 0x2370))
         { page_empty = FALSE; break; }
 
   if(!page_nr || page_nr < 100 || page_nr > 899 || page_empty) return;
@@ -741,9 +743,9 @@ static void process_page2(uint16_t page_number)
           else
           {
             if (i>=1 && ref->text[i][j] > ' ' && page->text[i][j] > ' ' /*&& ref->text[i][j] != 0 && page->text[i][j] != 0*/)  nr_diff++;  // echte Differenzen, ohne Leerzeichen
-            if      ( ref->text[i][j] == 0x2588)                           nr_missing_ref++;
+            if      ( ref->text[i][j] == 0x2370)                           nr_missing_ref++;
             else if ( ref->text[i][j]  > ' '  && page->text[i][j] <= ' ')  nr_unique_ref++;  // zusätzliches Zeichen in ref (wenn alles auf Leerzeichen ist Z.658, kann erste Bedingung weg)
-            if      (page->text[i][j] == 0x2588)                           nr_missing_new++;
+            if      (page->text[i][j] == 0x2370)                           nr_missing_new++;
             else if (page->text[i][j]  > ' '  &&  ref->text[i][j] <= ' ')  nr_unique_new++;  // zusätzliches Zeichen in new (wenn alles auf Leerzeichen ist Z.658, kann erste Bedingung weg)
           }
         }
@@ -758,9 +760,9 @@ static void process_page2(uint16_t page_number)
           for (i = 0; i < 25; i++)
             for (j = 0; j < 40; j++)
             {
-              if (     (ref->text[i][j] == 0x2588)  && ((j==0) || (ref->text[i][j-1] == page->text[i][j-1])) && ((j==39) || (ref->text[i][j+1] == page->text[i][j+1])) )
+              if (     (ref->text[i][j] == 0x2370)  && ((j==0) || (ref->text[i][j-1] == page->text[i][j-1])) && ((j==39) || (ref->text[i][j+1] == page->text[i][j+1])) )
                 ref->text[i][j] = page->text[i][j];
-              else if( (page->text[i][j] == 0x2588) && ((j==0) || (ref->text[i][j-1] == page->text[i][j-1])) && ((j==39) || (ref->text[i][j+1] == page->text[i][j+1])) )
+              else if( (page->text[i][j] == 0x2370) && ((j==0) || (ref->text[i][j-1] == page->text[i][j-1])) && ((j==39) || (ref->text[i][j+1] == page->text[i][j+1])) )
                 page->text[i][j] = ref->text[i][j];
             }
         }
@@ -985,7 +987,7 @@ hidden_mode = NO;
         {
           if (cur_page_buffer->text[y][i] == 0x00)
             cur_page_buffer->text[y][i] = telx_to_ucs2(packet->data[i]);
-          if (cur_page_buffer->text[y][i] > ' ')
+          if ((cur_page_buffer->text[y][i] > ' ') && (cur_page_buffer->text[y][i] != 0x2370))
             line_empty = FALSE;
         }
         if(line_empty)  // CW: line_empty eher unnötig - eingeführt, um Wiederholung von Untertiteln vermeiden zu können
@@ -1434,7 +1436,7 @@ bool WriteAllTeletext(char *AbsOutFile)
       if (page_map[p].subpages[s] >= 0)
         for (i = 1; i < 25 && empty_page; i++)
           for (j = 0; j < 40; j++)
-            if(page->text[i][j] > 0x20)  { empty_page = FALSE; break; }
+            if((page->text[i][j] > 0x20) && (page->text[i][j] != 0x2370))  { empty_page = FALSE; break; }
       if(!empty_page) nr_subpages++;
     }
 
@@ -1446,7 +1448,7 @@ bool WriteAllTeletext(char *AbsOutFile)
       if (page_map[p].subpages[s] >= 0)
         for (i = 0; i < 25 && empty_page; i++)
           for (j = 0; j < 40; j++)
-            if(page->text[i][j] > 0x20)  { empty_page = FALSE; break; }
+            if((page->text[i][j] > 0x20) && (page->text[i][j] != 0x2370))  { empty_page = FALSE; break; }
       if(empty_page) continue;
 
       fprintf(f, "----------------------------------------\r\n");
