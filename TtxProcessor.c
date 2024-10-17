@@ -35,10 +35,10 @@ static bool             FirstPacketAfterBreak = TRUE, ExtractAllOverwrite = FALS
 static uint16_t         pages[] = { 0x777, 0x150, 0x151, 0x888, 0x160, 0x161, 0x152, 0x149, 0x571, 0 };
 
 // global TS PCR value
-dword global_timestamp = 0;
+uint32_t global_timestamp = 0;
 
 // last timestamp computed
-dword last_timestamp = 0;
+uint32_t last_timestamp = 0;
 
 
 /*!
@@ -502,7 +502,8 @@ static bool GetTeletextOut(uint16_t page_number, bool AddNewPage)  // Page mit M
 }
 
 // FIXME: implement output modules (to support different formats, printf formatting etc)
-static void process_page(teletext_page_t *page, uint16_t page_number, int out_nr, bool check_duplicate) {
+static void process_page(teletext_page_t *page, uint16_t page_number, int out_nr, bool check_duplicate)
+{
   FILE* fOut = NULL;
   uint8_t row, col;
   uint8_t first_line_written = NO;
@@ -525,11 +526,11 @@ static void process_page(teletext_page_t *page, uint16_t page_number, int out_nr
     for (row = 1; row < 25; row++) {
       if (page->text[row][col] == 0x0b) {
         page_is_empty = NO;
-        goto new_page_is_empty;
+        goto empty_finish;
       }
     }
   }
-new_page_is_empty:
+empty_finish:
 
   if (page_is_empty)
     for (row = 1; row < 25; row++)
@@ -586,14 +587,32 @@ new_page_is_empty:
     page_is_duplicate = YES;
     for (row = 1; row < 25; row++)
     {
-      if (((page->text[row][0] != 0x00) || (page->last_text[row][0] != 0x00)) && (memcmp(page->text[row], page->last_text[row], 40) != 0))
+      if (((page->text[row][0] != 0x00) || (page->last_text[row][0] != 0x00)) && (memcmp(page->text[row], page->last_text[row], 40*sizeof(uint16_t)) != 0))
         { page_is_duplicate = NO; break; }
+    }
+    if(page_is_duplicate) return;
+  }
+
+  // Try to combine last_text and text, if last_page is displayed only 2 frames
+  if (page->show_timestamp <= page->last_show_timestamp + 100)
+  {
+    uint8_t append_page = YES;
+    for (row = 1; row < 25; row++)
+      if ((page->last_text[row][0] != 0x00) && (page->text[row][0] != 0x00))
+        { append_page = NO; break; }
+
+    if (append_page)
+    {
+      for (row = 1; row < 25; row++)
+        if (page->text[row][0] != 0x00)
+          memcpy(page->last_text[row], page->text[row], 40*sizeof(uint16_t));
+      return;
     }
   }
 
 
   // HIER DIE CACHED SEITE VERARBEITEN UND AUSGEBEN
-  if (!page_is_duplicate)
+//  if (!page_is_duplicate && (page->show_timestamp <= page->last_show_timestamp + 100))
   {
     // Erst hier das Output-File öffnen
     if (!fTtxOut[out_nr])
@@ -651,7 +670,7 @@ new_page_is_empty:
 //dbg++;
         }
 
-/*if(dbg >= 92 && page_number==0x150)
+/*if(dbg >= 31 && page_number==0x150)
 {
   char dbgstr[44]; int k;
   if (page->last_text[row][0] != 0xff)
@@ -663,7 +682,7 @@ new_page_is_empty:
     dbgstr[40] = '\0';
     printf("      new line: %s\n", dbgstr);
   }
-}*/
+} */
 
         // ETS 300 706, chapter 12.2: Alpha White ("Set-After") - Start-of-row default condition.
         // used for colour changes _before_ start box mark
@@ -979,7 +998,6 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
         // Now we have the begining of page transmission; if there is page_buffer pending, process it
         if (cur_page_buffer->tainted == YES)
         {
-          // CW: Hier die Roh-Seite vergleichen, um Wiederholung von Untertiteln zu vermeiden (unnötig?)
           process_page(cur_page_buffer, pages[out_nr], out_nr, TRUE);  // hier den last_text und last_show_timestamp verwenden!
 
           // it would be nice, if subtitle hides on previous video frame, so we subtract 40 ms (1 frame @25 fps)
@@ -1303,7 +1321,7 @@ uint16_t process_pes_packet(uint8_t *buffer, uint16_t size)
   }
 //CW  if (t < t0) delta = last_timestamp;
   new_timestamp = t - delta;
-  if (FirstPacketAfterBreak || /*(new_timestamp < last_timestamp) ||*/ (new_timestamp > last_timestamp + 30000))
+  if (FirstPacketAfterBreak || labs(new_timestamp - last_timestamp) > 30000)
   {
     delta += new_timestamp - last_timestamp;
     new_timestamp = t - delta;
@@ -1348,7 +1366,7 @@ void SetTeletextBreak(bool NewInputFile, bool NewOutputFile, word SubtitlePage)
 {
   int k;
   FirstPacketAfterBreak = TRUE;
-  PSBuffer_DropCurBuffer(&TtxBuffer);
+  PSBuffer_StartNewBuffer(&TtxBuffer, TRUE);
 
   for (k = 0; k < NRTTXOUTPUTS; k++)
   {
