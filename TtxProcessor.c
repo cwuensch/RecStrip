@@ -475,7 +475,7 @@ uint16_t telx_to_ucs2(uint8_t c)
 
   if (r >= 0x20)
   {
-    if(hidden_mode)        r = ' ';
+    if(hidden_mode /*|| (graphic_mode && !with_graphic)*/)  r = ' ';
     else if(graphic_mode)  r = G1[LATIN][r - 0x20];
     else                   r = G0[LATIN][r - 0x20];
   }
@@ -502,109 +502,159 @@ static bool GetTeletextOut(uint16_t page_number, bool AddNewPage)  // Page mit M
 }
 
 // FIXME: implement output modules (to support different formats, printf formatting etc)
-static void process_page(teletext_page_t *page, uint16_t page_number, int out_nr) {
+static void process_page(teletext_page_t *page, uint16_t page_number, int out_nr, bool check_duplicate) {
   FILE* fOut = NULL;
   uint8_t row, col;
   uint8_t first_line_written = NO;
+  uint8_t page_is_empty, page_is_duplicate;
+
+//static int dbg = 0;
 
 #ifdef DEBUG
   for (row = 1; row < 25; row++) {
     fprintf(fTtxOut, "# DEBUG[%02u]: ", row);
-    for (col = 0; col < 40; col++) fprintf(fTtxOut, "%3x ", page->last_text[row][col]);
+    for (col = 0; col < 40; col++) fprintf(fTtxOut, "%3x ", page->text[row][col]);
     fprintf(fTtxOut, "\n");
   }
   fprintf(fTtxOut, "\n");
 #endif
 
   // optimization: slicing column by column -- higher probability we could find boxed area start mark sooner
-  uint8_t page_is_empty = YES;
+  page_is_empty = YES;
   for (col = 0; col < 40; col++) {
     for (row = 1; row < 25; row++) {
-      if (page->last_text[row][col] == 0x0b) {
+      if (page->text[row][col] == 0x0b) {
         page_is_empty = NO;
-        goto page_is_empty;
+        goto new_page_is_empty;
       }
     }
   }
-  page_is_empty:
-    if (page_is_empty == YES) return;
+new_page_is_empty:
 
-  // Erst hier das Output-File öffnen
-  if (!fTtxOut[out_nr])
+  if (page_is_empty)
+    for (row = 1; row < 25; row++)
+      page->text[row][0] = 0x00;
+  else
   {
-    printf("  TTX: Trying to extract subtitles from page %03x\n\n", page_number);
-    sprintf(&TeletextOut[TeletextOutLen], "_%03hx.srt", page_number);
-    fTtxOut[out_nr] = fopen(TeletextOut, ((DoMerge==1) ? "ab" : "wb"));
+    // Check all lines of NEW text for validity
+    for (row = 1; row < 25; row++) {
+      // anchors for string trimming purpose
+      uint8_t nr_missing = 0;
+      uint8_t col_start = 40;
+      uint8_t col_stop = 40;
+
+      // detect start of text
+      for (col = 39; col > 0; col--) {
+        if (page->text[row][col] == 0xb) {
+          col_start = col;
+          break;
+        }
+      }
+      // line is empty
+      if (col_start > 39)
+        { page->text[row][0] = 0x00; continue; }
+
+      // detect end of text
+      for (col = col_start + 1; col <= 39; col++) {
+        if ((page->text[row][col] > 0x20) && (page->text[row][col] < 0x2370)) {
+          if (col_stop > 39) col_start = col;
+          col_stop = col;
+        }
+        if (page->text[row][col] == 0xa) break;
+      }
+      // line is empty
+      if (col_stop > 39)
+        { page->text[row][0] = 0x00; continue; }
+
+      // CW: line has no boxed area stop code
+      if ((page->text[row][col] != 0xa) && (col_stop < 38))
+        { page->text[row][0] = 0x00; continue; }
+
+      // line is corrupted
+      for (col = col_start; col <= col_stop; col++)
+        if(page->text[row][col] == 0x2370)
+          nr_missing++;
+      if (nr_missing >= 3)
+        { page->text[row][0] = 0x00; continue; }
+    }
   }
-  fOut = fTtxOut[out_nr];
 
-  // process data
-  for (row = 1; row < 25; row++) {
-    // anchors for string trimming purpose
-    uint8_t col_start = 40;
-    uint8_t col_stop = 40;
-    uint8_t foreground_color = 0x7;
-    uint8_t font_tag_opened = NO;
-    uint8_t nr_missing = 0;
-
-    for (col = 39; col > 0; col--) {
-      if (page->last_text[row][col] == 0xb) {
-        col_start = col;
-        break;
-      }
-    }
-    // line is empty
-    if (col_start > 39) continue;
-
-    for (col = col_start + 1; col <= 39; col++) {
-      if ((page->last_text[row][col] > 0x20) && (page->last_text[row][col] < 0x2370)) {
-        if (col_stop > 39) col_start = col;
-        col_stop = col;
-      }
-      if (page->last_text[row][col] == 0xa) break;
-    }
-    // line is empty
-    if (col_stop > 39) continue;
-
-    // line is corrupted
-    for (col = col_start; col <= col_stop; col++)
-      if(page->last_text[row][col] == 0x2370)
-        nr_missing++;
-    if (nr_missing >= 3)
-      continue;
-
-    // print timestamps, (only) if a non-empty line exists
-    if (!first_line_written)
+  // Compare NEW text with last_text whether all lines are duplicate
+  page_is_duplicate = NO;
+  if (check_duplicate)
+  {
+    page_is_duplicate = YES;
+    for (row = 1; row < 25; row++)
     {
-      if (page->last_show_timestamp > page->hide_timestamp)  page->hide_timestamp = page->last_show_timestamp;
-
-      if (config.se_mode == YES) {
-        ++page->frames_produced;
-        fprintf(fTtxOut[out_nr], "%.3f|", (double)page->last_show_timestamp / 1000.0);
-      }
-      else {
-        char timecode_hide[24] = { 0 };
-        char timecode_show[24] = { 0 };
-
-        timestamp_to_srttime(page->last_show_timestamp, timecode_show);
-        timecode_show[12] = 0;
-        timestamp_to_srttime(page->hide_timestamp, timecode_hide);
-        timecode_hide[12] = 0;
-
-        fprintf(fTtxOut[out_nr], "%u\r\n%s --> %s\r\n", ++page->frames_produced, timecode_show, timecode_hide);
-      }
-      first_line_written = YES;
+      if (((page->text[row][0] != 0x00) || (page->last_text[row][0] != 0x00)) && (memcmp(page->text[row], page->last_text[row], 40) != 0))
+        { page_is_duplicate = NO; break; }
     }
+  }
 
-    // ETS 300 706, chapter 12.2: Alpha White ("Set-After") - Start-of-row default condition.
-    // used for colour changes _before_ start box mark
-    // white is default as stated in ETS 300 706, chapter 12.2
-    // black(0), red(1), green(2), yellow(3), blue(4), magenta(5), cyan(6), white(7)
 
-/* if(page->last_show_timestamp >= 3053239)
+  // HIER DIE CACHED SEITE VERARBEITEN UND AUSGEBEN
+  if (!page_is_duplicate)
+  {
+    // Erst hier das Output-File öffnen
+    if (!fTtxOut[out_nr])
+    {
+      printf("  TTX: Trying to extract subtitles from page %03x\n\n", page_number);
+      sprintf(&TeletextOut[TeletextOutLen], "_%03hx.srt", page_number);
+      fTtxOut[out_nr] = fopen(TeletextOut, ((DoMerge==1) ? "ab" : "wb"));
+    }
+    fOut = fTtxOut[out_nr];
+
+    for (row = 1; row < 25; row++)
+    {
+      uint8_t foreground_color = 0x7;
+      uint8_t font_tag_opened = NO;
+      uint8_t col_start = 40;
+      uint8_t col_stop = 40;
+
+      if (page->last_text[row][0] != 0x00)
+      {
+        // detect start of text
+        for (col = 39; col > 0; col--)
+          if (page->last_text[row][col] == 0xb)
+            { col_start = col; break; }
+
+        // detect end of text
+        for (col = col_start + 1; col <= 39; col++) {
+          if ((page->last_text[row][col] > 0x20) && (page->last_text[row][col] < 0x2370)) {
+            if (col_stop > 39) col_start = col;
+            col_stop = col;
+          }
+          if (page->last_text[row][col] == 0xa) break;
+        }
+
+        // print timestamps, (only) if a non-empty line exists
+        if (!first_line_written)
+        {
+          if (page->last_show_timestamp > page->hide_timestamp)  page->hide_timestamp = page->last_show_timestamp;
+
+          if (config.se_mode == YES) {
+            ++page->frames_produced;
+            fprintf(fTtxOut[out_nr], "%.3f|", (double)page->last_show_timestamp / 1000.0);
+          }
+          else {
+            char timecode_hide[24] = { 0 };
+            char timecode_show[24] = { 0 };
+
+            timestamp_to_srttime(page->last_show_timestamp, timecode_show);
+            timecode_show[12] = 0;
+            timestamp_to_srttime(page->hide_timestamp, timecode_hide);
+            timecode_hide[12] = 0;
+
+            fprintf(fTtxOut[out_nr], "%u\r\n%s --> %s\r\n", ++page->frames_produced, timecode_show, timecode_hide);
+          }
+          first_line_written = YES;
+//dbg++;
+        }
+
+/*if(dbg >= 92 && page_number==0x150)
 {
   char dbgstr[44]; int k;
-  if (page->last_text[row][0])
+  if (page->last_text[row][0] != 0xff)
   {
     for (k = 0; k < 40; k++)
       if(page->last_text[row][k] >= 20) ucs2_to_utf8(&dbgstr[k], page->last_text[row][k]);
@@ -613,80 +663,89 @@ static void process_page(teletext_page_t *page, uint16_t page_number, int out_nr
     dbgstr[40] = '\0';
     printf("      new line: %s\n", dbgstr);
   }
-} */
+}*/
 
-    for (col = 0; col <= col_stop; col++) {
-      // v is just a shortcut
-      uint16_t v = page->last_text[row][col];
+        // ETS 300 706, chapter 12.2: Alpha White ("Set-After") - Start-of-row default condition.
+        // used for colour changes _before_ start box mark
+        // white is default as stated in ETS 300 706, chapter 12.2
+        // black(0), red(1), green(2), yellow(3), blue(4), magenta(5), cyan(6), white(7)
 
-      if (col < col_start) {
-        if (v <= 0x7) foreground_color = (byte)v;
-      }
+        for (col = 0; col <= col_stop; col++) {
+          // v is just a shortcut
+          uint16_t v = page->last_text[row][col];
 
-      if (col == col_start) {
-        if ((foreground_color != 0x7) && (config.colours == YES)) {
-          fprintf(fOut, "<font color=\"%s\">", TTXT_COLOURS[foreground_color]);
-          font_tag_opened = YES;
-        }
-      }
+          if (col < col_start) {
+            if (v <= 0x7) foreground_color = (byte)v;
+          }
 
-      if (col >= col_start) {
-        if (v <= 0x7) {
-          // ETS 300 706, chapter 12.2: Unless operating in "Hold Mosaics" mode,
-          // each character space occupied by a spacing attribute is displayed as a SPACE.
-          if (config.colours == YES) {
-            if (font_tag_opened == YES) {
-              fprintf(fOut, "</font> ");
-              font_tag_opened = NO;
-            }
-
-            // black is considered as white for telxcc purpose
-            // telxcc writes <font/> tags only when needed
-            if ((v > 0x0) && (v < 0x7)) {
-              fprintf(fOut, "<font color=\"%s\">", TTXT_COLOURS[v]);
+          if (col == col_start) {
+            if ((foreground_color != 0x7) && (config.colours == YES)) {
+              fprintf(fOut, "<font color=\"%s\">", TTXT_COLOURS[foreground_color]);
               font_tag_opened = YES;
             }
           }
-          else v = 0x20;
-        }
 
-        if (v >= 0x20) {
-          // translate some chars into entities, if in colour mode
-          if (config.colours == YES) {
-            uint8_t i;
-            for (i = 0; i < ARRAY_LENGTH(ENTITIES); i++) {
-              if (v == ENTITIES[i].character) {
-                fprintf(fOut, "%s", ENTITIES[i].entity);
-                // v < 0x20 won't be printed in next block
-                v = 0;
-                break;
+          if (col >= col_start) {
+            if (v <= 0x7) {
+              // ETS 300 706, chapter 12.2: Unless operating in "Hold Mosaics" mode,
+              // each character space occupied by a spacing attribute is displayed as a SPACE.
+              if (config.colours == YES) {
+                if (font_tag_opened == YES) {
+                  fprintf(fOut, "</font> ");
+                  font_tag_opened = NO;
+                }
+
+                // black is considered as white for telxcc purpose
+                // telxcc writes <font/> tags only when needed
+                if ((v > 0x0) && (v < 0x7)) {
+                  fprintf(fOut, "<font color=\"%s\">", TTXT_COLOURS[v]);
+                  font_tag_opened = YES;
+                }
               }
+              else v = 0x20;
+            }
+
+            if (v >= 0x20) {
+              // translate some chars into entities, if in colour mode
+              if (config.colours == YES) {
+                uint8_t i;
+                for (i = 0; i < ARRAY_LENGTH(ENTITIES); i++) {
+                  if (v == ENTITIES[i].character) {
+                    fprintf(fOut, "%s", ENTITIES[i].entity);
+                    // v < 0x20 won't be printed in next block
+                    v = 0;
+                    break;
+                  }
+                }
+              }
+            }
+
+            if (v >= 0x20) {
+              char u[4] = { 0, 0, 0, 0 };
+              if(v >= 0x2370) v = 0x20;
+              ucs2_to_utf8(u, v);
+              fprintf(fOut, "%s", u);
             }
           }
         }
 
-        if (v >= 0x20) {
-          char u[4] = { 0, 0, 0, 0 };
-          if(v >= 0x2370) v = 0x20;
-          ucs2_to_utf8(u, v);
-          fprintf(fOut, "%s", u);
+        // no tag will left opened!
+        if ((config.colours == YES) && (font_tag_opened == YES)) {
+          fprintf(fOut, "</font>");
+          font_tag_opened = NO;
         }
+
+        // line delimiter
+        fprintf(fOut, "%s", (config.se_mode == YES) ? " " : "\r\n");
       }
     }
-
-    // no tag will left opened!
-    if ((config.colours == YES) && (font_tag_opened == YES)) {
-      fprintf(fOut, "</font>");
-      font_tag_opened = NO;
+    if (first_line_written) {
+      fprintf(fOut, "\r\n");
+      fflush(fOut);
     }
 
-    // line delimiter
-    fprintf(fOut, "%s", (config.se_mode == YES) ? " " : "\r\n");
-  }
-
-  if (first_line_written) {
-    fprintf(fOut, "\r\n");
-    fflush(fOut);
+    memcpy(page->last_text, &page->text, sizeof(teletext_text_t));
+    page->last_show_timestamp = page->show_timestamp;
   }
 }
 
@@ -921,12 +980,7 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
         if (cur_page_buffer->tainted == YES)
         {
           // CW: Hier die Roh-Seite vergleichen, um Wiederholung von Untertiteln zu vermeiden (unnötig?)
-          if (memcmp(cur_page_buffer->text, cur_page_buffer->last_text, sizeof(teletext_text_t)) != 0)
-          {
-            process_page(cur_page_buffer, pages[out_nr], out_nr);  // hier den last_text und last_show_timestamp verwenden!
-            memcpy(cur_page_buffer->last_text, cur_page_buffer->text, sizeof(teletext_text_t));
-            cur_page_buffer->last_show_timestamp = cur_page_buffer->show_timestamp;
-          }
+          process_page(cur_page_buffer, pages[out_nr], out_nr, TRUE);  // hier den last_text und last_show_timestamp verwenden!
 
           // it would be nice, if subtitle hides on previous video frame, so we subtract 40 ms (1 frame @25 fps)
           cur_page_buffer->hide_timestamp = timestamp - 40;
@@ -989,12 +1043,18 @@ hidden_mode = NO;
             cur_page_buffer->text[y][i] = telx_to_ucs2(packet->data[i]);
           if ((cur_page_buffer->text[y][i] > ' ') && (cur_page_buffer->text[y][i] != 0x2370))
             line_empty = FALSE;
+
+//packet->data[i] = packet->data[i] & 0x7f;
         }
         if(line_empty)  // CW: line_empty eher unnötig - eingeführt, um Wiederholung von Untertiteln vermeiden zu können
-          for (i = 0; i < 40; i++)
-            cur_page_buffer->text[y][i] = 0x0;
+//          for (i = 0; i < 40; i++)
+            cur_page_buffer->text[y][0] = 0x0;
         else
+        {
+          if (cur_page_buffer->text[y][0] == 0x0)
+            cur_page_buffer->text[y][0] = ' ';
           cur_page_buffer->tainted = YES;
+        }
       }
       else if (y == 26) {
         // ETS 300 706, chapter 12.3.2: X/26 definition
@@ -1295,17 +1355,12 @@ void SetTeletextBreak(bool NewInputFile, bool NewOutputFile, word SubtitlePage)
     if (fTtxOut[k])
     {
       // output any pending close caption
-      if (memcmp(page_buffer[k].text, page_buffer[k].last_text, sizeof(teletext_text_t)) != 0)
-      {
-        process_page(&page_buffer[k], pages[k], k);  // hier den last_text und last_show_timestamp verwenden!
-        memcpy(page_buffer[k].last_text, &page_buffer[k].text, sizeof(teletext_text_t));
-        page_buffer[k].last_show_timestamp = page_buffer[k].show_timestamp;
-      }
+      process_page(&page_buffer[k], pages[k], k, TRUE);  // hier den last_text und last_show_timestamp verwenden!
 
       // this time we do not subtract any frames, there will be no more frames
       page_buffer[k].hide_timestamp = last_timestamp;
       if (page_buffer[k].tainted == YES)
-        process_page(&page_buffer[k], pages[k], k);  // hier wird text und show_timestamp genutzt
+        process_page(&page_buffer[k], pages[k], k, FALSE);  // hier wird text und show_timestamp genutzt
 
       memset(page_buffer[k].text, 0, sizeof(teletext_text_t));
       memset(page_buffer[k].last_text, 0, sizeof(teletext_text_t));
@@ -1367,7 +1422,7 @@ void TtxProcessor_Init(word SubtitlePage)
     memset(page_buffer_all, 0, NRALLTTXPAGES * sizeof(teletext_text_t));
     memset(page_map, -1, 800 * sizeof(teletext_pagemap_t));
   }
-  PSBuffer_Init(&TtxBuffer, TeletextPID, 4096, FALSE);  // eigentlich: 1288 / 1472
+  PSBuffer_Init(&TtxBuffer, TeletextPID, 4096, FALSE, TRUE);  // eigentlich: 1288 / 1472
   LastBuffer = 0;
   config.page = SubtitlePage;
   pages[NRTTXOUTPUTS-1] = SubtitlePage;
@@ -1393,7 +1448,7 @@ bool LoadTeletextOut(const char* AbsOutFile)
     TeletextOutLen = (int)strlen(TeletextOut);
 
   if (ExtractTeletext)
-    PSBuffer_Init(&TtxBuffer, TeletextPID, 4096, FALSE);  // eigentlich: 1288 / 1472
+    PSBuffer_Init(&TtxBuffer, TeletextPID, 4096, FALSE, FALSE);  // eigentlich: 1288 / 1472
 
   TRACEEXIT;
   return TRUE;
@@ -1563,17 +1618,12 @@ bool CloseTeletextOut(void)
       // output any pending close caption
       if (ExtractTeletext)
       {
-        if (memcmp(page_buffer[k].text, page_buffer[k].last_text, sizeof(teletext_text_t)) != 0)
-        {
-          process_page(&page_buffer[k], pages[k], k);  // hier den last_text und last_show_timestamp verwenden!
-          memcpy(page_buffer[k].last_text, &page_buffer[k].text, sizeof(teletext_text_t));
-          page_buffer[k].last_show_timestamp = page_buffer[k].show_timestamp;
-        }
+        process_page(&page_buffer[k], pages[k], k, TRUE);  // hier den last_text und last_show_timestamp verwenden!
 
         // this time we do not subtract any frames, there will be no more frames
         page_buffer[k].hide_timestamp = last_timestamp;
         if (page_buffer[k].tainted == YES)
-          process_page(&page_buffer[k], pages[k], k);  // hier wird text und show_timestamp genutzt
+          process_page(&page_buffer[k], pages[k], k, FALSE);  // hier wird text und show_timestamp genutzt
       }
 
       ret = (/*fflush(fTtxOut[i]) == 0 &&*/ fclose(fTtxOut[k]) == 0) && ret;

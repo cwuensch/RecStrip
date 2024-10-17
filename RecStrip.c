@@ -1192,7 +1192,7 @@ SONST
     }
 
     if(DemuxAudio <= 1) DemuxAudio = AudioPIDs[0].pid;
-    PSBuffer_Init(&AudioPES, DemuxAudio, 65536, FALSE);
+    PSBuffer_Init(&AudioPES, DemuxAudio, 65536, FALSE, TRUE);
   }
 
   // Header-Pakete ausgeben
@@ -1478,10 +1478,10 @@ int main(int argc, const char* argv[])
   GetPacketSize(in, &FileOffset);
   rewind(in);
 
-  PSBuffer_Init(&Streams[0], PIDs[0], VIDEOBUFSIZE, FALSE);
-  PSBuffer_Init(&Streams[1], PIDs[1], 65536, FALSE);
-  PSBuffer_Init(&Streams[2], PIDs[2], 32768, FALSE);
-  PSBuffer_Init(&Streams[3], PIDs[3], 32768, TRUE);
+  PSBuffer_Init(&Streams[0], PIDs[0], VIDEOBUFSIZE, FALSE, TRUE);
+  PSBuffer_Init(&Streams[1], PIDs[1], 65536, FALSE, TRUE);
+  PSBuffer_Init(&Streams[2], PIDs[2], 32768, FALSE, TRUE);
+  PSBuffer_Init(&Streams[3], PIDs[3], 32768, TRUE, TRUE);
 
   while (fread(&Buffer[4-PACKETOFFSET], PACKETSIZE, 1, in))
   {

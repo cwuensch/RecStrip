@@ -20,10 +20,15 @@ typedef struct
                                         //2: Buffer2 is valid, Buffer1 gets filled
   int                   BufferSize;
   int                   BufferPtr;
+  bool                  IgnoreContErrors;
+  bool                  ValidDiscontinue;
+  bool                  NewDiscontinue;
   int                   ValidBufLen;
   byte                 *pBuffer;
   byte                  LastCCCounter;
   byte                 *Buffer1, *Buffer2;
+  bool                  ValidPayloadStart;
+  bool                  NewPayloadStart;
   int                   curSectionLen;
   bool                  ErrorFlag;
 #ifdef _DEBUG
@@ -31,9 +36,10 @@ typedef struct
 #endif
 } tPSBuffer;
 
+bool PSBuffer_Init(tPSBuffer *PSBuffer, word PID, int BufferSize, bool TablePacket, bool DropBufferOnErr);
 void PSBuffer_Reset(tPSBuffer *PSBuffer);
-void PSBuffer_Init(tPSBuffer *PSBuffer, word PID, int BufferSize, bool TablePacket);
-void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet);
 void PSBuffer_DropCurBuffer(tPSBuffer *PSBuffer);
+void PSBuffer_StartNewBuffer(tPSBuffer *PSBuffer, bool ResetContinuity);
+void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet);
 
 #endif

@@ -12,6 +12,25 @@
 
 
 //------ TS to PS converter
+bool PSBuffer_Init(tPSBuffer *PSBuffer, word PID, int BufferSize, bool TablePacket, bool DropBufferOnErr)
+{
+  TRACEENTER;
+
+  memset(PSBuffer, 0, sizeof(tPSBuffer));
+  PSBuffer->PID = PID;
+  PSBuffer->TablePacket = TablePacket;
+  PSBuffer->IgnoreContErrors = !DropBufferOnErr;
+  PSBuffer->BufferSize = BufferSize;
+
+  PSBuffer->Buffer1 = (byte*) malloc(BufferSize);
+  PSBuffer->Buffer2 = (byte*) malloc(BufferSize);
+  PSBuffer->pBuffer = PSBuffer->Buffer1;
+  PSBuffer->LastCCCounter = 255;
+
+  TRACEEXIT;
+  return (PSBuffer->Buffer1 && PSBuffer->Buffer2);
+}
+
 void PSBuffer_Reset(tPSBuffer *PSBuffer)
 {
   TRACEENTER;
@@ -34,20 +53,51 @@ void PSBuffer_Reset(tPSBuffer *PSBuffer)
   TRACEEXIT;
 }
 
-void PSBuffer_Init(tPSBuffer *PSBuffer, word PID, int BufferSize, bool TablePacket)
+void PSBuffer_DropCurBuffer(tPSBuffer *PSBuffer)
+{
+  TRACEENTER;
+  switch(PSBuffer->ValidBuffer)
+  {
+    case 0:
+    case 2: PSBuffer->pBuffer = PSBuffer->Buffer1; break;
+    case 1: PSBuffer->pBuffer = PSBuffer->Buffer2; break;
+  }
+  memset(PSBuffer->pBuffer, 0, PSBuffer->BufferSize);
+  PSBuffer->BufferPtr = 0;
+  PSBuffer->LastCCCounter = 255;
+  PSBuffer->curSectionLen = 0;
+  TRACEEXIT;
+}
+
+void PSBuffer_StartNewBuffer(tPSBuffer *PSBuffer, bool ResetContinuity)
 {
   TRACEENTER;
 
-  memset(PSBuffer, 0, sizeof(tPSBuffer));
-  PSBuffer->PID = PID;
-  PSBuffer->TablePacket = TablePacket;
-  PSBuffer->BufferSize = BufferSize;
+  if(PSBuffer->BufferPtr != 0)
+  {
+    //Puffer mit den abfragbaren Daten markieren
+    PSBuffer->ValidBuffer = (PSBuffer->ValidBuffer % 2) + 1;  // 0 und 2 -> 1, 1 -> 2
+	
+    PSBuffer->ValidBufLen = PSBuffer->BufferPtr;
+    PSBuffer->ValidPayloadStart = PSBuffer->NewPayloadStart;
+    PSBuffer->ValidDiscontinue = PSBuffer->NewDiscontinue;
 
-  PSBuffer->Buffer1 = (byte*) malloc(BufferSize);
-  PSBuffer->Buffer2 = (byte*) malloc(BufferSize);
-  PSBuffer->pBuffer = PSBuffer->Buffer1;
-  PSBuffer->LastCCCounter = 255;
-
+    //Neuen Puffer aktivieren
+    switch(PSBuffer->ValidBuffer)
+    {
+      case 0:
+      case 2: PSBuffer->pBuffer = PSBuffer->Buffer1; break;
+      case 1: PSBuffer->pBuffer = PSBuffer->Buffer2; break;
+    }
+    PSBuffer->BufferPtr = 0;
+    PSBuffer->NewPayloadStart = FALSE;
+    PSBuffer->NewDiscontinue = FALSE;
+  }
+  if (ResetContinuity)
+  {
+    PSBuffer->LastCCCounter = 255;
+    PSBuffer->NewDiscontinue = TRUE;
+  }
   TRACEEXIT;
 }
 
@@ -68,7 +118,11 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
       if(PSBuffer->LastCCCounter != 255)
       {
         printf("  PESProcessor: CC error while parsing PID %hd\n", PSBuffer->PID);
-        PSBuffer_DropCurBuffer(PSBuffer);
+        if (PSBuffer->IgnoreContErrors)
+          PSBuffer_StartNewBuffer(PSBuffer, TRUE);
+        else
+          PSBuffer_DropCurBuffer(PSBuffer);
+        PSBuffer->NewDiscontinue = TRUE;
       }
     }
         
@@ -88,7 +142,11 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
       if ((Packet->Data[0] > 0) && ((Packet->Data[1] & 0x80) > 0))
       {
         printf("  PESProcessor: Discontinuity flag while parsing PID %hd\n", PSBuffer->PID);
-        PSBuffer_DropCurBuffer(PSBuffer);
+        if (PSBuffer->IgnoreContErrors)
+          PSBuffer_StartNewBuffer(PSBuffer, TRUE);
+        else
+          PSBuffer_DropCurBuffer(PSBuffer);
+        PSBuffer->NewDiscontinue = 2;
       }
     }
 
@@ -123,9 +181,9 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
 
       if (RemainingBytes < 184 - Start)
       {
-        //Restliche Bytes umkopieren und neuen Buffer beginnen
         if(PSBuffer->BufferPtr != 0)
         {
+          //Restliche Bytes umkopieren
           if(RemainingBytes != 0)
           {
             if(PSBuffer->BufferPtr + RemainingBytes <= PSBuffer->BufferSize)
@@ -140,25 +198,16 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
               PSBuffer->ErrorFlag = TRUE;
             }
           }
+        }
 
 #ifdef _DEBUG
           if(PSBuffer->BufferPtr > PSBuffer->maxPESLen)
             PSBuffer->maxPESLen = PSBuffer->BufferPtr;
 #endif
 
-          //Puffer mit den abfragbaren Daten markieren
-          PSBuffer->ValidBuffer = (PSBuffer->ValidBuffer % 2) + 1;  // 0 und 2 -> 1, 1 -> 2
-          PSBuffer->ValidBufLen = PSBuffer->BufferPtr;
+        // Neuen Buffer beginnen
+        PSBuffer_StartNewBuffer(PSBuffer, FALSE);
 
-          //Neuen Puffer aktivieren
-          switch(PSBuffer->ValidBuffer)
-          {
-            case 0:
-            case 2: PSBuffer->pBuffer = PSBuffer->Buffer1; break;
-            case 1: PSBuffer->pBuffer = PSBuffer->Buffer2; break;
-          }
-          PSBuffer->BufferPtr = 0;
-        }
       }
       else
       {
@@ -176,6 +225,7 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
       PSBuffer->curSectionLen = ((tTSTableHeader*)(PSBuffer->pBuffer))->SectionLen1 * 256 + ((tTSTableHeader*)(PSBuffer->pBuffer))->SectionLen2;
       PSBuffer->pBuffer += (184-Start-RemainingBytes);
       PSBuffer->BufferPtr += (184-Start-RemainingBytes);
+      PSBuffer->NewPayloadStart = PESStart;
     }
     else
     {
@@ -214,21 +264,5 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
     }
     PSBuffer->LastCCCounter = Packet->ContinuityCount;
   }
-  TRACEEXIT;
-}
-
-void PSBuffer_DropCurBuffer(tPSBuffer *PSBuffer)
-{
-  TRACEENTER;
-  switch(PSBuffer->ValidBuffer)
-  {
-    case 0:
-    case 2: PSBuffer->pBuffer = PSBuffer->Buffer1; break;
-    case 1: PSBuffer->pBuffer = PSBuffer->Buffer2; break;
-  }
-  memset(PSBuffer->pBuffer, 0, PSBuffer->BufferSize);
-  PSBuffer->BufferPtr = 0;
-  PSBuffer->LastCCCounter = 255;
-  PSBuffer->curSectionLen = 0;
   TRACEEXIT;
 }

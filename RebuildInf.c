@@ -1698,8 +1698,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     bool                PTSLastPayloadStart = FALSE;
     int                 PTSLastEndNulls = 0;
     PMTPID = 0;
-    PSBuffer_Init(&PMTBuffer, PMTPID,  4096, TRUE);
-    PSBuffer_Init(&EITBuffer, 0x0012, 16384, TRUE);
+    PSBuffer_Init(&PMTBuffer, PMTPID,  4096, TRUE, TRUE);
+    PSBuffer_Init(&EITBuffer, 0x0012, 16384, TRUE, TRUE);
 
 /*    ReadBytes = (int)fread(Buffer, 1, 5760, fIn);
     if(ReadBytes < 5760)
@@ -1754,7 +1754,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         {
           PMTPID = packet2->PID1 * 256 + packet2->PID2;
           printf("  TS: PMTPID=%hd", PMTPID);
-          PSBuffer_Init(&PMTBuffer, PMTPID, 4096, TRUE);
+          PSBuffer_Init(&PMTBuffer, PMTPID, 4096, TRUE, TRUE);
           PMTatStart = TRUE;
 
           // Kopiere PAT/PMT/EIT-Pakete vom Dateianfang in Buffer (nur beim ersten File-Open?)
@@ -1832,7 +1832,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             RecInf->ServiceInfo.PMTPID = PMTPID;
 
             //Analyse the PMT
-            PSBuffer_Init(&PMTBuffer, PMTPID, 4096, TRUE);
+            PSBuffer_Init(&PMTBuffer, PMTPID, 4096, TRUE, TRUE);
 
 //            p = &Buffer[Offset + PACKETOFFSET];
             while (p <= &Buffer[ReadBytes-188])
@@ -1900,8 +1900,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       word TeletextPID_PMT = TeletextPID;
       bool HasTeletext = FALSE;
       int NrIterations = (ExtractAllTeletext >= 2) ? 10000 : 300;
-      PSBuffer_Init(&PMTBuffer, 0x0011, 4096, TRUE);    // wird hier jetzt für die SDT verwendet
-      PSBuffer_Init(&TtxBuffer, TeletextPID, 4096, FALSE);  // eigentlich: 1288 / 1472
+      PSBuffer_Init(&PMTBuffer, 0x0011, 4096, TRUE, TRUE);    // wird hier jetzt für die SDT verwendet
+      PSBuffer_Init(&TtxBuffer, TeletextPID, 4096, FALSE, TRUE);  // eigentlich: 1288 / 1472
       LastPMTBuffer = 0; LastEITBuffer = 0; LastTtxBuffer = 0;
 
       fseeko64(fIn, FilePos + Offset, SEEK_SET);  // Hier auf 0 setzen (?)
