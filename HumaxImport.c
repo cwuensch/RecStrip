@@ -634,7 +634,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
           }
         }
         
-        PSBuffer_Init(&EITBuffer, 0x0012, 16384, TRUE, FALSE, FALSE);
+        PSBuffer_Init(&EITBuffer, 0x0012, 16384, TRUE, TRUE, TRUE);
         memset(CurPacket, 0, sizeof(tTSPacket));
 
         NrEPGPacks = 0;

@@ -42,11 +42,11 @@ typedef struct
 #endif
 } tPSBuffer;
 
-void PSBuffer_Reset(tPSBuffer *PSBuffer);
 bool PSBuffer_Init(tPSBuffer *PSBuffer, word PID, int BufferSize, bool TablePacket, bool DropBufferOnErr, bool SkipFirstIncomplete);
+void PSBuffer_Reset(tPSBuffer *PSBuffer);
+void PSBuffer_DropCurBuffer(tPSBuffer *PSBuffer);
 void PSBuffer_StartNewBuffer(tPSBuffer *PSBuffer, bool SkipFirstIncomplete, bool ResetContinuity);
 void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet, long long FilePosition);
-void PSBuffer_DropCurBuffer(tPSBuffer *PSBuffer);
 
 
 void PESMuxer_Init(byte *PESBuffer, word PID, bool pPayloadStart, bool pDiscontinuity);
