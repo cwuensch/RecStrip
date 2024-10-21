@@ -1194,7 +1194,7 @@ SONST
     }
 
     if(DemuxAudio <= 1) DemuxAudio = AudioPIDs[0].pid;
-    PSBuffer_Init(&AudioPES, DemuxAudio, 65536, FALSE, FALSE, TRUE);
+    PSBuffer_Init(&AudioPES, DemuxAudio, 65536, FALSE, TRUE, TRUE);
   }
 
   // Header-Pakete ausgeben

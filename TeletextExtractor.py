@@ -70,13 +70,13 @@ def mytrim2(line):
 def mytrim(line):
   line = list(line)
   for i, c in enumerate(line):
-    if (c < ' ' or c >= '█'):
+    if (c < ' ' or c >= '⍰'):
       line[i] = ' '
   line = "".join(line)
 
-  while (len(line) > 0 and line[0] in "█ "):
+  while (len(line) > 0 and line[0] in "⍰ "):
     line = line[1:]
-  while (len(line) >= 1 and line[-1] in "█ "):
+  while (len(line) >= 1 and line[-1] in "⍰ "):
     line = line[:-1]
 #  line = str.lstrip(line)
 #  line = str.rstrip(line)
@@ -101,6 +101,8 @@ def replace_colors(line, colorize_output):
       line[i] = last_c if (hold_mosaic) else ' '
     elif (ord(c) >= 0x2588):
       last_c = c
+    elif (c.isalpha() and c != 'm'):
+      last_c = ' ' 
 
   return("".join(line))
 
@@ -236,8 +238,8 @@ def process_page(all_pages, new_text):
 
     nr_diff = sum( sum( (old_text[i][j] != new_text[i][j] and old_text[i][j] > ' ' and new_text[i][j] > ' ') for j in range(0, min(len(old_text[i]), len(new_text[i]))) ) for i in range(2, len(old_text)) )
     nr_same = sum( sum( (old_text[i][j] == new_text[i][j]) for j in range(0, min(len(old_text[i]), len(new_text[i]))) ) for i in range(1, len(old_text)) )
-    nr_missing_ref = sum( old_text[i].count('█') for i in range(1, len(old_text)) )
-    nr_missing_new = sum( new_text[i].count('█') for i in range(1, len(new_text)) )
+    nr_missing_ref = sum( old_text[i].count('⍰') for i in range(1, len(old_text)) )
+    nr_missing_new = sum( new_text[i].count('⍰') for i in range(1, len(new_text)) )
     nr_unique_ref  = sum( sum( (old_text[i][j] > ' ' and new_text[i][j] <= ' ') for j in range(0, min(len(old_text[i]), len(new_text[i]))) ) + max(len(old_text[i])-len(new_text[i]), 0) for i in range(2, len(old_text)) )
     nr_unique_new  = sum( sum( (new_text[i][j] > ' ' and old_text[i][j] <= ' ') for j in range(0, min(len(old_text[i]), len(new_text[i]))) ) + max(len(new_text[i])-len(old_text[i]), 0) for i in range(2, len(new_text)) )
 
@@ -250,9 +252,9 @@ def process_page(all_pages, new_text):
           old = list(old_text[i])
           neu = list(new_text[i])
           for j in range(0, min(len(old), len(neu))):
-            if (  old[j] == '█' and (j==0 or old[j-1] == neu[j-1]) and (j==39 or old[j+1] == neu[j+1]) ):
+            if (  old[j] == '⍰' and (j==0 or old[j-1] == neu[j-1]) and (j==39 or old[j+1] == neu[j+1]) ):
               old[j] = neu[j]
-            elif( neu[j] == '█' and (j==0 or old[j-1] == neu[j-1]) and (j==39 or old[j+1] == neu[j+1]) ):
+            elif( neu[j] == '⍰' and (j==0 or old[j-1] == neu[j-1]) and (j==39 or old[j+1] == neu[j+1]) ):
               neu[j] = old[j]
           old_text[i] = "".join(old)
           new_text[i] = "".join(neu)

@@ -498,7 +498,7 @@ void SetInfEventText(const char *pCaption)
       if ((byte)OldEventText[0] >= 0x15)
       {
         StrToUTF8(NewEventText, pCaption, sizeof(RecHeader->ExtEventInfo.Text), 9);
-        snprintf(&NewEventText[strlen(NewEventText)], sizeof(RecHeader->ExtEventInfo.Text), "\xC2\x8A\xC2\x8A%s", &OldEventText[((byte)OldEventText[0] < 0x20) ? 1 : 0]);
+        snprintf(&NewEventText[strlen(NewEventText)], sizeof(RecHeader->ExtEventInfo.Text) - strlen(NewEventText), "\xC2\x8A\xC2\x8A%s", &OldEventText[((byte)OldEventText[0] < 0x20) ? 1 : 0]);
       }
       else
         snprintf(NewEventText, sizeof(RecHeader->ExtEventInfo.Text), "\5%s\x8A\x8A%s", pCaption, &OldEventText[((byte)OldEventText[0] < 0x20) ? 1 : 0]);

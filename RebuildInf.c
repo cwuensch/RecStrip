@@ -1001,7 +1001,7 @@ static bool AnalyseTtx(byte *PSBuffer, int BufSize, bool AcceptTimeString, tPVRT
 */
               // Programme Identification
               programme[0] = '\0';
-              for (i = 20; i < 40 && len+3 < sizeof(programme); i++)
+              for (i = 20; i < 40 && len+3 < (int)sizeof(programme); i++)
               {
                 char u[4] = { 0, 0, 0, 0 };
                 word c = telx_to_ucs2(byte_reverse(data_block[i]));
@@ -1698,8 +1698,8 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     bool                PTSLastPayloadStart = FALSE;
     int                 PTSLastEndNulls = 0;
     PMTPID = 0;
-    PSBuffer_Init(&PMTBuffer, PMTPID,  4096, TRUE, TRUE, FALSE);
-    PSBuffer_Init(&EITBuffer, 0x0012, 16384, TRUE, TRUE, FALSE);
+    PSBuffer_Init(&PMTBuffer, PMTPID,  4096, TRUE, TRUE, TRUE);
+    PSBuffer_Init(&EITBuffer, 0x0012, 16384, TRUE, TRUE, TRUE);
 
 /*    ReadBytes = (int)fread(Buffer, 1, 5760, fIn);
     if(ReadBytes < 5760)
@@ -1754,7 +1754,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         {
           PMTPID = packet2->PID1 * 256 + packet2->PID2;
           printf("  TS: PMTPID=%hd", PMTPID);
-          PSBuffer_Init(&PMTBuffer, PMTPID, 4096, TRUE, TRUE, FALSE);
+          PSBuffer_Init(&PMTBuffer, PMTPID, 4096, TRUE, TRUE, TRUE);
           PMTatStart = TRUE;
 
           // Kopiere PAT/PMT/EIT-Pakete vom Dateianfang in Buffer (nur beim ersten File-Open?)
@@ -1905,7 +1905,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       bool HasTeletext = FALSE;
       int NrIterations = (ExtractAllTeletext >= 2) ? 10000 : 300;
       PSBuffer_Init(&PMTBuffer, 0x0011, 4096, TRUE, TRUE, TRUE);    // wird hier jetzt für die SDT verwendet
-      PSBuffer_Init(&TtxBuffer, TeletextPID, 4096, FALSE, TRUE, TRUE);  // eigentlich: 1288 / 1472
+      PSBuffer_Init(&TtxBuffer, TeletextPID, 4096, FALSE, FALSE, TRUE);  // eigentlich: 1288 / 1472
       LastPMTBuffer = 0; LastEITBuffer = 0; LastTtxBuffer = 0;
 
       fseeko64(fIn, FilePos + Offset, SEEK_SET);  // Hier auf 0 setzen (?)
@@ -2065,7 +2065,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           else if (ExtractAllTeletext == 2)
           {
             ExtractAllTeletext++;
-            if (RecFileSize < 2 * NrIterations * PACKETSIZE * 168)
+            if ((long long int)RecFileSize < 2 * NrIterations * PACKETSIZE * 168)
             {
               fseeko64(fIn, 0 + Offset, SEEK_SET);
               PSBuffer_DropCurBuffer(&TtxBuffer);
