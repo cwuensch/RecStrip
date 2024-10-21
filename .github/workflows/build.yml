@@ -446,7 +446,7 @@ jobs:
     env:
       RS_VER: 2
       RS_VER_FILE: RecStrip
-      RS_REF_TAG:  RS_29RC5
+      RS_REF_TAG:  RS_29RC6
       RS_REF_TAG3: RS_32RC2
 
     steps:

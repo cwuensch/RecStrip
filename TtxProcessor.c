@@ -594,7 +594,7 @@ empty_finish:
   }
 
   // Try to combine last_text and text, if last_page is displayed only 2 frames
-  if (page->show_timestamp <= page->last_show_timestamp + 100)
+  if ((page->show_timestamp <= page->last_show_timestamp + 100) && (page->show_timestamp >= page->last_show_timestamp))
   {
     uint8_t append_page = YES;
     for (row = 1; row < 25; row++)
@@ -763,8 +763,10 @@ empty_finish:
       fflush(fOut);
     }
 
-    memcpy(page->last_text, &page->text, sizeof(teletext_text_t));
+    memcpy(page->last_text, page->text, sizeof(teletext_text_t));
     page->last_show_timestamp = page->show_timestamp;
+//    memset(page->text, 0, sizeof(teletext_text_t));
+//    page->show_timestamp = 0;
   }
 }
 
@@ -871,7 +873,7 @@ static void process_page2(uint16_t page_number)
     if (place >= 0)
       memcpy(&page_buffer_all[place], page->text, sizeof(teletext_text_t));
   }
-  memset(&page_buffer_in[MAGAZINE(page_number)-1], 0, sizeof(teletext_page_t));
+//  memset(&page_buffer_in[MAGAZINE(page_number)-1], 0, sizeof(teletext_page_t));
 }
 
 static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payload_t *packet, uint32_t timestamp)
@@ -945,10 +947,10 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
           for (i = 0; i < 8; i++)
           {
             page_buffer_in[i].receiving_data = NO;
-            memset(page_buffer_in[i].text, 0x00, sizeof(teletext_text_t));
+            memset(page_buffer_in[i].text, 0, sizeof(teletext_text_t));
           }
         else
-          memset(page_buffer_in[m-1].text, 0x00, sizeof(teletext_text_t));
+          memset(page_buffer_in[m-1].text, 0, sizeof(teletext_text_t));
       }
 
       // FIXME: Well, this is not ETS 300 706 kosher, however we are interested in DATA_UNIT_EBU_TELETEXT_SUBTITLE only
@@ -1004,7 +1006,7 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
           cur_page_buffer->hide_timestamp = timestamp - 40;
         }
 
-        memset(cur_page_buffer->text, 0x00, sizeof(teletext_text_t));
+        memset(cur_page_buffer->text, 0, sizeof(teletext_text_t));
         cur_page_buffer->show_timestamp = timestamp;
         cur_page_buffer->tainted = NO;
 //        cur_page_buffer->receiving_data = YES;
@@ -1319,6 +1321,7 @@ uint16_t process_pes_packet(uint8_t *buffer, uint16_t size)
       states.pts_initialized = NO;
     }
   }
+
 //CW  if (t < t0) delta = last_timestamp;
   new_timestamp = t - delta;
   if (FirstPacketAfterBreak || labs(new_timestamp - last_timestamp) > 30000)
@@ -1366,7 +1369,8 @@ void SetTeletextBreak(bool NewInputFile, bool NewOutputFile, word SubtitlePage)
 {
   int k;
   FirstPacketAfterBreak = TRUE;
-  PSBuffer_StartNewBuffer(&TtxBuffer, TRUE);
+//  PSBuffer_DropCurBuffer(&TtxBuffer);
+  PSBuffer_StartNewBuffer(&TtxBuffer, FALSE);
 
   for (k = 0; k < NRTTXOUTPUTS; k++)
   {
@@ -1374,14 +1378,16 @@ void SetTeletextBreak(bool NewInputFile, bool NewOutputFile, word SubtitlePage)
     {
       // output any pending close caption
       process_page(&page_buffer[k], pages[k], k, TRUE);  // hier den last_text und last_show_timestamp verwenden!
+      memset(page_buffer[k].text, 0, sizeof(teletext_text_t));
+      page_buffer[k].show_timestamp = 0;
 
       // this time we do not subtract any frames, there will be no more frames
       page_buffer[k].hide_timestamp = last_timestamp;
       if (page_buffer[k].tainted == YES)
         process_page(&page_buffer[k], pages[k], k, FALSE);  // hier wird text und show_timestamp genutzt
-
-      memset(page_buffer[k].text, 0, sizeof(teletext_text_t));
       memset(page_buffer[k].last_text, 0, sizeof(teletext_text_t));
+      page_buffer[k].last_show_timestamp = 0;
+
       page_buffer[k].receiving_data = NO;
     }
   }
@@ -1440,7 +1446,7 @@ void TtxProcessor_Init(word SubtitlePage)
     memset(page_buffer_all, 0, NRALLTTXPAGES * sizeof(teletext_text_t));
     memset(page_map, -1, 800 * sizeof(teletext_pagemap_t));
   }
-  PSBuffer_Init(&TtxBuffer, TeletextPID, 4096, FALSE, TRUE);  // eigentlich: 1288 / 1472
+  PSBuffer_Init(&TtxBuffer, TeletextPID, 4096, FALSE, FALSE);  // eigentlich: 1288 / 1472
   LastBuffer = 0;
   config.page = SubtitlePage;
   pages[NRTTXOUTPUTS-1] = SubtitlePage;
@@ -1477,6 +1483,7 @@ void ProcessTtxPacket(tTSPacket *Packet)
   TRACEENTER;
 
   PSBuffer_ProcessTSPacket(&TtxBuffer, (tTSPacket*)Packet);
+  if(TtxBuffer.ValidDiscontinue) SetTeletextBreak(FALSE, FALSE, TeletextPage);
   if(TtxBuffer.ValidBuffer != LastBuffer && TtxBuffer.ValidBufLen > 0)
   {
     byte *pBuffer = (TtxBuffer.ValidBuffer==2) ? TtxBuffer.Buffer2 : TtxBuffer.Buffer1;
@@ -1637,11 +1644,15 @@ bool CloseTeletextOut(void)
       if (ExtractTeletext)
       {
         process_page(&page_buffer[k], pages[k], k, TRUE);  // hier den last_text und last_show_timestamp verwenden!
+        memset(page_buffer[k].text, 0, sizeof(teletext_text_t));
+        page_buffer[k].show_timestamp = 0;
 
         // this time we do not subtract any frames, there will be no more frames
         page_buffer[k].hide_timestamp = last_timestamp;
         if (page_buffer[k].tainted == YES)
           process_page(&page_buffer[k], pages[k], k, FALSE);  // hier wird text und show_timestamp genutzt
+        memset(page_buffer[k].last_text, 0, sizeof(teletext_text_t));
+        page_buffer[k].last_show_timestamp = 0;
       }
 
       ret = (/*fflush(fTtxOut[i]) == 0 &&*/ fclose(fTtxOut[k]) == 0) && ret;

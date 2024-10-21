@@ -1478,10 +1478,10 @@ int main(int argc, const char* argv[])
   GetPacketSize(in, &FileOffset);
   rewind(in);
 
-  PSBuffer_Init(&Streams[0], PIDs[0], VIDEOBUFSIZE, FALSE, TRUE);
-  PSBuffer_Init(&Streams[1], PIDs[1], 65536, FALSE, TRUE);
-  PSBuffer_Init(&Streams[2], PIDs[2], 32768, FALSE, TRUE);
-  PSBuffer_Init(&Streams[3], PIDs[3], 32768, TRUE, TRUE);
+  PSBuffer_Init(&Streams[0], PIDs[0], VIDEOBUFSIZE, FALSE, FALSE);
+  PSBuffer_Init(&Streams[1], PIDs[1], 65536, FALSE, FALSE);
+  PSBuffer_Init(&Streams[2], PIDs[2], 32768, FALSE, FALSE);
+  PSBuffer_Init(&Streams[3], PIDs[3], 32768, TRUE, FALSE);
 
   while (fread(&Buffer[4-PACKETOFFSET], PACKETSIZE, 1, in))
   {

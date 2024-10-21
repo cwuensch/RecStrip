@@ -207,7 +207,6 @@ void PSBuffer_ProcessTSPacket(tPSBuffer *PSBuffer, tTSPacket *Packet)
 
         // Neuen Buffer beginnen
         PSBuffer_StartNewBuffer(PSBuffer, FALSE);
-
       }
       else
       {
