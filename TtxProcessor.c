@@ -542,7 +542,7 @@ empty_finish:
       // anchors for string trimming purpose
       uint8_t nr_missing = 0;
       uint8_t col_start = 40;
-      uint8_t col_stop = 40;
+      uint8_t col_stop = 40, col_stop2 = 40;
 
       // detect start of text
       for (col = 39; col > 0; col--) {
@@ -557,9 +557,11 @@ empty_finish:
 
       // detect end of text
       for (col = col_start + 1; col <= 39; col++) {
-        if ((page->text[row][col] > 0x20) && (page->text[row][col] < 0x2370)) {
+        if ((page->text[row][col] >= 0x20) && (page->text[row][col] < 0x2370)) {
           if (col_stop > 39) col_start = col;
+          if ((page->text[row][col] > 0x20))
           col_stop = col;
+          col_stop2 = col;
         }
         if (page->text[row][col] == 0xa) break;
       }
@@ -568,7 +570,7 @@ empty_finish:
         { page->text[row][0] = 0x00; continue; }
 
       // CW: line has no boxed area stop code
-      if ((page->text[row][col] != 0xa) && (col_stop < 38))
+      if ((page->text[row][col] != 0xa) && (col_stop2 < 38))
         { page->text[row][0] = 0x00; continue; }
 
       // line is corrupted
@@ -817,6 +819,12 @@ static void process_page2(uint16_t page_number)
       // Check for grade of matching
       for (i = 0; i < 25; i++)
       {
+        if (page->text[i][0] == 0 || ref->text[i][0] == 0)
+        {
+          if (page->text[i][0] == 0 &&  ref->text[i][j] > 0)  nr_unique_ref += 10;
+          if ( ref->text[i][0] == 0 && page->text[i][j] > 0)  nr_unique_new += 10;
+          continue;
+        }
         for (j = 0; j < 40; j++)
         {
           if (page->text[i][j] == ref->text[i][j])  nr_content_same++;  // völlige Übereinstimmung
@@ -961,11 +969,10 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
         page_buffer[out_nr].receiving_data = NO;
     }
 
-
-    if (((p & 0xf0) > 0x90) || ((p & 0x0f) > 0x09)) return;
-
     page_number = (m << 8) | p;
     transmission_mode = (transmission_mode_t) (unham_8_4(packet->data[7]) & 0x01);
+
+    if (((p & 0xf0) > 0x90) || ((p & 0x0f) > 0x09)) return;
 
     // Open a new srt output file
     if (ExtractTeletext && flag_subtitle)
@@ -1027,6 +1034,7 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
     return;
   }
 
+  if (((page_number & 0xf0) > 0x90) || ((page_number & 0x0f) > 0x09)) return;
   if (out_nr >= 0)
     cur_page_buffer = &page_buffer[out_nr];
   else if (ExtractAllTeletext)
@@ -1061,7 +1069,7 @@ hidden_mode = NO;
         {
           if (cur_page_buffer->text[y][i] == 0x00)
             cur_page_buffer->text[y][i] = telx_to_ucs2(packet->data[i]);
-          if ((cur_page_buffer->text[y][i] > ' ') && (cur_page_buffer->text[y][i] != 0x2370))
+          if ((cur_page_buffer->text[y][i] > ' ' || cur_page_buffer->text[y][i] == 0x1d) && (cur_page_buffer->text[y][i] != 0x2370))
             line_empty = FALSE;
 
 //packet->data[i] = packet->data[i] & 0x7f;

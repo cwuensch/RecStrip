@@ -447,7 +447,7 @@ jobs:
       RS_VER: 2
       RS_VER_FILE: RecStrip
       RS_REF_TAG:  RS_29RC6
-      RS_REF_TAG3: RS_32RC2
+      RS_REF_TAG3: RS_32RC3
 
     steps:
 
@@ -505,7 +505,7 @@ jobs:
       run: |
         docker run -v ${{ github.workspace }}:/StripTest/bin --entrypoint=/StripTest/BuildRS.sh cwuensch/striptest:all ${{ env.RS_REF_TAG }} "bin/${{ env.RS_VER_FILE }}_ref"
         docker run --rm -v ${{ github.workspace }}:/StripTest/bin --env STRIPTEST=${{ matrix.test }} --env RS_VER=${{ env.RS_VER }} --env REFERENCE="bin/${{ env.RS_VER_FILE }}_ref" --env RECSTRIP="bin/${{ matrix.platform }}" cwuensch/striptest:all
-        docker run --rm -v ${{ github.workspace }}:/StripTest/bin --env STRIPTEST=${{ matrix.test }} --env RS_VER=${{ env.RS_VER }} --env REFERENCE="bin/${{ env.RS_VER_FILE }}_ref" --env RECSTRIP="bin/${{ env.RS_VER_FILE }}_x64" cwuensch/striptest:all
+        docker run --rm -v ${{ github.workspace }}:/StripTest/bin --env STRIPTEST=${{ matrix.test }} --env RS_VER=${{ env.RS_VER }} --env REFERENCE="bin/${{ env.RS_VER_FILE }}_ref" --env RECSTRIP="bin/RecStrip_x64" cwuensch/striptest:all
 
 #    - name: Perform test (alternative)
 #      uses: docker://cwuensch/striptest:${{ matrix.test }}_neu
