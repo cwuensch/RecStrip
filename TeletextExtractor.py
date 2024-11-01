@@ -1,3 +1,12 @@
+# TeletextExtractor
+# Displays all extracted teletext files in a folder, page-wise with color and mosaic arts.
+# Use with argument -q to make a tsv of the selected description page for each rec.
+# python C:\Topfield\RecStrip_28\TeletextExtractor.py -q Humax-1 & python C:\Topfield\RecStrip_28\TeletextExtractor.py -q Humax-2 & python C:\Topfield\RecStrip_28\TeletextExtractor.py -q Humax-3 & python C:\Topfield\RecStrip_28\TeletextExtractor.py -q Humax-4 & python C:\Topfield\RecStrip_28\TeletextExtractor.py -q Humax-5 & python C:\Topfield\RecStrip_28\TeletextExtractor.py -q Humax-6 & python C:\Topfield\RecStrip_28\TeletextExtractor.py -q Medion-1 & python C:\Topfield\RecStrip_28\TeletextExtractor.py -q Medion-2 & python C:\Topfield\RecStrip_28\TeletextExtractor.py -q Medion-3
+#
+# (c) 2024 Christian Wünsch
+#
+# 
+
 import os, sys, glob, csv, re
 
 try:
@@ -107,9 +116,10 @@ def replace_colors(line, colorize_output):
   return("".join(line))
 
 # Funktion zur Text-Extraktion einer Teletext-Seite
-def extract_text(page):
+def extract_text(page, filename, page_nr, sub_nr, comment):
   trimmed_page = []
   out_page = []
+  result = {}
   line_buf = ""
 
   # 1. Schritt: Zeilen trimmen, tokenisieren und von Navigations-Zeilen befreien
@@ -119,8 +129,8 @@ def extract_text(page):
     line = line.replace("tag  ", "tag, ")
     line = line.replace("woch  ", "woch, ")
 
-    if (i >= 2 and ("●" in line or "◐" in line or "◑" in line or "◒" in line or "◓" in line or "◔" in line or "◕" in line or "○" in line)):
-      parts = re.split("●|◐|◑|◒|◓|◔|◕|○", line)
+    if (i >= 2 and ("   " in line or "●" in line or "◐" in line or "◑" in line or "◒" in line or "◓" in line or "◔" in line or "◕" in line or "○" in line)):
+      parts = re.split("   |●|◐|◑|◒|◓|◔|◕|○", line)
       for nr, part in enumerate(parts):
         part = mytrim(part)
         if (len(part) > 0):
@@ -159,24 +169,32 @@ def extract_text(page):
         same_col = ((line_buf[0] == "!" and next_line[0] == "!") or (line_buf[0] != "!" and next_line[0] != "!"))
 
       if (not getrennt and (i <= 2 or not same_col or (len(line) <= 20) or (len(next_line) <= 1) or (len(next_line.split(" ")[0]) < 38-len(line)) or not any(map(str.islower, line)) or "16:9" in next_line)):
-        out_page.append(line_buf)
+        out_page.append(str.rstrip(line_buf))
         line_buf = ""
     i = i + 1
   if (len(line_buf) > 0):
-    out_page.append(line_buf)
+    out_page.append(str.rstrip(line_buf))
 
   # 3. Schritt: Besondere Zeilen identifizieren
-  dauer = ""
-  titel = ""
-  subtitel = ""
+  result["filename"] = filename
+  result["page"] = page_nr
+  result["subpage"] = sub_nr
+  result["comment"] = comment
 
-  datum = ""  # mytrim(out_page[1][-18:-9])
-  zeit = ""   # mytrim(out_page[1][-9:-1])
+  result["dauer"] = ""
+  result["titel"] = ""
+  result["subtitel"] = ""
+  result["descs"] = []
+  result["text"] = []
 
-  out_page[0] = "[NOW]   " + mytrim(out_page[1][-18:-9]) + ", " + mytrim(out_page[1][-9:-1])
+  result["datum"] = ""  # mytrim(out_page[1][-18:-9])
+  result["zeit"] = ""   # mytrim(out_page[1][-9:])
 
-  sender = mytrim(out_page[1][12:-18])
-  out_page[1] = "[SENDR] " + sender
+  result["now"] = mytrim(out_page[1][-18:-9]) + ", " + mytrim(out_page[1][-9:])
+  out_page[0] = "[NOW]   " + result["now"]
+
+  result["sender"] = mytrim(out_page[1][12:-18])
+  out_page[1] = "[SENDR] " + result["sender"]
 
   i = 2
   while (i < len(out_page)):
@@ -184,29 +202,40 @@ def extract_text(page):
     if (line == ""):
       break
     if (re.search("\d{1,2}\. ?(\d{1,2}\.|(Jan|Feb|Mär|Apr|Mai|Jun|Jul|Aug|Sep|Okt|Nov|Dez))", line)):
-      if (datum == ""):
-        datum = line
+      if (result["datum"] == ""):
+        result["datum"] = line
       out_page[i] = "[DATUM] " + line
     elif ((re.search("\d{1,2}[\.:]\d{1,2}", line) or "Uhr" in line) and not "16:9" in line):
-      if (zeit == ""):
-        zeit = line
+      if (result["zeit"] == ""):
+        result["zeit"] = line
       out_page[i] = "[ZEIT]  " + line
     elif (re.search("\d{1,3} ?(min|MIN|Minuten)", line) and len(line) < 10):
-      if (dauer == ""):
-        dauer = line
+      if (result["dauer"] == ""):
+        result["dauer"] = line
         out_page[i] = "[DAUER] " + line
     elif ("Fernsehen" in line or "FERNSEHEN" in line or line.startswith("arte") or line.startswith("WDR") or line.startswith("NDR") or line.startswith("SWR") or line.startswith("rbb") or line.startswith("ZDF") or line.startswith("ARD")):
-      if (sender == ""):
-        sender = line
+      if (result["sender"] == ""):
+        result["sender"] = line
         out_page[i] = "[SENDR] " + line
-    elif ((titel == "" or not any(map(str.islower, line))) and (datum != "" or zeit != "" or len(line) > 15) and len(line) >= 8 and len(set(line)) >= 4 and not line.startswith("!1D1") and not line.startswith("VPS")):
-      titel = line
+    elif ((result["titel"] == "" or not any(map(str.islower, line))) and (result["datum"] != "" or result["zeit"] != "" or len(line) > 15) and len(line) >= 8 and len(set(line)) >= 4 and not line.startswith("!1D1") and not line.startswith("VPS")):
+      result["titel"] = line
       out_page[i] = "[TITEL] " + line
-    elif (titel != "" and len(line) >= 8 and not line.startswith("1D1") and not line.startswith("VPS")):
-      subtitel = line
+    elif (result["titel"] != "" and len(line) >= 8 and not line.startswith("1D1") and not line.startswith("VPS")):
+      if (result["subtitel"] == ""):
+        result["subtitel"] = line
+      else:
+        result["descs"].append(line)
       out_page[i] = "[DESC]  " + line
     i = i + 1
-  return(out_page)
+
+  while (i < len(out_page)):
+    line = out_page[i]
+    if (line != ""):
+      result["text"].append(line)
+    i = i + 1
+
+  result["text"] = "\r".join(result["text"])
+  return(result, out_page)
 
 
 # Funktion zur Verarbeitung einer eingelesenen Text-Seite
@@ -339,25 +368,29 @@ def get_subpage(page, sub_nr):
       return(sub_nr)
   return(-2)
 
-def print_page(all_pages, page_nr, sub_nr, do_extract, searchstr):
+def print_page(all_pages, page_nr, sub_nr, do_extract, searchstr, file_names, comment):
 #  print(f"DEBUG: print_page (all_pages[{len(all_pages)}], page_nr={page_nr}, sub_nr={sub_nr}, do_extract={do_extract})")
   page = get_page(all_pages, page_nr)
   subpages = list(page.keys())
+  result = None
 
   sub_nr = get_subpage(page, sub_nr)
   if (sub_nr >= 0):
     if (do_extract):
-      str = "\n".join(extract_text(page[subpages[sub_nr]]))
+      result, out_page = extract_text(page[subpages[sub_nr]], file_names, page_nr, sub_nr, comment)
+      str = "\n".join(out_page)
     else:
       str = map(lambda x: replace_colors(x, True), page[subpages[sub_nr]])
       str = "\n".join(str)
     if (searchstr == ""):
       print(str)
+      if (do_extract):
+        print("")
     else:
       print(re.sub(searchstr, "\033[92m" + searchstr + "\033[0m", replace_colors(str, False), flags=re.IGNORECASE))
   else:
     print (f"no data ({page_nr})")
-  return(sub_nr)
+  return(sub_nr, result)
 
 # Funktion zur Durchsuchung aller Teletext-Seiten nach gegebenem Suchbegriff
 def do_search(all_pages, searchstr):
@@ -379,8 +412,8 @@ def do_search(all_pages, searchstr):
 
 # Funktion zum (Zwischen-)Speichern des aktuellen Ergebnisses
 def do_save(outlist, first_write):
-  with open("output.txt", "a", encoding="utf-8") as out_file:
-    writer = csv.writer(out_file, delimiter="\t", quotechar='"', quoting=csv.QUOTE_MINIMAL, lineterminator="\r\n")
+  with open("output.txt", "a", newline="", encoding="utf-8") as out_file:
+    writer = csv.writer(out_file, delimiter='\t', quotechar='"', quoting=csv.QUOTE_MINIMAL, lineterminator='\r\n')
     if (first_write):
       writer.writerow(["filename", "page", "subpage", "comment"])
       first_write = False
@@ -388,15 +421,34 @@ def do_save(outlist, first_write):
   print ("\n\nSaved to output.txt.")
   outlist = []
 
+# Funktion zum Speichern der vollständigen Extraktions-Tabelle
+def save_table(outtable):
+  with open("output2.tsv", "a", newline="", encoding="utf-8") as out_file:
+    writer = csv.DictWriter(out_file, delimiter='\t', quotechar='"', quoting=csv.QUOTE_MINIMAL, lineterminator='\r\n', fieldnames=["filename", "page", "subpage", "now", "sender", "datum", "zeit", "dauer", "titel", "subtitel", "desc1", "desc2", "desc3", "desc4", "desc5", "desc6", "desc7", "desc8", "desc9", "text", "comment"], extrasaction='ignore')
+    writer.writeheader()
+    for row in outtable:
+      if (row):
+        for i in range(1, len(row["descs"])):
+          row["desc" + str(i)] = row["descs"][i-1]
+        writer.writerow(row)
+  print ("\n\nSaved to output2.csv.")
+
 
 # Hauptprogramm mit "GUI" und Bedienungsschleife
 def main():
   outlist = []
+  outtable = []
   inlist = {}
 
   folder = "."
+  quietmode = 0
   if (len(sys.argv) > 1):
-    folder = sys.argv[1]
+    if (sys.argv[1] == "-q"):
+      quietmode = 1
+      if (len(sys.argv) > 2):
+        folder = sys.argv[2]
+    else:
+      folder = sys.argv[1]
 
   clear()
   try:
@@ -427,7 +479,7 @@ def main():
 
   # Go through all teletext files in folder
   first_write = True
-  mode = 0
+  mode = quietmode
   i = 0
 
   while (i < len(all_files)):
@@ -520,7 +572,9 @@ def main():
         if (answer == b'f'):
           do_search(all_pages, searchstr)
         else:
-          subpage = print_page(all_pages, page, subpage, (mode==1), searchstr)
+          subpage, result = print_page(all_pages, page, subpage, (mode==1), searchstr, file_names, comment)
+          if (quietmode):
+            outtable.append(result)
 
         print("----------------------------------------")
         if (comment):
@@ -528,7 +582,7 @@ def main():
 
         print(f"Seitenzahl eingeben, oder <>, [Leer], [Enter], [z]urück / [f]inden / [c]omment / [e]dit / [s]peichern / [q]uit: ", end="", flush=True)
 
-        answer = ""
+        answer = b'\r' if (quietmode) else ""
         newpage = ""
         searchstr = ""
         while (answer=='' or answer in [b'0', b'1', b'2', b'3', b'4', b'5', b'6', b'7', b'8', b'9', b'\x08']):
@@ -605,7 +659,10 @@ def main():
         break
     i = i + 1
 
-  do_save(outlist, first_write)
+  if (quietmode):
+    save_table(outtable)
+  else:
+    do_save(outlist, first_write)
 
 if __name__ == "__main__":
   main()
