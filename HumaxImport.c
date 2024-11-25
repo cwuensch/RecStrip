@@ -434,7 +434,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
   unsigned int StartYear, StartMonth, StartDay, StartHour, StartMin, DurationH, DurationM, n0=0, n1, n2, n3;
   int ReadBytes, k;
   bool RefEPGMedion = FALSE, ret = FALSE;
-  char *LineBuf = (char*) malloc(16384), *p;
+  char *LineBuf = (char*) malloc(4096), *p;
   memset(DescStr, 0, sizeof(DescStr));
 
   if (LineBuf)
@@ -532,15 +532,18 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
                   LineBuf[--k] = '\0';
                 RecInf->ExtEventInfo.ServiceID = ServiceID;
 
+                k = strlen(&LineBuf[len_name + n0 + (max(max(n1+2, n2+1), n3)) + 2]);
                 if(ExtEPGText) free(ExtEPGText);
-                if (!(ExtEPGText = (char*) malloc(strlen(&LineBuf[len_name + n0 + (max(max(n1+2, n2+1), n3)) + 2]) + 1)))
+                if (!(ExtEPGText = (char*) malloc(k + 1)))
                 {
                   printf("  Could not allocate memory for ExtEPGText.\n");
                   free(LineBuf);
                   return FALSE;
                 }
-                strcpy(ExtEPGText, &LineBuf[len_name + n0 + (max(max(n1+2, n2+1), n3)) + 2]);
-                strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, sizeof(RecInf->ExtEventInfo.Text) - 1);
+                strncpy(ExtEPGText, &LineBuf[len_name + n0 + (max(max(n1+2, n2+1), n3)) + 2], k);
+                strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, sizeof(RecInf->ExtEventInfo.Text));
+                if (RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] != '\0')
+                  strncpy(&RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 4], "...", 4);
                 RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] = '\0';
                 RecInf->ExtEventInfo.TextLength = (word)strlen(RecInf->ExtEventInfo.Text);
                 printf("    EPGExtEvt = %s\n", ExtEPGText);

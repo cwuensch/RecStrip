@@ -111,7 +111,7 @@ def replace_colors(line, colorize_output):
     elif (ord(c) >= 0x2588):
       last_c = c
     elif (c.isalpha() and c != 'm'):
-      last_c = ' ' 
+      last_c = ' '
 
   return("".join(line))
 
@@ -134,7 +134,7 @@ def extract_text(page, filename, page_nr, sub_nr, comment):
       for nr, part in enumerate(parts):
         part = mytrim(part)
         if (len(part) > 0):
-          if (not re.search("((\.\.\.)|(>>?)) ?\d{3}", line) and not re.search("^ *\d{3} ?<<?", line) and not ("VPS" in part and len(part) <= 10) and not ("Übersicht" in line and len(line) <= 13)):
+          if (not re.search("((\.\.\.)|(>>?)) ?\d{3}", part) and not re.search("^ *\d{3} ?<<?", line) and not ("VPS" in part and len(part) <= 10) and not ("Übersicht" in line and len(line) <= 13)):
             trimmed_page.append(("!" if (nr % 2 > 0) else "") + part)
     else:
       trimmed_page.append(mytrim(line))
@@ -151,7 +151,7 @@ def extract_text(page, filename, page_nr, sub_nr, comment):
     if (len(line) > 1 and (line != ">> ")):
       if (line[-1] == " "):
         line = line[:-1]
-      if (line[-1] == "-" and line[-2] != " "):
+      if (line[-1] == "-" and line[-2] != " " and (not next_line[0].isupper() or (next_line[0] == "!" and not next_line[1].isupper()))):
         line = line[:-1]
         getrennt = True
       else:

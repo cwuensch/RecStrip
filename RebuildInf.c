@@ -403,6 +403,8 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
               }
               strcpy(ExtEPGText, Buffer);
               StrToUTF8(RecInf->ExtEventInfo.Text, ExtEPGText, (int)sizeof(RecInf->ExtEventInfo.Text), 0);
+              if (strlen(Buffer) >= sizeof(RecInf->ExtEventInfo.Text))
+                snprintf(&RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 4], 4, "...");
 //              RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] = '\0';
               RecInf->ExtEventInfo.TextLength = (word)strlen(RecInf->ExtEventInfo.Text);
               printf("    EPGExtEvt = %s\n", ExtEPGText);
