@@ -401,9 +401,10 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
                 TRACEEXIT;
                 return FALSE;
               }
+              memset(RecInf->ExtEventInfo.Text, 0, sizeof(RecInf->ExtEventInfo.Text));
               strcpy(ExtEPGText, Buffer);
               StrToUTF8(RecInf->ExtEventInfo.Text, ExtEPGText, (int)sizeof(RecInf->ExtEventInfo.Text), 0);
-              if (strlen(Buffer) >= sizeof(RecInf->ExtEventInfo.Text))
+              if (RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] != '\0')
                 snprintf(&RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 4], 4, "...");
 //              RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] = '\0';
               RecInf->ExtEventInfo.TextLength = (word)strlen(RecInf->ExtEventInfo.Text);

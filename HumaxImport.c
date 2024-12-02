@@ -532,7 +532,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
                   LineBuf[--k] = '\0';
                 RecInf->ExtEventInfo.ServiceID = ServiceID;
 
-                k = strlen(&LineBuf[len_name + n0 + (max(max(n1+2, n2+1), n3)) + 2]);
+                k = (int)strlen(&LineBuf[len_name + n0 + (max(max(n1+2, n2+1), n3)) + 2]);
                 if(ExtEPGText) free(ExtEPGText);
                 if (!(ExtEPGText = (char*) malloc(k + 1)))
                 {

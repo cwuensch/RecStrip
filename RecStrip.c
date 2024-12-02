@@ -966,10 +966,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
 
   // ggf. srt-File laden
   if (ret)
-  {
-    GetFileNameFromRec(RecFileIn, ".srt", AddFileIn);
-    RebuildSrt = (!ExtractTeletext && LoadSrtFileIn(AddFileIn));
-  }
+    RebuildSrt = (!ExtractTeletext && LoadSrtFilesIn(RecFileIn));
 
   // ggf. AudioPID für Demux Audio ermitteln
   if (ret && DemuxAudio)
@@ -1168,9 +1165,7 @@ SONST
     }
     else if (*RecFileOut && RebuildSrt)
     {
-      if (LoadSrtFileOut(AbsFileName))
-        printf("\nSrt output: %s\n", AbsFileName);
-      else
+      if (!LoadSrtFilesOut(AbsFileName))
         RebuildSrt = FALSE;
     }
   }
@@ -1239,7 +1234,7 @@ static void CloseInputFiles(bool PrintErrors, bool SetStripFlags, bool SetStartT
       HDD_SetFileDateTime(InfFileIn, OldInfTime);
   }
   CloseNavFileIn();
-  CloseSrtFileIn();
+  CloseSrtFilesIn();
   if(MedionMode == 1) SimpleMuxer_Close();
   if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
 
@@ -1277,7 +1272,7 @@ static bool CloseOutputFiles(void)
       CutFileSave(CutFileOut);
       SaveInfFile(InfFileOut, InfFileFirstIn);
       CloseTeletextOut();
-      CloseSrtFileOut();
+      CloseSrtFilesOut();
       PSBuffer_Reset(&AudioPES);
       TRACEEXIT;
       return FALSE;
@@ -1303,7 +1298,7 @@ static bool CloseOutputFiles(void)
   if (ExtractTeletext && !CloseTeletextOut())
     printf("  WARNING: Cannot create teletext files.\n");
 
-  if (!CloseSrtFileOut())
+  if (!CloseSrtFilesOut())
     printf("  WARNING: Cannot create srt output file.\n");
 
   if (fAudioOut)
@@ -2797,8 +2792,8 @@ int main(int argc, const char* argv[])
               fclose(fIn); fIn = NULL;
               CloseNavFileIn();
               CloseTeletextOut();
-              CloseSrtFileIn();
-              CloseSrtFileOut();
+              CloseSrtFilesIn();
+              CloseSrtFilesOut();
               if(MedionMode == 1) SimpleMuxer_Close();
               CutProcessor_Free();
               InfProcessor_Free();
@@ -3313,8 +3308,8 @@ int main(int argc, const char* argv[])
             SaveInfFile(InfFileOut, InfFileFirstIn);
           }
           CloseTeletextOut();
-          CloseSrtFileIn();
-          CloseSrtFileOut();
+          CloseSrtFilesIn();
+          CloseSrtFilesOut();
           if(MedionMode == 1) SimpleMuxer_Close();
           CutProcessor_Free();
           InfProcessor_Free();
