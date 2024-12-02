@@ -966,10 +966,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
 
   // ggf. srt-File laden
   if (ret)
-  {
-    GetFileNameFromRec(RecFileIn, ".srt", AddFileIn);
-    RebuildSrt = (!ExtractTeletext && LoadSrtFileIn(AddFileIn));
-  }
+    RebuildSrt = (!ExtractTeletext && LoadSrtFilesIn(RecFileIn));
 
   // ggf. AudioPID für Demux Audio ermitteln
   if (ret && DemuxAudio)
@@ -1168,9 +1165,7 @@ SONST
     }
     else if (*RecFileOut && RebuildSrt)
     {
-      if (LoadSrtFileOut(AbsFileName))
-        printf("\nSrt output: %s\n", AbsFileName);
-      else
+      if (!LoadSrtFilesOut(AbsFileName))
         RebuildSrt = FALSE;
     }
   }

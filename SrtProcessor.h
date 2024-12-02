@@ -3,10 +3,10 @@
 
 #include "RecStrip.h"
 
-bool LoadSrtFileIn(const char* AbsInSrt);
-bool LoadSrtFileOut(const char* AbsOutSrt);
+bool LoadSrtFilesIn(const char* AbsInRec);
+bool LoadSrtFilesOut(const char* AbsOutRec);
 bool SrtProcessCaptions(dword FromTimems, dword ToTimems, int TimeOffset, bool DoOutput);
-void CloseSrtFileIn(void);
-bool CloseSrtFileOut(void);
+void CloseSrtFilesIn(void);
+bool CloseSrtFilesOut(void);
 
 #endif

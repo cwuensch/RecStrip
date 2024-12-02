@@ -780,6 +780,10 @@ static void process_page2(uint16_t page_number)
   teletext_page_t *page = (teletext_page_t*) &page_buffer_in[MAGAZINE(page_number)-1];
   if (MAGAZINE(page_number) <= 0) return;
 
+if (page_nr == 138)
+  printf("H\n");
+
+
   // Check for empty
   for (i = 1; i < 25 && page_empty; i++)
     for (j = 0; j < 40; j++)
@@ -901,7 +905,7 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
   graphic_mode = NO;
   hidden_mode = NO;
 
-//printf("y=%d\n", y);
+printf("y=%d\n", y);
 
   if (y == 0)
   {
@@ -918,7 +922,7 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
 
     charset = unham_8_4(packet->data[7]);
     charset = ((charset & 0x08) | (charset & 0x04) | (charset & 0x02)) >> 1;
-//printf("new page: m=%hx, p=%02hx, trans=%d, charset=%u\n", m, p, (unham_8_4(packet->data[7]) & 0x01), charset);
+printf("new page: m=%hx, p=%02hx, trans=%d, charset=%u\n", m, p, (unham_8_4(packet->data[7]) & 0x01), charset);
 
     flag_suppress_header = (unham_8_4(packet->data[6]) & 0x01) || flag_subtitle;
     //uint8_t flag_inhibit_display = (unham_8_4(packet->data[6]) & 0x08) >> 3;
@@ -971,6 +975,9 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
 
     page_number = (m << 8) | p;
     transmission_mode = (transmission_mode_t) (unham_8_4(packet->data[7]) & 0x01);
+
+if (page_number == 0x138)
+  printf("g\n");
 
     if (((p & 0xf0) > 0x90) || ((p & 0x0f) > 0x09)) return;
 
