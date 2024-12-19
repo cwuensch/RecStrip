@@ -832,7 +832,7 @@ bool AnalyseEIT(byte *Buffer, int BufSize, word ServiceID, word *OutTransportID,
             OutEventInfo->EndTime = AddTimeSec(OutEventInfo->StartTime, 0, NULL, OutEventInfo->DurationHour * 3600 + OutEventInfo->DurationMin * 60);
 //            StartTimeUnix = 86400*((OutEventInfo->StartTime>>16) - 40587) + 3600*BCD2BIN(Event->StartTime[2]) + 60*BCD2BIN(Event->StartTime[3]);
 printf("  TS: EvtStart  = %s (UTC)\n", TimeStrTF(OutEventInfo->StartTime, 0));
-printf("  TS: EvtDuration = %02d:%02d\n", OutEventInfo->DurationHour, OutEventInfo->DurationMin);
+printf("  TS: EvtDuratn = %02d:%02d\n", OutEventInfo->DurationHour, OutEventInfo->DurationMin);
 
             Name = (char*)&Buffer[p + sizeof(tShortEvtDesc)];
             NameLen = min(ShortDesc->EvtNameLen, BufSize - p - 1);

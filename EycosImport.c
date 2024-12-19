@@ -265,17 +265,17 @@ if (strlen(ExtEPGText) != TextLen)
       EvtEndUnix = MakeUnixTime(EycosEvent.EvtEndYear, EycosEvent.EvtEndMonth, EycosEvent.EvtEndDay, EycosEvent.EvtEndHour, EycosEvent.EvtEndMin, 0, NULL);
       RecInf->EventInfo.StartTime       = Unix2TFTime(EvtStartUnix, NULL, FALSE);  // DATE(UnixToMJD(EvtStartUnix), EycosEvent.EvtStartHour, EycosEvent.EvtStartMin);  // kein Convert, da ins EPG UTC geschrieben wird
       RecInf->EventInfo.EndTime         = Unix2TFTime(EvtEndUnix, NULL, FALSE);    // DATE(UnixToMJD(EvtEndUnix), EycosEvent.EvtEndHour, EycosEvent.EvtEndMin);        // "
-      RecInf->RecHeaderInfo.StartTime   = Unix2TFTime(EvtStartUnix, NULL, TRUE);   // Convert, da EvtStartUnix als UTC-Timestamp geparsed wurde
+//      RecInf->RecHeaderInfo.StartTime   = Unix2TFTime(EvtStartUnix, NULL, TRUE);   // Convert, da EvtStartUnix als UTC-Timestamp geparsed wurde
 #ifdef _DEBUG
-if (HOUR(RecInf->RecHeaderInfo.StartTime) != EycosEvent.EvtStartHour || MINUTE(RecInf->RecHeaderInfo.StartTime) != EycosEvent.EvtStartMin)
-  printf("ASSERT: Eycos Header StartTime (%u:%u) differs from converted time (%u:%u)!\n", EycosEvent.EvtStartHour, EycosEvent.EvtStartMin, HOUR(RecInf->RecHeaderInfo.StartTime), MINUTE(RecInf->RecHeaderInfo.StartTime));
+/*if (HOUR(RecInf->RecHeaderInfo.StartTime) != EycosEvent.EvtStartHour || MINUTE(RecInf->RecHeaderInfo.StartTime) != EycosEvent.EvtStartMin)
+  printf("ASSERT: Eycos Header StartTime (%u:%u) differs from converted time (%u:%u)!\n", EycosEvent.EvtStartHour, EycosEvent.EvtStartMin, HOUR(RecInf->RecHeaderInfo.StartTime), MINUTE(RecInf->RecHeaderInfo.StartTime)); */
 //if (HOUR(RecInf->EventInfo.EndTime) != EycosEvent.EvtEndHour || MINUTE(RecInf->EventInfo.EndTime) != EycosEvent.EvtEndMin)
 //  printf("ASSERT: Eycos Header EndTime (%u:%u) differs from converted time (%u:%u)!\n", EycosEvent.EvtEndHour, EycosEvent.EvtEndMin, HOUR(RecInf->EventInfo.EndTime), MINUTE(RecInf->EventInfo.EndTime));
 #endif
 //      RecInf->RecHeaderInfo.DurationMin = (word)((EvtEndUnix - EvtStartUnix) / 60);
       RecInf->EventInfo.DurationHour    = (byte)((EvtEndUnix - EvtStartUnix) / 3600);
       RecInf->EventInfo.DurationMin     = (word)(((EvtEndUnix - EvtStartUnix) / 60) % 60);
-      printf("    EvtStart  = %s (local)\n", TimeStrTF(RecInf->RecHeaderInfo.StartTime, 0));
+      printf("    EvtStart  = %s (local)\n", TimeStrTF(RecInf->EventInfo.StartTime, 0));
       printf("    EvtDuration = %02d:%02d\n", RecInf->EventInfo.DurationHour, RecInf->EventInfo.DurationMin);
     }
     fclose(fTxt);
