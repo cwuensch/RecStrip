@@ -620,7 +620,7 @@ empty_finish:
     if (!fTtxOut[out_nr])
     {
       printf("  TTX: Trying to extract subtitles from page %03x\n\n", page_number);
-      sprintf(&TeletextOut[TeletextOutLen], "_%03hx.srt", page_number);
+      sprintf(&TeletextOut[TeletextOutLen], "_%03hx.sup", page_number);
       fTtxOut[out_nr] = fopen(TeletextOut, ((DoMerge==1) ? "ab" : "wb"));
     }
     fOut = fTtxOut[out_nr];
@@ -1665,14 +1665,14 @@ bool CloseTeletextOut(void)
 
       ret = (/*fflush(fTtxOut[i]) == 0 &&*/ fclose(fTtxOut[k]) == 0) && ret;
  
-      sprintf (&TeletextOut[TeletextOutLen], "_%03hx.srt", pages[k]);
+      sprintf (&TeletextOut[TeletextOutLen], "_%03hx.sup", pages[k]);
       if (HDD_GetFileSize(TeletextOut, &OutFileSize) && (OutFileSize == 0))
         remove(TeletextOut);
       else if((config.page == pages[k]) || (!config.page && first)) 
       {
         char NewName[FBLIB_DIR_SIZE];
         snprintf(NewName, TeletextOutLen + 1, "%s", TeletextOut);
-        sprintf (&NewName[TeletextOutLen], ".srt");
+        sprintf (&NewName[TeletextOutLen], ".sup");
         rename(TeletextOut, NewName);
       }
       first = FALSE;

@@ -530,7 +530,6 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
                 k = (int)strlen(LineBuf);
                 while (k && (LineBuf[k-1] == '\r' || LineBuf[k-1] == '\n' || LineBuf[k-1] == ';'))
                   LineBuf[--k] = '\0';
-                RecInf->ExtEventInfo.ServiceID = ServiceID;
 
                 k = (int)strlen(&LineBuf[len_name + n0 + (max(max(n1+2, n2+1), n3)) + 2]);
                 if(ExtEPGText) free(ExtEPGText);
@@ -547,6 +546,8 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
                   strncpy(&RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 4], "...", 4);
                 RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] = '\0';
                 RecInf->ExtEventInfo.TextLength = (word)strlen(RecInf->ExtEventInfo.Text);
+                if (RecInf->ExtEventInfo.TextLength > 0)
+                  RecInf->ExtEventInfo.ServiceID = ServiceID;
                 printf("    EPGExtEvt = %s\n", ExtEPGText);
               }
               if ((p = strchr(&LineBuf[len_name+1], ';')))

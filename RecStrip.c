@@ -1152,9 +1152,9 @@ SONST
   {
     char AbsFileName[FBLIB_DIR_SIZE];
     if (*RecFileOut)
-      GetFileNameFromRec(RecFileOut, ".srt", AbsFileName);
+      GetFileNameFromRec(RecFileOut, ".sup", AbsFileName);
     else
-      GetFileNameFromRec(RecFileIn, ".srt", AbsFileName);
+      GetFileNameFromRec(RecFileIn, ".sup", AbsFileName);
 
     if (ExtractTeletext)
     {
@@ -1881,7 +1881,7 @@ int main(int argc, const char* argv[])
              "             1: PacketSize = 188 Bytes, 2: PacketSize = 192 Bytes.\n\n");
       printf("  -v:        View rec information only. Disables any other option.\n\n");
       printf("  -p:        Fix PAT/PMT of output file. Disables any other option.\n\n");
-      printf("  -f:        Fix start time in source inf. Set source-file timestamps.\n\n");
+      printf("  -f:        Fix start time in source inf. (Output inf when combined with -p).\n\n");
       printf("  -d:        Demux first audio track to OutFile_audio.pes (not with -M)\n\n");
       printf("  -M:        Medion Mode: Multiplexes 4 separate PES-Files into output.\n");
       printf("             (With InFile=<name>_video.pes, _audio1, _ttx, _epg are used.)\n");
@@ -2310,6 +2310,13 @@ int main(int argc, const char* argv[])
             RecHeaderInfo_out.StartTimeSec = OrigStartSec;
             InfModified = TRUE;
           }
+          if ((RecHeaderInfo_out.DurationMin != RecHeader->RecHeaderInfo.DurationMin) || (RecHeaderInfo_out.DurationSec != RecHeader->RecHeaderInfo.DurationSec))
+          {
+            printf("INF FIX (%s): Fixing Duration to %u:%02u:%02u\n", (DoFixPMT ? "output" : "source"), RecHeader->RecHeaderInfo.DurationMin/60, RecHeader->RecHeaderInfo.DurationMin%60, RecHeader->RecHeaderInfo.DurationSec);
+            RecHeaderInfo_out.DurationMin = RecHeader->RecHeaderInfo.DurationMin;
+            RecHeaderInfo_out.DurationSec = RecHeader->RecHeaderInfo.DurationSec;
+            InfModified = TRUE;
+          }
           if (*RecHeader->ServiceInfo.ServiceName && (strncmp(ServiceInfo_out.ServiceName, RecHeader->ServiceInfo.ServiceName, sizeof(ServiceInfo_out.ServiceName)) != 0))
           {
             printf("INF FIX (%s): Fixing ServiceName %s -> %s\n", (DoFixPMT ? "output" : "source"), ServiceInfo_out.ServiceName, RecHeader->ServiceInfo.ServiceName);
@@ -2370,11 +2377,12 @@ int main(int argc, const char* argv[])
             EventInfo_out.EventID         = RecHeader->EventInfo.EventID;
             EventInfo_out.RunningStatus   = RecHeader->EventInfo.RunningStatus;
             EventInfo_out.StartTime       = RecHeader->EventInfo.StartTime;
+            EventInfo_out.EndTime         = RecHeader->EventInfo.EndTime;
             EventInfo_out.DurationHour    = RecHeader->EventInfo.DurationHour;
             EventInfo_out.DurationMin     = RecHeader->EventInfo.DurationMin;
             EventInfo_out.EventNameLength = RecHeader->EventInfo.EventNameLength;
             memcpy(EventInfo_out.EventNameDescription, RecHeader->EventInfo.EventNameDescription, sizeof(EventInfo_out.EventNameDescription));
-            
+
             if (RecHeader->ExtEventInfo.TextLength > 0)
             {
               ExtEventInfo_out.ServiceID  = RecHeader->ExtEventInfo.ServiceID;
@@ -2470,7 +2478,7 @@ int main(int argc, const char* argv[])
         if (InfModified)
         {
           fseek(fInfOut, 0, SEEK_SET);
-          fwrite(&RecHeaderInfo_out, 1, 12, fInfOut);
+          fwrite(&RecHeaderInfo_out, 1, 16, fInfOut);
           fseek(fInfOut, sizeof(TYPE_RecHeader_Info), SEEK_SET);
           fwrite(&ServiceInfo_out, 1, sizeof(TYPE_Service_Info), fInfOut);
           fwrite(&EventInfo_out, 1, sizeof(TYPE_Event_Info), fInfOut);
