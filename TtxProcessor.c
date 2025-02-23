@@ -560,9 +560,11 @@ empty_finish:
         if ((page->text[row][col] >= 0x20) && (page->text[row][col] < 0x2370)) {
           if (col_stop > 39) col_start = col;
           if ((page->text[row][col] > 0x20))
-          col_stop = col;
+            col_stop = col;
           col_stop2 = col;
         }
+        else if ((col_stop <= 39) && (page->text[row][col] == 0x2370))
+          nr_missing++;
         if (page->text[row][col] == 0xa) break;
       }
       // line is empty
@@ -570,7 +572,7 @@ empty_finish:
         { page->text[row][0] = 0x00; continue; }
 
       // CW: line has no boxed area stop code
-      if ((page->text[row][col] != 0xa) && (col_stop2 < 38))
+      if ((page->text[row][col] != 0xa) && (col_stop2 < 38 || col_stop - col_start <= 2*nr_missing))
         { page->text[row][0] = 0x00; continue; }
 
       // line is corrupted
@@ -620,7 +622,7 @@ empty_finish:
     if (!fTtxOut[out_nr])
     {
       printf("  TTX: Trying to extract subtitles from page %03x\n\n", page_number);
-      sprintf(&TeletextOut[TeletextOutLen], "_%03hx.sup", page_number);
+      sprintf(&TeletextOut[TeletextOutLen], "_%03hx.srt", page_number);
       fTtxOut[out_nr] = fopen(TeletextOut, ((DoMerge==1) ? "ab" : "wb"));
     }
     fOut = fTtxOut[out_nr];
@@ -1665,14 +1667,14 @@ bool CloseTeletextOut(void)
 
       ret = (/*fflush(fTtxOut[i]) == 0 &&*/ fclose(fTtxOut[k]) == 0) && ret;
  
-      sprintf (&TeletextOut[TeletextOutLen], "_%03hx.sup", pages[k]);
+      sprintf (&TeletextOut[TeletextOutLen], "_%03hx.srt", pages[k]);
       if (HDD_GetFileSize(TeletextOut, &OutFileSize) && (OutFileSize == 0))
         remove(TeletextOut);
       else if((config.page == pages[k]) || (!config.page && first)) 
       {
         char NewName[FBLIB_DIR_SIZE];
         snprintf(NewName, TeletextOutLen + 1, "%s", TeletextOut);
-        sprintf (&NewName[TeletextOutLen], ".sup");
+        sprintf (&NewName[TeletextOutLen], ".srt");
         rename(TeletextOut, NewName);
       }
       first = FALSE;

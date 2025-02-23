@@ -452,20 +452,24 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
       
       if(p)
       {
-        len_dir = (int)(p-VidFileName);
-        strncpy(DescStr, VidFileName, min(len_dir, (int)sizeof(DescStr)));
+        if ((VidFileName[0] == '/') || (VidFileName[1] == ':') || (VidFileName[0]=='\\' && VidFileName[1]=='\\'))
+        {
+          len_dir = (int)(p-VidFileName);
+          strncpy(DescStr, VidFileName, min(len_dir, (int)sizeof(DescStr)));
+        }
+        len_name = (int)strlen(p);
       }
-      else p = VidFileName;
+      else
+      {
+        p = VidFileName;
+        len_name = (int)strlen(DescStr);
+      }
 
-      #ifdef _WIN32
+/*      #ifdef _WIN32
         StrToUTF8(&DescStr[len_dir], p, max((int)sizeof(DescStr) - len_dir, 0), 15);
       #else
         strncpy(&DescStr[len_dir], p, max((int)sizeof(DescStr) - len_dir, 0));
-      #endif
-
-      if(p) p = &DescStr[len_dir];
-      else p = DescStr;
-      len_name = (int)strlen(p);
+      #endif */
 
       while (fgets(LineBuf, 4096, fMap) != 0)
       {
@@ -484,13 +488,16 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
             if ((LineBuf[len_name+1] != ';') && (LineBuf[len_name+1] != '-'))
             {
               if (LineBuf[p-LineBuf-2] == ':')
+              {
                 RefEPGMedion = LineBuf[p-LineBuf-1] - '0';
+                LineBuf[p-LineBuf-2] = '\0';
+              }
               if (strncmp(&LineBuf[p - LineBuf - (RefEPGMedion ? 10 : 8)], "_epg.txt", 8) == 0)
                 if(!RefEPGMedion) RefEPGMedion = 1;
               #ifdef _WIN32
-                strncpy(&DescStr[len_dir], &LineBuf[len_name+1], min(n0 - (RefEPGMedion ? 2 : 0), sizeof(DescStr)-len_name-1));
+                strncpy(&DescStr[len_dir], &LineBuf[len_name+1], min(n0, sizeof(DescStr)-len_dir));
               #else
-                StrToUTF8(&DescStr[len_dir], &LineBuf[len_name+1], min(n0 - (RefEPGMedion ? 2 : 0), sizeof(DescStr)-len_name-1), 15);
+                StrToUTF8(&DescStr[len_dir], &LineBuf[len_name+1], min(n0, sizeof(DescStr)-len_dir), 15);
               #endif
               if ((fRefEPG = fopen(DescStr, "rb")))
                 printf("    Loading EIT event from reference file '%s'...\n", DescStr);

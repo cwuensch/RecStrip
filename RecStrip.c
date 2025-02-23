@@ -1152,9 +1152,9 @@ SONST
   {
     char AbsFileName[FBLIB_DIR_SIZE];
     if (*RecFileOut)
-      GetFileNameFromRec(RecFileOut, ".sup", AbsFileName);
+      GetFileNameFromRec(RecFileOut, ".srt", AbsFileName);
     else
-      GetFileNameFromRec(RecFileIn, ".sup", AbsFileName);
+      GetFileNameFromRec(RecFileIn, ".srt", AbsFileName);
 
     if (ExtractTeletext)
     {
@@ -2310,7 +2310,7 @@ int main(int argc, const char* argv[])
             RecHeaderInfo_out.StartTimeSec = OrigStartSec;
             InfModified = TRUE;
           }
-          if ((RecHeaderInfo_out.DurationMin != RecHeader->RecHeaderInfo.DurationMin) || (RecHeaderInfo_out.DurationSec != RecHeader->RecHeaderInfo.DurationSec))
+          if ((DoFixPMT || RebuildNav) && ((RecHeaderInfo_out.DurationMin != RecHeader->RecHeaderInfo.DurationMin) || (RecHeaderInfo_out.DurationSec != RecHeader->RecHeaderInfo.DurationSec)))
           {
             printf("INF FIX (%s): Fixing Duration to %u:%02u:%02u\n", (DoFixPMT ? "output" : "source"), RecHeader->RecHeaderInfo.DurationMin/60, RecHeader->RecHeaderInfo.DurationMin%60, RecHeader->RecHeaderInfo.DurationSec);
             RecHeaderInfo_out.DurationMin = RecHeader->RecHeaderInfo.DurationMin;
