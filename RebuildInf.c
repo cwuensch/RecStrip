@@ -1415,6 +1415,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       RecInf->ServiceInfo.ServiceType = 0;
       RecInf->ServiceInfo.VideoStreamType = STREAM_VIDEO_MPEG2;
       RecInf->ServiceInfo.AudioStreamType = STREAM_AUDIO_MPEG1;
+      RecInf->ServiceInfo.AudioTypeFlag = 0;
 
       // Read first 640 kB of Video PES
       if ((ReadBytes = (int)fread(Buffer, 1, 655360, fIn)))
@@ -1628,7 +1629,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     }
 
     strcpy (&AddFileIn[len], "_epg.txt");
-    if ((fMDIn = fopen(AddFileIn, "rb")))
+    if ((MJD(RecInf->RecHeaderInfo.StartTime) >= 54009) && (fMDIn = fopen(AddFileIn, "rb")))  // 54009 = 2006-10-01 (davor kaputte EPGs)
     {
       memset(Buffer, 0, 16384);
       if ((ReadBytes = (int)fread(Buffer, 1, 16384, fMDIn)) > 0)
@@ -1642,7 +1643,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 
         if (*(int*)p == 0x12345678)
         {
-          while ((p - Buffer < 16380) && (*(int*)p == 0x12345678))
+          while ((p - Buffer < ReadBytes) && (*(int*)p == 0x12345678))
           {
             int EITLen = *(int*)(&p[4]);
             tTSEIT *EIT = (tTSEIT*)(&p[8]);
@@ -2287,6 +2288,12 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   if (pEPGBuffer && (MedionMode != 1))
   {
     int k;
+
+/*    if (pEPGBuffer[0] == 0)
+    {
+      pEPGBuffer++;
+      EPGLen--;
+    } */
     NrEPGPacks = ((EPGLen + 182) / 184);
 
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }

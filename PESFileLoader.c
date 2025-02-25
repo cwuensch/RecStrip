@@ -17,7 +17,7 @@
 tPESStream              PESVideo;
 static tPESStream       PESAudio, PESTeletxt;
 static word             PIDs[4] = {100, 101, 102, 0x12};  // künftig: {101, 102, 104, 0x12};  // TODO
-static byte             ContCtr[4] = {1, 1, 1, 1};
+static byte             ContCtr[4] = {0, 0, 0, 0};
 static bool             DoEITOutput = TRUE;
 
 // Simple PES Extractor

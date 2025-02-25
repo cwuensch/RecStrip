@@ -495,14 +495,14 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
               if (strncmp(&LineBuf[p - LineBuf - (RefEPGMedion ? 10 : 8)], "_epg.txt", 8) == 0)
                 if(!RefEPGMedion) RefEPGMedion = 1;
               #ifdef _WIN32
-                strncpy(&DescStr[len_dir], &LineBuf[len_name+1], min(n0, sizeof(DescStr)-len_dir));
+                strncpy(&DescStr[len_dir], &LineBuf[len_name+1], min(n0, sizeof(DescStr)-len_dir-1));
               #else
-                StrToUTF8(&DescStr[len_dir], &LineBuf[len_name+1], min(n0, sizeof(DescStr)-len_dir), 15);
+                StrToUTF8(&DescStr[len_dir], &LineBuf[len_name+1], min(n0+1, sizeof(DescStr)-len_dir), 15);
               #endif
               if ((fRefEPG = fopen(DescStr, "rb")))
-                printf("    Loading EIT event from reference file '%s'...\n", DescStr);
+                printf("    Loading EIT event from reference file '%s' (%d)...\n", DescStr, RefEPGMedion);
               else
-                printf("    Failed to open reference file '%s'!\n", DescStr);
+                printf("    Failed to open reference file '%s' (%d)!\n", DescStr, RefEPGMedion);
             }
           }
           else continue;
@@ -572,17 +572,17 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
     {
       if (RefEPGMedion)
       {
-        memset(LineBuf, 0, 16384);
-        if ((ReadBytes = (int)fread(LineBuf, 1, 16384, fRefEPG)) > 0)
+        memset(LineBuf, 0, 4096);
+        if ((ReadBytes = (int)fread(LineBuf, 1, 4096, fRefEPG)) > 0)
         {
           int i = 0;
           char *p = LineBuf;
           tPVRTime MidTimeUTC = Unix2TFTime(TF2UnixTime(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec, TRUE) + 30*RecInf->RecHeaderInfo.DurationMin + RecInf->RecHeaderInfo.DurationSec/2, NULL, FALSE);
-          while((p - LineBuf < 16380) && (*(byte*)p == 0x00)) p++;
+          while((p - LineBuf < ReadBytes) && (*(byte*)p == 0x00)) p++;
 
           if (*(int*)p == 0x12345678)
           {
-            while ((p - LineBuf < 16380) && (*(int*)p == 0x12345678))
+            while ((p - LineBuf < ReadBytes) && (*(int*)p == 0x12345678))
             {
               int EITLen = *(int*)(&p[4]);
               if(++i >= RefEPGMedion)
@@ -607,15 +607,18 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
                   {
 //                    RecInf->EventInfo.ServiceID = ServiceID;
 //                    RecInf->ExtEventInfo.ServiceID = ServiceID;
-                    EPGBuffer[0] = 0;  // Pointer field (=0) vor der TableID (nur im ersten TS-Paket der Tabelle, gibt den Offset an, an der die Tabelle startet, z.B. wenn noch Reste der vorherigen am Paketanfang stehen)
-                    memcpy(&EPGBuffer[1], &p[8], EITLen);
-                    EPGLen = EITLen + 1;
+//                    EPGBuffer[0] = 0;  // Pointer field (=0) vor der TableID (nur im ersten TS-Paket der Tabelle, gibt den Offset an, an der die Tabelle startet, z.B. wenn noch Reste der vorherigen am Paketanfang stehen)
+                    memcpy(&EPGBuffer[0], &p[8], EITLen);
+                    EPGLen = EITLen; // + 1;
                   }
                 }
                 if (((RefEPGMedion > 1) && (i >= RefEPGMedion)) || (RecInf->RecHeaderInfo.StartTime && /*(RecInf->EventInfo.StartTime <= MidTimeUTC) &&*/ (RecInf->EventInfo.EndTime >= MidTimeUTC)))
                   break;
               }
-              p = p + 8 + EITLen + 53;
+
+              fseek(fRefEPG, 8 + EITLen + 53, SEEK_SET);
+              ReadBytes = (int)fread(LineBuf, 1, 4096, fRefEPG);
+              p = LineBuf;
             }
           }
           else
@@ -700,6 +703,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
           }
         }
       }
+      fclose(fRefEPG);
     }
     else free(LineBuf);
   }
