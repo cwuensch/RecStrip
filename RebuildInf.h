@@ -20,7 +20,10 @@ typedef enum
   DESC_Teletext          = 'V',  // 0x56
   DESC_Subtitle          = 'Y',  // 0x59
   DESC_AC3               = 'j',  // 0x6A
-  DESC_Extension         = 0x7F
+  DESC_Extension         = 0x7F,
+  DESC_Component         = 'P',  // 0x50
+  DESC_Content           = 'T',  // 0x54
+  DESC_UserDefined       = 0x82
 } DescrTags;
 
 typedef enum
@@ -236,6 +239,25 @@ typedef struct
 //  byte ServiceNameLen;
 //  char ServiceName[];
 } tTSServiceDesc;
+
+typedef struct
+{
+  byte DescrTag;
+  byte DescrLength;
+  byte stream_content:4;
+  byte reserved:4;
+  byte component_type;
+  byte component_tag;
+  char language_code[3];
+//  char text[];
+} tComponentDesc;
+
+typedef struct
+{
+  byte DescrTag;
+  byte DescrLength;
+// byte[] content[];
+} tUserDesc;
 
 
 typedef struct

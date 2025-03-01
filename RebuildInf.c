@@ -53,6 +53,10 @@ static inline byte BCD2BIN(byte BCD)
 {
   return (BCD >> 4) * 10 + (BCD & 0x0f);
 }
+static inline byte BIN2BCD(byte BIN)
+{
+  return (((BIN / 10) << 4) & 0xf0) | ((BIN % 10) & 0x0f);
+}
 
 time_t MakeUnixTime(const word year, const byte month, const byte day, const byte hour, const byte minute, const byte second, int *const out_timeoffset)
 {
@@ -437,6 +441,71 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
         printf("    EvtStart  = %s (UTC)\n", TimeStrTF(RecInf->EventInfo.StartTime, 0));
         printf("    EvtDuration = %02d:%02d\n", RecInf->EventInfo.DurationHour, RecInf->EventInfo.DurationMin);
       }
+
+/*      if (UnixTime1 && year)
+      {
+        tTSEIT *eit = (tTSEIT*) Buffer;
+        tEITEvent *evt = (tEITEvent*) &Buffer[sizeof(tTSEIT)];
+        tShortEvtDesc *desc = (tShortEvtDesc*) &Buffer[sizeof(tTSEIT) + sizeof(tEITEvent)];
+        int EventDescLength = strlen(&RecInf->EventInfo.EventNameDescription[NameLen]);
+        tExtEvtDesc *desc2 = (tExtEvtDesc*) &Buffer[sizeof(tTSEIT) + sizeof(tEITEvent) + sizeof(tShortEvtDesc) + RecInf->EventInfo.EventNameLength + EventDescLength];
+        tPVRTime StartTimeTF = Unix2TFTime(UnixTime1, NULL, FALSE);
+
+        memset(Buffer, 0, 4096);
+        eit->TableID        = 0x4e;
+        eit->SectionSyntax  = 1;
+        eit->Private        = 1;
+        eit->ServiceID1     = RecInf->ServiceInfo.ServiceID >> 8;
+        eit->ServiceID2     = RecInf->ServiceInfo.ServiceID & 0x0f;
+        eit->Reserved1      = 3;  // (all 1)
+        eit->Reserved2      = 3;  // (all 1)
+
+        evt->EventID1       = 0;
+        evt->EventID2       = 0;
+        evt->RunningStatus  = 4;
+        evt->StartTime[0]   = MJD(StartTimeTF) >> 8;
+        evt->StartTime[1]   = MJD(StartTimeTF) & 0xff;
+        evt->StartTime[2]   = BIN2BCD(HOUR(StartTimeTF));
+        evt->StartTime[3]   = BIN2BCD(MINUTE(StartTimeTF));
+        evt->DurationSec[0] = BIN2BCD(RecInf->EventInfo.DurationHour & 0xff);
+        evt->DurationSec[1] = BIN2BCD(RecInf->EventInfo.DurationMin & 0xff);
+
+        p = (char*) desc;
+        desc->DescrTag = DESC_EITShortEvent;
+        desc->LanguageCode[0]='d'; desc->LanguageCode[1]='e'; desc->LanguageCode[2]='u';
+        desc->EvtNameLen = RecInf->EventInfo.EventNameLength;
+        p += sizeof(tShortEvtDesc);
+        strncpy(p, RecInf->EventInfo.EventNameDescription, RecInf->EventInfo.EventNameLength + 1);
+        p += RecInf->EventInfo.EventNameLength;
+        *((byte*)p++) = EventDescLength;
+        strcpy(p, &RecInf->EventInfo.EventNameDescription[NameLen]);
+        p += EventDescLength;
+        desc->DescrLength = (p - (char*)desc) - 1;
+
+        desc2->DescrTag = DESC_EITExtEvent;
+        desc2->LanguageCode[0]='d'; desc2->LanguageCode[1]='e'; desc2->LanguageCode[2]='u';
+        p = (char*)desc2 + 5;
+        *((byte*)p++) = strlen(ExtEPGText);
+        strcpy(&p[1], ExtEPGText);
+        p += *(byte*)p + 1;
+        desc->DescrLength = (p - (char*)desc2) - 1;
+
+        evt->DescriptorLoopLen1 = ((p - (char*)desc) >> 8) & 0x0f;
+        evt->DescriptorLoopLen2 = (p - (char*)desc) && 0xff;
+
+        eit->SectionLen1 = ((p - (char*)evt) >> 8) & 0x0f;
+        eit->SectionLen2 = (p - (char*)evt) & 0xff;
+
+        EPGLen = (p - (char*)eit);
+        *((dword*)p) = crc32m_tab((byte*)eit, EPGLen);
+        EPGLen += 4;
+
+        if (!EPGBuffer && (EPGBuffer = (byte*)malloc(EPGLen)))
+        {
+          printf("    -> Creating artificial EIT packets from map data!\n");
+          memcpy(EPGBuffer, Buffer, EPGLen);
+        }
+      } */
       free(Buffer);
     }
     else
@@ -1518,7 +1587,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
 /*            if (AudioPIDs[0].type > 4)
             {
               RecInf->ServiceInfo.AudioStreamType = AudioPIDs[0].type;
-  /*            switch (RecInf->ServiceInfo.AudioStreamType)
+/*              switch (RecInf->ServiceInfo.AudioStreamType)
               {
                 case STREAM_AUDIO_MPEG4_AC3:
                   RecInf->ServiceInfo.AudioTypeFlag = 1; break;
@@ -1557,7 +1626,10 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           // For Teletext-Stream with unmatched PTS -> enable special mode with offset
           if (!FirstTtxPTS)
             if (GetPTS(&Buffer[p], &FirstTtxPTS, NULL) && FirstTtxPTS && (abs((int)(FirstTtxPTS - FirstFilePTS)) > 450000))
+            {
               TtxPTSOffset = FirstFilePTS - FirstTtxPTS;
+//              printf("  TS: Enable special PTS fixing mode. (FirstFilePTS=%u, FirstTtxPTS=%u)\n", FirstFilePTS, FirstTtxPTS);
+            }
 
           if (TtxOK < 2)
           {
@@ -1629,7 +1701,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     }
 
     strcpy (&AddFileIn[len], "_epg.txt");
-    if ((MJD(RecInf->RecHeaderInfo.StartTime) >= 54009) && (fMDIn = fopen(AddFileIn, "rb")))  // 54009 = 2006-10-01 (davor kaputte EPGs)
+    if ((MJD(RecInf->RecHeaderInfo.StartTime) >= 54009) && (!RecInf->EventInfo.StartTime) && (fMDIn = fopen(AddFileIn, "rb")))  // 54009 = 2006-10-01 (davor kaputte EPGs)
     {
       memset(Buffer, 0, 16384);
       if ((ReadBytes = (int)fread(Buffer, 1, 16384, fMDIn)) > 0)

@@ -398,7 +398,7 @@ bool SimpleMuxer_NextTSPacket(tTSPacket *pack)
       if (!PESTeletxt.FileAtEnd && (abs((int)(PESTeletxt.curPacketDTS - PESVideo.curPacketDTS)) > 450000))
       {
         TtxPTSOffset = PESVideo.curPacketDTS - PESTeletxt.curPacketDTS;
-        printf("SimpleMuxer: Enable special muxing mode, Teletext PTS offset=%u.\n", TtxPTSOffset);
+        printf("SimpleMuxer: Enable special PTS muxing mode, Teletext PTS offset=%u.\n", TtxPTSOffset);
       }
       // Skip teletext packets with DTS > 2 sec before first video packet
       else
