@@ -535,8 +535,8 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
                 if(strcmp(RecInf->EventInfo.EventNameDescription, "-") == 0)  RecInf->EventInfo.EventNameDescription[0] = '\0';
                 RecInf->EventInfo.EventNameLength = (byte)strlen(RecInf->EventInfo.EventNameDescription);
                 printf("    EventName = %s\n", RecInf->EventInfo.EventNameDescription);
-                if ((RecInf->EventInfo.EventNameLength + 1 < (byte)sizeof(RecInf->EventInfo.EventNameDescription)) && (strcmp(DescStr, "-") != 0))
-                  strncpy(&RecInf->EventInfo.EventNameDescription[RecInf->EventInfo.EventNameLength], DescStr, sizeof(RecInf->EventInfo.EventNameDescription)-1);
+                if ((RecInf->EventInfo.EventNameLength + 1 < sizeof(RecInf->EventInfo.EventNameDescription)) && (strcmp(DescStr, "-") != 0))
+                  strncpy(&RecInf->EventInfo.EventNameDescription[RecInf->EventInfo.EventNameLength], DescStr, sizeof(RecInf->EventInfo.EventNameDescription) - RecInf->EventInfo.EventNameLength-1);
                 else
                   RecInf->EventInfo.EventNameDescription[RecInf->EventInfo.EventNameLength + 1] = '\0';
                 printf("    EventDesc = %s\n", DescStr);
@@ -607,7 +607,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
                   eit->TS_ID2 = (byte)(TransportStreamID & 0xff);
                   *(dword*)&p[8 + eit->SectionLen1*256 + eit->SectionLen2] = crc32m_tab((byte*)eit, eit->SectionLen1*256 + eit->SectionLen2);  // testen!!
                 } */
-                if (AnalyseEIT((byte*)&p[8], ReadBytes - (int)(p-LineBuf), ServiceID, OutTransportID, &RecInf->EventInfo, &RecInf->ExtEventInfo))
+                if (AnalyseEIT((byte*)&p[8], ReadBytes - (int)(p-LineBuf), ServiceID, OutTransportID, &RecInf->EventInfo, &RecInf->ExtEventInfo, TRUE))
                 {
                   EPGLen = 0;
                   if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
@@ -701,7 +701,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
                 PSBuffer_ProcessTSPacket(&EITBuffer, (tTSPacket*) (&EPGPacks[k*192 + 4]));
               }
             }
-            if (AnalyseEIT(EITBuffer.Buffer1, EITBuffer.ValidBufLen, ServiceID, OutTransportID, &RecInf->EventInfo, &RecInf->ExtEventInfo))
+            if (AnalyseEIT(EITBuffer.Buffer1, EITBuffer.ValidBufLen, ServiceID, OutTransportID, &RecInf->EventInfo, &RecInf->ExtEventInfo, TRUE))
             {
 /*              tTSPacket *pack = (tTSPacket*) &EPGPacks[(NrEPGPacks-1)*192 + 4];
               tTSEIT *eit = (tTSEIT*) EITBuffer.Buffer1;
@@ -714,141 +714,11 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
       }
       fclose(fRefEPG);
     }
-    else if (StartYear)
+/*    else if (StartYear)
     {
-      const char* AudioModes[] = {"stereo", "joint stereo", "dual channel", "single channel"};
-      tTSEIT *eit = (tTSEIT*) LineBuf;
-      tEITEvent *evt = (tEITEvent*) &LineBuf[sizeof(tTSEIT)];
-      tShortEvtDesc *desc = (tShortEvtDesc*) &LineBuf[sizeof(tTSEIT) + sizeof(tEITEvent)];
-      int EventDescLength = strlen(DescStr), ExtEventTextLength = strlen(ExtEPGText);
-      tComponentDesc *comp = NULL;
-      tUserDesc *user = NULL;
-      tExtEvtDesc *desc2 = NULL;
-      tPVRTime StartTimeTF = Unix2TFTime(StartTime, NULL, FALSE);
-      int i = 0;
-
-      memset(LineBuf, 0, 4096);
-      eit->TableID        = 0x4e;
-      eit->SectionSyntax  = 1;
-      eit->Private        = 1;
-      eit->VersionNr      = 1;
-      eit->CurNextInd     = TRUE;
-      eit->ServiceID1     = ServiceID >> 8;
-      eit->ServiceID2     = ServiceID & 0xff;
-      eit->Reserved1      = 3;  // (all 1)
-      eit->Reserved2      = 3;  // (all 1)
-//      eit->TS_ID1         = 1101 >> 8;
-//      eit->TS_ID2         = 1101 & 0xff;
-      eit->OriginalID2    = 1;
-      eit->LastSection    = 1;
-      eit->SegLastSection = 1;
-      eit->LastTable      = 0x4e;
-
-//      evt->EventID1       = 0x3f;
-//      evt->EventID2       = 0xa6;
-      evt->EventID2       = 1;
-      evt->RunningStatus  = 4;
-      evt->StartTime[0]   = MJD(StartTimeTF) >> 8;
-      evt->StartTime[1]   = MJD(StartTimeTF) & 0xff;
-      evt->StartTime[2]   = BIN2BCD(HOUR(StartTimeTF));
-      evt->StartTime[3]   = BIN2BCD(MINUTE(StartTimeTF));
-      evt->DurationSec[0] = BIN2BCD(DurationH & 0xff);
-      evt->DurationSec[1] = BIN2BCD(DurationM & 0xff);
-      
-      p = (char*) desc;
-      desc->DescrTag = DESC_EITShortEvent;
-      memcpy(desc->LanguageCode, "deu", 3);
-      desc->EvtNameLen = RecInf->EventInfo.EventNameLength;
-      p += sizeof(tShortEvtDesc);
-      memcpy(p, RecInf->EventInfo.EventNameDescription, RecInf->EventInfo.EventNameLength);
-      p += RecInf->EventInfo.EventNameLength;
-      *((byte*)p++) = EventDescLength;
-      memcpy(p, DescStr, EventDescLength);
-      p += EventDescLength;
-      desc->DescrLength = (p - (char*)desc) - 2;
-
-      comp = (tComponentDesc*) p;
-      comp->DescrTag       = DESC_Component;
-      comp->reserved       = 0xf;
-      comp->stream_content = 1;  // Video
-      comp->component_type = 1;
-      comp->component_tag  = 1;
-      memcpy(comp->language_code, "deu", 3);
-      p += sizeof(tComponentDesc);
-
-      p[0] = 0;
-      strncpy(p, "4:3", 4);
-      if ((VideoDAR - 1.777 <= 0.001) && (VideoDAR - 1.777 >= 0))
-        strncpy(p, "16:9", 5);
-      else if ((VideoDAR - 1.363 <= 0.001) && (VideoDAR - 1.333 >= 0))
-        strncpy(p, "4:3", 4);
-      else if ((VideoDAR - 1.0 <= 0.001) && (1.0 - VideoDAR <= 0.001))
-        strncpy(p, "1:1", 4);
-      p += strlen(p);
-      comp->DescrLength = (p - (char*)comp) - 2;
-
-      comp = (tComponentDesc*) p;
-      comp->DescrTag       = DESC_Component;
-      comp->reserved       = 0xf;
-      comp->stream_content = 2;  // Audio
-      comp->component_type = RecInf->ServiceInfo.AudioStreamType;  // 3
-      comp->component_tag  = 2;
-      memcpy(comp->language_code, "deu", 3);
-      p += sizeof(tComponentDesc);
-      memcpy(p, AudioModes[AudioPIDs[0].mode], strlen(AudioModes[AudioPIDs[0].mode]));
-      p += strlen(p);
-      comp->DescrLength = (p - (char*)comp) - 2;
-
-/*      memcpy(p, "T\x0A\x15\0\x30\0\xBF\x25\xF0\x42\xF0\x43", 12);  // Component Descriptor
-      p += 12; */
-
-      for (i = 0; 255 * i < ExtEventTextLength; i++)
-      {
-        desc2 = (tExtEvtDesc*) p;
-        desc2->DescrTag = DESC_EITExtEvent;
-        desc2->DescrNr = i;
-        desc2->LastDescrNr = (i > 0) ? i - 1 : 0;
-        memcpy(desc2->LanguageCode, "deu", 3);
-        p = (char*)desc2 + 7;
-        *((byte*)p) = strlen(ExtEPGText);
-        memcpy(&p[1], &ExtEPGText[i * 255], min(ExtEventTextLength-i*255, 255));
-        p += *(byte*)p + 1;
-        desc2->DescrLength = (p - (char*)desc2) - 2;
-      }
-
-/*      memcpy(p, "\x69\3\xF3\x62\x23", 5);  // Reserved Descriptor
-      p += 5;
-      memcpy(p, "\x5F\4\0\0\0\5", 6);  // Private Data Specifier Descriptor
-      p += 6; */
-
-      user = (tUserDesc*) p;
-      user->DescrTag = DESC_UserDefined;
-      user->DescrLength = 13;
-      p += sizeof(tUserDesc);
-      snprintf(p, 14, "%02hu:%02hu%02hu.%02hu#00", StartHour, StartMin, StartDay, StartMonth);
-      p += 13;
-
-      evt->DescriptorLoopLen1 = ((p - (char*)desc) >> 8) & 0x0f;
-      evt->DescriptorLoopLen2 = (p - (char*)desc) & 0xff;
-
-      eit->SectionLen1 = ((p - (char*)eit +4 -3) >> 8) & 0x0f;
-      eit->SectionLen2 = (p - (char*)eit +4 -3) & 0xff;
-
-      EPGLen = (p - (char*)eit);
-      *((dword*)p) = crc32m_tab((byte*)eit, EPGLen);
-      EPGLen += 4;
-
-      if (!EPGBuffer && (EPGBuffer = (byte*)malloc(EPGLen + 1)))
-      {
-        printf("    -> Creating artificial EIT packets from map data!\n");
-        EPGBuffer[0] = 0;
-        if (MedionMode == 1)
-          memcpy(&EPGBuffer[1], LineBuf, EPGLen++);
-        else
-          memcpy(EPGBuffer, LineBuf, EPGLen);
-      }
+      GenerateEIT(ServiceID, StartTime, DurationH, DurationM, RecInf->EventInfo.EventNameDescription, RecInf->EventInfo.EventNameLength, DescStr, strlen(DescStr), ExtEPGText, strlen(ExtEPGText), RecInf->ServiceInfo.AudioStreamType);
       free(LineBuf);
-    }
+    } */
     else
       free(LineBuf);
   }
