@@ -853,7 +853,7 @@ bool AnalyseEIT(byte *Buffer, int BufSize, word ServiceID, word *OutTransportID,
         {
           Desc = (tTSDesc*) &Buffer[p];
           
-          if(Desc->DescrTag == DESC_EITShortEvent && OverwriteInf)
+          if(Desc->DescrTag == DESC_EITShortEvent)
           {
             // Short Event Descriptor
             int         NameLen, TextLen;
@@ -1680,6 +1680,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         byte *p = Buffer;
         int PTSDuration = DeltaPCR(FirstFilePTS, LastFilePTS) / 45000;
         tPVRTime MidTimeUTC = AddTimeSec(TtxTime, TtxTimeSec, NULL, TtxTimeZone + PTSDuration/2);
+        bool OverwriteEPG = (!RecInf->EventInfo.StartTime);
 
         while ((p - Buffer < 16380) && (*p == 0x00))
           p++;
@@ -1690,8 +1691,9 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           {
             int EITLen = *(int*)(&p[4]);
             tTSEIT *EIT = (tTSEIT*)(&p[8]);
+            TYPE_Event_Info tmpEvent;
             RecInf->ServiceInfo.ServiceID = (EIT->ServiceID1 * 256 | EIT->ServiceID2);
-            if ((EITOK = AnalyseEIT(&p[8], ReadBytes - (int)(p-Buffer), RecInf->ServiceInfo.ServiceID, &TransportStreamID, &RecInf->EventInfo, &RecInf->ExtEventInfo, (!RecInf->EventInfo.StartTime))))
+            if ((EITOK = AnalyseEIT(&p[8], ReadBytes - (int)(p-Buffer), RecInf->ServiceInfo.ServiceID, &TransportStreamID, (OverwriteEPG ? &RecInf->EventInfo : &tmpEvent), &RecInf->ExtEventInfo, OverwriteEPG)))
             {
               EPGLen = 0;
               if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
@@ -1703,7 +1705,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                 EPGLen = EITLen + 1;
               }
 
-              if (!IsFirst && (IsLast || !TtxOK || (/*(RecInf->EventInfo.StartTime <= MidTimeUTC) &&*/ (RecInf->EventInfo.EndTime >= MidTimeUTC))))
+              if (!IsFirst && (IsLast || !TtxOK || (/*(RecInf->EventInfo.StartTime <= MidTimeUTC) &&*/ ((OverwriteEPG ? RecInf->EventInfo : tmpEvent).EndTime >= MidTimeUTC))))
                 break;
             }
             p = p + 8 + EITLen + 53;
@@ -2328,14 +2330,14 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   }
 
   // hier EPGPacks füllen (außer bei SimpleMuxer/Medion)
-  if (!pEPGBuffer && RecInf->EventInfo.StartTime)
+  if (DoGenerateEIT && !pEPGBuffer && RecInf->EventInfo.StartTime)
   {
     GenerateEIT(RecInf->ServiceInfo.ServiceID, TF2UnixTime(RecInf->EventInfo.StartTime, 0, FALSE), RecInf->EventInfo.DurationHour, RecInf->EventInfo.DurationMin, RecInf->EventInfo.EventNameDescription, RecInf->EventInfo.EventNameLength, &RecInf->EventInfo.EventNameDescription[RecInf->EventInfo.EventNameLength], strlen(&RecInf->EventInfo.EventNameDescription[RecInf->EventInfo.EventNameLength]), ExtEPGText, strlen(ExtEPGText), RecInf->ServiceInfo.AudioStreamType);
     pEPGBuffer = EPGBuffer;
-    if (!DoInfoOnly)
-    {
-      free(ExtEPGText); ExtEPGText = NULL;
-    }
+  }
+  if (!DoInfoOnly)
+  {
+    free(ExtEPGText); ExtEPGText = NULL;
   }
 
   if (pEPGBuffer && (MedionMode != 1))
@@ -2954,13 +2956,12 @@ void GenerateEIT(word ServiceID, time_t StartTimeUnix, word DurationHour, word D
     *((dword*)p) = crc32m_tab((byte*)eit, (p - (char*)eit));
     p += 4;
 
-    if (!EPGBuffer)
+    if (EPGBuffer)
     {
-      EPGBuffer = EITBuf;
-      EPGLen = (p - (char*)eit);
+      free(EPGBuffer); EPGBuffer = NULL;
     }
-    else
-      free(EITBuf);
+    EPGBuffer = EITBuf;
+    EPGLen = (p - (char*)eit);
   }
   else if (EITBuf)
     free(EITBuf);

@@ -114,7 +114,7 @@ word                    TransportStreamID = 1;
 tAudioTrack             AudioPIDs[MAXCONTINUITYPIDS];
 word                    ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs = 1;
 bool                    isHDVideo = FALSE, AlreadyStripped = FALSE, HumaxSource = FALSE, EycosSource = FALSE, DVBViewerSrc = FALSE;
-bool                    DoStrip = FALSE, DoSkip = FALSE, RemoveScrambled = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, ExtractAllTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE, RebuildSrt = FALSE, DoInfoOnly = FALSE, DoFixPMT = FALSE, MedionMode = FALSE, MedionStrip = FALSE, WriteDescPackets = TRUE, PMTatStart = FALSE;
+bool                    DoStrip = FALSE, DoSkip = FALSE, RemoveScrambled = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, ExtractAllTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE, RebuildSrt = FALSE, DoInfoOnly = FALSE, DoFixPMT = FALSE, MedionMode = FALSE, MedionStrip = FALSE, DoGenerateEIT = FALSE, WriteDescPackets = TRUE, PMTatStart = FALSE;
 int                     DoCut = 0, DoMerge = 0, DoInfFix = 0, DemuxAudio = 0;  // DoCut: 1=remove_parts, 2=copy_separate, DoMerge: 1=append, 2=merge  // DoInfFix: 1=enable, 2=inf to be fixed
 int                     curInputFile = 0, NrInputFiles = 1, NrEPGPacks = 0;
 int                     dbg_DelBytesSinceLastVid = 0;
@@ -1771,6 +1771,7 @@ int main(int argc, const char* argv[])
       case 'x':   RemoveScrambled = TRUE; break;
       case 'o':   OutPacketSize   = (argv[1][2] == '1') ? 188 : 192; break;
       case 'M':   MedionMode = TRUE;      break;
+      case 'g':   DoGenerateEIT = TRUE;   break;
       case 'f':   DoInfFix = 1;           break;
       case 'p':   DoFixPMT = TRUE;        break;
       case 'd':   DemuxAudio = TRUE;      break;
@@ -1880,6 +1881,7 @@ int main(int argc, const char* argv[])
       printf("  -o1/-o2:   Change the packet size for output-rec: \n"
              "             1: PacketSize = 188 Bytes, 2: PacketSize = 192 Bytes.\n\n");
       printf("  -v:        View rec information only. Disables any other option.\n\n");
+      printf("  -g:        Generate artificial EIT Table from EPG-map.\n\n");
       printf("  -p:        Fix PAT/PMT of output file. Disables any other option.\n\n");
       printf("  -f:        Fix start time in source inf. (Output inf when combined with -p).\n\n");
       printf("  -d:        Demux first audio track to OutFile_audio.pes (not with -M)\n\n");
