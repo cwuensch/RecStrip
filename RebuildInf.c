@@ -981,6 +981,9 @@ printf("  TS: EPGExtEvt = %s\n", ExtEPGText);
         {
           free(ExtEPGText); ExtEPGText = NULL;
         }
+
+//printf("CRC = %x\n", crc32m_tab(Buffer, SectionLength-4));
+
         TRACEEXIT;
         return TRUE;
       }
@@ -2332,7 +2335,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   // hier EPGPacks füllen (außer bei SimpleMuxer/Medion)
   if (DoGenerateEIT && !pEPGBuffer && RecInf->EventInfo.StartTime)
   {
-    GenerateEIT(RecInf->ServiceInfo.ServiceID, TF2UnixTime(RecInf->EventInfo.StartTime, 0, FALSE), RecInf->EventInfo.DurationHour, RecInf->EventInfo.DurationMin, RecInf->EventInfo.EventNameDescription, RecInf->EventInfo.EventNameLength, &RecInf->EventInfo.EventNameDescription[RecInf->EventInfo.EventNameLength], strlen(&RecInf->EventInfo.EventNameDescription[RecInf->EventInfo.EventNameLength]), ExtEPGText, strlen(ExtEPGText), RecInf->ServiceInfo.AudioStreamType);
+    GenerateEIT(RecInf->ServiceInfo.ServiceID, TF2UnixTime(RecInf->EventInfo.StartTime, 0, FALSE), RecInf->EventInfo.DurationHour, RecInf->EventInfo.DurationMin, RecInf->EventInfo.EventNameDescription, RecInf->EventInfo.EventNameLength, &RecInf->EventInfo.EventNameDescription[RecInf->EventInfo.EventNameLength], (int)strlen(&RecInf->EventInfo.EventNameDescription[RecInf->EventInfo.EventNameLength]), ExtEPGText, (int)strlen(ExtEPGText), RecInf->ServiceInfo.AudioStreamType);
     pEPGBuffer = EPGBuffer;
   }
   if (!DoInfoOnly)
@@ -2875,7 +2878,7 @@ void GenerateEIT(word ServiceID, time_t StartTimeUnix, word DurationHour, word D
     *((byte*)p++) = EventDescLen;
     memcpy(p, EventDesc, EventDescLen);
     p += EventDescLen;
-    desc->DescrLength = (p - (char*)desc) - 2;
+    desc->DescrLength = (int)(p - (char*)desc) - 2;
 
     if (VideoDAR)
     {
@@ -2896,7 +2899,7 @@ void GenerateEIT(word ServiceID, time_t StartTimeUnix, word DurationHour, word D
       else if ((VideoDAR - 1.0 <= 0.001) && (1.0 - VideoDAR <= 0.001))
         strncpy(p, "1:1", 4);
       p += strlen(p);
-      comp->DescrLength = (p - (char*)comp) - 2;
+      comp->DescrLength = (int)(p - (char*)comp) - 2;
     }
 
     if (AudioStreamType)
@@ -2911,13 +2914,13 @@ void GenerateEIT(word ServiceID, time_t StartTimeUnix, word DurationHour, word D
       p += sizeof(tComponentDesc);
       memcpy(p, AudioModes[AudioPIDs[0].mode], strlen(AudioModes[AudioPIDs[0].mode]));
       p += strlen(p);
-      comp->DescrLength = (p - (char*)comp) - 2;
+      comp->DescrLength = (int)(p - (char*)comp) - 2;
     }
 
 /*      memcpy(p, "T\x0A\x15\0\x30\0\xBF\x25\xF0\x42\xF0\x43", 12);  // Component Descriptor
     p += 12; */
 
-    for (i = 0; 255 * i < ExtEventTextLen; i++)
+    for (i = 0; 249 * i < ExtEventTextLen; i++)
     {
       desc2 = (tExtEvtDesc*) p;
       desc2->DescrTag = DESC_EITExtEvent;
@@ -2925,10 +2928,10 @@ void GenerateEIT(word ServiceID, time_t StartTimeUnix, word DurationHour, word D
       desc2->LastDescrNr = (i > 0) ? i - 1 : 0;
       memcpy(desc2->LanguageCode, "deu", 3);
       p = (char*)desc2 + 7;
-      *((byte*)p) = strlen(ExtEPGText);
-      memcpy(&p[1], &ExtEPGText[i * 255], min(ExtEventTextLen-i*255, 255));
+      *((byte*)p) = min(ExtEventTextLen-i*249, 249);
+      memcpy(&p[1], &ExtEPGText[i * 249], *(byte*)p);
       p += *(byte*)p + 1;
-      desc2->DescrLength = (p - (char*)desc2) - 2;
+      desc2->DescrLength = (int)(p - (char*)desc2) - 2;
     }
 
 /*      memcpy(p, "\x69\3\xF3\x62\x23", 5);  // Reserved Descriptor
@@ -2961,7 +2964,7 @@ void GenerateEIT(word ServiceID, time_t StartTimeUnix, word DurationHour, word D
       free(EPGBuffer); EPGBuffer = NULL;
     }
     EPGBuffer = EITBuf;
-    EPGLen = (p - (char*)eit);
+    EPGLen = (int)(p - (char*)eit);
   }
   else if (EITBuf)
     free(EITBuf);

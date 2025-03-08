@@ -580,53 +580,45 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
     {
       if (RefEPGMedion)
       {
+        tPVRTime MidTimeUTC = Unix2TFTime(TF2UnixTime(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec, TRUE) + 30*RecInf->RecHeaderInfo.DurationMin + RecInf->RecHeaderInfo.DurationSec/2, NULL, FALSE);
+        int i = 0;
         memset(LineBuf, 0, 4096);
-        if ((ReadBytes = (int)fread(LineBuf, 1, 4096, fRefEPG)) > 0)
+
+        while ((fread(LineBuf, 1, 8, fRefEPG) == 8) && (*(int*)LineBuf == 0x12345678))
         {
-          int i = 0;
-          char *p = LineBuf;
-          tPVRTime MidTimeUTC = Unix2TFTime(TF2UnixTime(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec, TRUE) + 30*RecInf->RecHeaderInfo.DurationMin + RecInf->RecHeaderInfo.DurationSec/2, NULL, FALSE);
-          while((p - LineBuf < ReadBytes) && (*(byte*)p == 0x00)) p++;
+          int EITLen = *(int*)(&LineBuf[4]);
 
-          if (*(int*)p == 0x12345678)
+          if ((ReadBytes = (int)fread(LineBuf, 1, min(EITLen + 53, 4096), fRefEPG)) > 0)
           {
-            while ((p - LineBuf < ReadBytes) && (*(int*)p == 0x12345678))
+            if(++i >= RefEPGMedion)
             {
-              int EITLen = *(int*)(&p[4]);
-              if(++i >= RefEPGMedion)
+              // Dirty hack: Hier die ServiceID im EIT-Paket an die Aufnahme anpassen (z.B. arte -> arte HD)
+              // Entfernt, denn: In vielen Fällen (z.B. Humax) ist die ServiceID gar nicht bekannt!
+/*              tTSEIT *eit = (tTSEIT*) LineBuf;
+              if ((eit->TableID == 0x4e) && (eit->ServiceID1*256 + eit->ServiceID2 != ServiceID))
               {
-                // Dirty hack: Hier die ServiceID im EIT-Paket an die Aufnahme anpassen (z.B. arte -> arte HD)
-                // Entfernt, denn: In vielen Fällen (z.B. Humax) ist die ServiceID gar nicht bekannt!
-/*                tTSEIT *eit = (tTSEIT*) &p[8];
-                if ((eit->TableID == 0x4e) && (eit->ServiceID1*256 + eit->ServiceID2 != ServiceID))
+                printf("  GetEPGFromMap: Changing ServiceID from %hu to %hu.\n", eit->ServiceID1*256 + eit->ServiceID2, ServiceID);
+                eit->ServiceID1 = (byte)(ServiceID >> 8);
+                eit->ServiceID2 = (byte)(ServiceID & 0xff);
+                eit->TS_ID1 = (byte)(TransportStreamID >> 8);
+                eit->TS_ID2 = (byte)(TransportStreamID & 0xff);
+                *(dword*)&LineBuf[eit->SectionLen1*256 + eit->SectionLen2] = crc32m_tab((byte*)eit, eit->SectionLen1*256 + eit->SectionLen2);  // testen!!
+              } */
+              if (AnalyseEIT((byte*)LineBuf, min(EITLen, ReadBytes), ServiceID, OutTransportID, &RecInf->EventInfo, &RecInf->ExtEventInfo, TRUE))
+              {
+                EPGLen = 0;
+                if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
+                if (EITLen && ((EPGBuffer = (byte*)malloc(EITLen + 1))))
                 {
-                  printf("  GetEPGFromMap: Changing ServiceID from %hu to %hu.\n", eit->ServiceID1*256 + eit->ServiceID2, ServiceID);
-                  eit->ServiceID1 = (byte)(ServiceID >> 8);
-                  eit->ServiceID2 = (byte)(ServiceID & 0xff);
-                  eit->TS_ID1 = (byte)(TransportStreamID >> 8);
-                  eit->TS_ID2 = (byte)(TransportStreamID & 0xff);
-                  *(dword*)&p[8 + eit->SectionLen1*256 + eit->SectionLen2] = crc32m_tab((byte*)eit, eit->SectionLen1*256 + eit->SectionLen2);  // testen!!
-                } */
-                if (AnalyseEIT((byte*)&p[8], ReadBytes - (int)(p-LineBuf), ServiceID, OutTransportID, &RecInf->EventInfo, &RecInf->ExtEventInfo, TRUE))
-                {
-                  EPGLen = 0;
-                  if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
-                  if (EITLen && ((EPGBuffer = (byte*)malloc(EITLen + 1))))
-                  {
-//                    RecInf->EventInfo.ServiceID = ServiceID;
-//                    RecInf->ExtEventInfo.ServiceID = ServiceID;
-//                    EPGBuffer[0] = 0;  // Pointer field (=0) vor der TableID (nur im ersten TS-Paket der Tabelle, gibt den Offset an, an der die Tabelle startet, z.B. wenn noch Reste der vorherigen am Paketanfang stehen)
-                    memcpy(&EPGBuffer[0], &p[8], EITLen);
-                    EPGLen = EITLen; // + 1;
-                  }
+//                  RecInf->EventInfo.ServiceID = ServiceID;
+//                  RecInf->ExtEventInfo.ServiceID = ServiceID;
+//                  EPGBuffer[0] = 0;  // Pointer field (=0) vor der TableID (nur im ersten TS-Paket der Tabelle, gibt den Offset an, an der die Tabelle startet, z.B. wenn noch Reste der vorherigen am Paketanfang stehen)
+                  memcpy(&EPGBuffer[0], LineBuf, min(EITLen, ReadBytes));
+                  EPGLen = min(EITLen, ReadBytes); // + 1;
                 }
-                if (((RefEPGMedion > 1) && (i >= RefEPGMedion)) || (RecInf->RecHeaderInfo.StartTime && /*(RecInf->EventInfo.StartTime <= MidTimeUTC) &&*/ (RecInf->EventInfo.EndTime >= MidTimeUTC)))
-                  break;
               }
-
-              fseek(fRefEPG, 8 + EITLen + 53, SEEK_SET);
-              ReadBytes = (int)fread(LineBuf, 1, 4096, fRefEPG);
-              p = LineBuf;
+              if (((RefEPGMedion > 1) && (i >= RefEPGMedion)) || (RecInf->RecHeaderInfo.StartTime && /*(RecInf->EventInfo.StartTime <= MidTimeUTC) &&*/ (RecInf->EventInfo.EndTime >= MidTimeUTC)))
+                break;
             }
           }
           else
