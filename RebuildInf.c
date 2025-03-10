@@ -2823,7 +2823,7 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word TransportID, wor
 }
 
 // Generate an artificial EIT
-void GenerateEIT(word ServiceID, time_t StartTimeUnix, word DurationHour, word DurationMin, char *EventName, int EventNameLen, char *EventDesc, int EventDescLen, char *ExtEventText, int ExtEventTextLen, byte AudioStreamType)
+void GenerateEIT(word ServiceID, time_t StartTimeUnix, byte DurationHour, byte DurationMin, char *EventName, int EventNameLen, char *EventDesc, int EventDescLen, char *ExtEventText, int ExtEventTextLen, byte AudioStreamType)
 {
   const char*           AudioModes[] = {"stereo", "joint stereo", "dual channel", "single channel"};
   int                   BufSize = 88 + EventNameLen + EventDescLen + ExtEventTextLen + 8 * (ExtEventTextLen / 255), i;
@@ -2865,8 +2865,8 @@ void GenerateEIT(word ServiceID, time_t StartTimeUnix, word DurationHour, word D
     evt->StartTime[1]   = MJD(StartTimeTF) & 0xff;
     evt->StartTime[2]   = BIN2BCD(HOUR(StartTimeTF));
     evt->StartTime[3]   = BIN2BCD(MINUTE(StartTimeTF));
-    evt->DurationSec[0] = BIN2BCD(DurationMin / 60);
-    evt->DurationSec[1] = BIN2BCD(DurationMin % 60);
+    evt->DurationSec[0] = BIN2BCD(DurationHour);
+    evt->DurationSec[1] = BIN2BCD(DurationMin);
       
     p = (char*) desc;
     desc->DescrTag = DESC_EITShortEvent;
