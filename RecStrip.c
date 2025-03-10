@@ -2312,13 +2312,13 @@ int main(int argc, const char* argv[])
             RecHeaderInfo_out.StartTimeSec = OrigStartSec;
             InfModified = TRUE;
           }
-          if ((DoFixPMT || RebuildNav) && ((RecHeaderInfo_out.DurationMin != RecHeader->RecHeaderInfo.DurationMin) || (RecHeaderInfo_out.DurationSec != RecHeader->RecHeaderInfo.DurationSec)))
+/*          if ((DoFixPMT || RebuildNav) && ((RecHeaderInfo_out.DurationMin != RecHeader->RecHeaderInfo.DurationMin) || (RecHeaderInfo_out.DurationSec != RecHeader->RecHeaderInfo.DurationSec)))
           {
             printf("INF FIX (%s): Fixing Duration to %u:%02u:%02u\n", (DoFixPMT ? "output" : "source"), RecHeader->RecHeaderInfo.DurationMin/60, RecHeader->RecHeaderInfo.DurationMin%60, RecHeader->RecHeaderInfo.DurationSec);
             RecHeaderInfo_out.DurationMin = RecHeader->RecHeaderInfo.DurationMin;
             RecHeaderInfo_out.DurationSec = RecHeader->RecHeaderInfo.DurationSec;
             InfModified = TRUE;
-          }
+          } */
           if (*RecHeader->ServiceInfo.ServiceName && (strncmp(ServiceInfo_out.ServiceName, RecHeader->ServiceInfo.ServiceName, sizeof(ServiceInfo_out.ServiceName)) != 0))
           {
             printf("INF FIX (%s): Fixing ServiceName %s -> %s\n", (DoFixPMT ? "output" : "source"), ServiceInfo_out.ServiceName, RecHeader->ServiceInfo.ServiceName);
@@ -2372,27 +2372,62 @@ int main(int argc, const char* argv[])
             InfModified = TRUE;
           }
 
-          if ((RecHeader->EventInfo.StartTime != 0) && (RecHeader->EventInfo.StartTime != EventInfo_out.StartTime))
+          if (RecHeader->EventInfo.StartTime != 0)
           {
-            printf("INF FIX (%s): Fixing EventInfo ('%s')\n", (DoFixPMT ? "output" : "source"), RecHeader->EventInfo.EventNameDescription);
-            EventInfo_out.ServiceID       = RecHeader->EventInfo.ServiceID;
-            EventInfo_out.EventID         = RecHeader->EventInfo.EventID;
-            EventInfo_out.RunningStatus   = RecHeader->EventInfo.RunningStatus;
-            EventInfo_out.StartTime       = RecHeader->EventInfo.StartTime;
-            EventInfo_out.EndTime         = RecHeader->EventInfo.EndTime;
-            EventInfo_out.DurationHour    = RecHeader->EventInfo.DurationHour;
-            EventInfo_out.DurationMin     = RecHeader->EventInfo.DurationMin;
-            EventInfo_out.EventNameLength = RecHeader->EventInfo.EventNameLength;
-            memcpy(EventInfo_out.EventNameDescription, RecHeader->EventInfo.EventNameDescription, sizeof(EventInfo_out.EventNameDescription));
-
-            if (RecHeader->ExtEventInfo.TextLength > 0)
+            if (EventInfo_out.ServiceID != RecHeader->EventInfo.ServiceID)
             {
-              ExtEventInfo_out.ServiceID  = RecHeader->ExtEventInfo.ServiceID;
-              ExtEventInfo_out.TextLength = RecHeader->ExtEventInfo.TextLength;
-              ExtEventInfo_out.NrItemizedPairs = RecHeader->ExtEventInfo.NrItemizedPairs;
-              strncpy(ExtEventInfo_out.Text, RecHeader->ExtEventInfo.Text, sizeof(ExtEventInfo_out.Text));
+              printf("INF FIX (%s): Fixing EPG: ServiceID %hu -> %hu\n", (DoFixPMT ? "output" : "source"), EventInfo_out.ServiceID, RecHeader->EventInfo.ServiceID);
+              EventInfo_out.ServiceID = RecHeader->EventInfo.ServiceID;
+              if (ExtEventInfo_out.ServiceID || *ExtEventInfo_out.Text)
+                ExtEventInfo_out.ServiceID = RecHeader->EventInfo.ServiceID;
+              InfModified = TRUE;
             }
-            InfModified = TRUE;
+            if (EventInfo_out.EventID != RecHeader->EventInfo.EventID)
+            {
+              printf("INF FIX (%s): Fixing EPG: EventID %hu -> %hu\n", (DoFixPMT ? "output" : "source"), EventInfo_out.EventID, RecHeader->EventInfo.EventID);
+              EventInfo_out.EventID = RecHeader->EventInfo.EventID;
+              if (ExtEventInfo_out.EventID || *ExtEventInfo_out.Text)
+                ExtEventInfo_out.EventID = RecHeader->EventInfo.EventID;
+              InfModified = TRUE;
+            }
+            if (EventInfo_out.RunningStatus != RecHeader->EventInfo.RunningStatus)
+            {
+              printf("INF FIX (%s): Fixing EPG RunningStatus %hhu -> %hhu\n", (DoFixPMT ? "output" : "source"), EventInfo_out.RunningStatus, RecHeader->EventInfo.RunningStatus);
+              EventInfo_out.RunningStatus = RecHeader->EventInfo.RunningStatus;
+              InfModified = TRUE;
+            }
+            if ((EventInfo_out.StartTime != RecHeader->EventInfo.StartTime) || (EventInfo_out.EndTime != RecHeader->EventInfo.EndTime))
+            {
+              printf("INF FIX (%s): Fixing EPG-Event Time to %02hhu:%02hhu - %02hhu:%02hhu\n", (DoFixPMT ? "output" : "source"), HOUR(RecHeader->EventInfo.StartTime), MINUTE(RecHeader->EventInfo.StartTime), HOUR(RecHeader->EventInfo.EndTime), MINUTE(RecHeader->EventInfo.EndTime));
+              EventInfo_out.StartTime = RecHeader->EventInfo.StartTime;
+              EventInfo_out.EndTime   = RecHeader->EventInfo.EndTime;
+              InfModified = TRUE;
+            }
+            if ((EventInfo_out.DurationHour != RecHeader->EventInfo.DurationHour) || (EventInfo_out.DurationMin != RecHeader->EventInfo.DurationMin))
+            {
+              printf("INF FIX (%s): Fixing EPG-Event Duration %02hhu:%02hhu -> %02hhu:%02hhu\n", (DoFixPMT ? "output" : "source"), EventInfo_out.DurationHour, EventInfo_out.DurationMin, RecHeader->EventInfo.DurationHour, RecHeader->EventInfo.DurationMin);
+              EventInfo_out.DurationHour = RecHeader->EventInfo.DurationHour;
+              EventInfo_out.DurationMin  = RecHeader->EventInfo.DurationMin;
+              InfModified = TRUE;
+            }
+
+            if (*RecHeader->EventInfo.EventNameDescription && (memcmp(EventInfo_out.EventNameDescription, RecHeader->EventInfo.EventNameDescription, sizeof(TYPE_EventInfo.EventNameDescription)) != 0))
+            {
+              strncpy(EventInfo_out.EventNameDescription, RecHeader->EventInfo.EventNameDescription, RecHeader->EventInfo.EventNameLength);
+              EventInfo_out.EventNameDescription[RecHeader->EventInfo.EventNameLength] = '\0';
+              printf("INF FIX (%s): Fixing EPG EventName to: %s\n", (DoFixPMT ? "output" : "source"), EventInfo_out.EventNameDescription);
+              EventInfo_out.EventNameLength = RecHeader->EventInfo.EventNameLength;
+              strncpy(&EventInfo_out.EventNameDescription[RecHeader->EventInfo.EventNameLength], &RecHeader->EventInfo.EventNameDescription[RecHeader->EventInfo.EventNameLength], sizeof(TYPE_EventInfo.EventNameDescription) - RecHeader->EventInfo.EventNameLength);
+              EventInfo_out.EventNameDescription[sizeof(TYPE_EventInfo.EventNameDescription) - 1] = '\0';
+              printf("INF FIX (%s): Fixing EPG EventDesc to: %s\n", (DoFixPMT ? "output" : "source"), &EventInfo_out.EventNameDescription[RecHeader->EventInfo.EventNameLength]);
+              InfModified = TRUE;
+            }
+            if (memcmp(ExtEventInfo_out, RecHeader->ExtEventInfo, sizeof(TYPE_ExtEventInfo)) != 0)
+            {
+              printf("INF FIX (%s): Fixing EPG ExtText to: %s\n", (DoFixPMT ? "output" : "source"), RecHeader->ExtEventInfo.Text);
+              memcpy(ExtEventInfo_out, RecHeader->ExtEventInfo, sizeof(TYPE_ExtEventInfo))
+              InfModified = TRUE;
+            }
           }
 
           // If Stripped inf provided -> read Bookmark and SegmentMarker area from stripped inf
