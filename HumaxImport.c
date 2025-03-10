@@ -465,24 +465,20 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
           len_dir = (int)(p-VidFileName);
           strncpy(DescStr, VidFileName, min(len_dir, (int)sizeof(DescStr)));
         }
-        len_name = (int)strlen(p);
+        VidFileName = p;
       }
-      else
-      {
-        p = VidFileName;
-        len_name = (int)strlen(DescStr);
-      }
+      len_name = (int)strlen(VidFileName);
 
 /*      #ifdef _WIN32
-        StrToUTF8(&DescStr[len_dir], p, max((int)sizeof(DescStr) - len_dir, 0), 15);
+        strncpy(&DescStr[len_dir], VidFileName, max((int)sizeof(DescStr)-len_dir-1, 0));
       #else
-        strncpy(&DescStr[len_dir], p, max((int)sizeof(DescStr) - len_dir, 0));
+        StrToUTF8(&DescStr[len_dir], VidFileName, max((int)sizeof(DescStr)-len_dir, 0), 15);
       #endif */
 
       while (fgets(LineBuf, 4096, fMap) != 0)
       {
         if(LineBuf[0] == '#') continue;
-        if (strncmp(LineBuf, p, len_name) == 0)
+        if (strncmp(LineBuf, VidFileName, len_name) == 0)
         {
           StartYear=0; StartMonth=0, StartDay=0, StartHour=0; StartMin=0; DurationH=0; DurationM=0; n1=0; n2=0; n3=0;
           printf("  Found EPGEvent in Map:\n");
@@ -493,7 +489,8 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
           if ((p = strchr(&LineBuf[len_name+1], ';')))
           {
             n0 = (unsigned int)(p - &LineBuf[len_name+1]);
-            if ((LineBuf[len_name+1] != ';') && (LineBuf[len_name+1] != '-'))
+            *p = '\0';
+            if ((LineBuf[len_name+1] != '\0') && (LineBuf[len_name+1] != ';') && (LineBuf[len_name+1] != '-'))
             {
               if (LineBuf[p-LineBuf-2] == ':')
               {
@@ -503,15 +500,16 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
               if (strncmp(&LineBuf[p - LineBuf - (RefEPGMedion ? 10 : 8)], "_epg.txt", 8) == 0)
                 if(!RefEPGMedion) RefEPGMedion = 1;
               #ifdef _WIN32
-                strncpy(&DescStr[len_dir], &LineBuf[len_name+1], min(n0, sizeof(DescStr)-len_dir-1));
+                strncpy(&DescStr[len_dir], &LineBuf[len_name+1], sizeof(DescStr)-len_dir-1);
               #else
-                StrToUTF8(&DescStr[len_dir], &LineBuf[len_name+1], min(n0+1, sizeof(DescStr)-len_dir), 15);
+                StrToUTF8(&DescStr[len_dir], &LineBuf[len_name+1], sizeof(DescStr)-len_dir, 15);
               #endif
               if ((fRefEPG = fopen(DescStr, "rb")))
                 printf("    Loading EIT event from reference file '%s' (%d)...\n", DescStr, RefEPGMedion);
               else
                 printf("    Failed to open reference file '%s' (%d)!\n", DescStr, RefEPGMedion);
             }
+            *p = ';';
           }
           else continue;
 
@@ -535,7 +533,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
                 if(strcmp(RecInf->EventInfo.EventNameDescription, "-") == 0)  RecInf->EventInfo.EventNameDescription[0] = '\0';
                 RecInf->EventInfo.EventNameLength = (byte)strlen(RecInf->EventInfo.EventNameDescription);
                 printf("    EventName = %s\n", RecInf->EventInfo.EventNameDescription);
-                if ((RecInf->EventInfo.EventNameLength + 1 < sizeof(RecInf->EventInfo.EventNameDescription)) && (strcmp(DescStr, "-") != 0))
+                if (((unsigned int)RecInf->EventInfo.EventNameLength + 1 < sizeof(RecInf->EventInfo.EventNameDescription)) && (strcmp(DescStr, "-") != 0))
                   strncpy(&RecInf->EventInfo.EventNameDescription[RecInf->EventInfo.EventNameLength], DescStr, sizeof(RecInf->EventInfo.EventNameDescription) - RecInf->EventInfo.EventNameLength-1);
                 else
                   RecInf->EventInfo.EventNameDescription[RecInf->EventInfo.EventNameLength + 1] = '\0';

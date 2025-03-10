@@ -2289,7 +2289,7 @@ int main(int argc, const char* argv[])
       printf("No fix of (%s) inf necessary.\n", (DoFixPMT ? "output" : "source"));
 
     // Prüfe/Repariere ServiceID, ServiceName, AudioTypes und Bookmarks in der inf
-    if (DoInfFix && (DoFixPMT ? *InfFileOut : *InfFileIn))
+    if (DoInfFix && !DoStrip && OutPacketSize==PACKETSIZE && !DoCut && !DoMerge && !RemoveEPGStream && !RemoveTeletext && (*RecFileOut ? *InfFileOut : *InfFileIn))
     {
       FILE                 *fInfOut, *fInfIn;
       char                  InfFileStripped[FBLIB_DIR_SIZE];
@@ -2300,40 +2300,40 @@ int main(int argc, const char* argv[])
       TYPE_Bookmark_Info    BookmarkInfo_out;
       TYPE_RecHeader_TMSS*  RecHeader = ((TYPE_RecHeader_TMSS*)InfBuffer);
 
-      if ((fInfOut = fopen((DoFixPMT ? InfFileOut : InfFileIn), "rb")))
+      if ((fInfOut = fopen((*InfFileOut ? InfFileOut : InfFileIn), "rb")))
       {
         if ((fread(&RecHeaderInfo_out, sizeof(TYPE_RecHeader_Info), 1, fInfOut)) && (fread(&ServiceInfo_out, sizeof(TYPE_Service_Info), 1, fInfOut)) && (fread(&EventInfo_out, sizeof(TYPE_Event_Info), 1, fInfOut)) && (fread(&ExtEventInfo_out, sizeof(TYPE_ExtEvent_Info), 1, fInfOut))
           && ((strncmp(RecHeaderInfo_out.Magic, "TFrc", 4) == 0) && (RecHeaderInfo_out.Version == 0x8000)))
         {
           if ((RecHeaderInfo_out.StartTime != OrigStartTime) || (OrigStartSec && (RecHeaderInfo_out.StartTimeSec != OrigStartSec)))
           {
-            printf("INF FIX (%s): Fixing StartTime to %s\n", (DoFixPMT ? "output" : "source"), TimeStrTF(OrigStartTime, OrigStartSec));
+            printf("INF FIX (%s): Fixing StartTime to: %s\n", (*InfFileOut ? "output" : "source"), TimeStrTF(OrigStartTime, OrigStartSec));
             RecHeaderInfo_out.StartTime = OrigStartTime;
             RecHeaderInfo_out.StartTimeSec = OrigStartSec;
             InfModified = TRUE;
           }
-          if ((DoFixPMT || RebuildNav) && ((RecHeaderInfo_out.DurationMin != RecHeader->RecHeaderInfo.DurationMin) || (RecHeaderInfo_out.DurationSec != RecHeader->RecHeaderInfo.DurationSec)))
+/*          if ((DoFixPMT || RebuildNav) && ((RecHeaderInfo_out.DurationMin != RecHeader->RecHeaderInfo.DurationMin) || (RecHeaderInfo_out.DurationSec != RecHeader->RecHeaderInfo.DurationSec)))
           {
-            printf("INF FIX (%s): Fixing Duration to %u:%02u:%02u\n", (DoFixPMT ? "output" : "source"), RecHeader->RecHeaderInfo.DurationMin/60, RecHeader->RecHeaderInfo.DurationMin%60, RecHeader->RecHeaderInfo.DurationSec);
+            printf("INF FIX (%s): Fixing Duration to %u:%02u:%02u\n", (*InfFileOut ? "output" : "source"), RecHeader->RecHeaderInfo.DurationMin/60, RecHeader->RecHeaderInfo.DurationMin%60, RecHeader->RecHeaderInfo.DurationSec);
             RecHeaderInfo_out.DurationMin = RecHeader->RecHeaderInfo.DurationMin;
             RecHeaderInfo_out.DurationSec = RecHeader->RecHeaderInfo.DurationSec;
             InfModified = TRUE;
-          }
+          } */
           if (*RecHeader->ServiceInfo.ServiceName && (strncmp(ServiceInfo_out.ServiceName, RecHeader->ServiceInfo.ServiceName, sizeof(ServiceInfo_out.ServiceName)) != 0))
           {
-            printf("INF FIX (%s): Fixing ServiceName %s -> %s\n", (DoFixPMT ? "output" : "source"), ServiceInfo_out.ServiceName, RecHeader->ServiceInfo.ServiceName);
+            printf("INF FIX (%s): Fixing ServiceName: %s -> %s\n", (*InfFileOut ? "output" : "source"), ServiceInfo_out.ServiceName, RecHeader->ServiceInfo.ServiceName);
             strncpy(ServiceInfo_out.ServiceName, RecHeader->ServiceInfo.ServiceName, sizeof(ServiceInfo_out.ServiceName));
             InfModified = TRUE;
           }
           if (RecHeader->ServiceInfo.ServiceID && (ServiceInfo_out.ServiceID != RecHeader->ServiceInfo.ServiceID))
           {
-            printf("INF FIX (%s): Fixing ServiceID %hu -> %hu\n", (DoFixPMT ? "output" : "source"), ServiceInfo_out.ServiceID, RecHeader->ServiceInfo.ServiceID);
+            printf("INF FIX (%s): Fixing ServiceID: %hu -> %hu\n", (*InfFileOut ? "output" : "source"), ServiceInfo_out.ServiceID, RecHeader->ServiceInfo.ServiceID);
             ServiceInfo_out.ServiceID = RecHeader->ServiceInfo.ServiceID;
             InfModified = TRUE;
           }
           if (RecHeader->ServiceInfo.PMTPID && (ServiceInfo_out.PMTPID != RecHeader->ServiceInfo.PMTPID))
           {
-            printf("INF FIX (%s): Fixing PMTPID %hu -> %hu\n", (DoFixPMT ? "output" : "source"), ServiceInfo_out.PMTPID, RecHeader->ServiceInfo.PMTPID);
+            printf("INF FIX (%s): Fixing PMTPID: %hu -> %hu\n", (*InfFileOut ? "output" : "source"), ServiceInfo_out.PMTPID, RecHeader->ServiceInfo.PMTPID);
             ServiceInfo_out.PMTPID = RecHeader->ServiceInfo.PMTPID;
             InfModified = TRUE;
           }
@@ -2342,57 +2342,93 @@ int main(int argc, const char* argv[])
           {
             /* if (RecHeader->ServiceInfo.VideoPID && (ServiceInfo_out.VideoPID != RecHeader->ServiceInfo.VideoPID))
             {
-              printf("INF FIX (%s): Fixing VideoPID %hu -> %hu\n", (DoFixPMT ? "output" : "source"), ServiceInfo_out.VideoPID, RecHeader->ServiceInfo.VideoPID);
+              printf("INF FIX (%s): Fixing VideoPID: %hu -> %hu\n", (*InfFileOut ? "output" : "source"), ServiceInfo_out.VideoPID, RecHeader->ServiceInfo.VideoPID);
               ServiceInfo_out.VideoPID = RecHeader->ServiceInfo.VideoPID;
               InfModified = TRUE;
             } */
             if (RecHeader->ServiceInfo.AudioPID && (ServiceInfo_out.AudioPID != RecHeader->ServiceInfo.AudioPID))
             {
-              printf("INF FIX (%s): Fixing AudioPID %hu -> %hu\n", (DoFixPMT ? "output" : "source"), ServiceInfo_out.AudioPID, RecHeader->ServiceInfo.AudioPID);
+              printf("INF FIX (%s): Fixing AudioPID: %hu -> %hu\n", (*InfFileOut ? "output" : "source"), ServiceInfo_out.AudioPID, RecHeader->ServiceInfo.AudioPID);
               ServiceInfo_out.AudioPID = RecHeader->ServiceInfo.AudioPID;
               InfModified = TRUE;
             }
           }
           if (RecHeader->ServiceInfo.VideoStreamType && (RecHeader->ServiceInfo.VideoStreamType != 0xff) && (ServiceInfo_out.VideoStreamType != RecHeader->ServiceInfo.VideoStreamType))
           {
-            printf("INF FIX (%s): Fixing VideoStreamType %hhu -> %hhu\n", (DoFixPMT ? "output" : "source"), ServiceInfo_out.VideoStreamType, RecHeader->ServiceInfo.VideoStreamType);
+            printf("INF FIX (%s): Fixing VideoStreamType: %hhu -> %hhu\n", (*InfFileOut ? "output" : "source"), ServiceInfo_out.VideoStreamType, RecHeader->ServiceInfo.VideoStreamType);
             ServiceInfo_out.VideoStreamType = RecHeader->ServiceInfo.VideoStreamType;
             InfModified = TRUE;
           }
           if (/*RecHeader->ServiceInfo.AudioStreamType &&*/ (RecHeader->ServiceInfo.AudioStreamType != 0xff) && (ServiceInfo_out.AudioStreamType != RecHeader->ServiceInfo.AudioStreamType))
           {
-            printf("INF FIX (%s): Fixing AudioStreamType %hhu -> %hhu\n", (DoFixPMT ? "output" : "source"), ServiceInfo_out.AudioStreamType, RecHeader->ServiceInfo.AudioStreamType);
+            printf("INF FIX (%s): Fixing AudioStreamType: %hhu -> %hhu\n", (*InfFileOut ? "output" : "source"), ServiceInfo_out.AudioStreamType, RecHeader->ServiceInfo.AudioStreamType);
             ServiceInfo_out.AudioStreamType = RecHeader->ServiceInfo.AudioStreamType;
             InfModified = TRUE;
           }
           if ((RecHeader->ServiceInfo.AudioTypeFlag != 3) && (ServiceInfo_out.AudioTypeFlag != RecHeader->ServiceInfo.AudioTypeFlag))
           {
-            printf("INF FIX (%s): Fixing AudioTypeFlag %hu -> %hu\n", (DoFixPMT ? "output" : "source"), ServiceInfo_out.AudioTypeFlag, RecHeader->ServiceInfo.AudioTypeFlag);
+            printf("INF FIX (%s): Fixing AudioTypeFlag: %hu -> %hu\n", (*InfFileOut ? "output" : "source"), ServiceInfo_out.AudioTypeFlag, RecHeader->ServiceInfo.AudioTypeFlag);
             ServiceInfo_out.AudioTypeFlag = RecHeader->ServiceInfo.AudioTypeFlag;
             InfModified = TRUE;
           }
 
-          if ((RecHeader->EventInfo.StartTime != 0) && (RecHeader->EventInfo.StartTime != EventInfo_out.StartTime))
+          if (RecHeader->EventInfo.StartTime != 0)
           {
-            printf("INF FIX (%s): Fixing EventInfo ('%s')\n", (DoFixPMT ? "output" : "source"), RecHeader->EventInfo.EventNameDescription);
-            EventInfo_out.ServiceID       = RecHeader->EventInfo.ServiceID;
-            EventInfo_out.EventID         = RecHeader->EventInfo.EventID;
-            EventInfo_out.RunningStatus   = RecHeader->EventInfo.RunningStatus;
-            EventInfo_out.StartTime       = RecHeader->EventInfo.StartTime;
-            EventInfo_out.EndTime         = RecHeader->EventInfo.EndTime;
-            EventInfo_out.DurationHour    = RecHeader->EventInfo.DurationHour;
-            EventInfo_out.DurationMin     = RecHeader->EventInfo.DurationMin;
-            EventInfo_out.EventNameLength = RecHeader->EventInfo.EventNameLength;
-            memcpy(EventInfo_out.EventNameDescription, RecHeader->EventInfo.EventNameDescription, sizeof(EventInfo_out.EventNameDescription));
-
-            if (RecHeader->ExtEventInfo.TextLength > 0)
+            if (EventInfo_out.ServiceID != RecHeader->EventInfo.ServiceID)
             {
-              ExtEventInfo_out.ServiceID  = RecHeader->ExtEventInfo.ServiceID;
-              ExtEventInfo_out.TextLength = RecHeader->ExtEventInfo.TextLength;
-              ExtEventInfo_out.NrItemizedPairs = RecHeader->ExtEventInfo.NrItemizedPairs;
-              strncpy(ExtEventInfo_out.Text, RecHeader->ExtEventInfo.Text, sizeof(ExtEventInfo_out.Text));
+              printf("INF FIX (%s): Fixing EPG Service: %hu -> %hu\n", (*InfFileOut ? "output" : "source"), EventInfo_out.ServiceID, RecHeader->EventInfo.ServiceID);
+              EventInfo_out.ServiceID = RecHeader->EventInfo.ServiceID;
+              if (ExtEventInfo_out.ServiceID || *ExtEventInfo_out.Text)
+                ExtEventInfo_out.ServiceID = RecHeader->EventInfo.ServiceID;
+              InfModified = TRUE;
             }
-            InfModified = TRUE;
+            if (EventInfo_out.EventID != RecHeader->EventInfo.EventID)
+            {
+              printf("INF FIX (%s): Fixing EPG EventID: %hu -> %hu\n", (*InfFileOut ? "output" : "source"), EventInfo_out.EventID, RecHeader->EventInfo.EventID);
+              EventInfo_out.EventID = RecHeader->EventInfo.EventID;
+              InfModified = TRUE;
+            }
+            if (EventInfo_out.RunningStatus != RecHeader->EventInfo.RunningStatus)
+            {
+              printf("INF FIX (%s): Fixing EPG Running: %hhu -> %hhu\n", (*InfFileOut ? "output" : "source"), EventInfo_out.RunningStatus, RecHeader->EventInfo.RunningStatus);
+              EventInfo_out.RunningStatus = RecHeader->EventInfo.RunningStatus;
+              InfModified = TRUE;
+            }
+            if ((EventInfo_out.StartTime != RecHeader->EventInfo.StartTime) || (EventInfo_out.EndTime != RecHeader->EventInfo.EndTime))
+            {
+              printf("INF FIX (%s): Fixing EPG Event Start to: %02hhu:%02hhu-%02hhu:%02hhu (UTC)\n", (*InfFileOut ? "output" : "source"), HOUR(RecHeader->EventInfo.StartTime), MINUTE(RecHeader->EventInfo.StartTime), HOUR(RecHeader->EventInfo.EndTime), MINUTE(RecHeader->EventInfo.EndTime));
+              EventInfo_out.StartTime = RecHeader->EventInfo.StartTime;
+              EventInfo_out.EndTime   = RecHeader->EventInfo.EndTime;
+              InfModified = TRUE;
+            }
+            if ((EventInfo_out.DurationHour != RecHeader->EventInfo.DurationHour) || (EventInfo_out.DurationMin != RecHeader->EventInfo.DurationMin))
+            {
+              printf("INF FIX (%s): Fixing EPG Event Duration: %02hhu:%02hhu -> %02hhu:%02hhu\n", (*InfFileOut ? "output" : "source"), EventInfo_out.DurationHour, EventInfo_out.DurationMin, RecHeader->EventInfo.DurationHour, RecHeader->EventInfo.DurationMin);
+              EventInfo_out.DurationHour = RecHeader->EventInfo.DurationHour;
+              EventInfo_out.DurationMin  = RecHeader->EventInfo.DurationMin;
+              InfModified = TRUE;
+            }
+
+            if (*RecHeader->EventInfo.EventNameDescription && ((EventInfo_out.EventNameLength != RecHeader->EventInfo.EventNameLength) || (memcmp(&EventInfo_out.EventNameDescription, &RecHeader->EventInfo.EventNameDescription, RecHeader->EventInfo.EventNameLength) != 0)))
+            {
+              strncpy(EventInfo_out.EventNameDescription, RecHeader->EventInfo.EventNameDescription, RecHeader->EventInfo.EventNameLength);
+              EventInfo_out.EventNameDescription[RecHeader->EventInfo.EventNameLength] = '\0';
+              printf("INF FIX (%s): Fixing EPG EventName to: %s\n", (*InfFileOut ? "output" : "source"), EventInfo_out.EventNameDescription);
+              EventInfo_out.EventNameLength = RecHeader->EventInfo.EventNameLength;
+            }
+            if (*RecHeader->EventInfo.EventNameDescription && (memcmp(&EventInfo_out.EventNameDescription[EventInfo_out.EventNameLength], &RecHeader->EventInfo.EventNameDescription[RecHeader->EventInfo.EventNameLength], sizeof(EventInfo_out.EventNameDescription)-EventInfo_out.EventNameLength) != 0))
+            {
+              strncpy(&EventInfo_out.EventNameDescription[RecHeader->EventInfo.EventNameLength], &RecHeader->EventInfo.EventNameDescription[RecHeader->EventInfo.EventNameLength], sizeof(EventInfo_out.EventNameDescription) - RecHeader->EventInfo.EventNameLength);
+              EventInfo_out.EventNameDescription[sizeof(EventInfo_out.EventNameDescription) - 1] = '\0';
+              printf("INF FIX (%s): Fixing EPG EventDesc to: %s\n", (*InfFileOut ? "output" : "source"), &EventInfo_out.EventNameDescription[EventInfo_out.EventNameLength]);
+              InfModified = TRUE;
+            }
+            if (memcmp(&ExtEventInfo_out, &RecHeader->ExtEventInfo, sizeof(TYPE_ExtEvent_Info)) != 0)
+            {
+              printf("INF FIX (%s): Fixing EPG ExtText to: %s\n", (*InfFileOut ? "output" : "source"), RecHeader->ExtEventInfo.Text);
+              memcpy(&ExtEventInfo_out, &RecHeader->ExtEventInfo, sizeof(TYPE_ExtEvent_Info));
+              InfModified = TRUE;
+            }
           }
 
           // If Stripped inf provided -> read Bookmark and SegmentMarker area from stripped inf
@@ -2434,13 +2470,13 @@ int main(int argc, const char* argv[])
                 {
                   if (BookmarkInfo_out.NrBookmarks != BookmarkInfo->NrBookmarks)
                   {
-                    printf("INF FIX (%s): Fixing number of bookmarks %u -> %u\n", (DoFixPMT ? "output" : "source"), BookmarkInfo_out.NrBookmarks, BookmarkInfo->NrBookmarks);
+                    printf("INF FIX (%s): Fixing number of bookmarks %u -> %u\n", (*InfFileOut ? "output" : "source"), BookmarkInfo_out.NrBookmarks, BookmarkInfo->NrBookmarks);
                     BookmarkFix = 1;
                   }
                   for (k = 0; k < (int)BookmarkInfo->NrBookmarks; k++)
                     if (BookmarkInfo_out.Bookmarks[k] != BookmarkInfo->Bookmarks[k])
                     {
-                      printf("INF FIX (%s): Fixing Bookmark %d: %u -> %u\n", (DoFixPMT ? "output" : "source"), k+1, BookmarkInfo_out.Bookmarks[k], BookmarkInfo->Bookmarks[k]);
+                      printf("INF FIX (%s): Fixing Bookmark %d: %u -> %u\n", (*InfFileOut ? "output" : "source"), k+1, BookmarkInfo_out.Bookmarks[k], BookmarkInfo->Bookmarks[k]);
                       BookmarkFix = 1;
                     }
                 }
@@ -2454,7 +2490,7 @@ int main(int argc, const char* argv[])
                 {
                   if ((End_out != End) || ((int)BookmarkInfo_out.Bookmarks[End_out - 1] != NrSegmentMarker) || (End_out - NrSegmentMarker - 5 != Start))
                   {
-                    printf("INF FIX (%s): Rewriting SegmentMarker area %u -> %u\n", (DoFixPMT ? "output" : "source"), BookmarkInfo_out.Bookmarks[End_out - 1], NrSegmentMarker);
+                    printf("INF FIX (%s): Rewriting SegmentMarker area %u -> %u\n", (*InfFileOut ? "output" : "source"), BookmarkInfo_out.Bookmarks[End_out - 1], NrSegmentMarker);
                     BookmarkFix = 2;
                   }
                   else
@@ -2462,7 +2498,7 @@ int main(int argc, const char* argv[])
                     for (k = 0; k < NrSegmentMarker; k++)
                       if (BookmarkInfo_out.Bookmarks[Start + k] != BookmarkInfo->Bookmarks[Start + k])
                       {
-                        printf("INF FIX (%s): Fixing Segment %d: %u -> %u\n", (DoFixPMT ? "output" : "source"), k+1, BookmarkInfo_out.Bookmarks[Start + k], BookmarkInfo->Bookmarks[Start + k]);
+                        printf("INF FIX (%s): Fixing Segment %d: %u -> %u\n", (*InfFileOut ? "output" : "source"), k+1, BookmarkInfo_out.Bookmarks[Start + k], BookmarkInfo->Bookmarks[Start + k]);
                         BookmarkFix = 2;
                       }
                   }
@@ -2475,7 +2511,7 @@ int main(int argc, const char* argv[])
       }
 
       // Write the actual fixes to inf
-      if ((InfModified || BookmarkFix) && ((fInfOut = fopen((DoFixPMT ? InfFileOut : InfFileIn), "r+b"))))
+      if ((InfModified || BookmarkFix) && ((fInfOut = fopen((*InfFileOut ? InfFileOut : InfFileIn), "r+b"))))
       {
         if (InfModified)
         {
@@ -2495,22 +2531,32 @@ int main(int argc, const char* argv[])
       }
     }
 
-    if (DoInfFix == 2 || RecFileTimeStamp != RecDate || InfModified || BookmarkFix)
+    if ((DoInfFix == 2 || (DoInfFix && RecFileTimeStamp != RecDate)) && !DoFixPMT && (DoStrip || OutPacketSize!=PACKETSIZE || DoCut || DoMerge || RemoveEPGStream || RemoveTeletext))
     {
-      printf("INF FIX (%s): Changing file timestamp to: %s\n", (DoFixPMT ? "output" : "source"), TimeStrTF(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
+      printf("INF FIX (%s): Changing file timestamp to: %s\n", "source", TimeStrTF(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
       snprintf(NavFileIn, sizeof(NavFileIn), "%s.nav", RecFileIn);
 
-      if ((DoFixPMT ? *RecFileOut : *RecFileIn))
-        HDD_SetFileDateTime((DoFixPMT ? RecFileOut : RecFileIn), TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE));
-      if ((DoFixPMT ? *InfFileOut : *InfFileIn))
-        HDD_SetFileDateTime((DoFixPMT ? InfFileOut : InfFileIn), TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE));
-      if ((DoFixPMT ? *NavFileOut : *NavFileIn))
-        HDD_SetFileDateTime((DoFixPMT ? NavFileOut : NavFileIn), TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE));
+      if(*RecFileIn) HDD_SetFileDateTime(RecFileIn, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE));
+      if(*InfFileIn) HDD_SetFileDateTime(InfFileIn, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE));
+      if(*NavFileIn) HDD_SetFileDateTime(NavFileIn, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE));
+      if(!*InfFileOut) InfModified = FALSE;
+    }
+    if (DoInfFix && (InfModified || BookmarkFix || RecFileTimeStamp != RecDate))
+    {
+      printf("INF FIX (%s): Changing file timestamp to: %s\n", (*InfFileOut ? "output" : "source"), TimeStrTF(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
+      snprintf(NavFileIn, sizeof(NavFileIn), "%s.nav", RecFileIn);
+
+      if ((*InfFileOut ? *RecFileOut : *RecFileIn))
+        HDD_SetFileDateTime((*InfFileOut ? RecFileOut : RecFileIn), TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE));
+      if ((*InfFileOut ? *InfFileOut : *InfFileIn))
+        HDD_SetFileDateTime((*InfFileOut ? InfFileOut : InfFileIn), TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE));
+      if ((*InfFileOut ? *NavFileOut : *NavFileIn))
+        HDD_SetFileDateTime((*InfFileOut ? NavFileOut : NavFileIn), TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE));
     }
   }
 
   // Hier beenden, wenn View Info Only
-  if (DoInfoOnly || DoFixPMT || (ExtractAllTeletext >= 2))
+  if (DoInfoOnly || DoFixPMT || (ExtractAllTeletext >= 2) || (DoInfFix && !DoStrip && OutPacketSize==PACKETSIZE && !DoCut && !DoMerge && !RemoveEPGStream && !RemoveTeletext && !ExtractTeletext && !DemuxAudio))
   {
     if (ExtractAllTeletext)
     {
