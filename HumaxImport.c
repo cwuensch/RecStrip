@@ -465,15 +465,16 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
           len_dir = (int)(p-VidFileName);
           strncpy(DescStr, VidFileName, min(len_dir, (int)sizeof(DescStr)));
         }
-        VidFileName = p;
       }
-      len_name = (int)strlen(VidFileName);
+      else p = VidFileName;
 
-/*      #ifdef _WIN32
-        strncpy(&DescStr[len_dir], VidFileName, max((int)sizeof(DescStr)-len_dir-1, 0));
+      #ifdef _WIN32
+        StrToUTF8(&DescStr[len_dir], p, max((int)sizeof(DescStr)-len_dir, 0), 15);
       #else
-        StrToUTF8(&DescStr[len_dir], VidFileName, max((int)sizeof(DescStr)-len_dir, 0), 15);
-      #endif */
+        strncpy(&DescStr[len_dir], p, max((int)sizeof(DescStr)-len_dir-1, 0));
+      #endif
+      VidFileName = &DescStr[len_dir];
+      len_name = (int)strlen(VidFileName);
 
       while (fgets(LineBuf, 4096, fMap) != 0)
       {
