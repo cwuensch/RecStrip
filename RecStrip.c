@@ -1353,7 +1353,7 @@ int main(int argc, const char* argv[])
   time_t                startTime, endTime;
   int                   CurSeg = 0, i = 0, n = 0, k;
   dword                 j = 0;
-  dword                 PMTCounter = 0, Percent = 0, BlocksSincePercent = 0;
+  dword                 PMTBetween, PMTCounter = 0, Percent = 0, BlocksSincePercent = 0;
   bool                  AbortProcess = FALSE;
   bool                  ret = TRUE;
 
@@ -2642,6 +2642,11 @@ int main(int argc, const char* argv[])
     TRACEEXIT;
     exit(7);
   }
+/*  if (MedionMode == 1)
+  {
+//    PMTBetween = (OutPacketSize == 192) ? 1024 : 1024;
+    PMTCounter = -(PositionOffset / OutPacketSize);
+  } */
 
   // Wenn Appending, ans Ende der nav-Datei springen
   if(DoMerge == 1) GoToEndOfNav(NULL);
@@ -2888,28 +2893,38 @@ int main(int argc, const char* argv[])
       // PACKET EINLESEN
       if (MedionMode == 1)
       {
-        if (fOut && !MedionStrip && (PMTCounter >= 4998))
-        {
-          // Wiederhole PAT/PMT und EIT Information alle 5000 Pakete (verzichte darauf, wenn MedionStrip aktiv)
-//          DoOutputHeaderPacks = TRUE;
-          int NrPMTPacks = 0;
-          for (k = 1; (PATPMTBuf[4 + k*192] == 'G'); NrPMTPacks = k++);
-          for (k = 0; (PATPMTBuf[4 + k*192] == 'G'); k++)
-          {
-            ((tTSPacket*) &PATPMTBuf[4 + k*192])->ContinuityCount += (k==0) ? 1 : NrPMTPacks;  // PAT/PMT Continuity Counter setzen
-            if (OutPacketSize == 192)
-              fwrite(&Buffer[0], 4, 1, fOut);  // 4 Byte Timecode schreiben
-            fwrite(&PATPMTBuf[4 + k*192], 188, 1, fOut);
-            PositionOffset -= OutPacketSize;
-          }
-          SimpleMuxer_DoEITOutput();
-          PMTCounter = 0;
-        }
         if ((ReadBytes = SimpleMuxer_NextTSPacket((tTSPacket*) &Buffer[4])))
         {
           if (ReadBytes < 0)
             AbortProcess = TRUE;
           ReadBytes = PACKETSIZE;
+        }
+
+        // Wiederhole PAT/PMT und EIT Information zu Beginn jedes 94/96-ten 4096er Blocks (verzichte darauf, wenn MedionStrip aktiv)
+//        if (fOut && !MedionStrip && (PMTCounter >= 1024))  // PMTBetween
+        if (fOut && ((tTSPacket*) &Buffer[4])->Payload_Unit_Start && (VideoPID == ((((tTSPacket*) &Buffer[4])->PID1 << 8) | ((tTSPacket*) &Buffer[4])->PID2)) && (CurPosBlocks > 0))
+        {
+          // Wiederhole PAT/PMT und EIT Information vor jedem Video-(I-)Frame (verzichte darauf, wenn MedionStrip aktiv)
+          byte FrameType = 0;
+          FindPictureHeader(&Buffer[4], 188, &FrameType, NULL);
+          if (FrameType == 1)  // I-Frame
+          {
+            int NrPMTPacks = 0;
+//          DoOutputHeaderPacks = TRUE;
+            for (k = 1; (PATPMTBuf[4 + k*192] == 'G'); NrPMTPacks = k++);
+            for (k = 0; (PATPMTBuf[4 + k*192] == 'G'); k++)
+            {
+              ((tTSPacket*) &PATPMTBuf[4 + k*192])->ContinuityCount += (k==0) ? 1 : NrPMTPacks;  // PAT/PMT Continuity Counter setzen
+              if (OutPacketSize == 192)
+                fwrite(&Buffer[0], 4, 1, fOut);  // 4 Byte Timecode schreiben
+              fwrite(&PATPMTBuf[4 + k*192], 188, 1, fOut);
+              PositionOffset -= OutPacketSize;
+            }
+//            PMTCounter = NrPMTPacks + 1;
+            if (!MedionStrip)
+              SimpleMuxer_DoEITOutput();
+//            PMTCounter += NrEPGPacks;
+          }
         }
       }
       else
@@ -3201,9 +3216,13 @@ int main(int argc, const char* argv[])
                 if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + k*192], OutPacketSize, 1, fOut))
                   PositionOffset -= OutPacketSize;
               }
-              if (MedionMode == 1)
+              PMTCounter = NrPMTPacks + 1;
+              if (MedionMode == 1 && !MedionStrip)
+              {
                 SimpleMuxer_DoEITOutput();
-              else if (WriteDescPackets && EPGPacks)
+                PMTCounter += NrEPGPacks;
+              }
+              else if (WriteDescPackets && EPGPacks && !DoStrip)
               {
                 for (k = 0; k < NrEPGPacks; k++)
                 {
@@ -3213,9 +3232,17 @@ int main(int argc, const char* argv[])
                   if (fwrite(&EPGPacks[((OutPacketSize==192) ? 0 : 4) + k*192], OutPacketSize, 1, fOut))
                     PositionOffset -= OutPacketSize;
                 }
+                PMTCounter += NrEPGPacks;
               }
             }
             DoOutputHeaderPacks = FALSE;
+          }
+
+          if (WriteDescPackets && EycosSource /*&& (MedionMode != 1) && !HumaxSource*/ && !DropCurPacket)
+          {
+            PMTCounter++;
+            if (PMTCounter >= 1024)  // PMTBetween
+              DoOutputHeaderPacks = TRUE;
           }
 
           // NAV BERECHNEN UND PAKET AUSGEBEN
@@ -3278,7 +3305,7 @@ int main(int argc, const char* argv[])
 
           CurrentPosition += ReadBytes;
           CurBlockBytes += ReadBytes;
-          if(MedionMode==1 && !MedionStrip) PMTCounter++;
+//          if(MedionMode==1 && !MedionStrip) PMTCounter++;
         }
 
         // KEIN PAKET-SYNCBYTE GEFUNDEN
@@ -3291,7 +3318,7 @@ int main(int argc, const char* argv[])
             CurrentPosition += HumaxHeaderLaenge;
             CurBlockBytes += HumaxHeaderLaenge;
             if (!DoStrip) PMTCounter++;
-            if (fOut && !DoStrip && (PMTCounter >= 29))
+            if (fOut && /*!DoStrip &&*/ (PMTCounter >= 6))
             {
               // Wiederhole PAT/PMT und EIT Information (auﬂer wenn Strip aktiv)
               DoOutputHeaderPacks = TRUE;
