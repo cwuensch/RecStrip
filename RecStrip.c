@@ -113,7 +113,7 @@ word                    VideoPID = (word) -1, TeletextPID = (word) -1, Subtitles
 word                    TransportStreamID = 1;
 tAudioTrack             AudioPIDs[MAXCONTINUITYPIDS];
 word                    ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs = 1;
-bool                    isHDVideo = FALSE, AlreadyStripped = FALSE, HumaxSource = FALSE, EycosSource = FALSE, DVBViewerSrc = FALSE;
+bool                    isHDVideo = FALSE, AlreadyStripped = FALSE, HumaxSource = FALSE, EycosSource = FALSE, TechniSource = FALSE, DVBViewerSrc = FALSE;
 bool                    DoStrip = FALSE, DoSkip = FALSE, RemoveScrambled = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, ExtractAllTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE, RebuildSrt = FALSE, DoInfoOnly = FALSE, DoFixPMT = FALSE, MedionMode = FALSE, MedionStrip = FALSE, DoGenerateEIT = FALSE, WriteDescPackets = TRUE, PMTatStart = FALSE;
 int                     DoCut = 0, DoMerge = 0, DoInfFix = 0, DemuxAudio = 0;  // DoCut: 1=remove_parts, 2=copy_separate, DoMerge: 1=append, 2=merge  // DoInfFix: 1=enable, 2=inf to be fixed
 int                     curInputFile = 0, NrInputFiles = 1, NrEPGPacks = 0;
@@ -788,8 +788,14 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     HumaxSource = TRUE;
   else if (p && strcmp(p, ".trp") == 0)
     EycosSource = TRUE;
-  else if (p && strcmp(p, ".TS4") == 0)
-    isHDVideo = TRUE;
+  else if (p && strncmp(p, ".TS", 2) == 0)
+  {
+    GetFileNameFromRec(RecFileIn, ".MKS", AddFileIn);
+    if (HDD_FileExist(AddFileIn))
+      TechniSource = TRUE;
+    if (strcmp(p, ".TS4") == 0)
+      isHDVideo = TRUE;
+  }
   else if (p && !MedionMode && strcmp(p, ".pes") == 0)
   {
     p = strrchr(RecFileIn, '_');
@@ -801,7 +807,7 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     }
   }
 #ifndef LINUX
-  if (HumaxSource || EycosSource)  OutCutVersion = 4;
+  if (HumaxSource || EycosSource || TechniSource)  OutCutVersion = 4;
 #endif
 
   // Spezialanpassung Medion
@@ -1076,7 +1082,7 @@ SONST
       }
       else
         snprintf(InfFileOut, sizeof(InfFileOut), "%s.inf", RecFileOut);
-      if(!*InfFileIn && !HumaxSource && !EycosSource && MedionMode != 1) WriteCutInf = TRUE;
+      if(!*InfFileIn && !HumaxSource && !EycosSource && !TechniSource && MedionMode != 1) WriteCutInf = TRUE;
     }
     else
       InfFileOut[0] = '\0';
@@ -1191,9 +1197,9 @@ SONST
   }
 
   // Header-Pakete ausgeben
-  if ((HumaxSource || EycosSource || MedionMode==1 || (WriteDescPackets && (CurrentPosition >= 384 || !PMTatStart))) && fOut && DoMerge != 1)
+  if ((HumaxSource || EycosSource || TechniSource || MedionMode==1 || (WriteDescPackets && (CurrentPosition >= 384 || !PMTatStart))) && fOut && DoMerge != 1)
   {
-//    DoOutputHeaderPacks = TRUE;
+//    DoOutputHeaderPacks = 2;
     for (k = 0; (PATPMTBuf[4 + k*192] == 'G'); k++)
       if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + k*192], OutPacketSize, 1, fOut))
         PositionOffset -= OutPacketSize;
@@ -2043,7 +2049,7 @@ int main(int argc, const char* argv[])
   }
 
   // Spezialanpassung Humax / Medion
-  if ((HumaxSource || EycosSource || MedionMode==1 || (WriteDescPackets && (DoFixPMT || PATPMTBuf[4]!='G'))) && (!DoInfoOnly || DoFixPMT) /*&& fOut && DoMerge != 1*/)
+  if ((HumaxSource || EycosSource || TechniSource || MedionMode==1 || (WriteDescPackets && (DoFixPMT || PATPMTBuf[4]!='G'))) && (!DoInfoOnly || DoFixPMT) /*&& fOut && DoMerge != 1*/)
   {
     bool pmt_used = FALSE;
 
@@ -2206,7 +2212,7 @@ int main(int argc, const char* argv[])
 
 
   // SPECIAL FEATURE: Fix PAT/PMT of output file (-p)
-  if (DoFixPMT && (HumaxSource || EycosSource || MedionMode==1 || WriteDescPackets))
+  if (DoFixPMT && (HumaxSource || EycosSource || TechniSource || MedionMode==1 || WriteDescPackets))
   {
     byte PMTPacket[192];
     time_t OldOutTimestamp = HDD_GetFileDateTime(RecFileOut);
@@ -2825,7 +2831,7 @@ int main(int argc, const char* argv[])
 
             // Header-Pakete ausgeben 2 (experimentell)
             if (CurrentPosition-PositionOffset > (2 + NrEPGPacks) * OutPacketSize)
-              DoOutputHeaderPacks = TRUE;
+              DoOutputHeaderPacks = 2;
             AfterFirstEPGPacks = FALSE;
           }
           else if (DoCut == 2)
@@ -3205,7 +3211,7 @@ int main(int argc, const char* argv[])
           {
             int NrPMTPacks = 0;
 
-            if ((HumaxSource || EycosSource || MedionMode==1 || (WriteDescPackets && (CurrentPosition > (2+NrEPGPacks)*PACKETSIZE || !PMTatStart))) && fOut /*&& DoMerge != 1*/)
+            if ((HumaxSource || EycosSource || TechniSource || MedionMode==1 || (WriteDescPackets && (CurrentPosition > (2+NrEPGPacks)*PACKETSIZE || !PMTatStart))) && fOut /*&& DoMerge != 1*/)
             {
               for (k = 1; (PATPMTBuf[4 + k*192] == 'G'); NrPMTPacks = k++);
               for (k = 0; (PATPMTBuf[4 + k*192] == 'G'); k++)
@@ -3217,12 +3223,12 @@ int main(int argc, const char* argv[])
                   PositionOffset -= OutPacketSize;
               }
               PMTCounter = NrPMTPacks + 1;
-              if (MedionMode == 1 && !MedionStrip)
+              if (MedionMode == 1 && (DoOutputHeaderPacks == 2 || !MedionStrip))
               {
                 SimpleMuxer_DoEITOutput();
                 PMTCounter += NrEPGPacks;
               }
-              else if (WriteDescPackets && EPGPacks && !DoStrip)
+              else if (WriteDescPackets && EPGPacks && (DoOutputHeaderPacks == 2 || !DoStrip))
               {
                 for (k = 0; k < NrEPGPacks; k++)
                 {
@@ -3238,7 +3244,7 @@ int main(int argc, const char* argv[])
             DoOutputHeaderPacks = FALSE;
           }
 
-          if (WriteDescPackets && EycosSource /*&& (MedionMode != 1) && !HumaxSource*/ && !DropCurPacket)
+          if (WriteDescPackets && (EycosSource || TechniSource) /*&& (MedionMode != 1) && !HumaxSource*/ && !DropCurPacket)
           {
             PMTCounter++;
             if (PMTCounter >= 1024)  // PMTBetween
@@ -3490,7 +3496,7 @@ int main(int argc, const char* argv[])
       }
 
       // Header-Pakete ausgeben 3 (experimentell!)
-      DoOutputHeaderPacks = TRUE;
+      DoOutputHeaderPacks = 2;
 
       if (DoCut && NrSegments == 0)
       {

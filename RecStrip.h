@@ -155,7 +155,7 @@ extern word             VideoPID, TeletextPID, SubtitlesPID, TeletextPage;
 extern word             TransportStreamID;
 extern tAudioTrack      AudioPIDs[];
 extern word             ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs;
-extern bool             isHDVideo, AlreadyStripped, HumaxSource, EycosSource, DVBViewerSrc;
+extern bool             isHDVideo, AlreadyStripped, HumaxSource, EycosSource, TechniSource, DVBViewerSrc;
 extern bool             DoStrip, DoSkip, RemoveEPGStream, ExtractTeletext, ExtractAllTeletext, RemoveTeletext, RebuildNav, RebuildInf, RebuildSrt, DoInfoOnly, DoFixPMT, MedionMode, MedionStrip, DoGenerateEIT, WriteDescPackets, PMTatStart;
 extern int              DoCut, DoMerge, DoInfFix, DemuxAudio;
 extern int              NrEPGPacks;

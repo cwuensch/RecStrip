@@ -1171,7 +1171,7 @@ printf("  TS: Teletext date*: %s (GMT%+d)\n", TimeStrTF(*TtxTime, *TtxTimeSec), 
 printf("  TS: Teletext date: %s (GMT%+d)\n", TimeStrTF(*TtxTime, *TtxTimeSec), -*TtxTimeZone/3600);
               }
 
-if (TtxTimeZone && time_offset != -*TtxTimeZone && (MedionMode || HumaxSource || EycosSource))
+if (TtxTimeZone && time_offset != -*TtxTimeZone && (MedionMode || HumaxSource || EycosSource || TechniSource))
 {
 //  *TtxTime = AddTimeSec(*TtxTime, *TtxTimeSec, TtxTimeSec, -*TtxTimeZone - time_offset);
 //  printf("  TS: Teletext date: %s (GMT%+d, corrected!)\n", TimeStrTF(*TtxTime, *TtxTimeSec), time_offset/3600);
@@ -1426,7 +1426,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   memset (&EITBuffer, 0, sizeof(tPSBuffer));
 
 //  rewind(fIn);
-//  if (!HumaxSource && !EycosSource)
+//  if (!HumaxSource && !EycosSource && !TechniSource)
 //    InitInfStruct(RecInf);
 
   //Spezial-Anpassung, um Medion-PES (EPG und Teletext) auszulesen
@@ -1853,7 +1853,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       Offset = FindNextPacketStart(Buffer, ReadBytes);
       if (Offset >= 0)
       {
-        if (!HumaxSource && !EycosSource)
+        if (!HumaxSource && !EycosSource && !TechniSource)
         {
           //Find a PMT packet to get its PID
           p = &Buffer[Offset + PACKETOFFSET];
