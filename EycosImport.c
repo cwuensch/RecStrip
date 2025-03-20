@@ -276,7 +276,7 @@ if (strlen(ExtEPGText) != TextLen)
       RecInf->EventInfo.DurationHour    = (byte)((EvtEndUnix - EvtStartUnix) / 3600);
       RecInf->EventInfo.DurationMin     = (word)(((EvtEndUnix - EvtStartUnix) / 60) % 60);
       printf("    EvtStart  = %s (local)\n", TimeStrTF(RecInf->EventInfo.StartTime, 0));
-      printf("    EvtDuration = %02d:%02d\n", RecInf->EventInfo.DurationHour, RecInf->EventInfo.DurationMin);
+      printf("    EvtDuratn = %02d:%02d\n", RecInf->EventInfo.DurationHour, RecInf->EventInfo.DurationMin);
     }
     fclose(fTxt);
   }

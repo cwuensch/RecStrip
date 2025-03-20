@@ -150,6 +150,7 @@ static long long        NrDroppedFillerNALU=0, NrDroppedAdaptation=0, NrDroppedN
 static dword            LastPCR = 0, LastTimeStamp = 0, CurTimeStep = 1200, *pGetPCR = NULL;
 static signed char      ContinuityCtrs[MAXCONTINUITYPIDS];
 static bool             ResumeSet = FALSE, AfterFirstEPGPacks = FALSE, DoOutputHeaderPacks = FALSE;
+static dword            PMTBetween, PMTCounter = 0;
 
 // Continuity Statistik
 static tContinuityError FileDefect[MAXCONTINUITYPIDS];
@@ -1201,16 +1202,25 @@ SONST
   {
 //    DoOutputHeaderPacks = 2;
     for (k = 0; (PATPMTBuf[4 + k*192] == 'G'); k++)
+    {
       if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + k*192], OutPacketSize, 1, fOut))
         PositionOffset -= OutPacketSize;
+      if (EycosSource || TechniSource /*|| MedionMode==1*/)
+        PMTCounter++;
+    }
     if (MedionMode == 1)
+    {
       SimpleMuxer_DoEITOutput();
+//      PMTCounter += EPGLen / 183;
+    }
     else if (WriteDescPackets && EPGPacks)
     {
       for (k = 0; k < NrEPGPacks; k++)
         if (fwrite(&EPGPacks[((OutPacketSize==192) ? 0 : 4) + k*192], OutPacketSize, 1, fOut))
           PositionOffset -= OutPacketSize;
     }
+    if (EycosSource || TechniSource /*|| MedionMode==1*/)
+      PMTCounter += NrEPGPacks;
   }
   AfterFirstEPGPacks = FALSE;
   printf("\n");
@@ -1359,7 +1369,7 @@ int main(int argc, const char* argv[])
   time_t                startTime, endTime;
   int                   CurSeg = 0, i = 0, n = 0, k;
   dword                 j = 0;
-  dword                 PMTBetween, PMTCounter = 0, Percent = 0, BlocksSincePercent = 0;
+  dword                 Percent = 0, BlocksSincePercent = 0;
   bool                  AbortProcess = FALSE;
   bool                  ret = TRUE;
 
@@ -2212,7 +2222,7 @@ int main(int argc, const char* argv[])
 
 
   // SPECIAL FEATURE: Fix PAT/PMT of output file (-p)
-  if (DoFixPMT && (HumaxSource || EycosSource || TechniSource || MedionMode==1 || WriteDescPackets))
+  if (DoFixPMT && (HumaxSource || EycosSource || TechniSource || MedionMode || WriteDescPackets))
   {
     byte PMTPacket[192];
     time_t OldOutTimestamp = HDD_GetFileDateTime(RecFileOut);
@@ -2927,9 +2937,9 @@ int main(int argc, const char* argv[])
               PositionOffset -= OutPacketSize;
             }
 //            PMTCounter = NrPMTPacks + 1;
-            if (!MedionStrip)
+            if (!RemoveEPGStream)
               SimpleMuxer_DoEITOutput();
-//            PMTCounter += NrEPGPacks;
+//            PMTCounter += EPGLen / 183;
           }
         }
       }
@@ -3206,6 +3216,18 @@ int main(int argc, const char* argv[])
                 { ContinuityCtrs[k] = -1; break; }
           }
 
+          // Wiederhole PAT/PMT immer vor jedem I-Frame (neu)
+          if (WriteDescPackets && (EycosSource || TechniSource || HumaxSource) && !DropCurPacket)
+          {
+            if ((CurPID == VideoPID) && ((tTSPacket*) &Buffer[4])->Payload_Unit_Start)
+            {
+              byte FrameType = (((tTSPacket*) &Buffer[4])->Adapt_Field_Exists) ? ((tTSPacket*) &Buffer[4])->Data[0] + 1 : 0;  // hier für die Adaptation Field Offset Position "missbrauchen"
+              if (FindPictureHeader(&Buffer[8 + FrameType], 184 - FrameType, &FrameType, NULL))
+                if (FrameType == 1)
+                  DoOutputHeaderPacks = TRUE;
+            }
+          }
+
           // Header-Pakete ausgeben 2 (experimentell!)
           if (DoOutputHeaderPacks)
           {
@@ -3222,13 +3244,14 @@ int main(int argc, const char* argv[])
                 if (fwrite(&PATPMTBuf[((OutPacketSize==192) ? 0 : 4) + k*192], OutPacketSize, 1, fOut))
                   PositionOffset -= OutPacketSize;
               }
-              PMTCounter = NrPMTPacks + 1;
-              if (MedionMode == 1 && (DoOutputHeaderPacks == 2 || !MedionStrip))
+              if (EycosSource || TechniSource /*|| MedionMode == 1*/)
+                PMTCounter = NrPMTPacks + 1;
+              if (MedionMode == 1 && (DoOutputHeaderPacks == 2 || !RemoveEPGStream))
               {
                 SimpleMuxer_DoEITOutput();
-                PMTCounter += NrEPGPacks;
+//                PMTCounter += EPGLen / 183;
               }
-              else if (WriteDescPackets && EPGPacks && (DoOutputHeaderPacks == 2 || !DoStrip))
+              else if (WriteDescPackets && EPGPacks && (DoOutputHeaderPacks == 2 || !RemoveEPGStream))
               {
                 for (k = 0; k < NrEPGPacks; k++)
                 {
@@ -3238,18 +3261,20 @@ int main(int argc, const char* argv[])
                   if (fwrite(&EPGPacks[((OutPacketSize==192) ? 0 : 4) + k*192], OutPacketSize, 1, fOut))
                     PositionOffset -= OutPacketSize;
                 }
-                PMTCounter += NrEPGPacks;
+                if (EycosSource || TechniSource)
+                  PMTCounter += NrEPGPacks;
               }
             }
             DoOutputHeaderPacks = FALSE;
           }
 
-          if (WriteDescPackets && (EycosSource || TechniSource) /*&& (MedionMode != 1) && !HumaxSource*/ && !DropCurPacket)
+          // Wiederhole PAT/PMT alle 1024 Pakete 
+/*          if (WriteDescPackets && (EycosSource || TechniSource) /*&& (MedionMode != 1) && !HumaxSource*//* && !DropCurPacket)
           {
             PMTCounter++;
             if (PMTCounter >= 1024)  // PMTBetween
               DoOutputHeaderPacks = TRUE;
-          }
+          } */
 
           // NAV BERECHNEN UND PAKET AUSGEBEN
           if (!DropCurPacket)
@@ -3323,8 +3348,8 @@ int main(int argc, const char* argv[])
             PositionOffset += HumaxHeaderLaenge;
             CurrentPosition += HumaxHeaderLaenge;
             CurBlockBytes += HumaxHeaderLaenge;
-            if (!DoStrip) PMTCounter++;
-            if (fOut && /*!DoStrip &&*/ (PMTCounter >= 6))
+/*            PMTCounter++;
+            if (fOut && /*!DoStrip &&*//* (PMTCounter >= 6))
             {
               // Wiederhole PAT/PMT und EIT Information (außer wenn Strip aktiv)
               DoOutputHeaderPacks = TRUE;
@@ -3337,9 +3362,9 @@ int main(int argc, const char* argv[])
                   fwrite(&Buffer[0], 4, 1, fOut);  // 4 Byte Timecode schreiben
                 fwrite(&PATPMTBuf[4 + k*192], 188, 1, fOut);
                 PositionOffset -= OutPacketSize;
-              } */
+              } *//*
               PMTCounter = 0;
-            }
+            } */
           }
           else if ((unsigned long long) CurrentPosition + 4096 >= RecFileSize)
           {

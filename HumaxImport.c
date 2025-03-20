@@ -184,7 +184,7 @@ bool GetPidsFromMap(word *const InOutServiceID, word *const OutPMTPID, word *con
 //  strncpy(LineBuf, ExePath, sizeof(LineBuf));
   FindExePath(ExePath, LineBuf, sizeof(LineBuf));
   k = (int)strlen(LineBuf);
-  if (MedionMode == 1)
+  if (MedionMode)
   {
     strncpy(&LineBuf[k], "SenderMap_Medion.txt", (int)sizeof(LineBuf) - k - 1);
     LineBuf[sizeof(LineBuf) - 1] = '\0';
@@ -200,7 +200,7 @@ bool GetPidsFromMap(word *const InOutServiceID, word *const OutPMTPID, word *con
   if (fMap)
   {
     // bei Medion: ServiceID aus HumaxMap holen, falls nicht bekannt
-    if ((MedionMode == 1) && (*InOutServiceID <= 1))
+    if ((MedionMode) && (*InOutServiceID <= 1))
     {
       strncpy(&LineBuf[k], "HumaxMap.txt", (int)sizeof(LineBuf) - k - 1);
       if ((fMap2 = fopen(LineBuf, "rb")))
@@ -529,7 +529,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
                 printf("    EvtStart  = %s (UTC)\n", TimeStrTF(RecInf->EventInfo.StartTime, 0));
                 RecInf->EventInfo.DurationHour = (byte)DurationH;
                 RecInf->EventInfo.DurationMin = (byte)DurationM;
-                printf("    EvtDuration = %02hhu:%02hhu\n", DurationH, DurationM);
+                printf("    EvtDuratn = %02hhu:%02hhu\n", DurationH, DurationM);
                 RecInf->EventInfo.EndTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, 3600*DurationH + 60*DurationM);
                 if(strcmp(RecInf->EventInfo.EventNameDescription, "-") == 0)  RecInf->EventInfo.EventNameDescription[0] = '\0';
                 RecInf->EventInfo.EventNameLength = (byte)strlen(RecInf->EventInfo.EventNameDescription);
