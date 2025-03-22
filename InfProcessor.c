@@ -182,16 +182,7 @@ bool LoadInfFromRec(char *AbsRecFileName)
     if (!Result) EycosSource = FALSE;
   }
   else if (TechniSource)
-  {
-    char *p = strrchr(AbsRecFileName, '[');
-    if (p)
-    {
-      dword year = 0, month = 0, day = 0;
-      if (sscanf(p, "[%u-%u-%u]", &year, &month, &day) == 3)
-        RecInf->RecHeaderInfo.StartTime = Unix2TFTime(MakeUnixTime((word)year, (byte)month, (byte)day, 0, 0, 0, NULL), NULL, TRUE);
-    }
-    // ToDo: Marken einlesen (?)
-  }
+    TechniSource = LoadTechnisat(AbsRecFileName, RecInf);
   else if (strcmp(&AbsRecFileName[strlen(AbsRecFileName)-3], ".ts") == 0)
     DVBViewerSrc = LoadDVBViewer(AbsRecFileName, RecInf);
 

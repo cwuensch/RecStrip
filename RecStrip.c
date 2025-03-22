@@ -2104,7 +2104,7 @@ int main(int argc, const char* argv[])
 #endif
     if (/*DoFixPMT ||*/ MedionMode || !pmt_used)
     {
-      printf("Generate new %s for Humax/Medion/Eycos recording.\n", ((PATPMTBuf[192+4]=='G') ? "PAT" : "PAT/PMT"));
+      printf("Generate new %s for Humax/Medion/Eycos/Technisat recording.\n", ((PATPMTBuf[192+4]=='G') ? "PAT" : "PAT/PMT"));
 //      GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, 1, 256, VideoPID, VideoPID, 101, TeletextPID, AudioPIDs);
       GeneratePatPmt(PATPMTBuf, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.ServiceID, TransportStreamID, ((TYPE_RecHeader_TMSS*)InfBuffer)->ServiceInfo.PMTPID, VideoPID, VideoPID, AudioPIDs, (PATPMTBuf[192+4]=='G'));
     }

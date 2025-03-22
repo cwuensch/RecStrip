@@ -41,11 +41,11 @@ If (WScript.Arguments.Count >= 1) Then
     nameRef = fso.GetParentFolderName(WScript.Arguments(0)) & "\" & Left(nameOut, InstrRev(nameOut, "_")-1) & "_fra." & fso.GetExtensionName(WScript.Arguments(0))
     nameOut = fso.GetParentFolderName(WScript.Arguments(0)) & "\" & Left(nameOut, InstrRev(nameOut, "_")-1) & "_ger." & fso.GetExtensionName(WScript.Arguments(0))
   Else
-    MsgBox "Dateiname nicht erkannt!" & vbCrLf & "Bitte eine ""*_fra.srt"" oder ""*_deeplout.srt"" Datei übergeben!", 16, "SrtTranslator"
+    MsgBox "Dateiname nicht erkannt!" & vbCrLf & "Bitte eine ""*_fra.srt"" oder ""*_deeplout.srt"" Datei uebergeben!", 16, "SrtTranslator"
     WScript.Quit
   End If
 Else
-  MsgBox "Bitte eine ""*_fra.srt"" oder ""*_deeplout.srt"" Datei übergeben!", 64, "SrtTranslator"
+  MsgBox "Bitte eine ""*_fra.srt"" oder ""*_deeplout.srt"" Datei uebergeben!", 64, "SrtTranslator"
   WScript.Quit
 End If
 
@@ -99,7 +99,7 @@ While Not fIn.AtEndOfStream
     If (mode = 1) Then _
       fOut.WriteLine(lastLine)
     n = n + 1
-'    If (n <> CInt(lastLine)) Then MsgBox "Problem: Sprung in Nummer: " & lastLine & " -> " & n
+'    If (n <> CInt(lastLine)) Then MsgBox "Problem: Sprung in Nummer: " & lastLine & " -> " & n, 32, "SrtTranslator"
   ElseIf (lastLine <> "" And Not skipline) Then
     ' Wir haben keinen TimeStamp und keine Nr gefunden und sind noch im Text
     If (outLine <> "") Then
@@ -192,7 +192,7 @@ If (mode = 2) Then
       If (closeFont = 2) Then fOut.Write("</font>" & vbCrLf) Else fOut.Write(vbCrLf)
       closeFont = 0
 
-      If (CInt(line) <> CInt(numbers(n))) Then MsgBox "Problem: Sprung in Nummer: " & numbers(n) & " -> " & line
+      If (CInt(line) <> CInt(numbers(n))) Then MsgBox "Problem: Sprung in Nummer: " & numbers(n) & " -> " & line, 32, "SrtTranslator"
       fOut.WriteLine("")
       fOut.WriteLine(CInt(line))
       fOut.WriteLine(times(n))

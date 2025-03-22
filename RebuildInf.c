@@ -32,6 +32,7 @@
 #include "TtxProcessor.h"
 #include "HumaxHeader.h"
 #include "EycosHeader.h"
+#include "CutProcessor.h"
 #include "H264.h"
 
 /*#ifdef _WIN32
@@ -291,6 +292,49 @@ word GetMinimalAudioPID(tAudioTrack AudioPIDs[])
 }
 
 
+bool LoadTechnisat(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
+{
+  FILE *fAdd;
+  char TempStr[FBLIB_DIR_SIZE], *p;
+  dword year = 0, month = 0, day = 0;
+  bool ret = FALSE;
+
+  p = strrchr(AbsTsFileName, '[');
+  if (p && sscanf(p, "[%u-%u-%u]", &year, &month, &day) == 3)
+  {
+    RecInf->RecHeaderInfo.StartTime = Unix2TFTime(MakeUnixTime((word)year, (byte)month, (byte)day, 0, 0, 0, NULL), NULL, TRUE);
+    ret = TRUE;
+  }
+
+  // Marken einlesen (es muss zuvor eine .nav erzeugt werden!)
+  strncpy(TempStr, AbsTsFileName, sizeof(TempStr));
+  TempStr[sizeof(TempStr)-1] = '\0';
+  p = strrchr(TempStr, '/');
+  if(!p) p = strrchr(TempStr, '\\');
+  if(p) p++; else p = TempStr;
+  strcpy(p, "Marken.txt");
+
+  if ((fAdd = fopen(TempStr, "r")))
+  {
+    dword hour = 0, minute = 0, second = 0, millisec = 0, i = 1;
+    fgets(TempStr, sizeof(TempStr), fAdd);
+    if (sscanf(TempStr, "%u . %u . %u %u _ %u", &day, &month, &year, &hour, &minute) == 5)
+      RecInf->RecHeaderInfo.StartTime = Unix2TFTime(MakeUnixTime((word)year, (byte)month, (byte)day, (byte)hour, (byte)minute, 0, NULL), NULL, TRUE);
+
+    ResetSegmentMarkers();
+    while (fgets(TempStr, sizeof(TempStr), fAdd))
+    {
+      if (sscanf(TempStr, "%*[^:] : %u : %u : %u , %u", &hour, &minute, &second, &millisec) == 4)
+        SegmentMarker[i++].Timems = 1000 * (60 * (60*hour + minute) + second) + millisec;
+    }
+    fclose(fAdd);
+    SegmentMarker[i].Position = RecFileSize;
+    NrSegmentMarker = i + 1;
+    CutImportFromTimeStamps(4, PACKETSIZE);
+  }
+  return ret;
+}
+
 bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
 {
   FILE                 *fLog;
@@ -298,7 +342,7 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
   time_t                UnixTime1 = 0, UnixTime2 = 0, Duration;
   dword                 day=0, month=0, year=0, hour=0, minute=0, second=0, startH, startM, endH, endM;
   int                   NameLen = 0, c = 0, i;
-  bool                  ret = FALSE;
+  bool                  found = FALSE, ret = FALSE;
 
   TRACEENTER;
 //  InitInfStruct(RecInf);
@@ -310,7 +354,7 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
   if (strlen(LogFile) > 24)
   {
     LogFile[strlen(LogFile)-23] = '\0';
-    if ((p = strrchr(LogFile, '-')) && (p[1] >= '0') && (p[1] <= '9') && (p[2]==' '))
+    if ((p = strrchr(LogFile, '-')) && (p[1] > '1') && (p[1] <= '9') && (p[2]==' '))
     {
       // Falls der Dateiname einen Szenen-Index ("-3") enthält, wähle das erste Logfile der Aufnahme
       *p = '\0';
@@ -329,7 +373,7 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
         {
           do
             if ((strstr(FindFileData.cFileName, LogDate)) && strstr(FindFileData.cFileName, "-1 "))
-              { strncpy(p, FindFileData.cFileName, sizeof(LogFile) - (p-LogFile)); break; }
+              { strncpy(p, FindFileData.cFileName, sizeof(LogFile) - (p-LogFile)); found = TRUE; break; }
           while (FindNextFileA(hFind, &FindFileData));
           FindClose(hFind);
         }
@@ -347,9 +391,11 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
           len = strlen(p);
 //printf("DEBUG: Reference name = %s\n", p);
           while ((file = readdir(dh)))
+          {
 //printf("DEBUG: File found = %s\n", file->d_name);
-            if ((strncmp(file->d_name, LogFile, len) == 0) && (strstr(file->d_name, LogDate)) && (strstr(file->d_name, "-1 ")) && (strcmp(&file->d_name[strlen(file->d_name)-4], ".log") == 0))
-              { strncpy(p, file->d_name, sizeof(LogFile) - (p-LogFile)); break; }
+            if ((strncmp(file->d_name, p, len) == 0) && (strstr(file->d_name, LogDate)) && (strstr(file->d_name, "-1 ")) && (strcmp(&file->d_name[strlen(file->d_name)-4], ".log") == 0))
+              { strncpy(p, file->d_name, sizeof(LogFile) - (p-LogFile)); found = TRUE; break; }
+          }
 //printf("DEBUG: Final result = %s\n", LogFile);
           closedir(dh);
         }
@@ -357,12 +403,13 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
       #endif
      #endif
     }
-    else
+    if (!found)  // else
     {
       // Falls nicht, nimm das Log zum .ts
       strcpy(LogFile, AbsTsFileName);
       if((p = strrchr(LogFile, '.'))) *p = '\0';  // ".ts" entfernen
       strcat(LogFile, ".log");
+//printf("DEBUG: Final result = %s\n", LogFile);
     }
   }
 
@@ -2929,7 +2976,7 @@ void GenerateEIT(word ServiceID, time_t StartTimeUnix, byte DurationHour, byte D
       memcpy(desc2->LanguageCode, "deu", 3);
       p = (char*)desc2 + 7;
       *((byte*)p) = min(ExtEventTextLen-i*249, 249);
-      memcpy(&p[1], &ExtEPGText[i * 249], *(byte*)p);
+      memcpy(&p[1], &ExtEventText[i * 249], *(byte*)p);
       p += *(byte*)p + 1;
       desc2->DescrLength = (int)(p - (char*)desc2) - 2;
     }
