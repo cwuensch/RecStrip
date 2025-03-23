@@ -817,13 +817,19 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         else if (HumaxHeader.ZusInfoID == HumaxBookmarksID)  // Header 3: Bookmarks
         {
           tHumaxBlock_Bookmarks* HumaxBookmarks = (tHumaxBlock_Bookmarks*)HumaxHeader.ZusInfos;
-          RecInf->BookmarkInfo.NrBookmarks = HumaxBookmarks->Anzahl;
           printf("    Bookmarks: %s", (HumaxBookmarks->Anzahl == 0) ? "-" : "");
-          for (j = 0; j < HumaxBookmarks->Anzahl; j++)
+          if (!RecInf->BookmarkInfo.NrBookmarks)
           {
-            RecInf->BookmarkInfo.Bookmarks[n++] = (dword) ((long long)HumaxBookmarks->Items[j] * 32768 / 9024);
-            printf((j > 0) ? ", %u" : "%u", HumaxBookmarks->Items[j]);
+            RecInf->BookmarkInfo.NrBookmarks = HumaxBookmarks->Anzahl;
+            for (j = 0; j < HumaxBookmarks->Anzahl; j++)
+            {
+              RecInf->BookmarkInfo.Bookmarks[n++] = (dword) ((long long)HumaxBookmarks->Items[j] * 32768 / 9024);
+              printf((j > 0) ? ", %u" : "%u", HumaxBookmarks->Items[j]);
+            }
           }
+/*          else
+            for (j = 0; j < HumaxBookmarks->Anzahl; j++)
+              printf((j > 0) ? ", %u" : "%u", HumaxBookmarks->Items[j]); */
           printf("\n");
         }
         if ((i == 4) || (HumaxHeader.ZusInfoID == HumaxTonSpurenID))  // Header 4: Tonspuren

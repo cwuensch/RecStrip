@@ -439,7 +439,7 @@ void CutImportFromBM(const char *RecFile, dword Bookmarks[], dword NrBookmarks)
     SegmentMarker[0].Timems = 0;  // NavGetBlockTimeStamp(0);
 //        SegmentMarker[0].Selected = FALSE;
     if (SegmentMarker[NrSegmentMarker-1].Position == (long long)RecFileSize)
-      SegmentMarker[NrSegmentMarker - 1].Timems = TimeStamps[NrTimeStamps-1].Timems;
+      SegmentMarker[NrSegmentMarker-1].Timems = TimeStamps[NrTimeStamps-1].Timems;
 
     Offsetms = 0;
     CurTimeStamp = TimeStamps;
@@ -481,7 +481,7 @@ void CutImportFromBM(const char *RecFile, dword Bookmarks[], dword NrBookmarks)
         {
           SegmentMarker[i].Position = CurTimeStamp->Position;
           SegmentMarker[i].Timems = CurTimeStamp->Timems;  // NavGetPosTimeStamp(TimeStamps, NrTimeStamps, SegmentMarker[i].Position);
-//              SegmentMarker[i].Selected = FALSE;
+//          SegmentMarker[i].Selected = FALSE;
           MSecToTimeString(SegmentMarker[i].Timems, curTimeStr);
           printf("  -->  newPos=%lld   newTimeStamp=%s\n", SegmentMarker[i].Position, curTimeStr);
         }

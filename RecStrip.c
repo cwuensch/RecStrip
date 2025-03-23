@@ -1266,7 +1266,7 @@ static bool CloseOutputFiles(void)
 
   if ((DoCut || DoMerge || RebuildInf) && LastTimems)
     NewDurationMS = LastTimems;
-  if ((DoCut || DoStrip || DoMerge) && NrSegmentMarker >= 2)
+  if ((NrSegmentMarker >= 2) && (DoCut || DoStrip || DoMerge || SegmentMarker[NrSegmentMarker-1].Position > CurrentPosition))
   {
     SegmentMarker[NrSegmentMarker-1].Position = CurrentPosition - PositionOffset;
     SegmentMarker[NrSegmentMarker-1].Timems -= CutTimeOffset;
@@ -2583,7 +2583,7 @@ int main(int argc, const char* argv[])
         len = (int)(p - AbsOutFile);
       else
         len = (int)strlen(AbsOutFile);
-      snprintf(&AbsOutFile[len], sizeof(AbsOutFile)-len, "%s", ".txt");
+      snprintf(&AbsOutFile[len], sizeof(AbsOutFile)-len, "%s", ".ttx");
       printf("Writing teletext to: %s\n", AbsOutFile);
       WriteAllTeletext(AbsOutFile);
     }
@@ -3479,6 +3479,17 @@ int main(int argc, const char* argv[])
       NrPackets += (CurrentPosition-PositionOffset) / OutPacketSize;  // (SegmentMarker[1].Position / OutPacketSize);
     NrScrambledPackets += CurScrambledPackets;
 
+    // letzten SegmentMarker anpassen und überschüssige Bookmarks/Segments löschen
+/*    while(i < NrSegmentMarker-1)  DeleteSegmentMarker(i, TRUE);
+    while(BookmarkInfo && (j < BookmarkInfo->NrBookmarks)) DeleteBookmark(j);
+    if ((i < NrSegmentMarker) && (CurrentPosition >= SegmentMarker[i].Position))
+    {
+      SegmentMarker[i].Position = CurrentPosition - PositionOffset;
+      if (!SegmentMarker[i].Timems)
+        pOutNextTimeStamp = &SegmentMarker[i].Timems;
+      i++;
+    } */
+
     // ### restliche SRT-Subtitles noch ausgeben
     if (RebuildSrt)
       SrtProcessCaptions(0, 0xffffffff, CutTimeOffset, TRUE);
@@ -3565,7 +3576,7 @@ int main(int argc, const char* argv[])
       len = (int)(p - AbsOutFile);
     else
       len = (int)strlen(AbsOutFile);
-    snprintf(&AbsOutFile[len], sizeof(AbsOutFile)-len, "%s", ".txt");
+    snprintf(&AbsOutFile[len], sizeof(AbsOutFile)-len, "%s", ".ttx");
     printf("Writing teletext to: %s\n", AbsOutFile);
     WriteAllTeletext(AbsOutFile);
   }

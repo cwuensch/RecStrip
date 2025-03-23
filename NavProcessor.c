@@ -1479,6 +1479,7 @@ bool CloseNavFileOut(void)
         navSD.Timems = LastTimems;
       if (pOutNextTimeStamp)
         *pOutNextTimeStamp = navSD.Timems;
+
       if(!WaitForIFrame && (!WaitForPFrame || navSD.FrameType<=2))
       {
         if(fNavOut) fwrite(&navSD, sizeof(tnavSD), 1, fNavOut);

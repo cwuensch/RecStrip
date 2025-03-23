@@ -1551,7 +1551,7 @@ bool WriteAllTeletext(char *AbsOutFile)
         hold_mosaic = FALSE;
         last_coltag = NULL;
 
-        // Steuerzeichen entfernen  ToDo: Humax-3/LOEWENZAHN_0511101625.txt (S.100)
+        // Steuerzeichen entfernen  ToDo: Humax-3/LOEWENZAHN_0511101625.ttx (S.100)
         for (j = 0; j < 40; j++)
         {
           c = &page->text[i][j];
