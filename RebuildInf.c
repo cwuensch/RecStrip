@@ -300,7 +300,7 @@ bool LoadTechnisat(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
   bool ret = FALSE;
 
   p = strrchr(AbsTsFileName, '[');
-  if (p && sscanf(p, "[%u-%u-%u]", &year, &month, &day) == 3)
+  if (p && sscanf(p, "[%u . %u . %u]", &day, &month, &year) == 3)
   {
     RecInf->RecHeaderInfo.StartTime = Unix2TFTime(MakeUnixTime((word)year, (byte)month, (byte)day, 0, 0, 0, NULL), NULL, TRUE);
     ret = TRUE;

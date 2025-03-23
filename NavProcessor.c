@@ -188,7 +188,8 @@ bool GetPTS2(byte *pBuffer, dword *pPTS, dword *pDTS)  // 33 bits, 90 kHz, retur
 }
 bool GetPTS(byte *pBuffer, dword *pPTS, dword *pDTS)
 {
-  if(/*pBuffer &&*/ (pBuffer[0] == 0x00) && (pBuffer[1] == 0x00) && (pBuffer[2] == 0x01))
+//  if(/*pBuffer &&*/ (pBuffer[0] == 0x00) && (pBuffer[1] == 0x00) && (pBuffer[2] == 0x01))
+  if (/*pBuffer &&*/ (memcmp(pBuffer, "\0\0\1", 3) == 0))
     return GetPTS2(&pBuffer[3], pPTS, pDTS);
   else return FALSE;
 }
@@ -338,68 +339,72 @@ int DeltaPCRms(dword FirstPCR, dword SecondPCR)
   }
 }
 
-/*static dword FindSequenceHeaderCode(byte *Buffer)
+dword FindSequenceHeaderCode(byte *Buffer, int BufferLen)
 {
-  int                   i;
-
-  TRACEENTER;
-  for(i = 0; i < 176; i++)
+  dword buf = 0xffffffff;
+  byte *p;
+  for(p = Buffer; p < Buffer + BufferLen; p++)
   {
-    if((Buffer[i] == 0x00) && (Buffer[i + 1] == 0x00) && (Buffer[i + 2] == 0x01) && (Buffer[i + 3] == 0xb3))
-    {
-      TRACEEXIT;
-      return i + 8;
-    }
+    buf = (buf << 8) | *p;
+    if (buf == 0x000001b3)
+      return (dword)(p - Buffer + 5);
   }
-  TRACEEXIT;
   return 0;
-}*/
+}
 
 dword FindPictureHeader(byte *Buffer, int BufferLen, byte *pFrameType, int *pInOutEndNulls)  // 1 = I-Frame, 2 = P-Frame, 3 = B-Frame (?)
 {
-  int i, startcode = 0;
+  dword buf = 0xffffffff;
+  byte *p, *q;
 
   TRACEENTER;
-  for(i = 0; i < BufferLen - (isHDVideo ? 4 : 5); i++)
+  if (pInOutEndNulls)
   {
-    if ( ((Buffer[i] == 0x00) && (Buffer[i + 1] == 0x00) && (Buffer[i + 2] == 0x01) && (startcode=i+3))
-      || ((i <= 2) && pInOutEndNulls
-        && ( ((i == 0) && pInOutEndNulls && (*pInOutEndNulls == 3))
-          || ((i == 1) && pInOutEndNulls && (*pInOutEndNulls == 2) && (Buffer[i] == 0x01) && (startcode=i+1))
-          || ((i == 2) && pInOutEndNulls && (*pInOutEndNulls == 1) && (Buffer[i] == 0x00) && (Buffer[i+1] == 0x01) && (startcode=i+2)) )) )
+    if (*pInOutEndNulls == 1)  buf = 0xffffff00;
+    if (*pInOutEndNulls == 2)  buf = 0xffff0000;
+    if (*pInOutEndNulls == 3)  buf = 0xff000001;
+    *pInOutEndNulls = 0;
+  }
+
+  for(p = Buffer; p < Buffer + BufferLen - (isHDVideo ? 1 : 2); p++)
+  {
+    buf = (buf << 8) | *p;
+    if ((buf & 0xffffff80) == 0x00000100)
     {
-      if (isHDVideo && ((Buffer[startcode] & 0x80) == 0x00))
+      if (isHDVideo)
       {
         // MPEG4 picture header: 
         if(pFrameType)
         {
-          *pFrameType = ((Buffer[startcode + 1] >> 5) & 7) + 1;
+          *pFrameType = ((p[1] >> 5) & 7) + 1;
           if (*pFrameType == 3)
           {
-            while (++i < BufferLen - 4)
+            buf = 0xffffffff;
+            for(q = p+1; q < Buffer + BufferLen; q++)
             {
-              if ((Buffer[i] == 0x00) && (Buffer[i + 1] == 0x00) && (Buffer[i + 2] == 0x01))
+              if ((buf & 0x00ffffff) == 0x00000001)
               {
-                byte NALType = Buffer[i + 3] & 0x1f;
+                byte NALType = *q & 0x1f;
                 if ((NALType >= NAL_SLICE) && (NALType <= NAL_SLICE_IDR))
                 {
-                  // byte NALRefIdc = ((Buffer[i + 4] >> 5) & 3);
-                  if (((Buffer[i + 3] >> 5) & 3) >= 2) *pFrameType = 2;
+                  // byte NALRefIdc = ((q[1] >> 5) & 3);
+                  if (((*q >> 5) & 3) >= 2) *pFrameType = 2;
                   break;
                 }
               }
+              buf = (buf << 8) | *q;
             }
           }
         }
         TRACEEXIT;
-        return startcode + 3;
+        return (dword)(p - Buffer);
       }
-      else if (!isHDVideo && (Buffer[startcode] == 0x00))
+      else if (*p == 0x00)
       {
         // MPEG2 picture header: http://dvdnav.mplayerhq.hu/dvdinfo/mpeghdrs.html#picture
-        if(pFrameType)  *pFrameType = (Buffer[startcode + 2] >> 3) & 0x03;
+        if(pFrameType)  *pFrameType = (p[2] >> 3) & 0x03;
         TRACEEXIT;
-        return startcode + 6;
+        return (dword)(p - Buffer + 3);
       }
     }
   }
@@ -407,10 +412,12 @@ dword FindPictureHeader(byte *Buffer, int BufferLen, byte *pFrameType, int *pInO
 
   if (pInOutEndNulls)
   {
-    if (Buffer[BufferLen-3] == 0 && Buffer[BufferLen-2] == 0 && Buffer[BufferLen-1] == 1) *pInOutEndNulls = 3;
-    else if (Buffer[BufferLen-2] == 0 && Buffer[BufferLen-1] == 0) *pInOutEndNulls = 2;
-    else if (Buffer[BufferLen-1] == 0) *pInOutEndNulls = 1;
-    else *pInOutEndNulls = 0;
+    *pInOutEndNulls = 0;
+    p = &Buffer[BufferLen-3];
+    
+    if (memcmp(p, "\0\0\1", 3) == 0)  *pInOutEndNulls = 3;
+    else if (p[1] == 0 && p[2] == 0)  *pInOutEndNulls = 2;
+    else if (p[2] == 0)               *pInOutEndNulls = 1;
   }
   TRACEEXIT;
   return 0;

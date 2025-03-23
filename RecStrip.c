@@ -2922,8 +2922,9 @@ int main(int argc, const char* argv[])
         {
           // Wiederhole PAT/PMT und EIT Information vor jedem Video-(I-)Frame (verzichte darauf, wenn MedionStrip aktiv)
           byte FrameType = 0;
-          FindPictureHeader(&Buffer[4], 188, &FrameType, NULL);
-          if (FrameType == 1)  // I-Frame
+
+          if ( (/*!isHDVideo &&*/ FindSequenceHeaderCode(&Buffer[4], 184))  // Sequence Header Start Code
+            || (FindPictureHeader(&Buffer[4], 184, &FrameType, NULL) && (FrameType == 1)) )  // I-Frame
           {
             int NrPMTPacks = 0;
 //          DoOutputHeaderPacks = TRUE;
@@ -3222,8 +3223,8 @@ int main(int argc, const char* argv[])
             if ((CurPID == VideoPID) && ((tTSPacket*) &Buffer[4])->Payload_Unit_Start)
             {
               byte FrameType = (((tTSPacket*) &Buffer[4])->Adapt_Field_Exists) ? ((tTSPacket*) &Buffer[4])->Data[0] + 1 : 0;  // hier für die Adaptation Field Offset Position "missbrauchen"
-              if (FindPictureHeader(&Buffer[8 + FrameType], 184 - FrameType, &FrameType, NULL))
-                if (FrameType == 1)
+              if ( (!isHDVideo && FindSequenceHeaderCode(&Buffer[8 + FrameType], 184 - FrameType))  // Sequence Header Start Code
+                || (FindPictureHeader(&Buffer[8 + FrameType], 184 - FrameType, &FrameType, NULL) && (FrameType == 1)) )  // I-Frame
                   DoOutputHeaderPacks = TRUE;
             }
           }
