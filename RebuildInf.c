@@ -1795,7 +1795,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     tTSPacket          *curPacket = NULL, *lastPacket = NULL;
     word                curPID = 0;
     bool                PTSLastPayloadStart = FALSE;
-    int                 PTSLastEndNulls = 0;
+    dword               PTSLastEndNulls = 0;
     PMTPID = 0;
     PSBuffer_Init(&PMTBuffer, PMTPID,  4096, TRUE, TRUE);
     PSBuffer_Init(&EITBuffer, 0x0012, 16384, TRUE, TRUE);

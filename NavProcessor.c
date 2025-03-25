@@ -352,19 +352,15 @@ dword FindSequenceHeaderCode(byte *Buffer, int BufferLen)
   return 0;
 }
 
-dword FindPictureHeader(byte *Buffer, int BufferLen, byte *pFrameType, int *pInOutEndNulls)  // 1 = I-Frame, 2 = P-Frame, 3 = B-Frame (?)
+dword FindPictureHeader(byte *Buffer, int BufferLen, byte *pFrameType, dword *pInOutEndNulls)  // 1 = I-Frame, 2 = P-Frame, 3 = B-Frame (?)
 {
-  dword buf = 0xffffffff;
+  dword buf = 0xffffffff, ret = 0;
   byte *p, *q;
 
   TRACEENTER;
-  if (pInOutEndNulls)
-  {
-    if (*pInOutEndNulls == 1)  buf = 0xffffff00;
-    if (*pInOutEndNulls == 2)  buf = 0xffff0000;
-    if (*pInOutEndNulls == 3)  buf = 0xff000001;
-    *pInOutEndNulls = 0;
-  }
+  if(pInOutEndNulls)
+    buf = *pInOutEndNulls;
+  if(pFrameType) *pFrameType = 0;
 
   for(p = Buffer; p < Buffer + BufferLen - (isHDVideo ? 1 : 2); p++)
   {
@@ -396,31 +392,32 @@ dword FindPictureHeader(byte *Buffer, int BufferLen, byte *pFrameType, int *pInO
             }
           }
         }
-        TRACEEXIT;
-        return (dword)(p - Buffer);
+        ret = (dword)(p - Buffer + 3);
+        break;
       }
       else if (*p == 0x00)
       {
         // MPEG2 picture header: http://dvdnav.mplayerhq.hu/dvdinfo/mpeghdrs.html#picture
         if(pFrameType)  *pFrameType = (p[2] >> 3) & 0x03;
-        TRACEEXIT;
-        return (dword)(p - Buffer + 3);
+        ret = (dword)(p - Buffer + 6);
+        break;
       }
     }
   }
-  if(pFrameType) *pFrameType = 0;
 
   if (pInOutEndNulls)
   {
-    *pInOutEndNulls = 0;
-    p = &Buffer[BufferLen-3];
-    
-    if (memcmp(p, "\0\0\1", 3) == 0)  *pInOutEndNulls = 3;
-    else if (p[1] == 0 && p[2] == 0)  *pInOutEndNulls = 2;
-    else if (p[2] == 0)               *pInOutEndNulls = 1;
+    if(p < Buffer + BufferLen - 3)
+    {
+      buf = 0xffffffff;
+      p = Buffer + BufferLen - 3;
+    }
+    while (p < Buffer + BufferLen)
+      buf = (buf << 8) | *(p++);
+    *pInOutEndNulls = buf;
   }
   TRACEEXIT;
-  return 0;
+  return ret;
 }
 
 
@@ -874,6 +871,7 @@ dbg_SEIFound = dbg_CurrentPosition/PACKETSIZE;
                   if(abs(TimeOffset) >= 1000)  // TimeOffset = 0;
                     navHD.Timems -= TimeOffset;
                 }
+                if((int)navHD.Timems < 0) navHD.Timems = 0;
 
                 if (pOutNextTimeStamp)
                 {
@@ -1069,6 +1067,7 @@ static void SDNAV_ParsePacket(tTSPacket *Packet, long long FilePositionOfPacket)
         if(abs(TimeOffset) >= 1000)  // TimeOffset = 0;
           navSD.Timems -= TimeOffset;
       }
+      if((int)navSD.Timems < 0) navSD.Timems = 0;
 
       if (pOutNextTimeStamp)
       {
@@ -1278,6 +1277,7 @@ void QuickNavProcess(const long long CurrentPosition, const long long PositionOf
 
       // Zeit anpassen
       curSDNavRec->Timems -= TimeOffset;
+//      if((int)curSDNavRec->Timems < 0) curSDNavRec->Timems = 0;
       if (pOutNextTimeStamp)
       {
         *pOutNextTimeStamp = curSDNavRec->Timems;
