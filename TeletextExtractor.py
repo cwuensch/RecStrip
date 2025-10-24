@@ -109,6 +109,8 @@ def replace_colors(line, colorize_output):
     if (c in colors.keys() or c in "◆◇"):
       line[i] = last_c if (hold_mosaic) else ' '
     elif (ord(c) >= 0x2588):
+      c = ' '        # CW: hier wird die Mosaic ASCII-Art deaktiviert
+      line[i] = ' '  # CW: hier wird die Mosaic ASCII-Art deaktiviert
       last_c = c
     elif (c.isalpha() and c != 'm'):
       last_c = ' '
@@ -455,24 +457,24 @@ def main():
     with open(folder.replace('/rec', '') + ".txt", "r", encoding="utf-8") as in_file:
       reader = csv.DictReader(in_file, delimiter="\t", quotechar='"')
       for row in reader:
-        for name in row["filename"].split(".txt, "):
-          if (not name.endswith(".txt")):
-            name = name + ".txt"
+        for name in row["filename"].split(".ttx, "):
+          if (name.endswith(".ttx")):
+            name = name[:-4]
           inlist[name] = row
   except FileNotFoundError:
     print("Input page list file '" + folder.replace('/rec', '') + ".txt' not found.")
 
   # Get file list
   all_files = os.listdir(folder)
-  all_files = list(filter(os.path.isfile, glob.glob(folder + "/*.txt")))
+  all_files = list(filter(os.path.isfile, glob.glob(folder + "/*.ttx*")))
 #  all_files.sort(key=lambda x: os.path.getsize(x), reverse=True)
   all_files = [os.path.basename(x) for x in all_files]
 
   if (all_files[0][-15] == "_"):  # Humax
     all_files.sort(key=lambda x: x.split("_")[0][:-1] + "_" + x.split("_")[1][:6])
-  elif (all_files[0].endswith("_video.txt")):  # Medion orig
+  elif (all_files[0].endswith("_video.ttx")):  # Medion orig
     all_files.sort(key=lambda x: x.split("]")[0] + "]" + x.split("]")[1].split("-")[0])
-  elif (all_files[0].endswith("].txt")):  # Medion rec
+  elif (all_files[0].endswith("].ttx")):  # Medion rec
     all_files.sort(key=lambda x: x.split("[")[0].split("-")[0] + " [" + x.split("[")[1])
   else:  # other
     all_files.sort(key=lambda x: x)

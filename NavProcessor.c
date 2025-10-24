@@ -358,8 +358,14 @@ dword FindPictureHeader(byte *Buffer, int BufferLen, byte *pFrameType, dword *pI
   byte *p, *q;
 
   TRACEENTER;
-  if(pInOutEndNulls)
+  if (pInOutEndNulls)  // Idee: Stattdessen den Puffer buf als statische Variable speichern und einfach weiternutzen(?)
     buf = *pInOutEndNulls;
+/*  {
+    if (*pInOutEndNulls == 1)  buf = 0xffffff00;
+    if (*pInOutEndNulls == 2)  buf = 0xffff0000;
+    if (*pInOutEndNulls == 3)  buf = 0xff000001;
+    *pInOutEndNulls = 0;
+  } */
   if(pFrameType) *pFrameType = 0;
 
   for(p = Buffer; p < Buffer + BufferLen - (isHDVideo ? 1 : 2); p++)
@@ -1364,10 +1370,9 @@ bool LoadNavFileIn(const char* AbsInNav)
     {
       if (!fread(&navSD, sizeof(tnavSD), 1, fNavIn)) break;
       if (!FirstTimeOK || (int)(navSD.PTS2 - FirstPTS) < 0)
-      {
-        TimemsStart = navSD.Timems;
         FirstPTS = navSD.PTS2;
-      }
+      if (!FirstTimeOK || (int)(navSD.Timems - TimemsStart) < 0)
+        TimemsStart = navSD.Timems;
       if (navSD.FrameType == 1)
       {
         if(!FirstTimeOK) FirstTimeOK = TRUE;
@@ -1399,7 +1404,7 @@ bool LoadNavFileIn(const char* AbsInNav)
       else break;
       if (!TimemsEnd || FrameType >= 2)
         fseek(fNavIn, -(int)(isHDVideo ? sizeof(tnavHD) + sizeof(tnavSD) : 2*sizeof(tnavSD)), SEEK_CUR);
-    }  
+    }
 
 //    HDD_GetFileSize(AbsInNav, &NavSize);
     fseek(fNavIn, start, SEEK_SET);
