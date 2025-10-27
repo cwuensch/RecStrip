@@ -317,9 +317,9 @@ bool LoadTechnisat(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
   if ((fAdd = fopen(TempStr, "r")))
   {
     dword hour = 0, minute = 0, second = 0, millisec = 0, i = 1;
-    fgets(TempStr, sizeof(TempStr), fAdd);
-    if (sscanf(TempStr, "%u . %u . %u %u _ %u", &day, &month, &year, &hour, &minute) == 5)
-      RecInf->RecHeaderInfo.StartTime = Unix2TFTime(MakeUnixTime((word)year, (byte)month, (byte)day, (byte)hour, (byte)minute, 0, NULL), NULL, TRUE);
+    if (fgets(TempStr, sizeof(TempStr), fAdd))
+      if (sscanf(TempStr, "%u . %u . %u %u _ %u", &day, &month, &year, &hour, &minute) == 5)
+        RecInf->RecHeaderInfo.StartTime = Unix2TFTime(MakeUnixTime((word)year, (byte)month, (byte)day, (byte)hour, (byte)minute, 0, NULL), NULL, TRUE);
 
     ResetSegmentMarkers();
     while (fgets(TempStr, sizeof(TempStr), fAdd))
@@ -549,6 +549,7 @@ void InitInfStruct(TYPE_RecHeader_TMSS *RecInf)
   RecInf->ServiceInfo.AudioStreamType = 0xff;
   RecInf->ServiceInfo.AudioPID        = 0xfff;
   RecInf->ServiceInfo.AudioTypeFlag   = 3;  // unknown
+  RecInf->TransponderInfo.SatIndex    = 1;
 //  strcpy(RecInf->ServiceInfo.ServiceName, "RecStrip");
   TRACEEXIT;
 }
