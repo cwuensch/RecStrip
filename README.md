@@ -1,5 +1,5 @@
-# RecStrip for Topfield PVR v2.7
-(C) 2016-2021 Christian Wuensch
+# RecStrip for Topfield PVR v2.9
+(C) 2016-2025 Christian Wuensch
 
 based on Naludump 0.1.1 by Udo Richter -
 
@@ -47,13 +47,22 @@ Parameters:
 
   -t:        Remove also the teletext data. (can be combined with -s)
   -tt <page> Extract subtitles from teletext. (combine with -t to remove ttx)
+  -tx        Extract all teletext pages as text. (uses 8 MB of RAM)
 
   -x:        Remove packets marked as scrambled. (flag could be wrong!)
 
-  -o1/-o2:   Change the packet size for output-rec: 
+  -o1/-o2:   Change the packet size for output-rec:
              1: PacketSize = 188 Bytes, 2: PacketSize = 192 Bytes.
 
   -v:        View rec information only. Disables any other option.
+
+  -g:        Generate artificial EIT Table from EPG-map.
+
+  -p:        Fix PAT/PMT of output file. Disables any other option.
+
+  -f:        Fix start time in source inf. (Output inf when combined with -p).
+
+  -d:        Demux first audio track to OutFile_audio.pes (not with -M)
 
   -M:        Medion Mode: Multiplexes 4 separate PES-Files into output.
              (With InFile=<name>_video.pes, _audio1, _ttx, _epg are used.)

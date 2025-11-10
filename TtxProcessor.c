@@ -823,8 +823,8 @@ static void process_page2(uint16_t page_number)
       {
         if (page->text[i][0] == 0 || ref->text[i][0] == 0)
         {
-          if (page->text[i][0] == 0 &&  ref->text[i][j] > 0)  nr_unique_ref += 10;
-          if ( ref->text[i][0] == 0 && page->text[i][j] > 0)  nr_unique_new += 10;
+          if (page->text[i][0] == 0 &&  ref->text[i][0] > 0)  nr_unique_ref += 10;
+          if ( ref->text[i][0] == 0 && page->text[i][0] > 0)  nr_unique_new += 10;
           continue;
         }
         for (j = 0; j < 40; j++)
@@ -858,12 +858,15 @@ static void process_page2(uint16_t page_number)
         }
 
         // ref und new stimmen überein
-        if ((nr_unique_new > nr_unique_ref + 40) || ((nr_missing_new < nr_missing_ref) && (nr_unique_new + 10 >= nr_unique_ref)) || ((nr_unique_new > nr_unique_ref) && (nr_missing_new == nr_missing_ref)) || ExtractAllOverwrite)
+        if ((nr_unique_new > nr_unique_ref + 40) || ((nr_missing_new < nr_missing_ref) && (nr_unique_new + 10 >= nr_unique_ref)) || ((nr_unique_new > nr_unique_ref) && (nr_missing_new == nr_missing_ref)) /*|| ExtractAllOverwrite*/)
           p = s;
         else  p = -1;
         break;
       }
-      if(p >= 0) break;
+      else
+        if ((p > 0) && !ExtractAllOverwrite)
+          { p = -1; break; }
+      if(p > 0) break;
     }
   }
 

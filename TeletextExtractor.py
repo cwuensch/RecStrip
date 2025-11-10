@@ -3,11 +3,11 @@
 # Use with argument -q to make a tsv of the selected description page for each rec.
 # python C:\Topfield\RecStrip_28\TeletextExtractor.py -q Humax-1 & python C:\Topfield\RecStrip_28\TeletextExtractor.py -q Humax-2 & python C:\Topfield\RecStrip_28\TeletextExtractor.py -q Humax-3 & python C:\Topfield\RecStrip_28\TeletextExtractor.py -q Humax-4 & python C:\Topfield\RecStrip_28\TeletextExtractor.py -q Humax-5 & python C:\Topfield\RecStrip_28\TeletextExtractor.py -q Humax-6 & python C:\Topfield\RecStrip_28\TeletextExtractor.py -q Medion-1 & python C:\Topfield\RecStrip_28\TeletextExtractor.py -q Medion-2 & python C:\Topfield\RecStrip_28\TeletextExtractor.py -q Medion-3
 #
-# (c) 2024 Christian Wünsch
+# (c) 2024-2025 Christian Wünsch
 #
-# 
+#
 
-import os, sys, glob, csv, re
+import os, sys, glob, csv, re, gzip
 
 try:
     # windows
@@ -68,6 +68,21 @@ def clear():
     _ = os.system("clear")  # for mac and linux (os.name is "posix")
 
 
+# opens a text file either directly or via unzip
+def opener(file_path, open_mode, new_line):
+  if open_mode == 'r':
+    if (not os.path.isfile(file_path) and not os.path.isfile(file_path + '.gz')):
+      raise IOError("Error, cannot locate file: " + file_path)
+  if file_path.endswith('.ttx.gz') or file_path.endswith('.txt.gz'):
+    return gzip.open(file_path, open_mode + 't', encoding="utf-8")
+  elif ((file_path.endswith('.ttx') or file_path.endswith('.txt')) and os.path.isfile(file_path)):
+    return open(file_path, open_mode, encoding="utf-8")
+  elif ((file_path.endswith('.ttx') or file_path.endswith('.txt')) and os.path.isfile(file_path + '.gz')):
+    return gzip.open(file_path + '.gz', open_mode + 't', encoding="utf-8")
+  else:
+    raise IOError("Error, unknown file extension: " + file_path)
+
+
 def mytrim2(line):
   # TODO: Wenn ASCII-Art entfernt wurde, dann sollten die normalen str.lstrip und str.rstrip Funktionen ausreichen
   while (len(line) > 0 and not str.isalnum(line[0]) and not line[0] in "[('\"&.-+=*<>"):
@@ -109,8 +124,8 @@ def replace_colors(line, colorize_output):
     if (c in colors.keys() or c in "◆◇"):
       line[i] = last_c if (hold_mosaic) else ' '
     elif (ord(c) >= 0x2588):
-      c = ' '        # CW: hier wird die Mosaic ASCII-Art deaktiviert
-      line[i] = ' '  # CW: hier wird die Mosaic ASCII-Art deaktiviert
+#      c = ' '        # CW: hier wird die Mosaic ASCII-Art deaktiviert
+#      line[i] = ' '  # CW: hier wird die Mosaic ASCII-Art deaktiviert
       last_c = c
     elif (c.isalpha() and c != 'm'):
       last_c = ' '
@@ -136,7 +151,7 @@ def extract_text(page, filename, page_nr, sub_nr, comment):
       for nr, part in enumerate(parts):
         part = mytrim(part)
         if (len(part) > 0):
-          if (not re.search("((\.\.\.)|(>>?)) ?\d{3}", part) and not re.search("^ *\d{3} ?<<?", line) and not ("VPS" in part and len(part) <= 10) and not ("Übersicht" in line and len(line) <= 13)):
+          if (not re.search("((\.\.\.)|(>>?)) ?\d{3}", part) and not re.search("^ *(▧○)?\d{3} ?<<?", line) and not ("VPS" in part and len(part) <= 10) and not ("Übersicht" in line and len(line) <= 13)):
             trimmed_page.append(("!" if (nr % 2 > 0) else "") + part)
     else:
       trimmed_page.append(mytrim(line))
@@ -199,9 +214,12 @@ def extract_text(page, filename, page_nr, sub_nr, comment):
   out_page[1] = "[SENDR] " + result["sender"]
 
   i = 2
+  breakfound = False
   while (i < len(out_page)):
     line = out_page[i]
     if (line == ""):
+      breakfound = True
+    if (breakfound and result["titel"] != ""):
       break
     if (re.search("\d{1,2}\. ?(\d{1,2}\.|(Jan|Feb|Mär|Apr|Mai|Jun|Jul|Aug|Sep|Okt|Nov|Dez))", line)):
       if (result["datum"] == ""):
@@ -219,7 +237,7 @@ def extract_text(page, filename, page_nr, sub_nr, comment):
       if (result["sender"] == ""):
         result["sender"] = line
         out_page[i] = "[SENDR] " + line
-    elif ((result["titel"] == "" or not any(map(str.islower, line))) and (result["datum"] != "" or result["zeit"] != "" or len(line) > 15) and len(line) >= 8 and len(set(line)) >= 4 and not line.startswith("!1D1") and not line.startswith("VPS")):
+    elif ((result["titel"] == "" or not any(map(str.islower, line))) and (result["datum"] != "" or result["zeit"] != "" or len(line) > 15) and len(line) >= 8 and len(set(line)) >= 4 and not line.startswith("!1D1") and not line.startswith("1D1") and not line.startswith("VPS")):
       result["titel"] = line
       out_page[i] = "[TITEL] " + line
     elif (result["titel"] != "" and len(line) >= 8 and not line.startswith("1D1") and not line.startswith("VPS")):
@@ -251,73 +269,69 @@ def process_page(all_pages, new_text):
     if (new_text[1][4:7].isnumeric()):
       subpage_nr = int(new_text[1][4:7])
 
-  for sub, old_text in all_pages[page_nr].items():
-    if (subpage_nr > 0 and subpage_nr not in all_pages[page_nr]):
-      all_pages[page_nr][subpage_nr] = new_text
-      new_text = None
-      break
+  # feste Unterseite -> ist noch leer
+  if ((subpage_nr > 0) and (subpage_nr not in all_pages[page_nr] or (not all_pages[page_nr][subpage_nr]) or len(all_pages[page_nr][subpage_nr]) == 0)):
+    all_pages[page_nr][subpage_nr] = new_text
+    return
 
-    if (subpage_nr > 0):
-      old_text = all_pages[page_nr][subpage_nr]
+  # vorhandene Subpage oder es gibt schon eine Hauptseite
+  if ((subpage_nr > 0) or (0 in all_pages[page_nr])):
+    for sub, old_text in (all_pages[page_nr].items() if subpage_nr>0 else enumerate(all_pages[page_nr][0])):
 
-    if (not old_text or len(old_text) == 0):
-      if (subpage_nr == 0):
-        subpage_nr = sub
-      all_pages[page_nr][subpage_nr] = new_text
-      new_text = None
-      break
+      # falls feste Unterseite -> Schleifeninhalt nur 1x ausführen
+      if (subpage_nr > 0):
+        old_text = all_pages[page_nr][subpage_nr]
 
-    nr_diff = sum( sum( (old_text[i][j] != new_text[i][j] and old_text[i][j] > ' ' and new_text[i][j] > ' ') for j in range(0, min(len(old_text[i]), len(new_text[i]))) ) for i in range(2, len(old_text)) )
-    nr_same = sum( sum( (old_text[i][j] == new_text[i][j]) for j in range(0, min(len(old_text[i]), len(new_text[i]))) ) for i in range(1, len(old_text)) )
-    nr_missing_ref = sum( old_text[i].count('⍰') for i in range(1, len(old_text)) )
-    nr_missing_new = sum( new_text[i].count('⍰') for i in range(1, len(new_text)) )
-    nr_unique_ref  = sum( sum( (old_text[i][j] > ' ' and new_text[i][j] <= ' ') for j in range(0, min(len(old_text[i]), len(new_text[i]))) ) + max(len(old_text[i])-len(new_text[i]), 0) for i in range(2, len(old_text)) )
-    nr_unique_new  = sum( sum( (new_text[i][j] > ' ' and old_text[i][j] <= ' ') for j in range(0, min(len(old_text[i]), len(new_text[i]))) ) + max(len(new_text[i])-len(old_text[i]), 0) for i in range(2, len(new_text)) )
+      nr_diff = sum( sum( (old_text[i][j] != new_text[i][j] and old_text[i][j] > ' ' and new_text[i][j] > ' ') for j in range(0, min(len(old_text[i]), len(new_text[i]))) ) for i in range(2, len(old_text)) )
+      nr_same = sum( sum( (old_text[i][j] == new_text[i][j]) for j in range(0, min(len(old_text[i]), len(new_text[i]))) ) for i in range(1, len(old_text)) )
+      nr_missing_ref = sum( old_text[i].count('⍰') for i in range(1, len(old_text)) )
+      nr_missing_new = sum( new_text[i].count('⍰') for i in range(1, len(new_text)) )
+      nr_unique_ref  = sum( sum( (old_text[i][j] > ' ' and new_text[i][j] <= ' ') for j in range(0, min(len(old_text[i]), len(new_text[i]))) ) + max(len(old_text[i])-len(new_text[i]), 0) for i in range(2, len(old_text)) )
+      nr_unique_new  = sum( sum( (new_text[i][j] > ' ' and old_text[i][j] <= ' ') for j in range(0, min(len(old_text[i]), len(new_text[i]))) ) + max(len(new_text[i])-len(old_text[i]), 0) for i in range(2, len(new_text)) )
 
 
-    # Wenn ref = new oder ref Teilmenge von new oder umgekehrt
-    if (nr_same > 40 and nr_diff < 40 and not (nr_unique_ref > 20 and nr_unique_new > 20)):
-      # Fix missing chars if page is duplicate
-      if ((nr_missing_ref > 0 or nr_missing_new > 0) and nr_diff > 0):
-        for i in range(0, len(old_text)):
-          old = list(old_text[i])
-          neu = list(new_text[i])
-          for j in range(0, min(len(old), len(neu))):
-            if (  old[j] == '⍰' and (j==0 or old[j-1] == neu[j-1]) and (j==39 or old[j+1] == neu[j+1]) ):
-              old[j] = neu[j]
-            elif( neu[j] == '⍰' and (j==0 or old[j-1] == neu[j-1]) and (j==39 or old[j+1] == neu[j+1]) ):
-              neu[j] = old[j]
-          old_text[i] = "".join(old)
-          new_text[i] = "".join(neu)
+      # Wenn ref = new oder ref Teilmenge von new oder umgekehrt
+      if (nr_same > 40 and nr_diff < 40 and not (nr_unique_ref > 20 and nr_unique_new > 20)):
+        # Fix missing chars if page is duplicate
+        if ((nr_missing_ref > 0 or nr_missing_new > 0) and nr_diff > 0):
+          for i in range(0, len(old_text)):
+            old = list(old_text[i])
+            neu = list(new_text[i])
+            for j in range(0, min(len(old), len(neu))):
+              if (  old[j] == '⍰' and (j==0 or old[j-1] == neu[j-1]) and (j==39 or old[j+1] == neu[j+1]) ):
+                old[j] = neu[j]
+              elif( neu[j] == '⍰' and (j==0 or old[j-1] == neu[j-1]) and (j==39 or old[j+1] == neu[j+1]) ):
+                neu[j] = old[j]
+            old_text[i] = "".join(old)
+            new_text[i] = "".join(neu)
 
-      # ref und new stimmen überein
-      if ((nr_unique_new > nr_unique_ref + 40) or (nr_missing_new < nr_missing_ref and nr_unique_new + 10 >= nr_unique_ref) or (nr_unique_new > nr_unique_ref and nr_missing_new == nr_missing_ref)):
+        # ref und new stimmen überein
+        if ((nr_unique_new > nr_unique_ref + 40) or (nr_missing_new < nr_missing_ref and nr_unique_new + 10 >= nr_unique_ref) or (nr_unique_new > nr_unique_ref and nr_missing_new == nr_missing_ref)):
+          if (subpage_nr == 0):
+            subpage_nr = sub
+            all_pages[page_nr][subpage_nr] = new_text
+        else:
+          if (subpage_nr == 0):
+            subpage_nr = sub
+            all_pages[page_nr][subpage_nr] = old_text
+        new_text = None
+        break
+
+      # feste Unterseite oder wenig Differenz
+      if (subpage_nr > 0 or nr_diff <= 40):
         if (subpage_nr == 0):
-          subpage_nr = sub
+          all_pages[page_nr][0][sub] = new_text
+        else:
           all_pages[page_nr][subpage_nr] = new_text
-      else:
-        if (subpage_nr == 0):
-          subpage_nr = sub
-          all_pages[page_nr][subpage_nr] = old_text
-      new_text = None
-      break
-
-    if (subpage_nr > 0 or nr_diff <= 40):
-      if (subpage_nr == 0):
-        subpage_nr = sub
-      all_pages[page_nr][subpage_nr] = new_text
-      new_text = None
-      break
+        new_text = None
+        break
 
   if (new_text != None):
+    # Falls Hauptseite und keine ähnliche gefunden -> neu anhängen
     if (subpage_nr == 0):
-      subpage_nr = len(all_pages[page_nr]) + 1
-      if (subpage_nr > 1):
-        for s, p in all_pages[page_nr].items():
-          p[0] = "%s (%d)" % (p[0][:11], subpage_nr)
-          all_pages[page_nr][s] = p
-        new_text[0] = "%s (%d)" % (new_text[0][:11], subpage_nr)
-    all_pages[page_nr][subpage_nr] = new_text
+      if (0 not in all_pages[page_nr] or (not isinstance(all_pages[page_nr][0], list))):
+        all_pages[page_nr][0] = []
+      all_pages[page_nr][0].append(new_text)
 
 
 # Funktion zum (ergänzenden) Einlesen einer Teletext-Datei
@@ -348,6 +362,19 @@ def load_teletext(all_pages, file_text):
       page_start = False
       if (new_text != None):
         new_text.append(line)
+
+  for i, p in all_pages.items():
+    new_page = {}
+    if (0 in p and len(p[0]) > 0):
+      new_page = { ((j/10) if j>0 else 0):s for j,s in enumerate(p[0]) }
+    for j, s in sorted(p.items()):
+      if (j > 0):
+        new_page[j] = s
+
+#    if (0 in p and len(p[0]) > 1):
+#      for j, s in new_page.items():
+#        s[0] = "%s (+%d)" % (s[0][:11], len(p[0]))
+    all_pages[i] = new_page
 
   return(all_pages)
 
@@ -419,7 +446,7 @@ def do_save(outlist, first_write):
     if (first_write):
       writer.writerow(["filename", "page", "subpage", "comment"])
       first_write = False
-    writer.writerows(outlist)          
+    writer.writerows(outlist)
   print ("\n\nSaved to output.txt.")
   outlist = []
 
@@ -448,29 +475,54 @@ def main():
     if (sys.argv[1] == "-q"):
       quietmode = 1
       if (len(sys.argv) > 2):
-        folder = sys.argv[2]
+        argument = sys.argv[2]
     else:
-      folder = sys.argv[1]
+      argument = sys.argv[1]
+    if (argument.endswith(".ttx") or argument.endswith(".txt") or argument.endswith(".ttx.gz") or argument.endswith(".txt.gz")):
+      if ("/" in argument):
+        folder = argument.split("/")[0]
+      elif (os.sep in argument):
+        folder = argument.split(os.sep)[0]
+    else:
+      folder = argument
 
   clear()
   try:
-    with open(folder.replace('/rec', '') + ".txt", "r", encoding="utf-8") as in_file:
+    with open(folder + ".txt", "r", encoding="utf-8") as in_file:
       reader = csv.DictReader(in_file, delimiter="\t", quotechar='"')
       for row in reader:
         for name in row["filename"].split(".ttx, "):
-          if (name.endswith(".ttx")):
-            name = name[:-4]
+#          if (name.endswith(".ttx")):
+#            name = name[:-4]
+          if (not name.endswith(".ttx")):
+            name = name + ".ttx"
           inlist[name] = row
   except FileNotFoundError:
-    print("Input page list file '" + folder.replace('/rec', '') + ".txt' not found.")
+    print("Input page list file '" + folder + ".txt' not found.")
+
 
   # Get file list
-  all_files = os.listdir(folder)
-  all_files = list(filter(os.path.isfile, glob.glob(folder + "/*.ttx*")))
-#  all_files.sort(key=lambda x: os.path.getsize(x), reverse=True)
-  all_files = [os.path.basename(x) for x in all_files]
+  all_files = []
+  if (argument.endswith(".ttx") or argument.endswith(".txt") or argument.endswith(".ttx.gz") or argument.endswith(".txt.gz")):
+    if ("/" in argument or os.sep in argument):
+      argument.removeprefix(folder + "/")
+      argument.removeprefix(folder + os.sep)
+      argument.removeprefix("rec/")
+      argument.removeprefix("rec" + os.sep)
+    all_files = [argument]
+  else:
+    all_files = glob.glob("*.ttx*", root_dir=folder + "/rec")
+    if (len(all_files) == 0):
+      all_files = glob.glob("*.ttx*", root_dir=folder)
+      all_files.extend(glob.glob("*/*.ttx*", root_dir=folder))
+#    all_files = glob.glob("**/*.ttx*", root_dir=folder, recursive=False)
+    else:
+      folder = folder + "/rec"
 
-  if (all_files[0][-15] == "_"):  # Humax
+#  all_files.sort(key=lambda x: os.path.getsize(x), reverse=True)
+  all_files = [x.removesuffix(".gz") if x.endswith(".gz") else x for x in all_files]
+
+  if (len(all_files[0]) > 15 and all_files[0][-15] == "_"):  # Humax
     all_files.sort(key=lambda x: x.split("_")[0][:-1] + "_" + x.split("_")[1][:6])
   elif (all_files[0].endswith("_video.ttx")):  # Medion orig
     all_files.sort(key=lambda x: x.split("]")[0] + "]" + x.split("]")[1].split("-")[0])
@@ -478,6 +530,7 @@ def main():
     all_files.sort(key=lambda x: x.split("[")[0].split("-")[0] + " [" + x.split("[")[1])
   else:  # other
     all_files.sort(key=lambda x: x)
+
 
   # Go through all teletext files in folder
   first_write = True
@@ -488,21 +541,28 @@ def main():
     all_pages = {}
     cur_name = all_files[i]
 
-    if cur_name.endswith(".txt"):
+    if cur_name.endswith(".ttx"):
       file_mask = cur_name
       file_mask2 = ""
-      if (re.search("_\d{10}.txt", cur_name)):
+      if (re.search("_\d{10}.ttx", cur_name)):
         file_mask = cur_name[:-16]
         file_mask2 = cur_name[-15:-8]
-      elif (re.search(".+ \[\d{4}-\d{2}-\d{2}\]\.txt", cur_name)):
+      elif (re.search(".+ \[\d{4}-\d{2}-\d{2}\]\.ttx", cur_name)):
         file_mask = cur_name[:-17]
         file_mask2 = cur_name[-16:]
         while (file_mask.endswith("-2") or file_mask.endswith("-1")):
           file_mask = file_mask[:-2]
-      elif (re.search("\[\d{4}-\d{2}-\d{2}\] .+_video\.txt", cur_name)):
+      elif (re.search("\[\d{4}-\d{2}-\d{2}\] .+_video\.ttx", cur_name)):
         file_mask = cur_name[:-10]
         while (file_mask.endswith("-2") or file_mask.endswith("-1")):
           file_mask = file_mask[:-2]
+#      elif (re.search(".+ \[\d{2}\.\d{2}\.\d{4}\]\.ttx", cur_name)):
+#        file_mask = cur_name[:-17]
+#        file_mask2 = cur_name[-16:]
+      elif (re.search(".+\(Cut-\d{1,2}\)\.ttx", cur_name)):
+        file_mask = cur_name[:-12]
+        while (file_mask.endswith(" ")):
+          file_mask = file_mask[:-1]
 
       j = i
       while (j > 0 and all_files[j-1].startswith(file_mask) and file_mask2 in all_files[j-1]):
@@ -519,12 +579,12 @@ def main():
         file_path = os.path.join(folder, name)
 
         print(f'DEBUG: Open file "{file_path}"')
-        with open(file_path, "r", encoding="utf-8") as file:
+        with opener(file_path, "r", "\r\n") as file:
           all_pages = load_teletext(all_pages, file.read())
 
       # Sort subpages
-      for page_nr, page in all_pages.items():
-        all_pages[page_nr] = dict(sorted(page.items()))
+#      for page_nr, page in all_pages.items():
+#        all_pages[page_nr] = sorted(page.items())
 
       # Read previously generated page associations
       if (cur_name in inlist):
