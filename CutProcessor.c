@@ -416,7 +416,7 @@ void CutImportFromBM(const char *RecFile, dword Bookmarks[], dword NrBookmarks)
   TRACEEXIT;
 }*/
 
-static bool CutImportFromTimeStamps(int Version, byte PacketSize)
+/*static*/ bool CutImportFromTimeStamps(int Version, byte PacketSize)
 {
   tTimeStamp2      *TimeStamps = NULL;
   int               NrTimeStamps, i;
@@ -426,7 +426,7 @@ static bool CutImportFromTimeStamps(int Version, byte PacketSize)
 
   // Sonderfunktion: Import von Cut-Files mit unpassender Aufnahme-Größe
   if (NrSegmentMarker > 2)
-    TimeStamps = NavLoad(RecFileOut, &NrTimeStamps, PacketSize);
+    TimeStamps = NavLoad(RecFileIn, &NrTimeStamps, PacketSize);
 
   if (TimeStamps != NULL)
   {
@@ -439,7 +439,7 @@ static bool CutImportFromTimeStamps(int Version, byte PacketSize)
     SegmentMarker[0].Timems = 0;  // NavGetBlockTimeStamp(0);
 //        SegmentMarker[0].Selected = FALSE;
     if (SegmentMarker[NrSegmentMarker-1].Position == (long long)RecFileSize)
-      SegmentMarker[NrSegmentMarker - 1].Position = 0;
+      SegmentMarker[NrSegmentMarker-1].Timems = TimeStamps[NrTimeStamps-1].Timems;
 
     Offsetms = 0;
     CurTimeStamp = TimeStamps;
@@ -481,7 +481,7 @@ static bool CutImportFromTimeStamps(int Version, byte PacketSize)
         {
           SegmentMarker[i].Position = CurTimeStamp->Position;
           SegmentMarker[i].Timems = CurTimeStamp->Timems;  // NavGetPosTimeStamp(TimeStamps, NrTimeStamps, SegmentMarker[i].Position);
-//              SegmentMarker[i].Selected = FALSE;
+//          SegmentMarker[i].Selected = FALSE;
           MSecToTimeString(SegmentMarker[i].Timems, curTimeStr);
           printf("  -->  newPos=%lld   newTimeStamp=%s\n", SegmentMarker[i].Position, curTimeStr);
         }

@@ -49,7 +49,7 @@ typedef struct
   byte                  Unknown2[4];
   byte                  CIPlusInfo;             // ungleich 0, wenn CI-Plus-Aufnahme? (prüfen!)
   byte                  Unknown3[5];
-} TYPE_RecHeader_Info;
+} TYPE_RecHeader_Info;  // 28 Bytes
 
 typedef struct
 {
@@ -76,7 +76,7 @@ typedef struct
 
   byte                  VideoStreamType;    //see tap.h for possible video and audio stream types
   byte                  AudioStreamType;
-} TYPE_Service_Info;
+} TYPE_Service_Info;  // 40 Bytes
 
 typedef struct
 {
@@ -92,7 +92,7 @@ typedef struct
   char                  EventNameDescription[257];
   word                  ServiceID;
   byte                  Unknown2[14];
-} TYPE_Event_Info;
+} TYPE_Event_Info;  // 292 Bytes
 
 typedef struct
 {
@@ -102,7 +102,7 @@ typedef struct
   char                  Text[1024];
   byte                  NrItemizedPairs;
   byte                  Unknown1[3];
-} TYPE_ExtEvent_Info;
+} TYPE_ExtEvent_Info;  // 1036 Bytes
 
 typedef struct
 {
@@ -130,9 +130,9 @@ typedef struct
   dword                 TPMode:3;             // TPMode ist entweder 000 für "normal" oder 001 für "SmaTV" ("SmaTV" kommt in der Realität nicht vor)
   dword                 ModulationSystem:1;   // 0=DVBS, 1=DVBS2
   dword                 ModulationType:2;     // 0=Auto, 1=QPSK, 2=8PSK, 3=16QAM
-  dword                 FECMode:4;            // 0x0 = AUTO, 0x1 = 1_2, 0x2 = 2_3, 0x3 = 3_4,
-                                              // 0x4 = 5_6 , 0x5 = 7_8, 0x6 = 8_9, 0x7 = 3_5,
-                                              // 0x8 = 4_5, 0x9 = 9_10, 0xa = reserved, 0xf = NO_CONV
+  dword                 FECMode:4;            // 0x0 = Auto, 0x1 = 1/2,  0x2 = 2/3,  0x3 = 3/4,
+                                              // 0x4 = 5/6,  0x5 = 7/8,  0x6 = 8/9,  0x7 = 3/5,
+                                              // 0x8 = 4/5,  0x9 = 9/10, 0xa = reserved, 0xf = NO_CONV
   dword                 Pilot:1;
   dword                 UnusedFlags1:4;
   dword                 Unknown2:8;
@@ -142,7 +142,7 @@ typedef struct
   word                  ClockSync:1;
   word                  UnusedFlags2:15;
   word                  OriginalNetworkID;
-} TYPE_TpInfo_TMSS;
+} TYPE_TpInfo_TMSS;  // 16 Bytes
 
 typedef struct
 {
@@ -156,7 +156,7 @@ typedef struct
   byte                  unused2;
   word                  OriginalNetworkID;
   word                  NetworkID;
-} TYPE_TpInfo_TMST;
+} TYPE_TpInfo_TMST;  // 16 Bytes
 
 typedef struct
 {
@@ -167,14 +167,14 @@ typedef struct
   word                  OriginalNetworkID;
   byte                  ModulationType;
   byte                  unused1;
-} TYPE_TpInfo_TMSC;
+} TYPE_TpInfo_TMSC;  // 12 Bytes
 
 typedef struct
 {
   dword                 NrBookmarks;
   dword                 Bookmarks[177];
   dword                 Resume;
-} TYPE_Bookmark_Info;
+} TYPE_Bookmark_Info;  // 716 Bytes
 
 typedef struct
 {
@@ -182,7 +182,7 @@ typedef struct
   TYPE_Service_Info     ServiceInfo;            //   40 byte
   TYPE_Event_Info       EventInfo;              //  292 byte
   TYPE_ExtEvent_Info    ExtEventInfo;           // 1036 byte
-  TYPE_TpInfo_TMSS      TransponderInfo;        //   16 byte / 16 byte / 14 byte (TMS-C)
+  TYPE_TpInfo_TMSS      TransponderInfo;        //   16 byte / 16 byte / 12 byte (TMS-C)
   TYPE_Bookmark_Info    BookmarkInfo;           //  716 byte
 //  byte                  HeaderUnused[8192];
   tPreviewImages        PreviewImages;          //    4 byte

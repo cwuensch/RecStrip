@@ -17,7 +17,7 @@
 tPESStream              PESVideo;
 static tPESStream       PESAudio, PESTeletxt;
 static word             PIDs[4] = {100, 101, 102, 0x12};  // künftig: {101, 102, 104, 0x12};  // TODO
-static byte             ContCtr[4] = {1, 1, 1, 1};
+static byte             ContCtr[4] = {0, 0, 0, 0};
 static bool             DoEITOutput = TRUE;
 
 // Simple PES Extractor
@@ -398,7 +398,7 @@ bool SimpleMuxer_NextTSPacket(tTSPacket *pack)
       if (!PESTeletxt.FileAtEnd && (abs((int)(PESTeletxt.curPacketDTS - PESVideo.curPacketDTS)) > 450000))
       {
         TtxPTSOffset = PESVideo.curPacketDTS - PESTeletxt.curPacketDTS;
-        printf("SimpleMuxer: Enable special muxing mode, Teletext PTS offset=%u.\n", TtxPTSOffset);
+        printf("SimpleMuxer: Enable special PTS muxing mode, Teletext PTS offset=%u.\n", TtxPTSOffset);
       }
       // Skip teletext packets with DTS > 2 sec before first video packet
       else

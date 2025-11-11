@@ -181,15 +181,17 @@ bool LoadInfFromRec(char *AbsRecFileName)
     Result = LoadEycosHeader(AbsRecFileName, RecInf);
     if (!Result) EycosSource = FALSE;
   }
+  else if (TechniSource)
+    TechniSource = LoadTechnisat(AbsRecFileName, RecInf);
   else if (strcmp(&AbsRecFileName[strlen(AbsRecFileName)-3], ".ts") == 0)
     DVBViewerSrc = LoadDVBViewer(AbsRecFileName, RecInf);
 
-  if (HumaxSource || EycosSource || DVBViewerSrc || MedionMode == 1 )
+  if (HumaxSource || EycosSource || TechniSource || DVBViewerSrc || MedionMode)
     GetEPGFromMap(AbsRecFileName, RecInf->ServiceInfo.ServiceID, &TransportStreamID, RecInf);
 
   Result = GenerateInfFile(fIn, RecInf);
   
-  if (HumaxSource || EycosSource || MedionMode == 1)
+  if (HumaxSource || EycosSource || MedionMode)
   {
     int k;
     for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0) && (AudioPIDs[k].pid != RecInf->ServiceInfo.AudioPID); k++);

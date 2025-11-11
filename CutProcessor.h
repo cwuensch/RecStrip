@@ -34,7 +34,7 @@ void AddDefaultSegmentMarker(void);
 void GetFileNameFromRec(const char *RecFileName, const char *NewExt, char *const OutCutFileName);
 void CutImportFromBM(const char* RecFile, dword Bookmarks[], dword NrBookmarks);
 //void CutExportToBM(TYPE_Bookmark_Info *BookmarkInfo);
-//bool CutImportFromTimeStamps(int Version, byte PacketSize);
+bool CutImportFromTimeStamps(int Version, byte PacketSize);
 bool CutProcessor_Init(void);
 bool CutFileLoad(const char *AbsCutName);
 bool CutFileSave(const char* AbsCutName);

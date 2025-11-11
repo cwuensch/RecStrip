@@ -20,7 +20,10 @@ typedef enum
   DESC_Teletext          = 'V',  // 0x56
   DESC_Subtitle          = 'Y',  // 0x59
   DESC_AC3               = 'j',  // 0x6A
-  DESC_Extension         = 0x7F
+  DESC_Extension         = 0x7F,
+  DESC_Component         = 'P',  // 0x50
+  DESC_Content           = 'T',  // 0x54
+  DESC_UserDefined       = 0x82
 } DescrTags;
 
 typedef enum
@@ -237,6 +240,25 @@ typedef struct
 //  char ServiceName[];
 } tTSServiceDesc;
 
+typedef struct
+{
+  byte DescrTag;
+  byte DescrLength;
+  byte stream_content:4;
+  byte reserved:4;
+  byte component_type;
+  byte component_tag;
+  char language_code[3];
+//  char text[];
+} tComponentDesc;
+
+typedef struct
+{
+  byte DescrTag;
+  byte DescrLength;
+// byte[] content[];
+} tUserDesc;
+
 
 typedef struct
 {
@@ -415,12 +437,14 @@ extern double           VideoFPS, VideoDAR;
 
 time_t MakeUnixTime(const word year, const byte month, const byte day, const byte hour, const byte minute, const byte second, int *const out_timeoffset);
 time_t TF2UnixTime(tPVRTime TFTimeStamp, byte TFTimeSec, bool convertToUTC);
+//struct tm Unix2TimeStruct(time_t UnixTimeStamp, bool convertToLocal);
 tPVRTime Unix2TFTime(time_t UnixTimeStamp, byte *const outSec, bool convertToLocal);
 tPVRTime EPG2TFTime(tPVRTime TFTimeStamp, int *const out_timeoffset);
 tPVRTime AddTimeSec(tPVRTime pvrTime, byte pvrTimeSec, byte *const outSec, int addSeconds);
 word GetMinimalAudioPID(tAudioTrack AudioPIDs[]);
+bool LoadTechnisat(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf);
 bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf);
-bool AnalyseEIT(byte *Buffer, int BufSize, word ServiceID, word *OutTransportID, TYPE_Event_Info *OutEventInfo, TYPE_ExtEvent_Info *OutExtEventInfo);
+bool AnalyseEIT(byte *Buffer, int BufSize, word ServiceID, word *OutTransportID, TYPE_Event_Info *OutEventInfo, TYPE_ExtEvent_Info *OutExtEventInfo, bool OverwriteInf);
 
 void InitInfStruct(TYPE_RecHeader_TMSS *RecInf);
 bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf);
@@ -428,5 +452,6 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf);
 
 void SortAudioPIDs(tAudioTrack AudioPIDs[]);
 void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word TransportID, word PMTPID, word VideoPID, word PCRPID, tAudioTrack AudioPIDs[], bool PATonly);
+void GenerateEIT(word ServiceID, time_t StartTimeUnix, byte DurationHour, byte DurationMin, char *EventName, int EventNameLen, char *EventDesc, int EventDescLen, char *ExtEventText, int ExtEventTextLen, byte AudioStreamType);
 
 #endif
