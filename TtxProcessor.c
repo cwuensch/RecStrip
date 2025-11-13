@@ -858,7 +858,7 @@ static void process_page2(uint16_t page_number)
         }
 
         // ref und new stimmen überein
-        if ((nr_unique_new > nr_unique_ref + 40) || ((nr_missing_new < nr_missing_ref) && (nr_unique_new + 10 >= nr_unique_ref)) || ((nr_unique_new > nr_unique_ref) && (nr_missing_new == nr_missing_ref)) /*|| ExtractAllOverwrite*/)
+        if ((nr_unique_new > nr_unique_ref + 40) || ((nr_missing_new < nr_missing_ref) && (nr_unique_new + 10 >= nr_unique_ref)) || ((nr_unique_new > nr_unique_ref) && (nr_missing_new <= nr_missing_ref)) || ExtractAllOverwrite)
           p = s;
         else  p = -1;
         break;

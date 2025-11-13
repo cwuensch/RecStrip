@@ -3453,7 +3453,7 @@ int main(int argc, const char* argv[])
           if (ExtractAllTeletext)
           {
             if(Percent == 25) TtxProcessor_SetOverwrite(TRUE);
-            else if(Percent == 80) TtxProcessor_SetOverwrite(FALSE);
+            else if(Percent == 75) TtxProcessor_SetOverwrite(FALSE);
           }
           fprintf(stderr, "%3u %%\r", Percent);
         }
