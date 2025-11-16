@@ -308,11 +308,13 @@ def process_page(all_pages, new_text):
         # ref und new stimmen überein
         if ((nr_unique_new > nr_unique_ref + 40) or (nr_missing_new < nr_missing_ref and nr_unique_new + 10 >= nr_unique_ref) or (nr_unique_new > nr_unique_ref and nr_missing_new == nr_missing_ref)):
           if (subpage_nr == 0):
-            subpage_nr = sub
+            all_pages[page_nr][0][sub] = new_text
+          else:
             all_pages[page_nr][subpage_nr] = new_text
         else:
           if (subpage_nr == 0):
-            subpage_nr = sub
+            all_pages[page_nr][0][sub] = old_text
+          else:
             all_pages[page_nr][subpage_nr] = old_text
         new_text = None
         break
@@ -362,19 +364,6 @@ def load_teletext(all_pages, file_text):
       page_start = False
       if (new_text != None):
         new_text.append(line)
-
-  for i, p in all_pages.items():
-    new_page = {}
-    if (0 in p and len(p[0]) > 0):
-      new_page = { ((j/10) if j>0 else 0):s for j,s in enumerate(p[0]) }
-    for j, s in sorted(p.items()):
-      if (j > 0):
-        new_page[j] = s
-
-#    if (0 in p and len(p[0]) > 1):
-#      for j, s in new_page.items():
-#        s[0] = "%s (+%d)" % (s[0][:11], len(p[0]))
-    all_pages[i] = new_page
 
   return(all_pages)
 
@@ -521,6 +510,9 @@ def main():
 
 #  all_files.sort(key=lambda x: os.path.getsize(x), reverse=True)
   all_files = [x.removesuffix(".gz") if x.endswith(".gz") else x for x in all_files]
+  if (len(all_files) == 0):
+    print("No teletext files (*.ttx, *.ttx.gz) found.")
+    return
 
   if (len(all_files[0]) > 15 and all_files[0][-15] == "_"):  # Humax
     all_files.sort(key=lambda x: x.split("_")[0][:-1] + "_" + x.split("_")[1][:6])
@@ -582,6 +574,20 @@ def main():
         with opener(file_path, "r", "\r\n") as file:
           all_pages = load_teletext(all_pages, file.read())
 
+
+      # Verschachtelung der Seite [100] auflösen
+      for n, p in all_pages.items():
+        new_page = {}
+        if (0 in p and len(p[0]) > 0):
+          new_page = { ((m/10) if m>0 else 0):s for m,s in enumerate(p[0]) }
+        for m, s in sorted(p.items()):
+          if (m > 0):
+            new_page[m] = s
+#        if (0 in p and len(p[0]) > 1):
+#          for m, s in new_page.items():
+#            s[0] = "%s (+%d)" % (s[0][:11], len(p[0]))
+        all_pages[n] = new_page
+
       # Sort subpages
 #      for page_nr, page in all_pages.items():
 #        all_pages[page_nr] = sorted(page.items())
@@ -589,7 +595,7 @@ def main():
       # Read previously generated page associations
       if (cur_name in inlist):
         page = inlist[cur_name]["page"]
-        subpage = int(inlist[cur_name]["subpage"])
+        subpage = float(inlist[cur_name]["subpage"])
         comment = inlist[cur_name]["comment"]
       else:
         page = "100"
@@ -719,6 +725,7 @@ def main():
 
       if (answer == b'q'):
         break
+
     i = i + 1
 
   if (quietmode):
