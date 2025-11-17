@@ -2785,7 +2785,7 @@ int main(int argc, const char* argv[])
             Percent = (100 * curInputFile / NrInputFiles) + ((100 * CurPosBlocks) / (RecFileBlocks * NrInputFiles));
             CurBlockBytes = 0;
             BlocksSincePercent = 0;
-            if(ExtractAllTeletext) TtxProcessor_SetOverwrite((Percent > 25) && (Percent <= 80));
+            if(ExtractAllTeletext) TtxProcessor_SetOverwrite(/*(Percent > 25) &&*/ (Percent <= 80));
           }
           else
           {

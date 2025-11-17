@@ -472,6 +472,8 @@ def main():
         folder = argument.split("/")[0]
       elif (os.sep in argument):
         folder = argument.split(os.sep)[0]
+      if (folder):
+        argument = argument[len(folder)+1:]
     else:
       folder = argument
 
@@ -583,9 +585,10 @@ def main():
         for m, s in sorted(p.items()):
           if (m > 0):
             new_page[m] = s
-#        if (0 in p and len(p[0]) > 1):
-#          for m, s in new_page.items():
-#            s[0] = "%s (+%d)" % (s[0][:11], len(p[0]))
+        if (0 in p and len(p[0]) > 1):
+          for m, s in new_page.items():
+            s[0] = "%s (%d/%d)" % (s[0][:5], m*10, len(p[0]))
+#            s[0] = "%s (%d)" % (s[0][:11], len(p[0]))
         all_pages[n] = new_page
 
       # Sort subpages

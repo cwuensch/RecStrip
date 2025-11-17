@@ -31,7 +31,7 @@ static char             TeletextOut[FBLIB_DIR_SIZE];
 static int              TeletextOutLen = 0;
 static tPSBuffer        TtxBuffer;
 static int              LastBuffer = 0;
-static bool             FirstPacketAfterBreak = TRUE, ExtractAllOverwrite = FALSE;
+static bool             FirstPacketAfterBreak = TRUE, ExtractAllOverwrite = TRUE;
 static uint16_t         pages[] = { 0x777, 0x150, 0x151, 0x888, 0x160, 0x161, 0x152, 0x149, 0x571, 0 };
 
 // global TS PCR value
@@ -1537,15 +1537,15 @@ bool WriteAllTeletext(char *AbsOutFile)
     for (s = 0; s < NRSUBPAGES; s++)
     {
       teletext_text_t *page = &page_buffer_all[page_map[p].subpages[s]];
-      bool empty_page = TRUE;
+      bool empty_page = TRUE, double_height = FALSE;
       if (page_map[p].subpages[s] >= 0)
         for (i = 0; i < 25 && empty_page; i++)
           for (j = 0; j < 40; j++)
             if((page->text[i][j] > 0x20) && (page->text[i][j] != 0x2370))  { empty_page = FALSE; break; }
       if(empty_page) continue;
 
-      fprintf(f, "----------------------------------------\r\n");
-      fprintf(f, ((nr_subpages <= 1) ? "[%03hu]\r\n" : "[%03hu] (%d/%d)\r\n"), p+100, s, nr_subpages);
+      fprintf(f, "----------------------------------------\n");
+      fprintf(f, ((nr_subpages <= 1) ? "[%03hu]\n" : "[%03hu] (%d/%d)\n"), p+100, s, nr_subpages);
 
       for (i = 0; i < 24; i++)
       {
@@ -1553,6 +1553,14 @@ bool WriteAllTeletext(char *AbsOutFile)
         background_color = COLOR_BLACK;
         hold_mosaic = FALSE;
         last_coltag = NULL;
+
+        // Falls doppelte Höhe, die nächste Zeile ignorieren
+        if (double_height)
+        {
+          double_height = FALSE;
+          fwrite("\n", 1, 1, f);
+          continue;
+        }
 
         // Steuerzeichen entfernen  ToDo: Humax-3/LOEWENZAHN_0511101625.ttx (S.100)
         for (j = 0; j < 40; j++)
@@ -1572,6 +1580,10 @@ bool WriteAllTeletext(char *AbsOutFile)
               *c = (uint16_t) TTXT_COLORSYMBOLS[0][foreground_color];
               if(last_coltag && !hold_mosaic)  *last_coltag = ' ';
               last_coltag = c;
+            }
+            else if (*c == 0x0d)
+            {
+              double_height = TRUE;
             }
             else if ((*c >= 0x10 && *c <= 0x17) && (hold_mosaic || (foreground_color != (color_t) (*c - 0x10))))
             {
@@ -1633,7 +1645,21 @@ bool WriteAllTeletext(char *AbsOutFile)
             { u[0] = ' '; u[1] = '\0'; }
           ret = ( fprintf(f, "%s", u) ) && ret;
         }
-        ret = ( fwrite("\r\n", 1, 2, f) == 2 ) && ret;
+/*        // Falls doppelte Höhe, die nächste Zeile ignorieren (außer Hintergrund)
+        if (double_height)
+        {
+          for (j = 0; j < col_stop; j++)
+          {
+            char u[5] = { 0, 0, 0, 0, 0 };
+            if((page->text[i][j] & 0xfff0) == 0x25a0)
+              ucs2_to_utf8(u, 0x10000 + page->text[i][j]);
+            else
+              { u[0] = ' '; u[1] = '\0'; }
+            ret = ( fprintf(f, "%s", u) ) && ret;
+          }
+          ret = ( fwrite("\n", 1, 1, f) == 1 ) && ret;
+        } */
+        ret = ( fwrite("\n", 1, 1, f) == 1 ) && ret;
       }
     }
   }
