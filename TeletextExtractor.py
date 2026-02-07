@@ -133,7 +133,7 @@ def replace_colors(line, colorize_output):
   return("".join(line))
 
 # Funktion zur Text-Extraktion einer Teletext-Seite
-def extract_text(page, filename, page_nr, sub_nr, comment):
+def extract_text(page, filename, folder, page_nr, sub_nr, comment):
   trimmed_page = []
   out_page = []
   result = {}
@@ -168,7 +168,7 @@ def extract_text(page, filename, page_nr, sub_nr, comment):
     if (len(line) > 1 and (line != ">> ")):
       if (line[-1] == " "):
         line = line[:-1]
-      if (line[-1] == "-" and line[-2] != " " and (not next_line[0].isupper() or (next_line[0] == "!" and not next_line[1].isupper()))):
+      if ((len(line) > 2 and line[-1] == "-" and line[-2] != " ") and len(next_line) > 1 and (not next_line[0].isupper() or (next_line[0] == "!" and not next_line[1].isupper()))):
         line = line[:-1]
         getrennt = True
       else:
@@ -193,6 +193,7 @@ def extract_text(page, filename, page_nr, sub_nr, comment):
     out_page.append(str.rstrip(line_buf))
 
   # 3. Schritt: Besondere Zeilen identifizieren
+  result["folder"] = folder
   result["filename"] = filename
   result["page"] = page_nr
   result["subpage"] = sub_nr
@@ -255,6 +256,7 @@ def extract_text(page, filename, page_nr, sub_nr, comment):
     i = i + 1
 
   result["text"] = "\r".join(result["text"])
+  result["full"] = "\r".join(out_page)
   return(result, out_page)
 
 
@@ -386,8 +388,8 @@ def get_subpage(page, sub_nr):
       return(sub_nr)
   return(-2)
 
-def print_page(all_pages, page_nr, sub_nr, do_extract, searchstr, file_names, comment):
-#  print(f"DEBUG: print_page (all_pages[{len(all_pages)}], page_nr={page_nr}, sub_nr={sub_nr}, do_extract={do_extract})")
+def print_page(all_pages, page_nr, sub_nr, do_extract, searchstr, file_names, folder, comment):
+#  print(f"DEBUG: print_page (all_pages[{len(all_pages)}], page_nr={page_nr}, sub_nr={sub_nr}, folder={folder}, do_extract={do_extract})")
   page = get_page(all_pages, page_nr)
   subpages = list(page.keys())
   result = None
@@ -395,7 +397,7 @@ def print_page(all_pages, page_nr, sub_nr, do_extract, searchstr, file_names, co
   sub_nr = get_subpage(page, sub_nr)
   if (sub_nr >= 0):
     if (do_extract):
-      result, out_page = extract_text(page[subpages[sub_nr]], file_names, page_nr, sub_nr, comment)
+      result, out_page = extract_text(page[subpages[sub_nr]], file_names, folder, page_nr, sub_nr, comment)
       str = "\n".join(out_page)
     else:
       str = map(lambda x: replace_colors(x, True), page[subpages[sub_nr]])
@@ -442,7 +444,7 @@ def do_save(outlist, first_write):
 # Funktion zum Speichern der vollständigen Extraktions-Tabelle
 def save_table(outtable):
   with open("output2.tsv", "a", newline="", encoding="utf-8") as out_file:
-    writer = csv.DictWriter(out_file, delimiter='\t', quotechar='"', quoting=csv.QUOTE_MINIMAL, lineterminator='\r\n', fieldnames=["filename", "page", "subpage", "now", "sender", "datum", "zeit", "dauer", "titel", "subtitel", "desc1", "desc2", "desc3", "desc4", "desc5", "desc6", "desc7", "desc8", "desc9", "text", "comment"], extrasaction='ignore')
+    writer = csv.DictWriter(out_file, delimiter='\t', quotechar='"', quoting=csv.QUOTE_MINIMAL, lineterminator='\r\n', fieldnames=["folder", "filename", "page", "subpage", "now", "sender", "datum", "zeit", "dauer", "titel", "subtitel", "desc1", "desc2", "desc3", "desc4", "desc5", "desc6", "desc7", "desc8", "desc9", "text", "full", "comment"], extrasaction='ignore')
     writer.writeheader()
     for row in outtable:
       if (row):
@@ -476,6 +478,10 @@ def main():
         argument = argument[len(folder)+1:]
     else:
       folder = argument
+  else:
+    print ("Bitte Argument übergeben (Dateiname.ttx/.gz oder Ordner)!")
+    sys.stdin.read(1)
+    return
 
   clear()
   try:
@@ -543,20 +549,22 @@ def main():
         file_mask2 = cur_name[-15:-8]
       elif (re.search(".+ \[\d{4}-\d{2}-\d{2}\]\.ttx", cur_name)):
         file_mask = cur_name[:-17]
-        file_mask2 = cur_name[-16:]
+        file_mask2 = cur_name[-16:-4]
         while (file_mask.endswith("-2") or file_mask.endswith("-1")):
           file_mask = file_mask[:-2]
       elif (re.search("\[\d{4}-\d{2}-\d{2}\] .+_video\.ttx", cur_name)):
-        file_mask = cur_name[:-10]
-        while (file_mask.endswith("-2") or file_mask.endswith("-1")):
-          file_mask = file_mask[:-2]
+        file_mask = cur_name[:12]
+        file_mask2 = cur_name[13:-10]
+        while (file_mask2.endswith("-2") or file_mask2.endswith("-1")):
+          file_mask2 = file_mask2[:-2]
 #      elif (re.search(".+ \[\d{2}\.\d{2}\.\d{4}\]\.ttx", cur_name)):
 #        file_mask = cur_name[:-17]
-#        file_mask2 = cur_name[-16:]
+#        file_mask2 = cur_name[-16:-4]
       elif (re.search(".+\(Cut-\d{1,2}\)\.ttx", cur_name)):
         file_mask = cur_name[:-12]
         while (file_mask.endswith(" ")):
           file_mask = file_mask[:-1]
+
 
       j = i
       while (j > 0 and all_files[j-1].startswith(file_mask) and file_mask2 in all_files[j-1]):
@@ -577,7 +585,7 @@ def main():
           all_pages = load_teletext(all_pages, file.read())
 
 
-      # Verschachtelung der Seite [100] auflösen
+      # Verschachtelung der Seiten (Subpages bzw. Alternativen) auflösen
       for n, p in all_pages.items():
         new_page = {}
         if (0 in p and len(p[0]) > 0):
@@ -604,11 +612,11 @@ def main():
         page = "100"
         last_page = get_page(all_pages, "333")
 
-        if (last_page != None and (1 in last_page) and str.rstrip(last_page[1][2])=="" and str.rstrip(last_page[1][3])=="" and str.rstrip(last_page[1][4])==""):
+        if (last_page != None and (0 in last_page) and str.rstrip(last_page[0][2])=="" and str.rstrip(last_page[0][3])=="" and str.rstrip(last_page[0][4])==""):
           page = "333"
         else:
           last_page = get_page(all_pages, "368")  # arte
-          if (last_page != None and (1 in last_page) and str.rstrip(last_page[1][2])=="" and str.rstrip(last_page[1][3])=="" and str.rstrip(last_page[1][4])==""):
+          if (last_page != None and (0 in last_page) and str.rstrip(last_page[0][2])=="" and str.rstrip(last_page[0][3])=="" and str.rstrip(last_page[0][4])==""):
             page = "368"
           else:
             last_page = get_page(all_pages, "300")  # terranova
@@ -616,7 +624,7 @@ def main():
               page = "300"
 
         if (page == "333" or page == "368"):
-          for line in last_page[1]:
+          for line in last_page[0]:
             x = re.search("[.> ](\d{3}) ?$", str.rstrip(line))
             if (x):
               page = x.group(1)
@@ -643,7 +651,7 @@ def main():
         if (answer == b'f'):
           do_search(all_pages, searchstr)
         else:
-          subpage, result = print_page(all_pages, page, subpage, (mode==1), searchstr, file_names, comment)
+          subpage, result = print_page(all_pages, page, subpage, (mode==1), searchstr, file_names, folder, comment)
           if (quietmode):
             outtable.append(result)
 

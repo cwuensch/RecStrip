@@ -1558,7 +1558,7 @@ bool WriteAllTeletext(char *AbsOutFile)
         if (double_height)
         {
           double_height = FALSE;
-          fwrite("\n", 1, 1, f);
+//          fwrite("\n", 1, 1, f);
           continue;
         }
 
@@ -1645,20 +1645,26 @@ bool WriteAllTeletext(char *AbsOutFile)
             { u[0] = ' '; u[1] = '\0'; }
           ret = ( fprintf(f, "%s", u) ) && ret;
         }
-/*        // Falls doppelte Höhe, die nächste Zeile ignorieren (außer Hintergrund)
+        // Falls doppelte Höhe, die nächste Zeile ignorieren (außer Hintergrund)
         if (double_height)
         {
           for (j = 0; j < col_stop; j++)
-          {
-            char u[5] = { 0, 0, 0, 0, 0 };
             if((page->text[i][j] & 0xfff0) == 0x25a0)
-              ucs2_to_utf8(u, 0x10000 + page->text[i][j]);
-            else
-              { u[0] = ' '; u[1] = '\0'; }
-            ret = ( fprintf(f, "%s", u) ) && ret;
+              { double_height = 2; break; }
+          if (double_height == 2)
+          {
+            for (j = 0; j < col_stop; j++)
+            {
+              char u[5] = { 0, 0, 0, 0, 0 };
+              if((page->text[i][j] & 0xfff0) == 0x25a0)
+                ucs2_to_utf8(u, 0x10000 + page->text[i][j]);
+              else
+                { u[0] = ' '; u[1] = '\0'; }
+              ret = ( fprintf(f, "%s", u) ) && ret;
+            }
           }
           ret = ( fwrite("\n", 1, 1, f) == 1 ) && ret;
-        } */
+        }
         ret = ( fwrite("\n", 1, 1, f) == 1 ) && ret;
       }
     }
