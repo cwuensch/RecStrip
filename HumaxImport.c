@@ -441,8 +441,9 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
   time_t StartTime = 0;
   unsigned int StartYear=0, StartMonth, StartDay, StartHour, StartMin, DurationH, DurationM, n0=0, n1, n2, n3;
   int ReadBytes, k;
-  bool RefEPGMedion = FALSE, ret = FALSE;
-  char *LineBuf = (char*) malloc(4096), *p;
+  int RefEPGMedion = 0;
+  bool RefEPGMod = FALSE, ret = FALSE;
+  char *LineBuf = (char*) malloc(4096);
   memset(DescStr, 0, sizeof(DescStr));
 
   if (LineBuf)
@@ -454,6 +455,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
 
     if ((fMap = fopen(LineBuf, "rb")))
     {
+      char *p;
       int len_dir = 0, len_name;
       if ((p = strrchr(VidFileName, '/'))) p++;
       else if ((p = strrchr(VidFileName, '\\'))) p++;
@@ -500,11 +502,15 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
               }
               if (strncmp(&LineBuf[p - LineBuf - (RefEPGMedion ? 10 : 8)], "_epg.txt", 8) == 0)
                 if(!RefEPGMedion) RefEPGMedion = 1;
+              if (LineBuf[len_name+1] == '!')
+                RefEPGMod = TRUE;
               #ifdef _WIN32
-                strncpy(&DescStr[len_dir], &LineBuf[len_name+1], sizeof(DescStr)-len_dir-1);
+                strncpy(&DescStr[len_dir], &LineBuf[len_name+1 + RefEPGMod], sizeof(DescStr)-len_dir-1);
               #else
-                StrToUTF8(&DescStr[len_dir], &LineBuf[len_name+1], sizeof(DescStr)-len_dir, 15);
+                StrToUTF8(&DescStr[len_dir], &LineBuf[len_name+1 + RefEPGMod], sizeof(DescStr)-len_dir, 15);
               #endif
+              if (LineBuf[p-LineBuf-2] == '\0')
+                LineBuf[p-LineBuf-2] = ':';
               if ((fRefEPG = fopen(DescStr, "rb")))
                 printf("    Loading EIT event from reference file '%s' (%d)...\n", DescStr, RefEPGMedion);
               else
@@ -514,7 +520,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
           }
           else continue;
 
-          if (!fRefEPG)
+          if (!fRefEPG || RefEPGMod)
           {
             DescStr[0] = '\0';
             if (sscanf(p+1, " %4u-%2u-%2u %2u:%2u ; %2u:%2u ; %n%256[^;] ; %n%256[^;]; %n", &StartYear, &StartMonth, &StartDay, &StartHour, &StartMin, &DurationH, &DurationM, &n1, RecInf->EventInfo.EventNameDescription, &n2, DescStr, &n3) >= 7)
@@ -579,8 +585,8 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
     {
       if (RefEPGMedion)
       {
-        tPVRTime MidTimeUTC = Unix2TFTime(TF2UnixTime(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec, TRUE) + 30*RecInf->RecHeaderInfo.DurationMin + RecInf->RecHeaderInfo.DurationSec/2, NULL, FALSE);
         int i = 0;
+        tPVRTime MidTimeUTC = Unix2TFTime(TF2UnixTime(RecInf->RecHeaderInfo.StartTime, RecInf->RecHeaderInfo.StartTimeSec, TRUE) + 30*RecInf->RecHeaderInfo.DurationMin + RecInf->RecHeaderInfo.DurationSec/2, NULL, FALSE);
         memset(LineBuf, 0, 4096);
 
         while ((fread(LineBuf, 1, 8, fRefEPG) == 8) && (*(int*)LineBuf == 0x12345678))
@@ -591,18 +597,13 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
           {
             if(++i >= RefEPGMedion)
             {
-              // Dirty hack: Hier die ServiceID im EIT-Paket an die Aufnahme anpassen (z.B. arte -> arte HD)
-              // Entfernt, denn: In vielen Fällen (z.B. Humax) ist die ServiceID gar nicht bekannt!
-/*              tTSEIT *eit = (tTSEIT*) LineBuf;
-              if ((eit->TableID == 0x4e) && (eit->ServiceID1*256 + eit->ServiceID2 != ServiceID))
+              // Falls Referenz-Datei mit '!' versehen ist, Datum und Zeit in EPG mit Map überschreiben
+              if (RefEPGMod /*|| ServiceID*/)
               {
-                printf("  GetEPGFromMap: Changing ServiceID from %hu to %hu.\n", eit->ServiceID1*256 + eit->ServiceID2, ServiceID);
-                eit->ServiceID1 = (byte)(ServiceID >> 8);
-                eit->ServiceID2 = (byte)(ServiceID & 0xff);
-                eit->TS_ID1 = (byte)(TransportStreamID >> 8);
-                eit->TS_ID2 = (byte)(TransportStreamID & 0xff);
-                *(dword*)&LineBuf[eit->SectionLen1*256 + eit->SectionLen2] = crc32m_tab((byte*)eit, eit->SectionLen1*256 + eit->SectionLen2);  // testen!!
-              } */
+                printf("  GetEPGFromMap: Changing EventStart and EvtDuration in Reference EPG.\n");
+                ModifyEIT((byte*)LineBuf, min(EITLen, ReadBytes), 0 /*ServiceID*/, RecInf->EventInfo.StartTime, RecInf->EventInfo.DurationHour, RecInf->EventInfo.DurationMin);
+              }
+
               if (AnalyseEIT((byte*)LineBuf, min(EITLen, ReadBytes), ServiceID, OutTransportID, &RecInf->EventInfo, &RecInf->ExtEventInfo, TRUE))
               {
                 EPGLen = 0;
@@ -616,7 +617,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
                   EPGLen = min(EITLen, ReadBytes); // + 1;
                 }
               }
-              if (((RefEPGMedion > 1) && (i >= RefEPGMedion)) || (RecInf->RecHeaderInfo.StartTime && /*(RecInf->EventInfo.StartTime <= MidTimeUTC) &&*/ (RecInf->EventInfo.EndTime >= MidTimeUTC)))
+              if (((RefEPGMedion > 1) && (i >= RefEPGMedion)) || (/*RecInf->RecHeaderInfo.StartTime && (RecInf->EventInfo.StartTime <= MidTimeUTC) &&*/ (RecInf->EventInfo.EndTime >= MidTimeUTC)))
                 break;
             }
           }

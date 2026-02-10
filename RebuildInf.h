@@ -452,6 +452,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf);
 
 void SortAudioPIDs(tAudioTrack AudioPIDs[]);
 void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word TransportID, word PMTPID, word VideoPID, word PCRPID, tAudioTrack AudioPIDs[], bool PATonly);
+bool ModifyEIT(byte *const Buffer, int BufSize, word ServiceID, dword StartTime, byte DurationHour, byte DurationMin);
 void GenerateEIT(word ServiceID, time_t StartTimeUnix, byte DurationHour, byte DurationMin, char *EventName, int EventNameLen, char *EventDesc, int EventDescLen, char *ExtEventText, int ExtEventTextLen, byte AudioStreamType);
 
 #endif

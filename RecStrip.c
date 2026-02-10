@@ -1,6 +1,6 @@
 /*
   RecStrip for Topfield PVR
-  (C) 2016-2025 Christian Wünsch
+  (C) 2016-2026 Christian Wünsch
 
   Based on Naludump 0.1.1 by Udo Richter
   Concepts from NaluStripper (Marten Richter)
@@ -1378,7 +1378,7 @@ int main(int argc, const char* argv[])
     setvbuf(stdout, NULL, _IOLBF, 4096);  // zeilenweises Buffering, auch bei Ausgabe in Datei
   #endif
   printf("\nRecStrip for Topfield PVR " VERSION "\n");
-  printf("(C) 2016-2025 Christian Wuensch\n");
+  printf("(C) 2016-2026 Christian Wuensch\n");
   printf("- based on Naludump 0.1.1 by Udo Richter -\n");
   printf("- based on MovieCutter 3.6 -\n");
   printf("- portions of Mpeg2cleaner (S. Poeschel), RebuildNav (Firebird) & TFTool (jkIT)\n");

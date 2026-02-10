@@ -2870,6 +2870,79 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word TransportID, wor
   TRACEEXIT;
 }
 
+// Modify an EIT packet
+bool ModifyEIT(byte *const Buffer, int BufSize, word ServiceID, dword StartTime, byte DurationHour, byte DurationMin)
+{
+  tTSEIT               *eit = (tTSEIT*)Buffer;
+  tEITEvent            *Event = NULL;
+  tTSDesc              *Desc = NULL;
+  int                   SectionLength, DescriptorLoopLen, p;
+  word                  EventID;
+  bool                  EPGchanged = FALSE;
+
+  TRACEENTER;
+
+  if ((eit->TableID == TABLE_EIT) && ((eit->ServiceID1 * 256 | eit->ServiceID2) == ServiceID || !ServiceID))
+  {
+    if (StartTime || DurationHour || DurationMin)
+    {
+      SectionLength = eit->SectionLen1 * 256 | eit->SectionLen2;
+      SectionLength = min(SectionLength + 3, BufSize);    // SectionLength zählt erst ab Byte 3
+      p = sizeof(tTSEIT);
+
+      while (p + (int)sizeof(tTSEIT) + 4 <= SectionLength)
+      {
+        Event = (tEITEvent*) &Buffer[p];
+        EventID = Event->EventID1 * 256 | Event->EventID2;
+        DescriptorLoopLen = Event->DescriptorLoopLen1 * 256 | Event->DescriptorLoopLen2;
+
+        p += sizeof(tEITEvent);
+        if(Event->RunningStatus == 4)
+        {
+          while ((DescriptorLoopLen > 0) && (p + (int)sizeof(tTSDesc) + 4 <= SectionLength))
+          {
+            Desc = (tTSDesc*) &Buffer[p];
+            if(Desc->DescrTag == DESC_EITShortEvent)
+            {
+              tShortEvtDesc* ShortDesc = (tShortEvtDesc*) Desc;
+              Event->StartTime[0] = StartTime >> 24;
+              Event->StartTime[1] = (StartTime >> 16) & 0xff;
+              Event->StartTime[2] = BIN2BCD((StartTime >> 8) & 0xff);
+              Event->StartTime[3] = BIN2BCD(StartTime & 0xff);
+              Event->DurationSec[0] = BIN2BCD(DurationHour);
+              Event->DurationSec[1] = BIN2BCD(DurationMin);
+              Event->DurationSec[2] = BIN2BCD(0);
+              EPGchanged = TRUE;
+            }
+            DescriptorLoopLen -= (Desc->DescrLength + sizeof(tTSDesc));
+            p += (Desc->DescrLength + sizeof(tTSDesc));
+          }
+        }
+        else p += DescriptorLoopLen;
+      }
+    }
+
+    // Dirty hack: Hier die ServiceID im EIT-Paket an die Aufnahme anpassen (z.B. arte -> arte HD)
+    // Entfernt, denn: In vielen Fällen (z.B. Humax) ist die ServiceID gar nicht bekannt!
+/*    if ((word)eit->ServiceID1 << 8 + eit->ServiceID2 != ServiceID)
+    {
+      printf("  GetEPGFromMap: Changing ServiceID from %hu to %hu.\n", eit->ServiceID1*256 + eit->ServiceID2, ServiceID);
+      eit->ServiceID1 = (byte)(ServiceID >> 8);
+      eit->ServiceID2 = (byte)(ServiceID & 0xff);
+      eit->TS_ID1 = (byte)(TransportStreamID >> 8);
+      eit->TS_ID2 = (byte)(TransportStreamID & 0xff);
+      EPGchanged = TRUE;  // CRC neu berechnen
+    } */
+
+    // CRC neu berechnen
+    if (EPGchanged!= 0)
+      *(dword*)&Buffer[eit->SectionLen1*256 + eit->SectionLen2] = crc32m_tab((byte*)eit, eit->SectionLen1*256 + eit->SectionLen2);  // testen!!
+  }
+
+  TRACEEXIT;
+  return EPGchanged;
+}
+
 // Generate an artificial EIT
 void GenerateEIT(word ServiceID, time_t StartTimeUnix, byte DurationHour, byte DurationMin, char *EventName, int EventNameLen, char *EventDesc, int EventDescLen, char *ExtEventText, int ExtEventTextLen, byte AudioStreamType)
 {

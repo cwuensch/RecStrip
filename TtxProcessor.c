@@ -1645,6 +1645,8 @@ bool WriteAllTeletext(char *AbsOutFile)
             { u[0] = ' '; u[1] = '\0'; }
           ret = ( fprintf(f, "%s", u) ) && ret;
         }
+        ret = ( fwrite("\n", 1, 1, f) == 1 ) && ret;
+
         // Falls doppelte Höhe, die nächste Zeile ignorieren (außer Hintergrund)
         if (double_height)
         {
@@ -1665,7 +1667,6 @@ bool WriteAllTeletext(char *AbsOutFile)
           }
           ret = ( fwrite("\n", 1, 1, f) == 1 ) && ret;
         }
-        ret = ( fwrite("\n", 1, 1, f) == 1 ) && ret;
       }
     }
   }
