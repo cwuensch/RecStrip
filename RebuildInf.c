@@ -462,6 +462,9 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
                 RecInf->EventInfo.EndTime = Unix2TFTime(UnixTime2, NULL, FALSE);
                 RecInf->EventInfo.DurationHour = (byte) (Duration / 3600);
                 RecInf->EventInfo.DurationMin = (byte) ((Duration / 60) % 60);
+//                RecInf->EventInfo.ServiceID = RecInf->ServiceInfo.ServiceID;
+                RecInf->EventInfo.EventID = 1;
+                RecInf->EventInfo.RunningStatus = 4;
                 UnixTime1 = 0;
               }
               else i = 8;
@@ -482,6 +485,7 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
                 TRACEEXIT;
                 return FALSE;
               }
+//              RecInf->ExtEventInfo.ServiceID = RecInf->ServiceInfo.ServiceID;
               memset(RecInf->ExtEventInfo.Text, 0, sizeof(RecInf->ExtEventInfo.Text));
               strcpy(ExtEPGText, Buffer);
               StrToUTF8(RecInf->ExtEventInfo.Text, ExtEPGText, (int)sizeof(RecInf->ExtEventInfo.Text), 0);
