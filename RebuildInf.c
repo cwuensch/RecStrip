@@ -2930,7 +2930,7 @@ bool ModifyEIT(byte *const Buffer, int BufSize, word ServiceID, dword StartTime,
     // Entfernt, denn: In vielen Fällen (z.B. Humax) ist die ServiceID gar nicht bekannt!
 /*    if ((word)eit->ServiceID1 << 8 + eit->ServiceID2 != ServiceID)
     {
-      printf("  GetEPGFromMap: Changing ServiceID from %hu to %hu.\n", eit->ServiceID1*256 + eit->ServiceID2, ServiceID);
+      printf("  GetEPGFromMap: Changeing ServiceID from %hu to %hu.\n", eit->ServiceID1*256 + eit->ServiceID2, ServiceID);
       eit->ServiceID1 = (byte)(ServiceID >> 8);
       eit->ServiceID2 = (byte)(ServiceID & 0xff);
       eit->TS_ID1 = (byte)(TransportStreamID >> 8);

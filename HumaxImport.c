@@ -525,7 +525,9 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
             DescStr[0] = '\0';
             if (sscanf(p+1, " %4u-%2u-%2u %2u:%2u ; %2u:%2u ; %n%256[^;] ; %n%256[^;]; %n", &StartYear, &StartMonth, &StartDay, &StartHour, &StartMin, &DurationH, &DurationM, &n1, RecInf->EventInfo.EventNameDescription, &n2, DescStr, &n3) >= 7)
             {
+              ret = TRUE;
               StartTime = MakeUnixTime((word)StartYear, (byte)StartMonth, (byte)StartDay, (byte)StartHour, (byte)StartMin, 0, NULL);
+              if (fRefEPG) break;
               if (RecInf && StartYear)
               {
                 RecInf->EventInfo.ServiceID = ServiceID;
@@ -537,6 +539,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
                 RecInf->EventInfo.DurationMin = (byte)DurationM;
                 printf("    EvtDuratn = %02hhu:%02hhu\n", DurationH, DurationM);
                 RecInf->EventInfo.EndTime = AddTimeSec(RecInf->EventInfo.StartTime, 0, NULL, 3600*DurationH + 60*DurationM);
+
                 if(strcmp(RecInf->EventInfo.EventNameDescription, "-") == 0)  RecInf->EventInfo.EventNameDescription[0] = '\0';
                 RecInf->EventInfo.EventNameLength = (byte)strlen(RecInf->EventInfo.EventNameDescription);
                 printf("    EventName = %s\n", RecInf->EventInfo.EventNameDescription);
@@ -572,7 +575,6 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
               }
               if ((p = strchr(&LineBuf[len_name+1], ';')))
                 *p = '\0';
-              ret = TRUE;
             }
             break;
           }
@@ -598,10 +600,11 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
             if(++i >= RefEPGMedion)
             {
               // Falls Referenz-Datei mit '!' versehen ist, Datum und Zeit in EPG mit Map überschreiben
-              if (RefEPGMod /*|| ServiceID*/)
+              if (RefEPGMod /*|| ServiceID*/ && StartTime)
               {
-                printf("  GetEPGFromMap: Changing EventStart and EvtDuration in Reference EPG.\n");
-                ModifyEIT((byte*)LineBuf, min(EITLen, ReadBytes), 0 /*ServiceID*/, RecInf->EventInfo.StartTime, RecInf->EventInfo.DurationHour, RecInf->EventInfo.DurationMin);
+                printf("  GetEPGFromMap: Changeing EventStart and EvtDuration in Reference EPG.\n");
+//                ModifyEIT((byte*)LineBuf, min(EITLen, ReadBytes), 0 /*ServiceID*/, RecInf->EventInfo.StartTime, RecInf->EventInfo.DurationHour, RecInf->EventInfo.DurationMin);
+                ModifyEIT((byte*)LineBuf, min(EITLen, ReadBytes), 0 /*ServiceID*/, Unix2TFTime(StartTime, NULL, FALSE), DurationH, DurationM);
               }
 
               if (AnalyseEIT((byte*)LineBuf, min(EITLen, ReadBytes), ServiceID, OutTransportID, &RecInf->EventInfo, &RecInf->ExtEventInfo, TRUE))
@@ -684,7 +687,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
                 tTSEIT *eit = (tTSEIT*) &pack->Data[1];
                 if ((k == 0) && (eit->TableID == 0x4e) && (eit->ServiceID1*256 + eit->ServiceID2 != ServiceID))
                 {
-                  printf("  GetEPGFromMap: Changing ServiceID from %hu to %hu.\n", eit->ServiceID1*256 + eit->ServiceID2, ServiceID);
+                  printf("  GetEPGFromMap: Changeing ServiceID from %hu to %hu.\n", eit->ServiceID1*256 + eit->ServiceID2, ServiceID);
                   eit->ServiceID1 = (byte)(ServiceID >> 8);
                   eit->ServiceID2 = (byte)(ServiceID & 0xff);
                   eit->TS_ID1 = (byte)(TransportStreamID >> 8);

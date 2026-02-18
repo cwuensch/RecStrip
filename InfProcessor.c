@@ -180,6 +180,9 @@ bool LoadInfFromRec(char *AbsRecFileName)
   else if (strcmp(&AbsRecFileName[strlen(AbsRecFileName)-3], ".ts") == 0)
     DVBViewerSrc = LoadDVBViewer(AbsRecFileName, RecInf);
 
+  if (HumaxSource || EycosSource || TechniSource || DVBViewerSrc || MedionMode)
+    GetEPGFromMap(AbsRecFileName, RecInf->ServiceInfo.ServiceID, &TransportStreamID, RecInf);
+
   Result = GenerateInfFile(fIn, RecInf);
 
   if (DVBViewerSrc)  // ServiceID war bei LoadDVBViewer noch unbekannt
@@ -189,9 +192,6 @@ bool LoadInfFromRec(char *AbsRecFileName)
     if ((RecInf->ExtEventInfo.TextLength > 0) && (RecInf->ExtEventInfo.ServiceID <= 1))
       RecInf->ExtEventInfo.ServiceID = RecInf->ServiceInfo.ServiceID;
   }
-
-  if (HumaxSource || EycosSource || TechniSource || DVBViewerSrc || MedionMode)
-    GetEPGFromMap(AbsRecFileName, RecInf->ServiceInfo.ServiceID, &TransportStreamID, RecInf);
   
   if (HumaxSource || EycosSource || MedionMode)
   {

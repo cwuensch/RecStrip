@@ -2297,7 +2297,7 @@ int main(int argc, const char* argv[])
     // Prüfe/Repariere (nur!) Startzeit in der inf
     if ((DoInfFix == 2) && (DoFixPMT ? *InfFileOut : *InfFileIn))
     {
-      printf("INF FIX (%s): Changing StartTime to: %s\n", (DoFixPMT ? "output" : "source"), TimeStrTF(OrigStartTime, OrigStartSec));
+      printf("INF FIX (%s): Changeing StartTime to: %s\n", (DoFixPMT ? "output" : "source"), TimeStrTF(OrigStartTime, OrigStartSec));
 //      SetInfStripFlags(InfFileIn, FALSE, FALSE, TRUE);
       SetInfStripFlags((DoFixPMT ? InfFileOut : InfFileIn), FALSE, FALSE, TRUE);
     }
@@ -2549,7 +2549,7 @@ int main(int argc, const char* argv[])
 
     if ((DoInfFix == 2 || (DoInfFix && RecFileTimeStamp != RecDate)) && !DoFixPMT && (DoStrip || OutPacketSize!=PACKETSIZE || DoCut || DoMerge || RemoveEPGStream || RemoveTeletext))
     {
-      printf("INF FIX (%s): Changing file timestamp to: %s\n", "source", TimeStrTF(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
+      printf("INF FIX (%s): Changeing file timestamp to: %s\n", "source", TimeStrTF(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
       snprintf(NavFileIn, sizeof(NavFileIn), "%s.nav", RecFileIn);
 
       if(*RecFileIn) HDD_SetFileDateTime(RecFileIn, TF2UnixTime(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec, TRUE));
@@ -2559,7 +2559,7 @@ int main(int argc, const char* argv[])
     }
     if (DoInfFix && (InfModified || BookmarkFix || RecFileTimeStamp != RecDate))
     {
-      printf("INF FIX (%s): Changing file timestamp to: %s\n", (*InfFileOut ? "output" : "source"), TimeStrTF(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
+      printf("INF FIX (%s): Changeing file timestamp to: %s\n", (*InfFileOut ? "output" : "source"), TimeStrTF(RecHeaderInfo->StartTime, RecHeaderInfo->StartTimeSec));
       snprintf(NavFileIn, sizeof(NavFileIn), "%s.nav", RecFileIn);
 
       if ((*InfFileOut ? *RecFileOut : *RecFileIn))
