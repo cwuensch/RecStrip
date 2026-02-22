@@ -297,13 +297,15 @@ if (strlen(ExtEPGText) != TextLen)
         BookmarkInfo->Bookmarks[BookmarkInfo->NrBookmarks++] = (dword)(EycosIdx.PacketNr / 48);
         printf((j > 1) ? ", %llu (%u:%02u:%02u,%03u)" : "%llu (%u:%02u:%02u,%03u)", SegmentMarker[j].Position, SegmentMarker[j].Timems/3600000, SegmentMarker[j].Timems/60000 % 60, SegmentMarker[j].Timems/1000 % 60, SegmentMarker[j].Timems % 1000);
       }
+      else
+        DeleteSegmentMarker(j, FALSE);
     }
     fseeko64(fIdx, -1 * (int)sizeof(tEycosIdxEntry), SEEK_END);
     if (fread(&EycosIdx, sizeof(tEycosIdxEntry), 1, fIdx))
     {
       RecInf->RecHeaderInfo.DurationMin = (word)(EycosIdx.Timems / 60000);
       RecInf->RecHeaderInfo.DurationSec = (word)(EycosIdx.Timems / 1000) % 60;
-      if (NrSegmentMarker > 2)
+      if (NrSegmentMarker >= 2)
         SegmentMarker[NrSegmentMarker-1].Timems = EycosIdx.Timems;
     }
     fclose(fIdx);
