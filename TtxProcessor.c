@@ -213,7 +213,7 @@ static int16_t total_pages = 0;
 
 // flag indicating whether G0 (standard) or G1 (graphic) table shall be used
 uint8_t graphic_mode = NO;
-uint8_t hidden_mode = NO;
+//uint8_t hidden_mode = NO;
 
 // current charset (charset can be -- and always is -- changed during transmission)
 static struct {
@@ -462,23 +462,14 @@ uint16_t telx_to_ucs2(uint8_t c)
   }
 
   if (r <= 0x07)
-  {
     graphic_mode = NO;
-    hidden_mode = NO;
-  }
   else if (r >= 0x10 && r <= 0x17)
-  {
     graphic_mode = YES;
-    hidden_mode = NO;
-  }
-  else if (/*r == 0x18 ||*/ r == 0x1d)
-    hidden_mode = YES;
 
   if (r >= 0x20)
   {
-//    if(hidden_mode /*|| (graphic_mode && !with_graphic)*/)  r = ' ';
-  /*else*/ if(graphic_mode)  r = G1[LATIN][r - 0x20];
-    else                   r = G0[LATIN][r - 0x20];
+    if(graphic_mode)  r = G1[LATIN][r - 0x20];
+    else              r = G0[LATIN][r - 0x20];
   }
   return r;
 }
@@ -544,6 +535,7 @@ empty_finish:
       uint8_t nr_missing = 0;
       uint8_t col_start = 40;
       uint8_t col_stop = 40, col_stop2 = 40;
+      bool hidden_mode = FALSE;
 
       // detect start of text
       for (col = 39; col > 0; col--) {
@@ -582,6 +574,16 @@ empty_finish:
           nr_missing++;
       if (nr_missing >= 3)
         { page->text[row][0] = 0x00; continue; }
+
+      // remove hidden text
+      for (col = col_start; col <= col_stop; col++)
+      {
+        if(page->text[row][col] == 0x18 || page->text[row][col] == 0x1d)
+          hidden_mode = TRUE;
+        else if ((page->text[row][col] < 0x20) && ((page->text[row][col] & 0x0f) <= 0x07))
+          hidden_mode = FALSE;
+        if(hidden_mode) page->text[row][col] = ' ';
+      }
     }
   }
 
@@ -905,7 +907,7 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
   teletext_page_t *cur_page_buffer = NULL;
 
   graphic_mode = NO;
-  hidden_mode = NO;
+//  hidden_mode = NO;
 
 //printf("y=%d\n", y);
 
