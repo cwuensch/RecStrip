@@ -255,8 +255,8 @@ def extract_text(page, filename, folder, page_nr, sub_nr, comment):
       result["text"].append(line)
     i = i + 1
 
-  result["text"] = "\r".join(result["text"])
-  result["full"] = "\r".join(out_page)
+  result["text"] = "\n".join(result["text"])
+  result["full"] = "\n".join(out_page)
   return(result, out_page)
 
 
@@ -721,11 +721,11 @@ def main():
           i = i - 2
           break
 
-        elif (answer == b'\r' and newpage != ""):
+        elif ((answer==b'\r' or answer==b'\n') and newpage != ""):
           page = newpage if (newpage != "0" and newpage != "000") else "100"
           subpage = 0
 
-        elif (answer == b'\r' or answer == b'n' or answer == b'c'):
+        elif ((answer==b'\r' or answer==b'\n') or answer == b'n' or answer == b'c'):
           if (answer == b'n'):
             page = "0"
             subpage = 0
