@@ -122,7 +122,8 @@ typedef enum {
   COLOR_BLUE    = 4,
   COLOR_MAGENTA = 5,
   COLOR_CYAN    = 6,
-  COLOR_WHITE   = 7
+  COLOR_WHITE   = 7,
+  COLOR_HIDDEN  = 8  // 0x25CC
 } color_t;
 
 static const char* TTXT_COLOURS[8] = {
@@ -475,8 +476,8 @@ uint16_t telx_to_ucs2(uint8_t c)
 
   if (r >= 0x20)
   {
-    if(hidden_mode /*|| (graphic_mode && !with_graphic)*/)  r = ' ';
-    else if(graphic_mode)  r = G1[LATIN][r - 0x20];
+//    if(hidden_mode /*|| (graphic_mode && !with_graphic)*/)  r = ' ';
+  /*else*/ if(graphic_mode)  r = G1[LATIN][r - 0x20];
     else                   r = G0[LATIN][r - 0x20];
   }
   return r;
@@ -1638,10 +1639,10 @@ bool WriteAllTeletext(char *AbsOutFile)
               out_of_box = -1;
               background_color = COLOR_BLACK;
             }
-            else if (*c == 0x18 && (foreground_color != background_color))  // hidden text
+            else if (*c == 0x18 && (foreground_color != COLOR_HIDDEN))  // hidden text
             {
-              foreground_color = background_color;
-              *c = (uint16_t) TTXT_COLORSYMBOLS[0][background_color];
+              foreground_color = COLOR_HIDDEN;
+              *c = 0x25CC;
             }
             else if (*c == 0x1e)
             {

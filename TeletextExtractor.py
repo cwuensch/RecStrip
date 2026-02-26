@@ -22,9 +22,10 @@ except ImportError:
     import tty
 
 colors = {
-  '●':30, '◐':31, '◑':32, '◒':33, '◓':34, '◔':35, '◕':36, '○':37,
+  '●':30, '◐':31, '◑':32, '◒':33, '◓':34, '◔':35, '◕':36, '○':37, 
   '▣':40, '▤':41, '▥':42, '▦':43, '▧':44, '▨':45, '▩':46, '□':47
 }
+# '◌' = hidden
 
 def getch():
   """
@@ -108,12 +109,22 @@ def mytrim(line):
 
 def replace_colors(line, colorize_output):
   hold_mosaic = False
-  last_c = ' '
 
   if (colorize_output):
+    last_c = '●'
+    line = list(line)
+
+    for i, c in enumerate(line):
+      if ('□' <= c <= '▩'):
+        last_c = c
+      if (c == '◌'):
+        line[i] = '○' if (last_c == '□') else chr(ord(last_c) + 0xC4)
+    line = "".join(out)
+
     for old, new in colors.items():
       line = line.replace(old, "%s\033[%dm%s" % ((old if (new<40) else ''), new, (old if (new>=40) else ''))) + "\033[0m"
 
+  last_c = ' '
   line = list(line)
   for i, c in enumerate(line):
     if (c == '◆'):
