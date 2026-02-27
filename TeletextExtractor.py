@@ -119,7 +119,7 @@ def replace_colors(line, colorize_output):
         last_c = c
       if (c == '◌'):
         line[i] = '○' if (last_c == '□') else chr(ord(last_c) + 0xC4)
-    line = "".join(out)
+    line = "".join(line)
 
     for old, new in colors.items():
       line = line.replace(old, "%s\033[%dm%s" % ((old if (new<40) else ''), new, (old if (new>=40) else ''))) + "\033[0m"

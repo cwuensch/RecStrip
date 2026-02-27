@@ -537,6 +537,17 @@ empty_finish:
       uint8_t col_stop = 40, col_stop2 = 40;
       bool hidden_mode = FALSE;
 
+      // remove hidden text
+      for (col = col_start; col <= col_stop; col++)
+      {
+        if(page->text[row][col] == 0x18 || page->text[row][col] == 0x1d)
+          hidden_mode = TRUE;
+        else if ((page->text[row][col] < 0x20) && ((page->text[row][col] & 0x0f) <= 0x07))
+          hidden_mode = FALSE;
+        if (hidden_mode && (page->text[row][col] > 0x20))
+          page->text[row][col] = ' ';
+      }
+
       // detect start of text
       for (col = 39; col > 0; col--) {
         if (page->text[row][col] == 0xb) {
@@ -574,16 +585,6 @@ empty_finish:
           nr_missing++;
       if (nr_missing >= 3)
         { page->text[row][0] = 0x00; continue; }
-
-      // remove hidden text
-      for (col = col_start; col <= col_stop; col++)
-      {
-        if(page->text[row][col] == 0x18 || page->text[row][col] == 0x1d)
-          hidden_mode = TRUE;
-        else if ((page->text[row][col] < 0x20) && ((page->text[row][col] & 0x0f) <= 0x07))
-          hidden_mode = FALSE;
-        if(hidden_mode) page->text[row][col] = ' ';
-      }
     }
   }
 
