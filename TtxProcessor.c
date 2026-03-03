@@ -538,7 +538,7 @@ empty_finish:
       bool hidden_mode = FALSE;
 
       // remove hidden text
-      for (col = col_start; col <= col_stop; col++)
+      for (col = 0; col <= 39; col++)
       {
         if(page->text[row][col] == 0x18 || page->text[row][col] == 0x1d)
           hidden_mode = TRUE;
@@ -778,7 +778,7 @@ empty_finish:
   }
 }
 
-static void process_page2(uint16_t page_number, bool boxed_area)
+static void process_page2(uint16_t page_number)
 {
   int p = 0, s, i, j;
   bool page_empty = TRUE;
@@ -862,7 +862,7 @@ static void process_page2(uint16_t page_number, bool boxed_area)
         }
 
         // ref und new stimmen überein
-        if ((nr_unique_new > nr_unique_ref + 40) || ((nr_missing_new < nr_missing_ref) && (nr_unique_new + 10 >= nr_unique_ref)) || ((nr_unique_new > nr_unique_ref) && (nr_missing_new <= nr_missing_ref)) || ExtractAllOverwrite)
+        if ((nr_unique_new > nr_unique_ref + 40) || ((nr_missing_new < nr_missing_ref) && (nr_unique_new + 10 >= nr_unique_ref)) || ((nr_unique_new > nr_unique_ref) && (nr_missing_new <= nr_missing_ref)) || ((nr_unique_ref <= 20) && ExtractAllOverwrite))
           p = s;
         else  p = -1;
         break;
@@ -922,7 +922,8 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
     uint8_t flag_suppress_header;
     uint8_t charset;
 
-    cc_map[p] |= flag_subtitle << (m - 1);
+    cc_map[p] &= ~(1 << (m - 1));  // Bit löschen
+    cc_map[p] |= flag_subtitle << (m - 1);  // neu setzen
 
     if(m != MAGAZINE(page_number)) primary_charset.g0_m29 = UNDEF;  // CW
 
@@ -955,11 +956,13 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
             for (i = 0; i < 8; i++)
             {
 //              if (page_buffer_in[i].receiving_data = YES)
-                process_page2((i+1) << 8 | PAGE(page_number), flag_subtitle | flag_newsflash);  // ToDo: cc_map(page_nr) statt flag_subtitle(p)
+//              if (!(cc_map[PAGE(page_number)] & (1 << (i - 1))))
+                process_page2((i+1) << 8 | PAGE(page_number));
               page_buffer_in[i].receiving_data = NO;
             }
           else
-            process_page2(page_number, flag_subtitle | flag_newsflash);
+//            if (!(cc_map[PAGE(page_number)] & (1 << (MAGAZINE(page_number) - 1))))
+              process_page2(page_number);
         }
         if ((unham_8_4(packet->data[7]) & 0x01) == TRANSMISSION_MODE_PARALLEL)
           for (i = 0; i < 8; i++)
@@ -986,7 +989,7 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
 
     // Open a new srt output file
 //    if (ExtractTeletext && flag_subtitle)
-    if (ExtractTeletext && (cc_map[PAGE(page_number)] & (1 << (m - 1))))
+    if (ExtractTeletext && (cc_map[p] & (1 << (m - 1))))
     {
       out_nr = GetTeletextOut(page_number, TRUE);
       if((out_nr >= 0) && ((transmission_mode == TRANSMISSION_MODE_PARALLEL) || (MAGAZINE(pages[out_nr]) == m)))
@@ -1006,10 +1009,12 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
 //printf("A Remap charset nr. %hhu\n", c);
       remap_g0_charset(c);
 
-      if (out_nr >= 0)
+      if ((out_nr >= 0) && (m == MAGAZINE(page_number)))
         cur_page_buffer = &page_buffer[out_nr];
-      else if (ExtractAllTeletext && page_number)
+      else if (ExtractAllTeletext && page_number && !(cc_map[PAGE(page_number)] & (1 << (m - 1))))
         cur_page_buffer = &page_buffer_in[m-1];
+      else
+        return;
       cur_page_buffer->receiving_data = YES;
 
       // ... Here starts the new page!
@@ -1046,9 +1051,9 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
   }
 
   if (((page_number & 0xf0) > 0x90) || ((page_number & 0x0f) > 0x09)) return;
-  if (out_nr >= 0)
+  if ((out_nr >= 0) && (m == MAGAZINE(page_number)))
     cur_page_buffer = &page_buffer[out_nr];
-  else if (ExtractAllTeletext)
+  else if (ExtractAllTeletext && page_number && !(cc_map[PAGE(page_number)] & (1 << (m - 1))))
     cur_page_buffer = &page_buffer_in[m-1];
   else
     return;
