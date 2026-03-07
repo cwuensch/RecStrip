@@ -113,7 +113,7 @@ word                    VideoPID = (word) -1, TeletextPID = (word) -1, Subtitles
 word                    TransportStreamID = 1;
 tAudioTrack             AudioPIDs[MAXCONTINUITYPIDS];
 word                    ContinuityPIDs[MAXCONTINUITYPIDS], NrContinuityPIDs = 1;
-bool                    isHDVideo = FALSE, AlreadyStripped = FALSE, HumaxSource = FALSE, EycosSource = FALSE, TechniSource = FALSE, DVBViewerSrc = FALSE;
+bool                    isHDVideo = FALSE, AlreadyStripped = FALSE, HumaxSource = FALSE, EycosSource = FALSE, TechniSource = FALSE, DVBViewerSrc = FALSE; //ExtractAllTeletext: 1=extract while normal processing, 2=short extraction during view-infos
 bool                    DoStrip = FALSE, DoSkip = FALSE, RemoveScrambled = FALSE, RemoveEPGStream = FALSE, RemoveTeletext = FALSE, ExtractTeletext = FALSE, ExtractAllTeletext = FALSE, RebuildNav = FALSE, RebuildInf = FALSE, RebuildSrt = FALSE, DoInfoOnly = FALSE, DoFixPMT = FALSE, MedionMode = FALSE, MedionStrip = FALSE, DoGenerateEIT = FALSE, WriteDescPackets = TRUE, PMTatStart = FALSE;
 int                     DoCut = 0, DoMerge = 0, DoInfFix = 0, DemuxAudio = 0;  // DoCut: 1=remove_parts, 2=copy_separate, DoMerge: 1=append, 2=merge  // DoInfFix: 1=enable, 2=inf to be fixed
 int                     curInputFile = 0, NrInputFiles = 1, NrEPGPacks = 0;
@@ -2658,6 +2658,9 @@ int main(int argc, const char* argv[])
     TRACEEXIT;
     exit(7);
   }
+  if (ExtractAllTeletext && !ExtractTeletext)
+    LoadTeletextOut(NULL);  // TtxBuffer mit TeletextPID initialisieren
+
 /*  if (MedionMode == 1)
   {
 //    PMTBetween = (OutPacketSize == 192) ? 1024 : 1024;
@@ -3021,7 +3024,7 @@ int main(int argc, const char* argv[])
           if (CurPID == TeletextPID)
           {
             // Extract Teletext Subtitles
-            if (ExtractTeletext /*&& fTtxOut*/ || ExtractAllTeletext == 1)
+            if (ExtractTeletext /*&& fTtxOut*/ || (ExtractAllTeletext == 1))
               ProcessTtxPacket((tTSPacket*) &Buffer[4]);
 
             // Remove Teletext packets

@@ -1470,7 +1470,7 @@ void TtxProcessor_Init(word SubtitlePage)
     memset(page_buffer_all, 0, NRALLTTXPAGES * sizeof(teletext_text_t));
     memset(page_map, -1, 800 * sizeof(teletext_pagemap_t));
   }
-  PSBuffer_Init(&TtxBuffer, TeletextPID, 4096, FALSE, FALSE);  // eigentlich: 1288 / 1472
+//  PSBuffer_Init(&TtxBuffer, TeletextPID, 4096, FALSE, FALSE);  // eigentlich: 1288 / 1472
   LastBuffer = 0;
   config.page = SubtitlePage;
   pages[NRTTXOUTPUTS-1] = SubtitlePage;
@@ -1489,15 +1489,20 @@ bool LoadTeletextOut(const char* AbsOutFile)
   char *p;
   TRACEENTER;
 
-  snprintf(TeletextOut, sizeof(TeletextOut), "%s", AbsOutFile);
-  if ((p = strrchr(AbsOutFile, '.')) != NULL)
-    TeletextOutLen = (int)(p - AbsOutFile);
-  else
-    TeletextOutLen = (int)strlen(TeletextOut);
+  if (AbsOutFile && *AbsOutFile)
+  {
+    snprintf(TeletextOut, sizeof(TeletextOut), "%s", AbsOutFile);
+    if ((p = strrchr(AbsOutFile, '.')) != NULL)
+      TeletextOutLen = (int)(p - AbsOutFile);
+    else
+      TeletextOutLen = (int)strlen(TeletextOut);
+  }
 
-  if (ExtractTeletext)
+  if (ExtractTeletext || ExtractAllTeletext)
+  {
+    if(TtxBuffer.PID) PSBuffer_Reset(&TtxBuffer);
     PSBuffer_Init(&TtxBuffer, TeletextPID, 4096, FALSE, FALSE);  // eigentlich: 1288 / 1472
-
+  }
   TRACEEXIT;
   return TRUE;
 }

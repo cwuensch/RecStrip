@@ -111,14 +111,14 @@ def replace_colors(line, colorize_output):
   hold_mosaic = False
 
   if (colorize_output):
-    last_c = '●'
+    last_c = '▣'
     line = list(line)
 
     for i, c in enumerate(line):
       if ('□' <= c <= '▩'):
         last_c = c
       if (c == '◌'):
-        line[i] = '○' if (last_c == '□') else chr(ord(last_c) + 0xC4)
+        line[i] = '○' if (last_c == '□') else chr(ord(last_c) + 0x2C)
     line = "".join(line)
 
     for old, new in colors.items():
@@ -152,6 +152,18 @@ def extract_text(page, filename, folder, page_nr, sub_nr, comment):
 
   # 1. Schritt: Zeilen trimmen, tokenisieren und von Navigations-Zeilen befreien
   for i, line in enumerate(page):
+    # Hidden Text entfernen
+    hidden = False
+    line = list(line)
+    for j, c in enumerate(line):
+      if (c == '◌'):
+        hidden = True
+      elif (('○' <= c <= '◕') or ('□' <= c <= '▩')):
+        hidden = False
+      if (hidden):
+        line[j] = ' '
+    line = "".join(line)
+
     line = line.replace("  VPS  ", " VPS ")
 #    line = line.replace(" bis ", "  bis ")
     line = line.replace("tag  ", "tag, ")
