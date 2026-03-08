@@ -2908,7 +2908,6 @@ bool ModifyEIT(byte *const Buffer, int BufSize, word ServiceID, dword StartTime,
             Desc = (tTSDesc*) &Buffer[p];
             if(Desc->DescrTag == DESC_EITShortEvent)
             {
-              tShortEvtDesc* ShortDesc = (tShortEvtDesc*) Desc;
               Event->StartTime[0] = StartTime >> 24;
               Event->StartTime[1] = (StartTime >> 16) & 0xff;
               Event->StartTime[2] = BIN2BCD((StartTime >> 8) & 0xff);

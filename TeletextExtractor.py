@@ -134,18 +134,20 @@ def replace_colors(line, colorize_output):
     elif (c == '◇'):
       hold_mosaic = False
 
-    if (c in colors.keys() or c in "◆◇"):
+    if (c in colors.keys() or c in "◆◇◈"):
       line[i] = last_c if (hold_mosaic) else ' '
+      if (c == '◈'):
+        last_c = ' '
     elif (ord(c) >= 0x2588):
 #      c = ' '        # CW: hier wird die Mosaic ASCII-Art deaktiviert
 #      line[i] = ' '  # CW: hier wird die Mosaic ASCII-Art deaktiviert
       last_c = c
       found_color = False
-    elif (c == '\033'):
-      found_color = True
     elif (c.isalpha() and c != 'm'):
       last_c = ' '
-    elif (c == ' '):  # and found_color)
+    elif (c == '\033'):
+      found_color = True
+    elif (c == ' ' and found_color):
       last_c = ' '
   return("".join(line))
 
