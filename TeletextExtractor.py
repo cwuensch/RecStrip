@@ -109,6 +109,7 @@ def mytrim(line):
 
 def replace_colors(line, colorize_output):
   hold_mosaic = False
+  found_color = False
 
   if (colorize_output):
     last_c = '▣'
@@ -129,6 +130,7 @@ def replace_colors(line, colorize_output):
   for i, c in enumerate(line):
     if (c == '◆'):
       hold_mosaic = True
+      found_color = False
     elif (c == '◇'):
       hold_mosaic = False
 
@@ -138,9 +140,13 @@ def replace_colors(line, colorize_output):
 #      c = ' '        # CW: hier wird die Mosaic ASCII-Art deaktiviert
 #      line[i] = ' '  # CW: hier wird die Mosaic ASCII-Art deaktiviert
       last_c = c
+      found_color = False
+    elif (c == '\033'):
+      found_color = True
     elif (c.isalpha() and c != 'm'):
       last_c = ' '
-
+    elif (c == ' '):  # and found_color)
+      last_c = ' '
   return("".join(line))
 
 # Funktion zur Text-Extraktion einer Teletext-Seite

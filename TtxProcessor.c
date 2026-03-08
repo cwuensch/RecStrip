@@ -781,7 +781,7 @@ empty_finish:
 static void process_page2(uint16_t page_number)
 {
   int p = 0, s, i, j;
-  bool page_empty = TRUE;
+  bool page_empty = TRUE, with_subpage = FALSE;
   int page_nr = hex2dec(page_number);
   teletext_page_t *page = (teletext_page_t*) &page_buffer_in[MAGAZINE(page_number)-1];
   if (MAGAZINE(page_number) <= 0) return;
@@ -800,6 +800,7 @@ static void process_page2(uint16_t page_number)
   {
     if ((page->text[0][4] == '0'))
       p = 10 * (page->text[0][5] - '0') + page->text[0][6] - '0';
+    with_subpage = TRUE;
   }
 
   if (page_map[page_nr-100].subpages[p] >= 0)
@@ -862,15 +863,15 @@ static void process_page2(uint16_t page_number)
         }
 
         // ref und new stimmen überein
-        if ((nr_unique_new > nr_unique_ref + 40) || ((nr_missing_new < nr_missing_ref) && (nr_unique_new + 10 >= nr_unique_ref)) || ((nr_unique_new > nr_unique_ref) && (nr_missing_new <= nr_missing_ref)) || ((nr_unique_ref <= 20) && ExtractAllOverwrite))
+        if ((nr_unique_new > nr_unique_ref + 40) || ((nr_missing_new < nr_missing_ref) && (nr_unique_new + 10 >= nr_unique_ref)) || ((nr_unique_new > nr_unique_ref) && (nr_missing_new <= nr_missing_ref)) || ((nr_unique_ref <= 5) && ExtractAllOverwrite))
           p = s;
         else  p = -1;
         break;
       }
       else
-        if ((p > 0) && !ExtractAllOverwrite)
+        if (with_subpage && !ExtractAllOverwrite)
           { p = -1; break; }
-      if(p > 0) break;
+      if(with_subpage) break;
     }
   }
 
@@ -897,20 +898,21 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
 {
   // variable names conform to ETS 300 706, chapter 7.1.2
   uint8_t address = (unham_8_4(packet->address[1]) << 4) | unham_8_4(packet->address[0]);
-  uint8_t y = (address >> 3) & 0x1f;  // Zeile
+  uint8_t y = (address >> 3) & 0x1f; // Zeile
   uint8_t m = (address & 0x7) ? address & 0x7 : 8;  // Magazin
   uint8_t designation_code = (y > 25) ? unham_8_4(packet->data[0]) : 0x00;
   uint8_t c;  // Charset
 
   static uint16_t page_number = 0;   // (m << 8) | p;  // page_number = m|pp (magazin|page)
+  static uint8_t last_y = 0;
   static transmission_mode_t transmission_mode = TRANSMISSION_MODE_SERIAL;
   static int out_nr = -1;            // GetTeletextOut(page_number, FALSE);
   teletext_page_t *cur_page_buffer = NULL;
 
+//printf("y=%d\n", y);
+
   graphic_mode = NO;
 //  hidden_mode = NO;
-
-//printf("y=%d\n", y);
 
   if (y == 0)
   {
@@ -929,7 +931,22 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
 
     charset = unham_8_4(packet->data[7]);
     charset = ((charset & 0x08) | (charset & 0x04) | (charset & 0x02)) >> 1;
-//printf("new page: m=%hx, p=%02hx, trans=%d, charset=%u\n", m, p, (unham_8_4(packet->data[7]) & 0x01), charset);
+
+/*if (page_number == 0x335 || (m==3 && p==35))
+  printf("new page: m=%hx, p=%02hx, trans=%d, charset=%u\n", m, p, (unham_8_4(packet->data[7]) & 0x01), charset);
+
+{
+  char test[41]; int i;
+  memset(test, 0, sizeof(test));
+  for(i = 0; i < 40; i++) {
+    test[i] = telx_to_ucs2(packet->data[i]) & 0xff;
+    if(test[i] < 0x20 && test[i] != '\n' && test[i] != '\t') test[i] = 0x20;
+  }
+//graphic_mode = NO;
+//hidden_mode = NO;
+  if((page_number == 0x335) || ((m<<8 | p) == 0x335))
+    printf("[%1hx%02hx] %03hhu: %s\n", m, PAGE(page_number), y, test);
+} */
 
     flag_suppress_header = (unham_8_4(packet->data[6]) & 0x01) || flag_subtitle;
     //uint8_t flag_inhibit_display = (unham_8_4(packet->data[6]) & 0x08) >> 3;
@@ -946,6 +963,10 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
 
     if ( (p != PAGE(page_number)) || (transmission_mode == TRANSMISSION_MODE_SERIAL && m != MAGAZINE(page_number)) || (transmission_mode == TRANSMISSION_MODE_PARALLEL && m == MAGAZINE(page_number)) )
     {
+/*if (page_number == 0x335)
+  printf("!!");
+printf("ZEILE 0: m=%d, p=%d\n", m, p); */
+
       if (ExtractAllTeletext)
       {
         // ExtractAllTeletext is processed as soon as any new page arrives
@@ -971,7 +992,7 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
             memset(page_buffer_in[i].text, 0, sizeof(teletext_text_t));
           }
         else
-          memset(page_buffer_in[m-1].text, 0, sizeof(teletext_text_t));
+          memset(page_buffer_in[MAGAZINE(page_number)-1].text, 0, sizeof(teletext_text_t));
       }
 
       // FIXME: Well, this is not ETS 300 706 kosher, however we are interested in DATA_UNIT_EBU_TELETEXT_SUBTITLE only
@@ -1047,6 +1068,7 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
         //cur_page_buffer->tainted = YES;
       }
     }
+    last_y = 0;
     return;
   }
 
@@ -1060,7 +1082,7 @@ static void process_telx_packet(data_unit_t data_unit_id, teletext_packet_payloa
 
   if (m == MAGAZINE(page_number) || (ExtractAllTeletext && transmission_mode == TRANSMISSION_MODE_PARALLEL))
   {
-    if (cur_page_buffer->receiving_data == YES)
+    if ((cur_page_buffer->receiving_data == YES) && (y >= last_y))
     {
       if ((y >= 1) && (y <= 23)) {
         // ETS 300 706, chapter 9.4.1: Packets X/26 at presentation Levels 1.5, 2.5, 3.5 are used for addressing
@@ -1076,9 +1098,9 @@ for(i = 0; i < 40; i++) {
   test[i] = telx_to_ucs2(packet->data[i]) & 0xff;
   if(test[i] < 0x20 && test[i] != '\n' && test[i] != '\t') test[i] = 0x20;
 }
-graphic_mode = NO;
-hidden_mode = NO;
-//if(page_number == 0x888)
+//graphic_mode = NO;
+//hidden_mode = NO;
+if(page_number == 0x335)
   printf("[%1hx%02hx] %03hhu: %s\n", m, PAGE(page_number), y, test); */
 
         for (i = 0; i < 40; i++)
@@ -1176,6 +1198,7 @@ hidden_mode = NO;
           }
         }
       }
+      last_y = y;
     }
     if (y == 29)
     {
