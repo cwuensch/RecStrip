@@ -1647,7 +1647,7 @@ bool WriteAllTeletext(char *AbsOutFile)
             {
               if (hold_mosaic)  // ASCII color resets the held character
               {
-                if ((j > 0) && (page->text[i][j-1] == ' '))
+                if ((j > 0) && (page->text[i][j-1] == ' ' || page->text[i][j-1] == 0x25c8))
                   page->text[i][j-1] = 0x25c8;  // reset hold character
                 else if ((j < 39) && (page->text[i][j+1] == ' '))
                 {
