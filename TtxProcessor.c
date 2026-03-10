@@ -920,7 +920,7 @@ for(i = 0; i < 40; i++) {
 }
 //graphic_mode = NO;
 //hidden_mode = NO;
-//if((page_number == 0x656) || ((m<<8 | p) == 0x656))
+//if((page_number == 0x196) || ((m<<8 | p) == 0x196))
   printf("[%1hx%02hx] %03hhu: %s\n", m, PAGE(page_number), y, test); */
 
 
@@ -943,10 +943,10 @@ for(i = 0; i < 40; i++) {
     if(m != MAGAZINE(page_number)) primary_charset.g0_m29 = UNDEF;  // CW
 
     charset = unham_8_4(packet->data[7]);
-    charset = ((charset & 0x08) | (charset & 0x04) | (charset & 0x02)) >> 1;
+    charset = (charset & 0x0e) >> 1;
 
-/*if (page_number == 0x656 || (m==6 && p==56))
-  printf("new page: m=%hx, p=%02hx, trans=%d, charset=%u\n", m, p, (unham_8_4(packet->data[7]) & 0x01), charset); */
+//if (page_number == 0x656 || (m==6 && p==56))
+//  printf("new page: m=%hx, p=%02hx, trans=%d, charset=%u\n", m, p, (unham_8_4(packet->data[7]) & 0x01), charset);
 
 /*{
 char test[41]; int i;
@@ -976,9 +976,9 @@ for(i = 0; i < 40; i++) {
 
     if ( (p != PAGE(page_number)) || (transmission_mode == TRANSMISSION_MODE_SERIAL && m != MAGAZINE(page_number)) || (transmission_mode == TRANSMISSION_MODE_PARALLEL && m == MAGAZINE(page_number)) )
     {
-/*if (page_number == 0x656)
+/*if ((m << 8 | p) == 0x196)
   printf("!!");
-printf("ZEILE 0: m=%d, p=%d\n", m, p); */
+printf("ZEILE 0: m=%hx, p=%02hx\n", m, p); */
 
       if (ExtractAllTeletext)
       {
@@ -1113,7 +1113,7 @@ for(i = 0; i < 40; i++) {
 }
 //graphic_mode = NO;
 //hidden_mode = NO;
-if(page_number == 0x656)
+//if(page_number == 0x196)
   printf("[%1hx%02hx] %03hhu: %s\n", m, PAGE(page_number), y, test); */
 
         for (i = 0; i < 40; i++)
@@ -1138,7 +1138,7 @@ if(page_number == 0x656)
       }
       else if (y == 26) {
         // ETS 300 706, chapter 12.3.2: X/26 definition
-        uint8_t x26_row = 0;
+        static uint8_t x26_row = 0;
         uint8_t x26_col = 0;
 
         uint32_t triplets[13] = { 0 };
@@ -1159,11 +1159,12 @@ if(page_number == 0x656)
           address = triplets[j] & 0x3f;
           row_address_group = (address >= 40) && (address <= 63);
 
-          // ETS 300 706, chapter 12.3.1, table 27: set active position
+          // ETS 300 706, chapter 12.3.1, table 28: set active position
           if ((mode == 0x04) && (row_address_group == YES)) {
             x26_row = address - 40;
             if (x26_row == 0) x26_row = 24;
-            x26_col = 0;
+            x26_col = data & 0x1f;  // 0
+//printf("[Z26]: SET ACTIVE POSITION = (row=%hhu, col=%hhu)\n", x26_row, x26_col);
           }
 
           // ETS 300 706, chapter 12.3.1, table 27: termination marker
@@ -1178,6 +1179,7 @@ if(page_number == 0x656)
           // ETS 300 706, chapter 12.3.1, table 27: G0 character with/without diacritical mark
           if ((mode >= 0x10) && (mode <= 0x1f) && (row_address_group == NO)) {
             x26_col = address;
+//printf("[Z26]: WRITE CHARACTER = (row=%hhu, col=%hhu, data=%hu, chr=%c", x26_row, x26_col, data, data);
 
             // A - Z
             if ((data >= 65) && (data <= 90)) cur_page_buffer->text[x26_row][x26_col] = G2_ACCENTS[mode - 0x11][data - 65];
@@ -1185,10 +1187,10 @@ if(page_number == 0x656)
             else if ((data >= 97) && (data <= 122)) cur_page_buffer->text[x26_row][x26_col] = G2_ACCENTS[mode - 0x11][data - 71];
             // other
             else {
-              remap_g0_charset(0);
-              cur_page_buffer->text[x26_row][x26_col] = telx_to_ucs2(data);
-              remap_g0_charset(c);
+              cur_page_buffer->text[x26_row][x26_col] = data;  // G0 generic
+//printf(" -> abs=%hu, char='%c')", G0[LATIN][data - 0x20], G0[LATIN][data - 0x20]);
             }
+//printf("\n");
           }
         }
       }
