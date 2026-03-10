@@ -824,7 +824,7 @@ static void process_page2(uint16_t page_number)
         { p = s; break; }
 
       // Check for grade of matching
-      for (i = 0; i < 25; i++)
+      for (i = 1; i < 25; i++)
       {
         if (page->text[i][0] == 0 || ref->text[i][0] == 0)
         {
@@ -847,7 +847,7 @@ static void process_page2(uint16_t page_number)
       }
 
       // Wenn ref = new oder ref Teilmenge von new oder umgekehrt
-      if((nr_content_same > 40) && (nr_diff < 40) && !(nr_unique_ref > 20 && nr_unique_new > 20))
+      if((nr_content_same > 60) && (nr_diff < 20) && !(nr_unique_ref > 10 && nr_unique_new > 10))
       {
         // Fix missing chars if page is duplicate
         if ((nr_missing_ref || nr_missing_new) && nr_diff)
