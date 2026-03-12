@@ -847,7 +847,7 @@ static void process_page2(uint16_t page_number)
       }
 
       // Wenn ref = new oder ref Teilmenge von new oder umgekehrt
-      if(((nr_content_same > 100 && nr_diff < 40) || (nr_content_same >= 3 && nr_diff < 2)) && !(nr_unique_ref > 20 && nr_unique_new > 20))
+      if(((nr_content_same > 60 && nr_diff < 20) || (nr_content_same >= 10 && nr_diff < 3 && nr_unique_ref < 10)) && !(nr_unique_ref > 20 && nr_unique_new > 20))
       {
         // Fix missing chars if page is duplicate
         if ((nr_missing_ref || nr_missing_new) && nr_diff)
