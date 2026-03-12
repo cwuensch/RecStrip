@@ -1045,7 +1045,7 @@ printf("ZEILE 0: m=%hx, p=%02hx\n", m, p); */
 
       if ((out_nr >= 0) && (m == MAGAZINE(page_number)))
         cur_page_buffer = &page_buffer[out_nr];
-      else if (ExtractAllTeletext && page_number && !(cc_map[PAGE(page_number)] & (1 << (m - 1))))
+      else if (ExtractAllTeletext && page_number && (page_number==0x333 || !(cc_map[PAGE(page_number)] & (1 << (m - 1)))))
         cur_page_buffer = &page_buffer_in[m-1];
       else
         return;
@@ -1088,7 +1088,7 @@ printf("ZEILE 0: m=%hx, p=%02hx\n", m, p); */
   if (((page_number & 0xf0) > 0x90) || ((page_number & 0x0f) > 0x09)) return;
   if ((out_nr >= 0) && (m == MAGAZINE(page_number)))
     cur_page_buffer = &page_buffer[out_nr];
-  else if (ExtractAllTeletext && page_number && !(cc_map[PAGE(page_number)] & (1 << (m - 1))))
+  else if (ExtractAllTeletext && page_number && (page_number==0x333 || !(cc_map[PAGE(page_number)] & (1 << (m - 1)))))
     cur_page_buffer = &page_buffer_in[m-1];
   else
     return;
