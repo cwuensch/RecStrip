@@ -1440,7 +1440,7 @@ static bool AnalyseVideo(byte *PSBuffer, int BufSize, word pid, int *const VidHe
   return FALSE;
 }
 
-bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
+bool GenerateInfFile(FILE *fIn, char *AbsRecFileName, TYPE_RecHeader_TMSS *RecInf)
 {
   FILE                 *fIn2 = fIn;
   tPSBuffer             PMTBuffer, EITBuffer, TtxBuffer;
@@ -2383,6 +2383,10 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     if (EycosSource && (fIn2 != fIn))
       fclose(fIn2);
   }
+
+  // Hier EPG aus Map einlesen
+  if (HumaxSource || EycosSource || TechniSource || DVBViewerSrc || MedionMode)
+    GetEPGFromMap(AbsRecFileName, RecInf->ServiceInfo.ServiceID, &TransportStreamID, RecInf);
 
   // hier EPGPacks füllen (außer bei SimpleMuxer/Medion)
   if (DoGenerateEIT && !pEPGBuffer && RecInf->EventInfo.StartTime)
