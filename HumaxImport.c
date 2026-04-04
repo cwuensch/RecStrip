@@ -520,14 +520,14 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
           }
           else continue;
 
-          if (!fRefEPG || RefEPGMod)
+//          if (!fRefEPG || RefEPGMod)
           {
             DescStr[0] = '\0';
             if (sscanf(p+1, " %4u-%2u-%2u %2u:%2u ; %2u:%2u ; %n%256[^;] ; %n%256[^;]; %n", &StartYear, &StartMonth, &StartDay, &StartHour, &StartMin, &DurationH, &DurationM, &n1, RecInf->EventInfo.EventNameDescription, &n2, DescStr, &n3) >= 7)
             {
               ret = TRUE;
               StartTime = MakeUnixTime((word)StartYear, (byte)StartMonth, (byte)StartDay, (byte)StartHour, (byte)StartMin, 0, NULL);
-              if (fRefEPG) break;
+//              if (fRefEPG) break;
               if (RecInf && StartYear)
               {
                 RecInf->EventInfo.ServiceID = ServiceID;
