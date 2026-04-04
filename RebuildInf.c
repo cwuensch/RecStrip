@@ -854,18 +854,21 @@ printf("  TS: SvcName   = %s\n", RecInf->ServiceInfo.ServiceName);
   return FALSE;
 }
 
-bool AnalyseEIT(byte *Buffer, int BufSize, word ServiceID, word *OutTransportID, TYPE_Event_Info *OutEventInfo, TYPE_ExtEvent_Info *OutExtEventInfo, bool OverwriteInf)
+tPVRTime AnalyseEIT(byte *Buffer, int BufSize, word ServiceID, word *OutTransportID, TYPE_Event_Info *myOutEventInfo, TYPE_ExtEvent_Info *OutExtEventInfo, bool OverwriteInf)
 {
   tTSEIT               *EIT = (tTSEIT*)Buffer;
   tEITEvent            *Event = NULL;
   tTSDesc              *Desc = NULL;
   tShortEvtDesc        *ShortDesc = NULL;
   tExtEvtDesc          *ExtDesc = NULL;
+  TYPE_Event_Info       tmpEvent, *pOutEventInfo = myOutEventInfo;
 //  char                 *ExtEPGText = NULL;
   int                   ExtEPGTextLen = 0, SectionLength, DescriptorLoopLen, p;
   word                  EventID;
 
   TRACEENTER;
+
+  if(OverwriteInf) pOutEventInfo = &tmpEvent;
 
   if ((EIT->TableID == TABLE_EIT) && ((EIT->ServiceID1 * 256 | EIT->ServiceID2) == ServiceID || !ServiceID))
   {
@@ -879,7 +882,6 @@ bool AnalyseEIT(byte *Buffer, int BufSize, word ServiceID, word *OutTransportID,
         return FALSE;
       }
 
-      memset(OutEventInfo->EventNameDescription, 0, sizeof(OutEventInfo->EventNameDescription));
       memset(OutExtEventInfo->Text, 0, sizeof(OutExtEventInfo->Text));
 //      memset(ExtEPGText, 0, EPGBUFFERSIZE);
       OutExtEventInfo->TextLength = 0;
@@ -887,6 +889,7 @@ bool AnalyseEIT(byte *Buffer, int BufSize, word ServiceID, word *OutTransportID,
 
       if(OutTransportID) *OutTransportID = (EIT->TS_ID1 * 256 | EIT->TS_ID2);
     }
+    memset(pOutEventInfo->EventNameDescription, 0, sizeof(pOutEventInfo->EventNameDescription));
 
     SectionLength = EIT->SectionLen1 * 256 | EIT->SectionLen2;
     SectionLength = min(SectionLength + 3, BufSize);    // SectionLength zählt erst ab Byte 3
@@ -912,16 +915,16 @@ bool AnalyseEIT(byte *Buffer, int BufSize, word ServiceID, word *OutTransportID,
             char       *Name, *Text, tmp;
             ShortDesc = (tShortEvtDesc*) Desc;
 
-            OutEventInfo->ServiceID = ServiceID;
-            OutEventInfo->EventID = EventID;
-            OutEventInfo->RunningStatus = Event->RunningStatus;
-            OutEventInfo->StartTime = (Event->StartTime[0] << 24) | (Event->StartTime[1] << 16) | (BCD2BIN(Event->StartTime[2]) << 8) | BCD2BIN(Event->StartTime[3]);
-            OutEventInfo->DurationHour = BCD2BIN(Event->DurationSec[0]);
-            OutEventInfo->DurationMin = BCD2BIN(Event->DurationSec[1]);
-            OutEventInfo->EndTime = AddTimeSec(OutEventInfo->StartTime, 0, NULL, OutEventInfo->DurationHour * 3600 + OutEventInfo->DurationMin * 60);
-//            StartTimeUnix = 86400*((OutEventInfo->StartTime>>16) - 40587) + 3600*BCD2BIN(Event->StartTime[2]) + 60*BCD2BIN(Event->StartTime[3]);
-printf("  TS: EvtStart  = %s (UTC)\n", TimeStrTF(OutEventInfo->StartTime, 0));
-printf("  TS: EvtDuratn = %02d:%02d\n", OutEventInfo->DurationHour, OutEventInfo->DurationMin);
+            pOutEventInfo->ServiceID = ServiceID;
+            pOutEventInfo->EventID = EventID;
+            pOutEventInfo->RunningStatus = Event->RunningStatus;
+            pOutEventInfo->StartTime = (Event->StartTime[0] << 24) | (Event->StartTime[1] << 16) | (BCD2BIN(Event->StartTime[2]) << 8) | BCD2BIN(Event->StartTime[3]);
+            pOutEventInfo->DurationHour = BCD2BIN(Event->DurationSec[0]);
+            pOutEventInfo->DurationMin = BCD2BIN(Event->DurationSec[1]);
+            pOutEventInfo->EndTime = AddTimeSec(pOutEventInfo->StartTime, 0, NULL, pOutEventInfo->DurationHour * 3600 + pOutEventInfo->DurationMin * 60);
+//            StartTimeUnix = 86400*((pOutEventInfo->StartTime>>16) - 40587) + 3600*BCD2BIN(Event->StartTime[2]) + 60*BCD2BIN(Event->StartTime[3]);
+printf("  TS: EvtStart  = %s (UTC)\n", TimeStrTF(pOutEventInfo->StartTime, 0));
+printf("  TS: EvtDuratn = %02d:%02d\n", pOutEventInfo->DurationHour, pOutEventInfo->DurationMin);
 
             Name = (char*)&Buffer[p + sizeof(tShortEvtDesc)];
             NameLen = min(ShortDesc->EvtNameLen, BufSize - p - 1);
@@ -930,18 +933,18 @@ printf("  TS: EvtDuratn = %02d:%02d\n", OutEventInfo->DurationHour, OutEventInfo
 
             tmp = Name[NameLen];
             Name[NameLen] = '\0';
-            StrToUTF8(OutEventInfo->EventNameDescription, Name, sizeof(OutEventInfo->EventNameDescription), 0);
+            StrToUTF8(pOutEventInfo->EventNameDescription, Name, sizeof(pOutEventInfo->EventNameDescription), 0);
             Name[NameLen] = tmp;
 
-            NameLen = (int)strlen(OutEventInfo->EventNameDescription);
-            OutEventInfo->EventNameLength = NameLen;
-printf("  TS: EventName = %s\n", OutEventInfo->EventNameDescription);
+            NameLen = (int)strlen(pOutEventInfo->EventNameDescription);
+            pOutEventInfo->EventNameLength = NameLen;
+printf("  TS: EventName = %s\n", pOutEventInfo->EventNameDescription);
 
             tmp = Text[TextLen];
             Text[TextLen] = '\0';
-            StrToUTF8(&OutEventInfo->EventNameDescription[NameLen], Text, sizeof(OutEventInfo->EventNameDescription) - NameLen, 0);
+            StrToUTF8(&pOutEventInfo->EventNameDescription[NameLen], Text, sizeof(pOutEventInfo->EventNameDescription) - NameLen, 0);
             Text[TextLen] = tmp;
-printf("  TS: EventDesc = %s\n", &OutEventInfo->EventNameDescription[NameLen]);
+printf("  TS: EventDesc = %s\n", &pOutEventInfo->EventNameDescription[NameLen]);
           }
 
           else if(Desc->DescrTag == DESC_EITExtEvent && OverwriteInf)
@@ -1037,7 +1040,7 @@ printf("  TS: EPGExtEvt = %s\n", ExtEPGText);
 //printf("CRC = %x\n", crc32m_tab(Buffer, SectionLength-4));
 
         TRACEEXIT;
-        return TRUE;
+        return pOutEventInfo->EndTime;
       }
       else
       {
@@ -1451,10 +1454,10 @@ bool GenerateInfFile(FILE *fIn, char *AbsRecFileName, TYPE_RecHeader_TMSS *RecIn
   word                  PMTPID = 0;
   tPVRTime              TtxTime = 0;
   byte                  TtxTimeSec = 0;
-  dword                 TtxPCR = 0, TtxPTS = 0, curPTS = 0;
+  dword                 TtxPCR = 0, TtxPTS = 0, curPTS = 0, EITOK = 0;
   int                   dPCR = 0, dPTS = 0;
   int                   Offset, ReadBytes, d, d_max=128, i;
-  bool                  PMTOK = FALSE, EITOK = FALSE, SDTOK = FALSE, TtxFound = FALSE, TtxOK = FALSE, VidOK = FALSE;
+  bool                  PMTOK = FALSE, /*EITOK = FALSE,*/ SDTOK = FALSE, TtxFound = FALSE, TtxOK = FALSE, VidOK = FALSE;
   bool                  FirstFilePTSOK = FALSE, LastFilePTSOK = FALSE, AllPidsScanned = FALSE;
   int                   AudOK = 0;
   byte                 *p;
@@ -1746,9 +1749,8 @@ bool GenerateInfFile(FILE *fIn, char *AbsRecFileName, TYPE_RecHeader_TMSS *RecIn
           {
             int EITLen = *(int*)(&p[4]);
             tTSEIT *EIT = (tTSEIT*)(&p[8]);
-            TYPE_Event_Info tmpEvent;
             RecInf->ServiceInfo.ServiceID = (EIT->ServiceID1 * 256 | EIT->ServiceID2);
-            if ((EITOK = AnalyseEIT(&p[8], ReadBytes - (int)(p-Buffer), RecInf->ServiceInfo.ServiceID, &TransportStreamID, (OverwriteEPG ? &RecInf->EventInfo : &tmpEvent), &RecInf->ExtEventInfo, OverwriteEPG)))
+            if ((EITOK = AnalyseEIT(&p[8], ReadBytes - (int)(p-Buffer), RecInf->ServiceInfo.ServiceID, &TransportStreamID, &RecInf->EventInfo, &RecInf->ExtEventInfo, OverwriteEPG)))
             {
               EPGLen = 0;
               if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
@@ -1760,7 +1762,7 @@ bool GenerateInfFile(FILE *fIn, char *AbsRecFileName, TYPE_RecHeader_TMSS *RecIn
                 EPGLen = EITLen + 1;
               }
 
-              if (!IsFirst && (IsLast || !TtxOK || (/*(RecInf->EventInfo.StartTime <= MidTimeUTC) &&*/ ((OverwriteEPG ? RecInf->EventInfo : tmpEvent).EndTime >= MidTimeUTC))))
+              if (!IsFirst && (IsLast || !TtxOK || (/*(RecInf->EventInfo.StartTime <= MidTimeUTC) &&*/ (EITOK >= MidTimeUTC))))
                 break;
             }
             p = p + 8 + EITLen + 53;
