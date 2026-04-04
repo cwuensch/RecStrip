@@ -607,7 +607,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
                 ModifyEIT((byte*)LineBuf, min(EITLen, ReadBytes), 0 /*ServiceID*/, Unix2TFTime(StartTime, NULL, FALSE), DurationH, DurationM);
               }
 
-              if (AnalyseEIT((byte*)LineBuf, min(EITLen, ReadBytes), ServiceID, OutTransportID, &RecInf->EventInfo, &RecInf->ExtEventInfo, !ret))
+              if (AnalyseEIT((byte*)LineBuf, min(EITLen, ReadBytes), ServiceID, OutTransportID, &RecInf->EventInfo, &RecInf->ExtEventInfo, (!ret || !RecInf->EventInfo.StartTime)))
               {
                 ret = 2;
                 EPGLen = 0;
@@ -697,7 +697,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
                 PSBuffer_ProcessTSPacket(&EITBuffer, (tTSPacket*) (&EPGPacks[k*192 + 4]));
               }
             }
-            if (AnalyseEIT(EITBuffer.Buffer1, EITBuffer.ValidBufLen, ServiceID, OutTransportID, &RecInf->EventInfo, &RecInf->ExtEventInfo, !ret))
+            if (AnalyseEIT(EITBuffer.Buffer1, EITBuffer.ValidBufLen, ServiceID, OutTransportID, &RecInf->EventInfo, &RecInf->ExtEventInfo, (!ret || !RecInf->EventInfo.StartTime)))
             {
 /*              tTSPacket *pack = (tTSPacket*) &EPGPacks[(NrEPGPacks-1)*192 + 4];
               tTSEIT *eit = (tTSEIT*) EITBuffer.Buffer1;
