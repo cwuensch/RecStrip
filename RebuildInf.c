@@ -940,8 +940,9 @@ printf("  TS: EvtDuratn = %02d:%02d\n", BCD2BIN(Event->DurationSec[0]), BCD2BIN(
             Name[NameLen] = '\0';
             if (OverwriteInf)
               StrToUTF8(OutEventInfo->EventNameDescription, Name, sizeof(OutEventInfo->EventNameDescription), 0);
-printf("  TS: EventName = %s\n", Name /*OutEventInfo->EventNameDescription*/);
+printf("  TS: EventName = %s\n", (OverwriteInf) ? OutEventInfo->EventNameDescription : Name);
             Name[NameLen] = tmp;
+
             if (OverwriteInf)
             {
               NameLen = (int)strlen(OutEventInfo->EventNameDescription);
@@ -952,7 +953,7 @@ printf("  TS: EventName = %s\n", Name /*OutEventInfo->EventNameDescription*/);
             Text[TextLen] = '\0';
             if (OverwriteInf)
               StrToUTF8(&OutEventInfo->EventNameDescription[NameLen], Text, sizeof(OutEventInfo->EventNameDescription) - NameLen, 0);
-printf("  TS: EventDesc = %s\n", Text /*&OutEventInfo->EventNameDescription[NameLen]*/);
+printf("  TS: EventDesc = %s\n", (OverwriteInf) ? &OutEventInfo->EventNameDescription[NameLen] : Text);
             Text[TextLen] = tmp;
           }
 

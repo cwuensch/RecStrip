@@ -319,10 +319,11 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *const InOutServi
   FindExePath(ExePath, LineBuf, sizeof(LineBuf));
   k = (int)strlen(LineBuf);
 
+  // Ausnahme für Humax 1-4 (ältere Sender_Formats)
   if (HumaxSource)
   {
     p = strstr(RecFileIn, "Humax-");
-    if (p && *p && (p[6] == '1' || p[6] == '2' || p[6] == '3' || (p[6] == '4' && ((strncmp(strchr(RecFileIn, '_'), "_070910", 7) < 0) || (strncmp(strchr(RecFileIn, '_'), "_070923", 7) > 0)))))
+    if (p && *p && (p[6] == '1' || p[6] == '2' || p[6] == '3' || p[6] == '4' || (p[6] == '5' && (strncmp(strchr(RecFileIn, '_'), "_080319", 7) <= 0))))  // ARD Qualitätsoffensive (EinsPlus, EinsFestival, arte, Phoenix) ab 19.03.2008
     {
       strncpy(&LineBuf[k], "SenderMap_Humax1-4.txt", (int)sizeof(LineBuf) - k - 1);
       LineBuf[sizeof(LineBuf) - 1] = '\0';
