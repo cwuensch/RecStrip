@@ -284,7 +284,7 @@ bool GetPidsFromMap(word *const InOutServiceID, word *const OutPMTPID, word *con
   else if ((p = strrchr(LineBuf, '\\'))) p[1] = '\0';
   else LineBuf[0] = 0;
 
-  strncat(LineBuf, "/SenderMap.txt", sizeof(LineBuf) - (p ? (p-LineBuf+1) : 0));
+  strncat(LineBuf, "SenderMap.txt", sizeof(LineBuf) - (p ? (p-LineBuf+1) : 0));
   
   if ((fMap = fopen(LineBuf, "r")))
   {
@@ -298,6 +298,7 @@ bool GetPidsFromMap(word *const InOutServiceID, word *const OutPMTPID, word *con
             strncpy(OutSvcName, &LineBuf[BytesRead], maxOutLen-1);
             OutSvcName[maxOutLen-1] = '\0';
           }
+          fclose(fMap);
           return TRUE;
         }
     }
@@ -397,7 +398,7 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *const InOutServi
           strncpy(LangFound, &LineBuf[ALangStr], sizeof(LangFound));
           if(CandidateFound) printf("\n");
           printf("  Found ServiceID in Map: SID=%hu (%s), PMTPid=%hu", Sid, SenderFound, PPid);
-          if(CandidateFound) { printf(" (ambiguous) -> skipping\n"); return 1; }
+          if(CandidateFound) { printf(" (ambiguous) -> skipping\n"); fclose(fMap); return 1; }
           SidFound = Sid;
           PMTFound = PPid;
           CandidateFound = TRUE;
@@ -433,6 +434,71 @@ word GetSidFromMap(word VidPID, word AudPID, word TtxPID, char *const InOutServi
     fclose(fMap);
   }
   return 1;
+}
+
+bool GetTpInfoFromMap(word ServiceID, TYPE_RecHeader_TMSS *RecInf)
+{
+  FILE *fMap;
+  char LineBuf[FBLIB_DIR_SIZE];
+  word Sid, TpIdx, Freq, SymRate, TSID;
+  char FEC[6], System[6], Modulation[6], SvcName[21], Polarization, Pilot;
+  int k;
+
+  FindExePath(ExePath, LineBuf, sizeof(LineBuf));
+  k = (int)strlen(LineBuf);
+  strncpy(&LineBuf[k], "TpMap.txt", (int)sizeof(LineBuf) - k - 1);
+  
+  if ((fMap = fopen(LineBuf, "r")))
+  {
+    printf("  Loading transponder info from Map (SID=%hu): ", ServiceID);
+    snprintf(SvcName, 21, "%hu;", ServiceID);
+    Sid = strlen(SvcName);
+    while (fgets(LineBuf, sizeof(LineBuf), fMap))
+    {
+      if (strncmp(LineBuf, SvcName, Sid) == 0)
+      {
+        // SvcID ; TpIndex ; Frequency ; Polarization ; Symbolrate ; FEC ; System ; Modulation ; Pilot ; TSID ; ServiceName
+        // 28106 ;    44   ;   11836   ;       H      ;    27500   ; 3/4 ;  DVBS  ;    QPSK    ;       ; 1101 ; Das Erste
+        if (sscanf(LineBuf, "%hu ; %hu ; %hu ; %c ; %hu ; %5[^;] ; %5[^;] ; %5[^;] ; %c ; %hu ; %20[^;\r\n]", &Sid, &TpIdx, &Freq, &Polarization, &SymRate, FEC, System, Modulation, &Pilot, &TSID, SvcName) == 11)
+        {
+          if (RecInf->ServiceInfo.SatIndex == 1);
+            RecInf->ServiceInfo.TPIndex = TpIdx;
+
+          RecInf->TransponderInfo.SatIndex = 1;
+          RecInf->TransponderInfo.Frequency = Freq;
+          RecInf->TransponderInfo.SymbolRate = SymRate;
+          RecInf->TransponderInfo.Polarization = (Polarization=='H');
+
+          if (strncmp(FEC, "1/2", 3) == 0) RecInf->TransponderInfo.FECMode = 0x1;
+          else if (strncmp(FEC, "2/3", 3) == 0) RecInf->TransponderInfo.FECMode = 0x2;
+          else if (strncmp(FEC, "3/4", 3) == 0) RecInf->TransponderInfo.FECMode = 0x3;
+          else if (strncmp(FEC, "5/6", 3) == 0) RecInf->TransponderInfo.FECMode = 0x4;
+          else if (strncmp(FEC, "7/8", 3) == 0) RecInf->TransponderInfo.FECMode = 0x5;
+          else if (strncmp(FEC, "8/9", 3) == 0) RecInf->TransponderInfo.FECMode = 0x6;
+          else if (strncmp(FEC, "3/5", 3) == 0) RecInf->TransponderInfo.FECMode = 0x7;
+          else if (strncmp(FEC, "4/5", 3) == 0) RecInf->TransponderInfo.FECMode = 0x8;
+          else if (strncmp(FEC, "9/10", 4) == 0) RecInf->TransponderInfo.FECMode = 0x9;
+
+          RecInf->TransponderInfo.ModulationSystem = (strncmp(System, "DVBS2", 5) == 0);
+
+          if (strncmp(Modulation, "QPSK", 4) == 0) RecInf->TransponderInfo.ModulationType = 1;
+          else if (strncmp(Modulation, "8PSK", 4) == 0) RecInf->TransponderInfo.ModulationType = 2;
+          else if (strncmp(Modulation, "16QAM", 5) == 0) RecInf->TransponderInfo.ModulationType = 3;
+
+          RecInf->TransponderInfo.Pilot = (Pilot=='y');
+          RecInf->TransponderInfo.TSID = TSID;
+          RecInf->TransponderInfo.OriginalNetworkID = 0x1;
+
+          printf("%hu %c %hu %s (%s)\n", Freq, Polarization, SymRate, FEC, SvcName);
+          fclose(fMap);
+          return TRUE;
+        }
+      }
+    }
+    printf("not found\n");
+    fclose(fMap);
+  }
+  return FALSE;
 }
 
 bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE_RecHeader_TMSS *RecInf)
@@ -561,6 +627,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
                 {
                   printf("  Could not allocate memory for ExtEPGText.\n");
                   free(LineBuf);
+                  fclose(fMap);
                   return FALSE;
                 }
                 strncpy(ExtEPGText, &LineBuf[len_name + n0 + (max(max(n1+2, n2+1), n3)) + 2], k);
@@ -648,8 +715,8 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
             RefPacketSize = 192;
           else
           {
-            fclose(fRefEPG);
             printf("    -> Loading reference EIT from file start failed.\n");
+            fclose(fRefEPG);
             return ret;
           }
         }

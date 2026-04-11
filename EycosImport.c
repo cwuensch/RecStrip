@@ -87,7 +87,36 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
       TeletextPID           = (word) -1;
       isHDVideo             = FALSE;
 
+      RecInf->TransponderInfo.SatIndex = 1;
       RecInf->TransponderInfo.Frequency = EycosHeader.Frequency;
+      RecInf->TransponderInfo.SymbolRate = EycosHeader.SymbolRate;
+      RecInf->TransponderInfo.Polarization = EycosHeader.Polarization;
+
+      if (EycosHeader.FEC == 0x0d)
+      {
+        RecInf->TransponderInfo.ModulationType = 1;  // QPSK
+        RecInf->TransponderInfo.FECMode = 0x4;      // 3/4
+      }
+      else if(EycosHeader.FEC == 0x31)
+      {
+        RecInf->TransponderInfo.ModulationType = 1;  // QPSK
+        RecInf->TransponderInfo.FECMode = 0x3;      // 5/6
+      }
+      else if(EycosHeader.FEC == 0x09)
+      {
+        RecInf->TransponderInfo.ModulationSystem = 1;  // DVBS2
+        RecInf->TransponderInfo.ModulationType = 2;   // 8PSK
+      }
+
+//      RecInf->TransponderInfo.ModulationSystem = (strncmp(System, "DVBS2", 5) == 0);
+//      if (strncmp(System, "QPSK", 4) == 0) RecInf->TransponderInfo.ModulationType = 1;
+//      else if (strncmp(System, "8PSK", 4) == 0) RecInf->TransponderInfo.ModulationType = 2;
+//      else if (strncmp(System, "16QAM", 5) == 0) RecInf->TransponderInfo.ModulationType = 3;
+
+//      RecInf->TransponderInfo.Pilot = (Pilot=='y');
+//      RecInf->TransponderInfo.TSID = EycosHeader.TSID;
+      RecInf->TransponderInfo.OriginalNetworkID = 0x1;
+
       RecInf->ServiceInfo.ServiceType     = 0;  // SVC_TYPE_Tv
       RecInf->ServiceInfo.ServiceID       = EycosHeader.ServiceID;
       RecInf->ServiceInfo.PMTPID          = EycosHeader.PMTPid;

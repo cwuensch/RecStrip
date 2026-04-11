@@ -2396,6 +2396,10 @@ bool GenerateInfFile(FILE *fIn, char *AbsRecFileName, TYPE_RecHeader_TMSS *RecIn
       fclose(fIn2);
   }
 
+  // Hier Transponder-Infos aus Map einlesen
+  if (HumaxSource || TechniSource || DVBViewerSrc || MedionMode)
+    GetTpInfoFromMap(RecInf->ServiceInfo.ServiceID, RecInf);
+
   // Hier EPG aus Map einlesen
   if (HumaxSource || EycosSource || TechniSource || DVBViewerSrc || MedionMode)
     GetEPGFromMap(AbsRecFileName, RecInf->ServiceInfo.ServiceID, &TransportStreamID, RecInf);
