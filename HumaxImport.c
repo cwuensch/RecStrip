@@ -452,7 +452,7 @@ bool GetTpInfoFromMap(word ServiceID, TYPE_RecHeader_TMSS *RecInf)
   {
     printf("  Loading transponder info from Map (SID=%hu): ", ServiceID);
     snprintf(SvcName, 21, "%hu;", ServiceID);
-    Sid = strlen(SvcName);
+    Sid = (word) strlen(SvcName);
     while (fgets(LineBuf, sizeof(LineBuf), fMap))
     {
       if (strncmp(LineBuf, SvcName, Sid) == 0)

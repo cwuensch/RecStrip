@@ -1763,7 +1763,7 @@ bool GenerateInfFile(FILE *fIn, char *AbsRecFileName, TYPE_RecHeader_TMSS *RecIn
             if ((EITOK = AnalyseEIT(&p[8], ReadBytes - (int)(p-Buffer), RecInf->ServiceInfo.ServiceID, &TransportStreamID, &RecInf->EventInfo, &RecInf->ExtEventInfo, OverwriteEPG)))
             {
               EPGLen = 0;
-              if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
+              if(EPGBuffer) { free(EPGBuffer); pEPGBuffer = EPGBuffer = NULL; }
               if (EITLen && ((EPGBuffer = (byte*)malloc(EITLen + 1))))
               {
                 EPGBuffer[0] = 0;  // Pointer field (=0) vor der TableID (nur im ersten TS-Paket der Tabelle, gibt den Offset an, an der die Tabelle startet, z.B. wenn noch Reste der vorherigen am Paketanfang stehen)
@@ -2402,7 +2402,10 @@ bool GenerateInfFile(FILE *fIn, char *AbsRecFileName, TYPE_RecHeader_TMSS *RecIn
 
   // Hier EPG aus Map einlesen
   if (HumaxSource || EycosSource || TechniSource || DVBViewerSrc || MedionMode)
+  {
     GetEPGFromMap(AbsRecFileName, RecInf->ServiceInfo.ServiceID, &TransportStreamID, RecInf);
+    pEPGBuffer = EPGBuffer;
+  }
 
   // hier EPGPacks füllen (außer bei SimpleMuxer/Medion)
   if (DoGenerateEIT && !pEPGBuffer && RecInf->EventInfo.StartTime)
