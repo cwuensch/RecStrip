@@ -461,7 +461,8 @@ bool GetTpInfoFromMap(word ServiceID, TYPE_RecHeader_TMSS *RecInf)
         // 28106 ;    44   ;   11836   ;       H      ;    27500   ; 3/4 ;  DVBS  ;    QPSK    ;       ; 1101 ; Das Erste
         if (sscanf(LineBuf, "%hu ; %hu ; %hu ; %c ; %hu ; %5[^;] ; %5[^;] ; %5[^;] ; %c ; %hu ; %20[^;\r\n]", &Sid, &TpIdx, &Freq, &Polarization, &SymRate, FEC, System, Modulation, &Pilot, &TSID, SvcName) == 11)
         {
-          if (RecInf->ServiceInfo.SatIndex == 1);
+          TransportStreamID = TSID;
+          if (RecInf->ServiceInfo.SatIndex == 1)
             RecInf->ServiceInfo.TPIndex = TpIdx;
 
           RecInf->TransponderInfo.SatIndex = 1;

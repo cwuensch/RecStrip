@@ -885,9 +885,8 @@ tPVRTime AnalyseEIT(byte *Buffer, int BufSize, word ServiceID, word *OutTranspor
 //      memset(ExtEPGText, 0, EPGBUFFERSIZE);
       OutExtEventInfo->TextLength = 0;
       ExtEPGText[0] = '\0';
-
-      if(OutTransportID) *OutTransportID = (EIT->TS_ID1 * 256 | EIT->TS_ID2);
     }
+    if(OutTransportID) *OutTransportID = (EIT->TS_ID1 * 256 | EIT->TS_ID2);
 
     SectionLength = EIT->SectionLen1 * 256 | EIT->SectionLen2;
     SectionLength = min(SectionLength + 3, BufSize);    // SectionLength zählt erst ab Byte 3
@@ -2404,6 +2403,7 @@ bool GenerateInfFile(FILE *fIn, char *AbsRecFileName, TYPE_RecHeader_TMSS *RecIn
   if (HumaxSource || EycosSource || TechniSource || DVBViewerSrc || MedionMode)
   {
     GetEPGFromMap(AbsRecFileName, RecInf->ServiceInfo.ServiceID, &TransportStreamID, RecInf);
+    RecInf->TransponderInfo.TSID = TransportStreamID;
     pEPGBuffer = EPGBuffer;
   }
 
@@ -2618,7 +2618,7 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word TransportID, wor
 
   TRACEENTER;
   memset(PATPMTBuf, 0, 192 * (PATonly ? 1 : 4));
-  printf("  SID=%hu, PMTPid=%hd, PCRPID=%hd\n", ServiceID, PMTPid, PCRPID);
+  printf("  SID=%hu, TSID=%hu, PMTPid=%hd, PCRPID=%hd\n", ServiceID, TransportID, PMTPid, PCRPID);
   
   // PAT/PMT initialisieren
   Packet = (tTSPacket*) &PATPMTBuf[4];
