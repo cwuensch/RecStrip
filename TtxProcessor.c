@@ -976,7 +976,7 @@ for(i = 0; i < 40; i++) {
 
     if ( (p != PAGE(page_number)) || (transmission_mode == TRANSMISSION_MODE_SERIAL && m != MAGAZINE(page_number)) || (transmission_mode == TRANSMISSION_MODE_PARALLEL && m == MAGAZINE(page_number)) )
     {
-/*if ((m << 8 | p) == 0x196)
+/*if ((m << 8 | p) == 0x100)
   printf("!!");
 printf("ZEILE 0: m=%hx, p=%02hx\n", m, p); */
 
@@ -1113,7 +1113,7 @@ for(i = 0; i < 40; i++) {
 }
 //graphic_mode = NO;
 //hidden_mode = NO;
-//if(page_number == 0x196)
+if(page_number == 0x100)
   printf("[%1hx%02hx] %03hhu: %s\n", m, PAGE(page_number), y, test); */
 
         for (i = 0; i < 40; i++)
@@ -1179,10 +1179,12 @@ for(i = 0; i < 40; i++) {
           // ETS 300 706, chapter 12.3.1, table 27: G0 character with/without diacritical mark
           if ((mode >= 0x10) && (mode <= 0x1f) && (row_address_group == NO)) {
             x26_col = address;
-//printf("[Z26]: WRITE CHARACTER = (row=%hhu, col=%hhu, data=%hu, chr=%c", x26_row, x26_col, data, data);
+//printf("[Z26]: WRITE CHARACTER = (row=%hhu, col=%hhu, mode=%hhu, addr=%hhu, data=%hu, chr=%c", x26_row, x26_col, mode, row_address_group, data, data);
+
+            if (mode == 0x10) cur_page_buffer->text[x26_row][x26_col] = data;
 
             // A - Z
-            if ((data >= 65) && (data <= 90)) cur_page_buffer->text[x26_row][x26_col] = G2_ACCENTS[mode - 0x11][data - 65];
+            else if ((data >= 65) && (data <= 90)) cur_page_buffer->text[x26_row][x26_col] = G2_ACCENTS[mode - 0x11][data - 65];
             // a - z
             else if ((data >= 97) && (data <= 122)) cur_page_buffer->text[x26_row][x26_col] = G2_ACCENTS[mode - 0x11][data - 71];
             // other
