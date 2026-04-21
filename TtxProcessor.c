@@ -1168,7 +1168,7 @@ if(page_number == 0x100)
           }
 
           // ETS 300 706, chapter 12.3.1, table 27: termination marker
-          if ((mode >= 0x11) && (mode <= 0x1f) && (row_address_group == YES)) break;
+          if (/*(mode >= 0x11) &&*/ (mode == 0x1f) && (row_address_group == YES)) break;
 
           // ETS 300 706, chapter 12.3.1, table 27: character from G2 set
           if ((mode == 0x0f) && (row_address_group == NO)) {

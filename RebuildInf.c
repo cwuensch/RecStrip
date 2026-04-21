@@ -35,6 +35,8 @@
 #include "CutProcessor.h"
 #include "H264.h"
 
+#define XOR(a, b) (!!(a) != !!(b))
+
 /*#ifdef _WIN32
   #define timezone _timezone
 #else
@@ -2613,7 +2615,7 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word TransportID, wor
   dword                *CRC = NULL;
   const char*           LangArr[] = {"deu", "mis", "mul"};
   int                   Offset = 0;
-  int                   StreamTag = 1, k;
+  int                   StreamTag = 1, k, d;
   bool                  TeletextDone = FALSE, SubtitlesDone = FALSE;
 
   TRACEENTER;
@@ -2716,171 +2718,174 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word TransportID, wor
 //  SortAudioPIDs(AudioPIDs);
 
   // Audio-PIDs
-  for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0); k++)
+  for (d = 0; d <= 1; d++)  // 0. Durchlauf: erstes Audio, erster Teletext, 1. Durchlauf: alle anderen (sonst erkennt VLC den Teletext nicht)
   {
-    if (AudioPIDs[k].scanned && AudioPIDs[k].streamType == STREAMTYPE_AUDIO)
+    for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0); k++)
     {
-      tTSAudioDesc *Desc    = NULL;
-
-      Elem = (tElemStream*) &Packet->Data[Offset];
-      Elem->ESPID1          = AudioPIDs[k].pid / 256;
-      Elem->ESPID2          = (AudioPIDs[k].pid & 0xff);
-      Elem->Reserved1       = 7;
-      Elem->Reserved2       = 0xf;
-      Elem->ESInfoLen1      = 0;
-      Elem->ESInfoLen2      = sizeof(tTSStreamDesc);
-      Offset               += sizeof(tElemStream);
-
-      Desc0 = (tTSStreamDesc*) &Packet->Data[Offset];
-
-      if ((AudioPIDs[k].type == STREAM_AUDIO_MPEG4_AC3_PLUS) || (AudioPIDs[k].type == STREAM_AUDIO_MPEG4_AC3) || (strncmp(AudioPIDs[k].desc, "AC", 2) == 0) || (strncmp(AudioPIDs[k].desc, "ac", 2) == 0))
+      if (AudioPIDs[k].scanned && AudioPIDs[k].streamType == STREAMTYPE_AUDIO && (XOR(d==0, k > 0)))  // ((d==0 && k==0) || (k >= d))
       {
-        tTSAC3Desc *Desc1   = (tTSAC3Desc*) &Packet->Data[Offset + sizeof(tTSStreamDesc)];
-//        Desc0               = (tTSStreamDesc*) &Packet->Data[Offset];
-        Desc                = (tTSAudioDesc*) &Packet->Data[Offset + sizeof(tTSStreamDesc) + sizeof(tTSAC3Desc)];
+        tTSAudioDesc *Desc    = NULL;
 
-        Elem->stream_type   = AudioPIDs[k].type;  // STREAM_AUDIO_MPEG4_AC3_PLUS;
-        Elem->ESInfoLen2   += (sizeof(tTSAC3Desc) + sizeof(tTSAudioDesc));
-        Desc1->DescrTag     = DESC_AC3;
-        Desc1->DescrLength  = 1;
-        printf("  Audio Track %d:  PID=%d, AC3, Type=0x%x", (k + 1), AudioPIDs[k].pid, Elem->stream_type);
-      }
-      else if (AudioPIDs[k].type <= 4)
-      {
-        Desc = (tTSAudioDesc*) &Packet->Data[Offset + sizeof(tTSStreamDesc)];
-        Elem->stream_type   = AudioPIDs[k].type;  // (AudioPIDs[k].type <= 1) ? ((AudioPIDs[k].type == 1) ? STREAM_AUDIO_MPEG1 : STREAM_AUDIO_MPEG2) : AudioPIDs[k].type;
-        Elem->ESInfoLen2   += sizeof(tTSAudioDesc);
-        printf("  Audio Track %d:  PID=%d, MPEG-%s, Type=0x%x", (k + 1), AudioPIDs[k].pid, (Elem->stream_type==STREAM_AUDIO_MPEG1 ? "1" : (Elem->stream_type==STREAM_AUDIO_MPEG2 ? "2" : "?")), Elem->stream_type);
-      }
-      else
-      {
-        Desc = (tTSAudioDesc*) &Packet->Data[Offset + sizeof(tTSStreamDesc)];
-        Elem->stream_type   = AudioPIDs[k].type;
-        Elem->ESInfoLen2   += sizeof(tTSAudioDesc);
-        printf("  Audio Track %d:  PID=%d, Unknown Type: 0x%x", (k + 1), AudioPIDs[k].pid, Elem->stream_type);
-      }
-      if (Desc)
-      {
-        tTSSupplAudioDesc *Desc2 = (tTSSupplAudioDesc*) &Packet->Data[Offset + Elem->ESInfoLen2];
-        Desc0->DescrTag       = DESC_StreamIdentifier;
-        Desc0->DescrLength    = 1;
-        Desc0->ComponentTag   = StreamTag++;
+        Elem = (tElemStream*) &Packet->Data[Offset];
+        Elem->ESPID1          = AudioPIDs[k].pid / 256;
+        Elem->ESPID2          = (AudioPIDs[k].pid & 0xff);
+        Elem->Reserved1       = 7;
+        Elem->Reserved2       = 0xf;
+        Elem->ESInfoLen1      = 0;
+        Elem->ESInfoLen2      = sizeof(tTSStreamDesc);
+        Offset               += sizeof(tElemStream);
 
-        Desc->DescrTag      = DESC_AudioLang;
-        Desc->DescrLength   = 4;
-        if (*AudioPIDs[k].desc)
-          strncpy(Desc->LanguageCode, AudioPIDs[k].desc, sizeof(Desc->LanguageCode));
-        else
-          strncpy(Desc->LanguageCode, ((AudioPIDs[k].pid==5113 || AudioPIDs[k].pid==6222) ? "fra" : LangArr[(k<3) ? k : 0]), sizeof(Desc->LanguageCode));
-        Desc->AudioFlag     = (AudioPIDs[k].desc_flag) ? AudioPIDs[k].desc_flag - 1 : (((strncmp(Desc->LanguageCode, "mul", 3) == 0) || (strncmp(Desc->LanguageCode, "qks", 3) == 0)) ? 2 : 0);
-        printf(" [%.3s]", Desc->LanguageCode);
+        Desc0 = (tTSStreamDesc*) &Packet->Data[Offset];
 
-        if ((Desc->AudioFlag > 0) || (strncmp(Desc->LanguageCode, "mis", 3) == 0) || (strncmp(Desc->LanguageCode, "mul", 3) == 0) || (strncmp(Desc->LanguageCode, "qks", 3) == 0))
+        if ((AudioPIDs[k].type == STREAM_AUDIO_MPEG4_AC3_PLUS) || (AudioPIDs[k].type == STREAM_AUDIO_MPEG4_AC3) || (strncmp(AudioPIDs[k].desc, "AC", 2) == 0) || (strncmp(AudioPIDs[k].desc, "ac", 2) == 0))
         {
-          Elem->ESInfoLen2   += sizeof(tTSSupplAudioDesc);
-          Desc2->DescrTag     = DESC_Extension;
-          Desc2->DescrTagExt  = 0x06;
-          Desc2->DescrLength  = 4;
-          Desc2->mix_type     = 1;
-          Desc2->reserved     = 1;
-          Desc2->editorial_classification = (Desc->AudioFlag > 1) ? Desc->AudioFlag - 1 : ((strncmp(Desc->LanguageCode, "mis", 3) == 0) ? 1 : 2);   // 0=main audio, 1=audio description for vis. imp., 2=clean audio for hear. imp., 3=spoken subtitles
-          Desc2->language_code_present = 1;
-          strcpy(Desc->LanguageCode, ((strncmp(Desc->LanguageCode, "mul", 3) == 0) ? "mul" : "deu"));
-          printf(" -> editorial class: 0x%hhx", Desc2->editorial_classification);
+          tTSAC3Desc *Desc1   = (tTSAC3Desc*) &Packet->Data[Offset + sizeof(tTSStreamDesc)];
+//          Desc0               = (tTSStreamDesc*) &Packet->Data[Offset];
+          Desc                = (tTSAudioDesc*) &Packet->Data[Offset + sizeof(tTSStreamDesc) + sizeof(tTSAC3Desc)];
+
+          Elem->stream_type   = AudioPIDs[k].type;  // STREAM_AUDIO_MPEG4_AC3_PLUS;
+          Elem->ESInfoLen2   += (sizeof(tTSAC3Desc) + sizeof(tTSAudioDesc));
+          Desc1->DescrTag     = DESC_AC3;
+          Desc1->DescrLength  = 1;
+          printf("  Audio Track %d:  PID=%d, AC3, Type=0x%x", (k + 1), AudioPIDs[k].pid, Elem->stream_type);
         }
+        else if (AudioPIDs[k].type <= 4)
+        {
+          Desc = (tTSAudioDesc*) &Packet->Data[Offset + sizeof(tTSStreamDesc)];
+          Elem->stream_type   = AudioPIDs[k].type;  // (AudioPIDs[k].type <= 1) ? ((AudioPIDs[k].type == 1) ? STREAM_AUDIO_MPEG1 : STREAM_AUDIO_MPEG2) : AudioPIDs[k].type;
+          Elem->ESInfoLen2   += sizeof(tTSAudioDesc);
+          printf("  Audio Track %d:  PID=%d, MPEG-%s, Type=0x%x", (k + 1), AudioPIDs[k].pid, (Elem->stream_type==STREAM_AUDIO_MPEG1 ? "1" : (Elem->stream_type==STREAM_AUDIO_MPEG2 ? "2" : "?")), Elem->stream_type);
+        }
+        else
+        {
+          Desc = (tTSAudioDesc*) &Packet->Data[Offset + sizeof(tTSStreamDesc)];
+          Elem->stream_type   = AudioPIDs[k].type;
+          Elem->ESInfoLen2   += sizeof(tTSAudioDesc);
+          printf("  Audio Track %d:  PID=%d, Unknown Type: 0x%x", (k + 1), AudioPIDs[k].pid, Elem->stream_type);
+        }
+        if (Desc)
+        {
+          tTSSupplAudioDesc *Desc2 = (tTSSupplAudioDesc*) &Packet->Data[Offset + Elem->ESInfoLen2];
+          Desc0->DescrTag       = DESC_StreamIdentifier;
+          Desc0->DescrLength    = 1;
+          Desc0->ComponentTag   = StreamTag++;
+
+          Desc->DescrTag      = DESC_AudioLang;
+          Desc->DescrLength   = 4;
+          if (*AudioPIDs[k].desc)
+            strncpy(Desc->LanguageCode, AudioPIDs[k].desc, sizeof(Desc->LanguageCode));
+          else
+            strncpy(Desc->LanguageCode, ((AudioPIDs[k].pid==5113 || AudioPIDs[k].pid==6222) ? "fra" : LangArr[(k<3) ? k : 0]), sizeof(Desc->LanguageCode));
+          Desc->AudioFlag     = (AudioPIDs[k].desc_flag) ? AudioPIDs[k].desc_flag - 1 : (((strncmp(Desc->LanguageCode, "mul", 3) == 0) || (strncmp(Desc->LanguageCode, "qks", 3) == 0)) ? 2 : 0);
+          printf(" [%.3s]", Desc->LanguageCode);
+
+          if ((Desc->AudioFlag > 0) || (strncmp(Desc->LanguageCode, "mis", 3) == 0) || (strncmp(Desc->LanguageCode, "mul", 3) == 0) || (strncmp(Desc->LanguageCode, "qks", 3) == 0))
+          {
+            Elem->ESInfoLen2   += sizeof(tTSSupplAudioDesc);
+            Desc2->DescrTag     = DESC_Extension;
+            Desc2->DescrTagExt  = 0x06;
+            Desc2->DescrLength  = 4;
+            Desc2->mix_type     = 1;
+            Desc2->reserved     = 1;
+            Desc2->editorial_classification = (Desc->AudioFlag > 1) ? Desc->AudioFlag - 1 : ((strncmp(Desc->LanguageCode, "mis", 3) == 0) ? 1 : 2);   // 0=main audio, 1=audio description for vis. imp., 2=clean audio for hear. imp., 3=spoken subtitles
+            Desc2->language_code_present = 1;
+            strcpy(Desc->LanguageCode, ((strncmp(Desc->LanguageCode, "mul", 3) == 0) ? "mul" : "deu"));
+            printf(" -> editorial class: 0x%hhx", Desc2->editorial_classification);
+          }
+        }
+
+        printf("\n");
+        Offset               += Elem->ESInfoLen2;
+        PMT->SectionLen2     += sizeof(tElemStream) + Elem->ESInfoLen2;
       }
 
-      printf("\n");
-      Offset               += Elem->ESInfoLen2;
-      PMT->SectionLen2     += sizeof(tElemStream) + Elem->ESInfoLen2;
-    }
-
-    else if ((AudioPIDs[k].streamType == STREAMTYPE_TELETEXT) /* && !RemoveTeletext */)
-    {
-      // Teletext-PID
-      tTSTtxDesc *ttxDesc;
-
-      Elem = (tElemStream*) &Packet->Data[Offset];
-      Elem->Reserved1         = 7;
-      Elem->Reserved2         = 0xf;
-      Elem->stream_type       = 6;
-      Elem->ESPID1            = AudioPIDs[k].pid / 256;
-      Elem->ESPID2            = (AudioPIDs[k].pid & 0xff);
-      Elem->ESInfoLen1        = 0;
-      Elem->ESInfoLen2        = sizeof(tTSTtxDesc);
-      Offset                 += sizeof(tElemStream);
-
-      Desc0 = (tTSStreamDesc*) &Packet->Data[Offset];
-      Desc0->DescrTag         = DESC_StreamIdentifier;
-      Desc0->DescrLength      = 1;
-      Desc0->ComponentTag     = StreamTag++;
-      Elem->ESInfoLen2       += sizeof(tTSStreamDesc);
-
-      ttxDesc = (tTSTtxDesc*) &Packet->Data[Offset + sizeof(tTSStreamDesc)];
-      ttxDesc->DescrTag       = DESC_Teletext;
-
-      ttxDesc->DescrLength    = 5;
-      ttxDesc->ttx[0].teletext_type = 1;
-      ttxDesc->ttx[0].magazine_nr = 1;
-      ttxDesc->ttx[0].page_nr = 0;
-      if (*AudioPIDs[k].desc)
-        strcpy(ttxDesc->ttx[0].LanguageCode, AudioPIDs[k].desc);
-      else
-        strcpy(ttxDesc->ttx[0].LanguageCode, "deu");
-
-      if (AudioPIDs[k].desc_flag)
+      else if ((AudioPIDs[k].streamType == STREAMTYPE_TELETEXT) /* && !RemoveTeletext */ && (XOR(d > 0, AudioPIDs[k].pid == TeletextPID)))
       {
-        Elem->ESInfoLen2     += 5;
-        ttxDesc->DescrLength += 5;
-        ttxDesc->ttx[1].teletext_type = 1;
-        ttxDesc->ttx[1].magazine_nr = 1;
-        ttxDesc->ttx[1].page_nr = AudioPIDs[k].desc_flag - 1;
-        strcpy(ttxDesc->ttx[1].LanguageCode, ttxDesc->ttx[0].LanguageCode);
+        // Teletext-PID
+        tTSTtxDesc *ttxDesc;
+
+        Elem = (tElemStream*) &Packet->Data[Offset];
+        Elem->Reserved1         = 7;
+        Elem->Reserved2         = 0xf;
+        Elem->stream_type       = 6;
+        Elem->ESPID1            = AudioPIDs[k].pid / 256;
+        Elem->ESPID2            = (AudioPIDs[k].pid & 0xff);
+        Elem->ESInfoLen1        = 0;
+        Elem->ESInfoLen2        = sizeof(tTSTtxDesc);
+        Offset                 += sizeof(tElemStream);
+
+        Desc0 = (tTSStreamDesc*) &Packet->Data[Offset];
+        Desc0->DescrTag         = DESC_StreamIdentifier;
+        Desc0->DescrLength      = 1;
+        Desc0->ComponentTag     = StreamTag++;
+        Elem->ESInfoLen2       += sizeof(tTSStreamDesc);
+
+        ttxDesc = (tTSTtxDesc*) &Packet->Data[Offset + sizeof(tTSStreamDesc)];
+        ttxDesc->DescrTag       = DESC_Teletext;
+
+        ttxDesc->DescrLength    = 5;
+        ttxDesc->ttx[0].teletext_type = 1;
+        ttxDesc->ttx[0].magazine_nr = 1;
+        ttxDesc->ttx[0].page_nr = 0;
+        if (*AudioPIDs[k].desc)
+          strcpy(ttxDesc->ttx[0].LanguageCode, AudioPIDs[k].desc);
+        else
+          strcpy(ttxDesc->ttx[0].LanguageCode, "deu");
+
+        if (AudioPIDs[k].desc_flag)
+        {
+          Elem->ESInfoLen2     += 5;
+          ttxDesc->DescrLength += 5;
+          ttxDesc->ttx[1].teletext_type = 1;
+          ttxDesc->ttx[1].magazine_nr = 1;
+          ttxDesc->ttx[1].page_nr = AudioPIDs[k].desc_flag - 1;
+          strcpy(ttxDesc->ttx[1].LanguageCode, ttxDesc->ttx[0].LanguageCode);
+        }
+
+        Offset                 += Elem->ESInfoLen2;
+        PMT->SectionLen2       += sizeof(tElemStream) + Elem->ESInfoLen2;
+        if(AudioPIDs[k].pid == TeletextPID) TeletextDone = TRUE;
+        printf("  Teletext Track: PID=%d [%.3s]\n", AudioPIDs[k].pid, ttxDesc->ttx[0].LanguageCode);
       }
-
-      Offset                 += Elem->ESInfoLen2;
-      PMT->SectionLen2       += sizeof(tElemStream) + Elem->ESInfoLen2;
-      if(AudioPIDs[k].pid == TeletextPID) TeletextDone = TRUE;
-      printf("  Teletext Track: PID=%d [%.3s]\n", AudioPIDs[k].pid, ttxDesc->ttx[0].LanguageCode);
-    }
   
-    else if (AudioPIDs[k].streamType == STREAMTYPE_SUBTITLE)
-    {
-      // Subtitles-PID
-      tTSSubtDesc *subtDesc;
+      else if ((AudioPIDs[k].streamType == STREAMTYPE_SUBTITLE) && (d > 0))
+      {
+        // Subtitles-PID
+        tTSSubtDesc *subtDesc;
 
-      Elem = (tElemStream*) &Packet->Data[Offset];
-      Elem->Reserved1         = 7;
-      Elem->Reserved2         = 0xf;
-      Elem->stream_type       = 6;
-      Elem->ESPID1            = AudioPIDs[k].pid / 256;
-      Elem->ESPID2            = (AudioPIDs[k].pid & 0xff);
-      Elem->ESInfoLen1        = 0;
-      Elem->ESInfoLen2        = sizeof(tTSSubtDesc);
-      Offset                 += sizeof(tElemStream);
+        Elem = (tElemStream*) &Packet->Data[Offset];
+        Elem->Reserved1         = 7;
+        Elem->Reserved2         = 0xf;
+        Elem->stream_type       = 6;
+        Elem->ESPID1            = AudioPIDs[k].pid / 256;
+        Elem->ESPID2            = (AudioPIDs[k].pid & 0xff);
+        Elem->ESInfoLen1        = 0;
+        Elem->ESInfoLen2        = sizeof(tTSSubtDesc);
+        Offset                 += sizeof(tElemStream);
 
-      Desc0 = (tTSStreamDesc*) &Packet->Data[Offset];
-      Desc0->DescrTag         = DESC_StreamIdentifier;
-      Desc0->DescrLength      = 1;
-      Desc0->ComponentTag     = StreamTag++;
-      Elem->ESInfoLen2       += sizeof(tTSStreamDesc);
+        Desc0 = (tTSStreamDesc*) &Packet->Data[Offset];
+        Desc0->DescrTag         = DESC_StreamIdentifier;
+        Desc0->DescrLength      = 1;
+        Desc0->ComponentTag     = StreamTag++;
+        Elem->ESInfoLen2       += sizeof(tTSStreamDesc);
 
-      subtDesc = (tTSSubtDesc*) &Packet->Data[Offset + sizeof(tTSStreamDesc)];
-      subtDesc->DescrTag      = DESC_Subtitle;
-      subtDesc->DescrLength   = 8;
-      subtDesc->subtitling_type = (AudioPIDs[k].desc_flag) ? AudioPIDs[k].desc_flag - 1 : 36;
-      subtDesc->composition_page_id2 = 1;
-      subtDesc->ancillary_page_id2 = 1;
+        subtDesc = (tTSSubtDesc*) &Packet->Data[Offset + sizeof(tTSStreamDesc)];
+        subtDesc->DescrTag      = DESC_Subtitle;
+        subtDesc->DescrLength   = 8;
+        subtDesc->subtitling_type = (AudioPIDs[k].desc_flag) ? AudioPIDs[k].desc_flag - 1 : 36;
+        subtDesc->composition_page_id2 = 1;
+        subtDesc->ancillary_page_id2 = 1;
 
-      if (*AudioPIDs[k].desc)
-        strcpy(subtDesc->LanguageCode, AudioPIDs[k].desc);
-      else
-        strcpy(subtDesc->LanguageCode, "deu");
+        if (*AudioPIDs[k].desc)
+          strcpy(subtDesc->LanguageCode, AudioPIDs[k].desc);
+        else
+          strcpy(subtDesc->LanguageCode, "deu");
 
-      Offset                 += Elem->ESInfoLen2;
-      PMT->SectionLen2       += sizeof(tElemStream) + Elem->ESInfoLen2;
-      if(AudioPIDs[k].pid == SubtitlesPID) SubtitlesDone = TRUE;
-      printf("  Subtitle Track: PID=%d [%.3s]\n", AudioPIDs[k].pid, subtDesc->LanguageCode);
+        Offset                 += Elem->ESInfoLen2;
+        PMT->SectionLen2       += sizeof(tElemStream) + Elem->ESInfoLen2;
+        if(AudioPIDs[k].pid == SubtitlesPID) SubtitlesDone = TRUE;
+        printf("  Subtitle Track: PID=%d [%.3s]\n", AudioPIDs[k].pid, subtDesc->LanguageCode);
+      }
     }
   }
 
