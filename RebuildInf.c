@@ -2799,7 +2799,7 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word TransportID, wor
         PMT->SectionLen2     += sizeof(tElemStream) + Elem->ESInfoLen2;
       }
 
-      else if ((AudioPIDs[k].streamType == STREAMTYPE_TELETEXT) /* && !RemoveTeletext */ && (XOR(d > 0, AudioPIDs[k].pid == TeletextPID)))
+      else if ((AudioPIDs[k].streamType == STREAMTYPE_TELETEXT) /* && !RemoveTeletext */ && (XOR(d==1, AudioPIDs[k].pid == TeletextPID)))
       {
         // Teletext-PID
         tTSTtxDesc *ttxDesc;
@@ -2848,7 +2848,7 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word TransportID, wor
         printf("  Teletext Track: PID=%d [%.3s]\n", AudioPIDs[k].pid, ttxDesc->ttx[0].LanguageCode);
       }
   
-      else if ((AudioPIDs[k].streamType == STREAMTYPE_SUBTITLE) && (d > 0))
+      else if ((AudioPIDs[k].streamType == STREAMTYPE_SUBTITLE) && (d==1))
       {
         // Subtitles-PID
         tTSSubtDesc *subtDesc;
