@@ -444,7 +444,7 @@ tPVRTime AddTimeSec(tPVRTime pvrTime, byte pvrTimeSec, byte *const outSec, int a
 word GetMinimalAudioPID(tAudioTrack AudioPIDs[]);
 bool LoadTechnisat(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf);
 bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf);
-dword AnalyseEIT(byte *Buffer, int BufSize, word ServiceID, word *OutTransportID, TYPE_Event_Info *OutEventInfo, TYPE_ExtEvent_Info *OutExtEventInfo, bool OverwriteInf);
+dword AnalyseEIT(byte *Buffer, int BufSize, word ServiceID, word *OutTransportID, TYPE_Event_Info *OutEventInfo, TYPE_ExtEvent_Info *OutExtEventInfo, TYPE_ExtExtEvent_Info *OutExtExtEventInfo, bool OverwriteInf);
 
 void InitInfStruct(TYPE_RecHeader_TMSS *RecInf);
 bool GenerateInfFile(FILE *fIn, char *AbsRecFileName, TYPE_RecHeader_TMSS *RecInf);

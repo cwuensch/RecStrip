@@ -1573,7 +1573,7 @@ bool WriteAllTeletext(char *AbsOutFile)
   int p, s, i, j, col_stop;
   uint16_t *c, *last_coltag;
   color_t foreground_color, background_color;
-  bool hold_mosaic, out_of_box, ret = TRUE;
+  bool hold_mosaic, out_of_box, empty_file = TRUE, ret = TRUE;
   FILE *f = fopen(AbsOutFile, "wb");
   if(!f) return FALSE;
 
@@ -1607,6 +1607,7 @@ bool WriteAllTeletext(char *AbsOutFile)
             if((page->text[i][j] > 0x20) && (page->text[i][j] != 0x2370))  { empty_page = FALSE; break; }
       if(empty_page) continue;
 
+      if(empty_file) empty_file = FALSE;
       fprintf(f, "----------------------------------------\r\n");
       fprintf(f, ((nr_subpages <= 1) ? "[%03hu]\r\n" : "[%03hu] (%d/%d)\r\n"), p+100, s, nr_subpages);
 
@@ -1789,6 +1790,7 @@ bool WriteAllTeletext(char *AbsOutFile)
     }
   }
   fclose(f);
+//  if(empty_file) remove(AbsOutFile);
   return ret;
 }
 

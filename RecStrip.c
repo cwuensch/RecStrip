@@ -1853,7 +1853,7 @@ int main(int argc, const char* argv[])
     { printf("\nFix PAT/PMT (-p) disables any other option!\n"); }
   if (MedionMode==1 && DoStrip)
     { MedionStrip = TRUE; DoStrip = FALSE; }
-  if (MedionMode)
+  if (MedionMode && DemuxAudio)
     { printf("\nMedion Mode (-M) disables DemuxAudio (-d)!\n"); DemuxAudio = FALSE; }
 //  if (ExtractTeletext && DoStrip)
 //    { RemoveTeletext = TRUE; }
@@ -2574,7 +2574,7 @@ int main(int argc, const char* argv[])
   // Hier beenden, wenn View Info Only
   if (DoInfoOnly || DoFixPMT || (ExtractAllTeletext >= 2) || (DoInfFix && !DoStrip && OutPacketSize==PACKETSIZE && !DoCut && !DoMerge && !RemoveEPGStream && !RemoveTeletext && !ExtractTeletext && !DemuxAudio))
   {
-    if (ExtractAllTeletext)
+    if (ExtractAllTeletext && (TeletextPID != (word)-1))
     {
       char AbsOutFile[FBLIB_DIR_SIZE], *p;
       int len;
@@ -3570,7 +3570,7 @@ int main(int argc, const char* argv[])
     exit(10);
   }
 
-  if (ExtractAllTeletext)
+  if (ExtractAllTeletext && (TeletextPID != (word)-1))
   {
     char AbsOutFile[FBLIB_DIR_SIZE], *p;
     int len;

@@ -106,6 +106,13 @@ typedef struct
 
 typedef struct
 {
+  word                  Magic;  // 0x00EE
+  word                  TextLength;
+  char                  Text[0];  // 2044
+} TYPE_ExtExtEvent_Info;  // 4 - 2048 Bytes (CW-Extension)
+
+typedef struct
+{
   word                  NrOfImages;         // Check if the inf file size is at least 10322 bytes to
                                             // make sure that NrOfImages is valid
   word                  unknown1;             
@@ -184,9 +191,10 @@ typedef struct
   TYPE_ExtEvent_Info    ExtEventInfo;           // 1036 byte
   TYPE_TpInfo_TMSS      TransponderInfo;        //   16 byte / 16 byte / 12 byte (TMS-C)
   TYPE_Bookmark_Info    BookmarkInfo;           //  716 byte
+  TYPE_ExtExtEvent_Info ExtExtEventInfo;        //    4 - 2048  (CW-Extension)
 //  byte                  HeaderUnused[8192];
-  tPreviewImages        PreviewImages;          //    4 byte
-} TYPE_RecHeader_TMSS;                          //=2132 byte
+//  tPreviewImages        PreviewImages;          //    4 byte
+} TYPE_RecHeader_TMSS;                          //=2132 byte (ohne Preview: 2128)
 
 typedef struct
 {
@@ -196,8 +204,10 @@ typedef struct
   TYPE_ExtEvent_Info    ExtEventInfo;
   TYPE_TpInfo_TMSC      TransponderInfo;
   TYPE_Bookmark_Info    BookmarkInfo;
+  byte                  unused[4];
+//  TYPE_ExtExtEvent_Info ExtExtEventInfo;
 //  byte                  HeaderUnused[8192];
-  tPreviewImages        PreviewImages;
+//  tPreviewImages        PreviewImages;
 } TYPE_RecHeader_TMSC;
 
 typedef struct
@@ -208,8 +218,9 @@ typedef struct
   TYPE_ExtEvent_Info    ExtEventInfo;
   TYPE_TpInfo_TMST      TransponderInfo;
   TYPE_Bookmark_Info    BookmarkInfo;
+  TYPE_ExtExtEvent_Info ExtExtEventInfo;
 //  byte                  HeaderUnused[8192];
-  tPreviewImages        PreviewImages;
+//  tPreviewImages        PreviewImages;
 } TYPE_RecHeader_TMST;
 
 #endif

@@ -424,13 +424,13 @@ printf("  INF: ServiceName = %s\n", ServiceInfo->ServiceName);
       printf((k > 0) ? ", %u" : "%u", BookmarkInfo->Bookmarks[k]);
     printf("\n");
 
-    // OldEventText setzen + ggf. Itemized Items in ExtEventText entfernen
+    // OldEventText setzen + ggf. Itemized Items in ExtEventText entfernen (ToDo: OldEventText ist dann NICHT UTF8?)
     RemoveItemizedText(RecHeader, OldEventText, sizeof(OldEventText));
 
     // Event-Strings von Datenmüll reinigen und in UTF8 konvertieren (?)
-    if ((TempString = malloc(sizeof(RecHeader->ExtEventInfo.Text) + 1)))
+    if ((TempString = (char*)malloc(EPGBUFFERSIZE)))
     {
-      char tmp;
+      char tmp; int len;
       memcpy(TempString, RecHeader->EventInfo.EventNameDescription, sizeof(RecHeader->EventInfo.EventNameDescription));
 
       tmp = TempString[RecHeader->EventInfo.EventNameLength];
@@ -444,11 +444,41 @@ printf("  INF: ServiceName = %s\n", ServiceInfo->ServiceName);
         StrToUTF8(&RecHeader->EventInfo.EventNameDescription[p], &TempString[RecHeader->EventInfo.EventNameLength], sizeof(RecHeader->EventInfo.EventNameDescription) - p, 0);
       RecHeader->EventInfo.EventNameLength = (byte)p;
       
-      StrToUTF8(RecHeader->ExtEventInfo.Text, OldEventText, sizeof(RecHeader->ExtEventInfo.Text), 0);
-      RecHeader->ExtEventInfo.TextLength = (int)strlen(RecHeader->ExtEventInfo.Text);
-
+      // ServiceName
       StrToUTF8(TempString, RecHeader->ServiceInfo.ServiceName, sizeof(RecHeader->ServiceInfo.ServiceName), 0);
       strncpy(RecHeader->ServiceInfo.ServiceName, TempString, sizeof(RecHeader->ServiceInfo.ServiceName));
+
+      // ExtEventInfo und ExtExtEvtInfo einlesen
+      StrToUTF8(TempString, OldEventText, EPGBUFFERSIZE, 0);
+      if ((RecHeader->ExtExtEventInfo.Magic == 0x00EE) && (RecHeader->ExtExtEventInfo.TextLength > 0))
+      {
+        RecHeader->ExtExtEventInfo.Text[min(RecHeader->ExtExtEventInfo.TextLength, 2043)] = '\0';
+        len = strlen(TempString) - 3;
+        StrToUTF8(&TempString[len], &RecHeader->ExtExtEventInfo.Text[3], EPGBUFFERSIZE - len, 0);
+      }
+      len = strlen(TempString);
+
+      if (!ExtEPGText)
+      {
+        ExtEPGText = (char*)malloc(len + 1);
+        strncpy(ExtEPGText, TempString, len);
+        ExtEPGText[len] = '\0';
+      }
+
+      // ExtEventInfo und ExtExtEvtInfo zurückschreiben
+      strncpy(RecHeader->ExtEventInfo.Text, TempString, sizeof(RecHeader->ExtEventInfo.Text));
+      if (RecHeader->ExtEventInfo.Text[sizeof(RecHeader->ExtEventInfo.Text) - 1] != 0)
+      {
+        snprintf(&RecHeader->ExtEventInfo.Text[sizeof(RecHeader->ExtEventInfo.Text) - 4], 4, "...");
+        RecHeader->ExtExtEventInfo.Magic = 0x00EE;
+        snprintf(RecHeader->ExtExtEventInfo.Text, 2044, "...%s", &TempString[sizeof(RecHeader->ExtEventInfo.Text) - 4]);
+        RecHeader->ExtExtEventInfo.TextLength = strlen(RecHeader->ExtExtEventInfo.Text);
+        if (RecHeader->ExtExtEventInfo.TextLength > 2040)
+          snprintf(&RecHeader->ExtExtEventInfo.Text[2040], 4, "...");
+      }
+      RecHeader->ExtEventInfo.Text[sizeof(RecHeader->ExtEventInfo.Text) - 1] = '\0';
+      RecHeader->ExtEventInfo.TextLength = (word) min(strlen(RecHeader->ExtEventInfo.Text), sizeof(RecHeader->ExtEventInfo.Text));
+
       free(TempString);
     }
   }
@@ -459,11 +489,16 @@ printf("  INF: ServiceName = %s\n", ServiceInfo->ServiceName);
 
 void SetInfEventText(const char *pCaption)
 {
-  char *NewEventText = NULL;
   TYPE_RecHeader_TMSS *RecHeader = (TYPE_RecHeader_TMSS*)InfBuffer;
+  char *NewEventText = NULL;
+  char *pOldEvtText = (RebuildInf && ExtEPGText) ? ExtEPGText : OldEventText;
+  char *pNewEvtText = pOldEvtText;
+  int len = sizeof(RecHeader->ExtEventInfo.Text);
 
   TRACEENTER;
   memset(RecHeader->ExtEventInfo.Text, 0, sizeof(RecHeader->ExtEventInfo.Text));
+  if ((RecHeader->ExtExtEventInfo.Magic == 0x00EE) && (RecHeader->ExtExtEventInfo.TextLength))
+    memset(&RecHeader->ExtExtEventInfo, 0, RecHeader->ExtExtEventInfo.TextLength + sizeof(RecHeader->ExtExtEventInfo));
 
   if (pCaption)
   {
@@ -494,27 +529,35 @@ void SetInfEventText(const char *pCaption)
       free(NewEventText);
     } */
 
-    if ((NewEventText = (char*)malloc(sizeof(RecHeader->ExtEventInfo.Text))))
+    if ((NewEventText = (char*)malloc(EPGBUFFERSIZE)))
     {
-      if ((byte)OldEventText[0] >= 0x15)
+      if ((byte)pOldEvtText[0] >= 0x15)
       {
-        StrToUTF8(NewEventText, pCaption, sizeof(RecHeader->ExtEventInfo.Text), 9);
-        snprintf(&NewEventText[strlen(NewEventText)], sizeof(RecHeader->ExtEventInfo.Text) - strlen(NewEventText), "\xC2\x8A\xC2\x8A%s", &OldEventText[((byte)OldEventText[0] < 0x20) ? 1 : 0]);
+        StrToUTF8(NewEventText, pCaption, EPGBUFFERSIZE, 9);
+        len = sizeof(RecHeader->ExtEventInfo.Text) - strlen(NewEventText);
+        snprintf(&NewEventText[strlen(NewEventText)], len, "\xC2\x8A\xC2\x8A%s", &pOldEvtText[((byte)pOldEvtText[0] < 0x20) ? 1 : 0]);
       }
       else
-        snprintf(NewEventText, sizeof(RecHeader->ExtEventInfo.Text), "\5%s\x8A\x8A%s", pCaption, &OldEventText[((byte)OldEventText[0] < 0x20) ? 1 : 0]);
-      strncpy(RecHeader->ExtEventInfo.Text, NewEventText, sizeof(RecHeader->ExtEventInfo.Text));
-      if (RecHeader->ExtEventInfo.Text[sizeof(RecHeader->ExtEventInfo.Text) - 1] != 0)
-        snprintf(&RecHeader->ExtEventInfo.Text[sizeof(RecHeader->ExtEventInfo.Text) - 4], 4, "...");
-      RecHeader->ExtEventInfo.Text[sizeof(RecHeader->ExtEventInfo.Text) - 1] = 0;
-      free(NewEventText);
+        snprintf(NewEventText, EPGBUFFERSIZE, "\5%s\x8A\x8A%s", pCaption, &pOldEvtText[((byte)pOldEvtText[0] < 0x20) ? 1 : 0]);
+      pNewEvtText = NewEventText;
     }
   }
-  else
-    strncpy(RecHeader->ExtEventInfo.Text, OldEventText, sizeof(RecHeader->ExtEventInfo.Text));
+
+  strncpy(RecHeader->ExtEventInfo.Text, pNewEvtText, sizeof(RecHeader->ExtEventInfo.Text));
+  if (RecHeader->ExtEventInfo.Text[sizeof(RecHeader->ExtEventInfo.Text) - 1] != 0)
+  {
+    snprintf(&RecHeader->ExtEventInfo.Text[sizeof(RecHeader->ExtEventInfo.Text) - 4], 4, "...");
+    RecHeader->ExtExtEventInfo.Magic = 0x00EE;
+    snprintf(RecHeader->ExtExtEventInfo.Text, 2044, "...%s", &pOldEvtText[len - 7]);
+    RecHeader->ExtExtEventInfo.TextLength = strlen(RecHeader->ExtExtEventInfo.Text) - len + 7;
+    if (RecHeader->ExtExtEventInfo.TextLength > 2040)
+      snprintf(&RecHeader->ExtExtEventInfo.Text[2040], 4, "...");
+  }
+  RecHeader->ExtEventInfo.Text[sizeof(RecHeader->ExtEventInfo.Text) - 1] = '\0';
   RecHeader->ExtEventInfo.TextLength = (word) min(strlen(RecHeader->ExtEventInfo.Text), sizeof(RecHeader->ExtEventInfo.Text));
   RecHeader->ExtEventInfo.NrItemizedPairs = 0;
 
+  if(NewEventText) free(NewEventText);
   TRACEEXIT;
 }
 

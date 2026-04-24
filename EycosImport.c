@@ -247,6 +247,9 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
 
 //      memset(RecInf->EventInfo.EventNameDescription, 0, sizeof(RecInf->EventInfo.EventNameDescription));
 //      memset(RecInf->ExtEventInfo.Text, 0, sizeof(RecInf->ExtEventInfo.Text));
+//      if ((RecInf->ExtExtEventInfo.Magic == 0x00EE) && (RecInf->ExtExtEventInfo.TextLength))
+//        memset(&RecInf->ExtExtEventInfo, 0, RecInf->ExtExtEventInfo.TextLength + sizeof(RecInf->ExtExtEventInfo));
+//      RecInf->ExtEventInfo.TextLength = 0;
       EycosEvent.Title[sizeof(EycosEvent.Title) - 1] = '\0';
       StrToUTF8(RecInf->EventInfo.EventNameDescription, EycosEvent.Title, sizeof(RecInf->EventInfo.EventNameDescription), 0);
 //      RecInf->EventInfo.EventNameDescription[NameLen] = '\0';
@@ -277,11 +280,20 @@ if (strlen(ExtEPGText) != TextLen)
   printf("ASSERT: ExtEventTextLength (%d) != length of ExtEventText (%d)!\n", TextLen, strlen(ExtEPGText));
 #endif
         ExtEPGText[TextLen] = '\0';
-        RecInf->ExtEventInfo.TextLength = min(TextLen, (int)sizeof(RecInf->ExtEventInfo.Text) - 1);
-        strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, RecInf->ExtEventInfo.TextLength + 1);
+        realloc(ExtEPGText, strlen(ExtEPGText) + 1);
+        strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, sizeof(RecInf->ExtEventInfo.Text));
+
         if (RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] != 0)
+        {
           snprintf(&RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 4], 4, "...");
+          RecInf->ExtExtEventInfo.Magic = 0x00EE;
+          snprintf(RecInf->ExtExtEventInfo.Text, 2044, "...%s", &ExtEPGText[sizeof(RecInf->ExtEventInfo.Text) - 4]);
+          RecInf->ExtExtEventInfo.TextLength = strlen(RecInf->ExtExtEventInfo.Text);
+          if (RecInf->ExtExtEventInfo.TextLength > 2040)
+            snprintf(&RecInf->ExtExtEventInfo.Text[2040], 4, "...");
+        }
         RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] = '\0';
+        RecInf->ExtEventInfo.TextLength = (word) min(strlen(RecInf->ExtEventInfo.Text), sizeof(RecInf->ExtEventInfo.Text));
         printf("    EPGExtEvt = %s\n", ExtEPGText);
       }
       else

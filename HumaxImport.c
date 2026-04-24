@@ -557,6 +557,8 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
           memset(RecInf->EventInfo.EventNameDescription, 0, sizeof(RecInf->EventInfo.EventNameDescription));
           memset(RecInf->ExtEventInfo.Text, 0, sizeof(RecInf->ExtEventInfo.Text));
           RecInf->ExtEventInfo.TextLength = 0;
+          if ((RecInf->ExtExtEventInfo.Magic == 0x00EE) && (RecInf->ExtExtEventInfo.TextLength))
+            memset(&RecInf->ExtExtEventInfo, 0, RecInf->ExtExtEventInfo.TextLength + sizeof(RecInf->ExtExtEventInfo));
 
           if ((p = strchr(&LineBuf[len_name+1], ';')))
           {
@@ -635,10 +637,19 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
                 strncpy(ExtEPGText, &LineBuf[len_name + n0 + (max(max(n1+2, n2+1), n3)) + 2], k);
                 ExtEPGText[k] = '\0';
                 strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, sizeof(RecInf->ExtEventInfo.Text));
-                if (RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] != '\0')
-                  strncpy(&RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 4], "...", 4);
+
+                if (RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] != 0)
+                {
+                  snprintf(&RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 4], 4, "...");
+                  RecInf->ExtExtEventInfo.Magic = 0x00EE;
+                  snprintf(RecInf->ExtExtEventInfo.Text, 2044, "...%s", &ExtEPGText[sizeof(RecInf->ExtEventInfo.Text) - 4]);
+                  RecInf->ExtExtEventInfo.TextLength = strlen(RecInf->ExtExtEventInfo.Text);
+                  if (RecInf->ExtExtEventInfo.TextLength > 2040)
+                    snprintf(&RecInf->ExtExtEventInfo.Text[2040], 4, "...");
+                }
                 RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] = '\0';
-                RecInf->ExtEventInfo.TextLength = (word)strlen(RecInf->ExtEventInfo.Text);
+                RecInf->ExtEventInfo.TextLength = (word) min(strlen(RecInf->ExtEventInfo.Text), sizeof(RecInf->ExtEventInfo.Text));
+
                 if (RecInf->ExtEventInfo.TextLength > 0)
                   RecInf->ExtEventInfo.ServiceID = ServiceID;
                 printf("    EPGExtEvt = %s\n", ExtEPGText);
@@ -677,7 +688,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
                 ModifyEIT((byte*)LineBuf, min(EITLen, ReadBytes), 0 /*ServiceID*/, Unix2TFTime(StartTime, NULL, FALSE), DurationH, DurationM);
               }
 
-              if (AnalyseEIT((byte*)LineBuf, min(EITLen, ReadBytes), ServiceID, OutTransportID, &RecInf->EventInfo, &RecInf->ExtEventInfo, (!ret || !RecInf->EventInfo.StartTime)))
+              if (AnalyseEIT((byte*)LineBuf, min(EITLen, ReadBytes), ServiceID, OutTransportID, &RecInf->EventInfo, &RecInf->ExtEventInfo, &RecInf->ExtExtEventInfo, (!ret || !RecInf->EventInfo.StartTime)))
               {
                 ret = 2;
                 EPGLen = 0;
@@ -767,7 +778,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
                 PSBuffer_ProcessTSPacket(&EITBuffer, (tTSPacket*) (&EPGPacks[k*192 + 4]));
               }
             }
-            if (AnalyseEIT(EITBuffer.Buffer1, EITBuffer.ValidBufLen, ServiceID, OutTransportID, &RecInf->EventInfo, &RecInf->ExtEventInfo, (!ret || !RecInf->EventInfo.StartTime)))
+            if (AnalyseEIT(EITBuffer.Buffer1, EITBuffer.ValidBufLen, ServiceID, OutTransportID, &RecInf->EventInfo, &RecInf->ExtEventInfo, &RecInf->ExtExtEventInfo, (!ret || !RecInf->EventInfo.StartTime)))
             {
 /*              tTSPacket *pack = (tTSPacket*) &EPGPacks[(NrEPGPacks-1)*192 + 4];
               tTSEIT *eit = (tTSEIT*) EITBuffer.Buffer1;
