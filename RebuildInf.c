@@ -424,8 +424,8 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
       memset(RecInf->EventInfo.EventNameDescription, 0, sizeof(RecInf->EventInfo.EventNameDescription));
       memset(RecInf->ExtEventInfo.Text, 0, sizeof(RecInf->ExtEventInfo.Text));
       RecInf->ExtEventInfo.TextLength = 0;
-      if ((RecInf->ExtExtEventInfo.Magic == 0x00EE) && (RecInf->ExtExtEventInfo.TextLength))
-        memset(&RecInf->ExtExtEventInfo, 0, RecInf->ExtExtEventInfo.TextLength + sizeof(RecInf->ExtExtEventInfo));
+      if ((RecInf->ExtExtEventInfo.Magic == 0xEE00) && (RecInf->ExtExtEventInfo.TextLength))
+        memset(&RecInf->ExtExtEventInfo, 0, sizeof(RecInf->ExtExtEventInfo) + RecInf->ExtExtEventInfo.TextLength);
 
       for (i = 0; ret && fgets(Buffer, 4096, fLog); i++)
       {
@@ -497,14 +497,14 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
               if (RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] != 0)
               {
                 snprintf(&RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 4], 4, "...");
-                RecInf->ExtExtEventInfo.Magic = 0x00EE;
+                RecInf->ExtExtEventInfo.Magic = 0xEE00;
                 snprintf(RecInf->ExtExtEventInfo.Text, 2044, "...%s", &ExtEPGText[sizeof(RecInf->ExtEventInfo.Text) - 4]);
-                RecInf->ExtExtEventInfo.TextLength = strlen(RecInf->ExtExtEventInfo.Text);
+                RecInf->ExtExtEventInfo.TextLength = strlen(RecInf->ExtExtEventInfo.Text) + 1;
                 if (RecInf->ExtExtEventInfo.TextLength > 2040)
                   snprintf(&RecInf->ExtExtEventInfo.Text[2040], 4, "...");
               }
               RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] = 0;
-              RecInf->ExtEventInfo.TextLength = (word) min(strlen(RecInf->ExtEventInfo.Text), sizeof(RecInf->ExtEventInfo.Text));
+              RecInf->ExtEventInfo.TextLength = min((word) strlen(RecInf->ExtEventInfo.Text), (word)sizeof(RecInf->ExtEventInfo.Text) - 1);
               printf("    EPGExtEvt = %s\n", ExtEPGText);
               break;
             }
@@ -550,7 +550,7 @@ void InitInfStruct(TYPE_RecHeader_TMSS *RecInf)
 {
   TRACEENTER;
 
-  if ((RecInf->ExtExtEventInfo.Magic == 0x00EE) && (RecInf->ExtExtEventInfo.TextLength))
+  if ((RecInf->ExtExtEventInfo.Magic == 0xEE00) && (RecInf->ExtExtEventInfo.TextLength))
     memset(&RecInf->ExtExtEventInfo, 0, RecInf->ExtExtEventInfo.TextLength + sizeof(RecInf->ExtExtEventInfo));
   memset(RecInf, 0, sizeof(TYPE_RecHeader_TMSS));
 
@@ -899,7 +899,7 @@ tPVRTime AnalyseEIT(byte *Buffer, int BufSize, word ServiceID, word *OutTranspor
       memset(OutEventInfo->EventNameDescription, 0, sizeof(OutEventInfo->EventNameDescription));
       memset(OutExtEventInfo->Text, 0, sizeof(OutExtEventInfo->Text));
       OutExtEventInfo->TextLength = 0;
-      if ((OutExtExtEvtInfo->Magic == 0x00EE) && (OutExtExtEvtInfo->TextLength))
+      if ((OutExtExtEvtInfo->Magic == 0xEE00) && (OutExtExtEvtInfo->TextLength))
         memset(OutExtExtEvtInfo, 0, OutExtExtEvtInfo->TextLength + sizeof(OutExtExtEvtInfo));
 //      memset(ExtEPGText, 0, EPGBUFFERSIZE);
       ExtEPGText[0] = '\0';
@@ -1040,14 +1040,14 @@ if (ExtDesc->ItemsLen > 0)
           if (OutExtEventInfo->Text[sizeof(OutExtEventInfo->Text) - 1] != 0)
           {
             snprintf(&OutExtEventInfo->Text[sizeof(OutExtEventInfo->Text) - 4], 4, "...");
-            OutExtExtEvtInfo->Magic = 0x00EE;
-            snprintf(OutExtExtEvtInfo->Text, 2044, "...%s", &OutExtExtEvtInfo[sizeof(OutExtEventInfo->Text) - 4]);
-            OutExtExtEvtInfo->TextLength = strlen(OutExtExtEvtInfo->Text);
+            OutExtExtEvtInfo->Magic = 0xEE00;
+            snprintf(OutExtExtEvtInfo->Text, 2044, "...%s", &ExtEPGText[sizeof(OutExtEventInfo->Text) - 4]);
+            OutExtExtEvtInfo->TextLength = strlen(OutExtExtEvtInfo->Text) + 1;
             if (OutExtExtEvtInfo->TextLength > 2040)
               snprintf(&OutExtExtEvtInfo->Text[2040], 4, "...");
           }
           OutExtEventInfo->Text[sizeof(OutExtEventInfo->Text) - 1] = '\0';
-          OutExtEventInfo->TextLength = (word) min(ExtEPGTextLen, (int)sizeof(OutExtEventInfo->Text) - 1);
+          OutExtEventInfo->TextLength = min((word)ExtEPGTextLen, (word)sizeof(OutExtEventInfo->Text) - 1);
 printf("  TS: EPGExtEvt = %s\n", ExtEPGText);
         }
 
@@ -1071,11 +1071,6 @@ printf("  TS: EPGExtEvt = %s\n", ExtEPGText);
             if (*c == '\t') *c = ' ';
           }
         }
-        else
-        {
-          free(ExtEPGText); ExtEPGText = NULL;
-        }
-
 //printf("CRC = %x\n", crc32m_tab(Buffer, SectionLength-4));
 
         TRACEEXIT;
@@ -2442,10 +2437,6 @@ bool GenerateInfFile(FILE *fIn, char *AbsRecFileName, TYPE_RecHeader_TMSS *RecIn
   {
     GenerateEIT(RecInf->ServiceInfo.ServiceID, TF2UnixTime(RecInf->EventInfo.StartTime, 0, FALSE), RecInf->EventInfo.DurationHour, RecInf->EventInfo.DurationMin, RecInf->EventInfo.EventNameDescription, RecInf->EventInfo.EventNameLength, &RecInf->EventInfo.EventNameDescription[RecInf->EventInfo.EventNameLength], (int)strlen(&RecInf->EventInfo.EventNameDescription[RecInf->EventInfo.EventNameLength]), ExtEPGText, (int)strlen(ExtEPGText), RecInf->ServiceInfo.AudioStreamType);
     pEPGBuffer = EPGBuffer;
-  }
-  if (!DoInfoOnly)
-  {
-    free(ExtEPGText); ExtEPGText = NULL;
   }
 
   if (pEPGBuffer && (MedionMode != 1))

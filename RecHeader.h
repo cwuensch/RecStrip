@@ -106,7 +106,7 @@ typedef struct
 
 typedef struct
 {
-  word                  Magic;  // 0x00EE
+  word                  Magic;  // 0xEE00
   word                  TextLength;
   char                  Text[0];  // 2044
 } TYPE_ExtExtEvent_Info;  // 4 - 2048 Bytes (CW-Extension)
@@ -192,7 +192,7 @@ typedef struct
   TYPE_TpInfo_TMSS      TransponderInfo;        //   16 byte / 16 byte / 12 byte (TMS-C)
   TYPE_Bookmark_Info    BookmarkInfo;           //  716 byte
   TYPE_ExtExtEvent_Info ExtExtEventInfo;        //    4 - 2048  (CW-Extension)
-//  byte                  HeaderUnused[8192];
+//  byte                  HeaderUnused[8192-2048];
 //  tPreviewImages        PreviewImages;          //    4 byte
 } TYPE_RecHeader_TMSS;                          //=2132 byte (ohne Preview: 2128)
 
@@ -206,7 +206,7 @@ typedef struct
   TYPE_Bookmark_Info    BookmarkInfo;
   byte                  unused[4];
 //  TYPE_ExtExtEvent_Info ExtExtEventInfo;
-//  byte                  HeaderUnused[8192];
+//  byte                  HeaderUnused[8192-2044];
 //  tPreviewImages        PreviewImages;
 } TYPE_RecHeader_TMSC;
 
@@ -219,7 +219,7 @@ typedef struct
   TYPE_TpInfo_TMST      TransponderInfo;
   TYPE_Bookmark_Info    BookmarkInfo;
   TYPE_ExtExtEvent_Info ExtExtEventInfo;
-//  byte                  HeaderUnused[8192];
+//  byte                  HeaderUnused[8192-2048];
 //  tPreviewImages        PreviewImages;
 } TYPE_RecHeader_TMST;
 

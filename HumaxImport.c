@@ -557,7 +557,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
           memset(RecInf->EventInfo.EventNameDescription, 0, sizeof(RecInf->EventInfo.EventNameDescription));
           memset(RecInf->ExtEventInfo.Text, 0, sizeof(RecInf->ExtEventInfo.Text));
           RecInf->ExtEventInfo.TextLength = 0;
-          if ((RecInf->ExtExtEventInfo.Magic == 0x00EE) && (RecInf->ExtExtEventInfo.TextLength))
+          if ((RecInf->ExtExtEventInfo.Magic == 0xEE00) && (RecInf->ExtExtEventInfo.TextLength))
             memset(&RecInf->ExtExtEventInfo, 0, RecInf->ExtExtEventInfo.TextLength + sizeof(RecInf->ExtExtEventInfo));
 
           if ((p = strchr(&LineBuf[len_name+1], ';')))
@@ -641,14 +641,14 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
                 if (RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] != 0)
                 {
                   snprintf(&RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 4], 4, "...");
-                  RecInf->ExtExtEventInfo.Magic = 0x00EE;
+                  RecInf->ExtExtEventInfo.Magic = 0xEE00;
                   snprintf(RecInf->ExtExtEventInfo.Text, 2044, "...%s", &ExtEPGText[sizeof(RecInf->ExtEventInfo.Text) - 4]);
-                  RecInf->ExtExtEventInfo.TextLength = strlen(RecInf->ExtExtEventInfo.Text);
+                  RecInf->ExtExtEventInfo.TextLength = strlen(RecInf->ExtExtEventInfo.Text) + 1;
                   if (RecInf->ExtExtEventInfo.TextLength > 2040)
                     snprintf(&RecInf->ExtExtEventInfo.Text[2040], 4, "...");
                 }
                 RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] = '\0';
-                RecInf->ExtEventInfo.TextLength = (word) min(strlen(RecInf->ExtEventInfo.Text), sizeof(RecInf->ExtEventInfo.Text));
+                RecInf->ExtEventInfo.TextLength = min((word) strlen(RecInf->ExtEventInfo.Text), (word)sizeof(RecInf->ExtEventInfo.Text) - 1);
 
                 if (RecInf->ExtEventInfo.TextLength > 0)
                   RecInf->ExtEventInfo.ServiceID = ServiceID;

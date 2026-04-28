@@ -1253,6 +1253,7 @@ static void CloseInputFiles(bool PrintErrors, bool SetStripFlags, bool SetStartT
   CloseSrtFilesIn();
   if(MedionMode == 1) SimpleMuxer_Close();
   if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
+  if(ExtEPGText) { free(ExtEPGText); ExtEPGText = NULL; }
 
   TRACEEXIT;
 }
@@ -2008,6 +2009,7 @@ int main(int argc, const char* argv[])
       if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
       if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
       if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
+      if(ExtEPGText) { free(ExtEPGText); ExtEPGText = NULL; }
       printf("ERROR: Cannot read output %s.\n", RecFileOut);
       TRACEEXIT;
       exit(3);
@@ -2598,6 +2600,7 @@ int main(int argc, const char* argv[])
     if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
     if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
+    if(ExtEPGText) { free(ExtEPGText); ExtEPGText = NULL; }
     printf("\nRecStrip finished. View information / fix PMT only.\n");
     TRACEEXIT;
     exit(0);
@@ -2654,6 +2657,7 @@ int main(int argc, const char* argv[])
     if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
     if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
+    if(ExtEPGText) { free(ExtEPGText); ExtEPGText = NULL; }
     printf("ERROR: Cannot write output %s.\n", RecFileOut);
     TRACEEXIT;
     exit(7);
@@ -2743,6 +2747,7 @@ int main(int argc, const char* argv[])
             if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
             if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
             if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
+            if(ExtEPGText) { free(ExtEPGText); ExtEPGText = NULL; }
             PSBuffer_Reset(&AudioPES);
             exit(10);
           }
@@ -2882,6 +2887,7 @@ int main(int argc, const char* argv[])
               if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
               if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
               if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
+              if(ExtEPGText) { free(ExtEPGText); ExtEPGText = NULL; }
               printf("ERROR: Cannot create %s.\n", RecFileOut);
               TRACEEXIT;
               exit(7);
@@ -3046,7 +3052,7 @@ int main(int argc, const char* argv[])
           // Remove EPG stream
           else if (CurPID == 0x12 && RemoveEPGStream)
           {
-            if ((!PMTatStart && MedionMode!=1) || AfterFirstEPGPacks || (CurPosBlocks > 0) || (CurBlockBytes >= 10*(unsigned int)PACKETSIZE))
+            if ((!PMTatStart && MedionMode!=1) || AfterFirstEPGPacks || (CurPosBlocks > 0) || (CurBlockBytes >= 20*(unsigned int)PACKETSIZE))
             {
               NrDroppedEPGPid++;
               DropCurPacket = TRUE;
@@ -3436,6 +3442,7 @@ int main(int argc, const char* argv[])
           if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
           if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
           if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
+          if(ExtEPGText) { free(ExtEPGText); ExtEPGText = NULL; }
           PSBuffer_Reset(&AudioPES);
           printf("\n RecStrip aborted.\n");
           TRACEEXIT;
@@ -3530,6 +3537,7 @@ int main(int argc, const char* argv[])
         if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
         if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
         if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
+        if(ExtEPGText) { free(ExtEPGText); ExtEPGText = NULL; }
         printf("ERROR: Cannot open input %s.\n", RecFileIn);
         TRACEEXIT;
         exit(5);
@@ -3567,6 +3575,7 @@ int main(int argc, const char* argv[])
     if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
     if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
     if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
+    if(ExtEPGText) { free(ExtEPGText); ExtEPGText = NULL; }
     exit(10);
   }
 
@@ -3590,6 +3599,7 @@ int main(int argc, const char* argv[])
   if(PendingBuf) { free(PendingBuf); PendingBuf = NULL; }
   if(PATPMTBuf) { free(PATPMTBuf); PATPMTBuf = NULL; }
   if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
+  if(ExtEPGText) { free(ExtEPGText); ExtEPGText = NULL; }
 
   if (NrCopiedSegments > 0)
     printf("\nSegments: %d of %d segments copied.\n", NrCopiedSegments, NrSegments);

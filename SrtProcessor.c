@@ -92,7 +92,7 @@ bool SrtProcessCaptions(dword FromTimems, dword ToTimems, int TimeDiff, bool DoO
   {
     if(!srts[i].fSrtIn) continue;
     if(DoOutput && !srts[i].fSrtOut)
-      printf("  Warning! SRT input '...%s' has no open output file!\n", srts[i].Extension);
+      printf("  Warning! SRT input nr. %d (%d: \"%s\") has no open output file!\n", i+1, srts[i].Nr + 1, srts[i].Number);
     Buffer[0] = '\0';
 
     // Walk through srt file and copy relevant parts to output files
