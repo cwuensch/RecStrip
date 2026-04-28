@@ -131,7 +131,7 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
       ContinuityPIDs[0] = VideoPID;
       printf("    PMTPID=%hd, SID=%hu, PCRPID=%hd, Stream=0x%hhx, VPID=%hd, APID=%hd, TtxPID=%hd\n", RecInf->ServiceInfo.PMTPID, RecInf->ServiceInfo.ServiceID, RecInf->ServiceInfo.PCRPID, RecInf->ServiceInfo.VideoStreamType, VideoPID, AudioPID, TeletextPID);
 
-      StrToUTF8(RecInf->ServiceInfo.ServiceName, EycosHeader.SenderName, sizeof(RecInf->ServiceInfo.ServiceName), 0);
+      StrToUTF8(RecInf->ServiceInfo.ServiceName, EycosHeader.SenderName, sizeof(RecInf->ServiceInfo.ServiceName), 9);
       printf("    ServiceName=%s\n", RecInf->ServiceInfo.ServiceName);
 
       // Bookmarks importieren
@@ -251,14 +251,14 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
 //        memset(&RecInf->ExtExtEventInfo, 0, RecInf->ExtExtEventInfo.TextLength + sizeof(RecInf->ExtExtEventInfo));
 //      RecInf->ExtEventInfo.TextLength = 0;
       EycosEvent.Title[sizeof(EycosEvent.Title) - 1] = '\0';
-      StrToUTF8(RecInf->EventInfo.EventNameDescription, EycosEvent.Title, sizeof(RecInf->EventInfo.EventNameDescription), 0);
+      StrToUTF8(RecInf->EventInfo.EventNameDescription, EycosEvent.Title, sizeof(RecInf->EventInfo.EventNameDescription), 9);
 //      RecInf->EventInfo.EventNameDescription[NameLen] = '\0';
       printf("    EventName = %s\n", RecInf->EventInfo.EventNameDescription);
 
       TextLen = (int)strlen(RecInf->EventInfo.EventNameDescription);
       RecInf->EventInfo.EventNameLength = TextLen;
       EycosEvent.ShortDesc[sizeof(EycosEvent.ShortDesc) - 1] = '\0';
-      StrToUTF8(&RecInf->EventInfo.EventNameDescription[TextLen], EycosEvent.ShortDesc, sizeof(RecInf->EventInfo.EventNameDescription) - TextLen, 0);
+      StrToUTF8(&RecInf->EventInfo.EventNameDescription[TextLen], EycosEvent.ShortDesc, sizeof(RecInf->EventInfo.EventNameDescription) - TextLen, 9);
 //      RecInf->EventInfo.EventNameDescription[sizeof(RecInf->EventInfo.EventNameDescription) - 1] = '\0';
       printf("    EventDesc = %s\n", &RecInf->EventInfo.EventNameDescription[TextLen]);
 
@@ -271,7 +271,7 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
         for (k = 0; k < 8; k++)
         {
           EycosEvent.LongDesc[k].DescBlock[sizeof(((tEycosDescBlock*)NULL)->DescBlock) - 1] = '\0';
-          StrToUTF8(&ExtEPGText[TextLen], EycosEvent.LongDesc[k].DescBlock, 2560 - TextLen, 0);
+          StrToUTF8(&ExtEPGText[TextLen], EycosEvent.LongDesc[k].DescBlock, 2560 - TextLen, 9);
           TextLen += (int)strlen(&ExtEPGText[TextLen]);
           if(EycosEvent.LongDesc[k].DescBlock[248] == '\0') break;
         }

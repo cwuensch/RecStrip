@@ -884,7 +884,7 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           printf("    Start Time: %s\n", TimeStrTF(RecInf->RecHeaderInfo.StartTime, 0));
 
           if(p) *p = '\0';
-          StrToUTF8(FirstSvcName, HumaxHeader.Allgemein.Dateiname, sizeof(FirstSvcName), 0);
+          StrToUTF8(FirstSvcName, HumaxHeader.Allgemein.Dateiname, sizeof(FirstSvcName), 9);
 //          FirstSvcName[sizeof(FirstSvcName)-1] = '\0';
 // manuelle Ausnahme (IMGARTENEDEN2_0601112255.vid), da falscher Teletext bei ZDFdoku:
 //if(VideoPID == 660 && TeletextPID == 130 && ExtractTeletext && DoStrip) RemoveTeletext = TRUE;
@@ -895,7 +895,7 @@ bool LoadHumaxHeader(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           if(p) *p = '\0';
           if (strcmp(HumaxHeader.Allgemein.Dateiname, FirstSvcName) != 0)
           {
-            StrToUTF8(RecInf->ServiceInfo.ServiceName, HumaxHeader.Allgemein.Dateiname, sizeof(RecInf->ServiceInfo.ServiceName), 0);
+            StrToUTF8(RecInf->ServiceInfo.ServiceName, HumaxHeader.Allgemein.Dateiname, sizeof(RecInf->ServiceInfo.ServiceName), 9);
 //            RecInf->ServiceInfo.ServiceName[sizeof(RecInf->ServiceInfo.ServiceName)-1] = '\0';
           }
           else

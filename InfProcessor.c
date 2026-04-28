@@ -230,7 +230,7 @@ static int RemoveItemizedText(TYPE_RecHeader_TMSS *RecHeader, char *const NewEve
     // EPG Text kopieren
     tmp = RecHeader->ExtEventInfo.Text[min(RecHeader->ExtEventInfo.TextLength, sizeof(RecHeader->ExtEventInfo.Text))];
     RecHeader->ExtEventInfo.Text[min(RecHeader->ExtEventInfo.TextLength, sizeof(RecHeader->ExtEventInfo.Text))] = '\0';
-    StrToUTF8(NewEventText, &RecHeader->ExtEventInfo.Text[p], NewTextLen, 0);
+    StrToUTF8(NewEventText, &RecHeader->ExtEventInfo.Text[p], NewTextLen, 9);
     RecHeader->ExtEventInfo.Text[min(RecHeader->ExtEventInfo.TextLength, sizeof(RecHeader->ExtEventInfo.Text))] = tmp;
     len = strlen(RecHeader->ExtEventInfo.Text);
 
@@ -240,11 +240,11 @@ static int RemoveItemizedText(TYPE_RecHeader_TMSS *RecHeader, char *const NewEve
     {
 //      snprintf(&NewEventText[strlen(NewEventText)], NewTextLen-strlen(NewEventText), ((k % 2 == 0) ? (((byte)NewEventText[0] >= 0x15) ? "\xC2\x8A%s: " : "\x8A%s: ") : "%s"), &RecHeader->ExtEventInfo.Text[p]);
       snprintf(&NewEventText[len], NewTextLen - len, "\xC2\x8A");                              len += 2;
-      StrToUTF8(&NewEventText[len], &RecHeader->ExtEventInfo.Text[p], NewTextLen - len, 0);    len += strlen(&NewEventText[len]);  p += strlen(&RecHeader->ExtEventInfo.Text[p]);
+      StrToUTF8(&NewEventText[len], &RecHeader->ExtEventInfo.Text[p], NewTextLen - len, 9);    len += strlen(&NewEventText[len]);  p += strlen(&RecHeader->ExtEventInfo.Text[p]);
       if (len + 2 < NewTextLen)
       {
         snprintf(&NewEventText[len], NewTextLen - len, ": ");                                  len += 2;
-        StrToUTF8(&NewEventText[len], &RecHeader->ExtEventInfo.Text[p], NewTextLen - len, 0);  len += strlen(&NewEventText[len]);  p += strlen(&RecHeader->ExtEventInfo.Text[p]);
+        StrToUTF8(&NewEventText[len], &RecHeader->ExtEventInfo.Text[p], NewTextLen - len, 9);  len += strlen(&NewEventText[len]);  p += strlen(&RecHeader->ExtEventInfo.Text[p]);
       }
     }
   }
@@ -442,16 +442,16 @@ printf("  INF: ServiceName = %s\n", ServiceInfo->ServiceName);
       tmp = TempString[RecHeader->EventInfo.EventNameLength];
       TempString[RecHeader->EventInfo.EventNameLength] = '\0';
       TempString[sizeof(RecHeader->EventInfo.EventNameDescription)] = '\0';
-      StrToUTF8(RecHeader->EventInfo.EventNameDescription, TempString, sizeof(RecHeader->EventInfo.EventNameDescription), 0);
+      StrToUTF8(RecHeader->EventInfo.EventNameDescription, TempString, sizeof(RecHeader->EventInfo.EventNameDescription), 9);
       TempString[RecHeader->EventInfo.EventNameLength] = tmp;
 
       p = (int)strlen(RecHeader->EventInfo.EventNameDescription);
       if (p + 1 < sizeof(RecHeader->EventInfo.EventNameDescription))
-        StrToUTF8(&RecHeader->EventInfo.EventNameDescription[p], &TempString[RecHeader->EventInfo.EventNameLength], sizeof(RecHeader->EventInfo.EventNameDescription) - p, 0);
+        StrToUTF8(&RecHeader->EventInfo.EventNameDescription[p], &TempString[RecHeader->EventInfo.EventNameLength], sizeof(RecHeader->EventInfo.EventNameDescription) - p, 9);
       RecHeader->EventInfo.EventNameLength = (byte)p;
       
       // ServiceName
-      StrToUTF8(TempString, RecHeader->ServiceInfo.ServiceName, sizeof(RecHeader->ServiceInfo.ServiceName), 0);
+      StrToUTF8(TempString, RecHeader->ServiceInfo.ServiceName, sizeof(RecHeader->ServiceInfo.ServiceName), 9);
       strncpy(RecHeader->ServiceInfo.ServiceName, TempString, sizeof(RecHeader->ServiceInfo.ServiceName));
 
       // ExtEventText setzen + ggf. Itemized Items in ExtEventText entfernen
@@ -466,7 +466,7 @@ printf("  INF: ServiceName = %s\n", ServiceInfo->ServiceName);
       if ((RecHeader->ExtExtEventInfo.Magic == 0xEE00) && (RecHeader->ExtExtEventInfo.TextLength > 0))
       {
         RecHeader->ExtExtEventInfo.Text[min(RecHeader->ExtExtEventInfo.TextLength, 2043)] = '\0';
-        StrToUTF8(&TempString[len], &RecHeader->ExtExtEventInfo.Text[3], EPGBUFFERSIZE - len, 0);
+        StrToUTF8(&TempString[len], &RecHeader->ExtExtEventInfo.Text[3], EPGBUFFERSIZE - len, 9);
       }
       len += strlen(&TempString[len]);
 
