@@ -319,6 +319,7 @@ bool LoadTechnisat(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
   if ((fAdd = fopen(TempStr, "r")))
   {
     dword hour = 0, minute = 0, second = 0, millisec = 0, i = 1;
+    printf("  Importing TechniSat Marken.txt\n");
     if (fgets(TempStr, sizeof(TempStr), fAdd))
       if (sscanf(TempStr, "%u . %u . %u %u _ %u", &day, &month, &year, &hour, &minute) == 5)
         RecInf->RecHeaderInfo.StartTime = Unix2TFTime(MakeUnixTime((word)year, (byte)month, (byte)day, (byte)hour, (byte)minute, 0, NULL), NULL, TRUE);
@@ -356,9 +357,9 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
   if (strlen(LogFile) > 24)
   {
     LogFile[strlen(LogFile)-23] = '\0';
-    if ((p = strrchr(LogFile, '-')) && (p[1] > '1') && (p[1] <= '9') && (p[2]==' '))
+    if ((p = strrchr(LogFile, '-')) && (p[1] > '1') && (p[1] <= '9') && (p[2]==' ') && !strstr(LogFile, "Perlen des Regenwaldes"))
     {
-      // Falls der Dateiname einen Szenen-Index ("-3") enthält, wähle das erste Logfile der Aufnahme
+      // Falls der Dateiname einen Szenen-Index ("-3") enthält, wähle das erste Logfile der Aufnahme (außer es ist "Perlen des Regenwaldes")
       *p = '\0';
       strncpy(LogDate, &AbsTsFileName[strlen(AbsTsFileName)-23], 11);
 
@@ -2596,28 +2597,28 @@ void SortAudioPIDs(tAudioTrack AudioPIDs[])
 {
   tAudioTrack           tmp;
   int                   curPid, minPid, minPos, StreamTypeSort;
-  int                   i, j, k;
+  int                   i, j;
 
   for (i = 0; (i < MAXCONTINUITYPIDS) && (AudioPIDs[i].pid != 0) && AudioPIDs[i].sorted; i++);  // sortierte überspringen
 
-  for (j = i; (j < MAXCONTINUITYPIDS) && (AudioPIDs[j].pid != 0) && !AudioPIDs[j].sorted; j++)  // PIDs der Größe nach sortieren (außer die un-gescannten)
+  for (i = i; (i < MAXCONTINUITYPIDS) && (AudioPIDs[i].pid != 0) && !AudioPIDs[i].sorted; i++)  // PIDs der Größe nach sortieren (außer die un-gescannten)
   {
     minPid = 0x7fffffff;
-    minPos = j;
-    for (k = j; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0) && !AudioPIDs[k].sorted; k++)
+    minPos = i;
+    for (j = i; (j < MAXCONTINUITYPIDS) && (AudioPIDs[j].pid != 0) && !AudioPIDs[j].sorted; j++)
     {
       StreamTypeSort = (AudioPIDs[j].streamType) ? AudioPIDs[j].streamType : 4;
       curPid = (StreamTypeSort << 17) + (!AudioPIDs[j].scanned ? (int)1 << 16 : 0) + ((strncmp(AudioPIDs[j].desc, "deu", 3)==0 || strncmp(AudioPIDs[j].desc, "ger", 3)==0) ? 0 : ((int)1 << (AudioPIDs[j].streamType + 15))) + AudioPIDs[j].pid;
       if(curPid < minPid && AudioPIDs[j].streamType != STREAMTYPE_TELETEXT && AudioPIDs[j].streamType != STREAMTYPE_SUBTITLE)
       {
         minPid = curPid;
-        minPos = k;
+        minPos = j;
       }
     }
-    if ((minPos != j) && AudioPIDs[j].streamType != STREAMTYPE_TELETEXT && AudioPIDs[j].streamType != STREAMTYPE_SUBTITLE)  // setze Track mit minimaler PID an die aktuelle Position j
+    if ((minPos != i) && AudioPIDs[i].streamType != STREAMTYPE_TELETEXT && AudioPIDs[i].streamType != STREAMTYPE_SUBTITLE)  // setze Track mit minimaler PID an die aktuelle Position i
     {
-      tmp = AudioPIDs[j];
-      AudioPIDs[j] = AudioPIDs[minPos];
+      tmp = AudioPIDs[i];
+      AudioPIDs[i] = AudioPIDs[minPos];
       AudioPIDs[minPos] = tmp;
     }
   }

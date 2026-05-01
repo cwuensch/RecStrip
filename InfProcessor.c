@@ -188,9 +188,12 @@ bool LoadInfFromRec(char *AbsRecFileName)
       RecInf->ExtEventInfo.ServiceID = RecInf->ServiceInfo.ServiceID;
   }
   
-  if (HumaxSource || EycosSource || MedionMode)
+  if (HumaxSource || EycosSource || TechniSource || MedionMode)
   {
     int k;
+    SortAudioPIDs(AudioPIDs);
+    if(EycosSource || TechniSource) RecInf->ServiceInfo.AudioPID = AudioPIDs[0].pid;
+
     for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0) && (AudioPIDs[k].pid != RecInf->ServiceInfo.AudioPID); k++);
     if ((k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid == RecInf->ServiceInfo.AudioPID))
     {
@@ -200,7 +203,6 @@ printf("ASSERTION: AudioTypeFlag should be 0 or 1, but is %hd!\n", RecInf->Servi
       if (RecInf->ServiceInfo.AudioStreamType == STREAM_AUDIO_MPEG4_AC3)
         RecInf->ServiceInfo.AudioTypeFlag = 1;
     }
-    SortAudioPIDs(AudioPIDs);
   }
 
 //  CurrentStartTime = ((TYPE_RecHeader_Info*)InfBuffer)->StartTime;
