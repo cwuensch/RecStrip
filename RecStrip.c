@@ -1034,7 +1034,7 @@ static bool OpenOutputFiles(void)
   TRACEENTER;
 
   // ggf. Output-File öffnen
-  if (*RecFileOut && (DoStrip || OutPacketSize!=PACKETSIZE || DoCut || DoMerge || RemoveEPGStream || RemoveTeletext || (!ExtractTeletext && !ExtractAllTeletext && !DemuxAudio)))
+  if (*RecFileOut && (DoStrip || OutPacketSize!=PACKETSIZE || DoCut || DoMerge || RemoveEPGStream || RemoveTeletext || (!ExtractTeletext && !ExtractAllTeletext && !DemuxAudio && !DoInfoOnly)))
   {
     printf("\nOutput rec: %s\n", RecFileOut);
     if (DoMerge == 1)
@@ -1071,7 +1071,7 @@ SONST
     -> inf = NULL */
 
   HasInfOld = FALSE;
-  if (fOut)
+  if (fOut || (*RecFileOut && (RebuildInf || ExtractTeletext)))
   {
     if (RebuildInf || *InfFileIn)
     {  
@@ -1118,7 +1118,7 @@ SONST
     -> nav = NULL */
 
   HasNavOld = FALSE;
-  if (fOut)
+  if (fOut || (*RecFileOut && (RebuildNav || ExtractTeletext)))
   {
     if (RebuildNav || HasNavIn)
     {
@@ -1198,7 +1198,7 @@ SONST
   }
 
   // Header-Pakete ausgeben
-  if ((HumaxSource || EycosSource || TechniSource || MedionMode==1 || (WriteDescPackets && (CurrentPosition >= 384 || !PMTatStart))) && fOut && DoMerge != 1)
+  if (fOut && (HumaxSource || EycosSource || TechniSource || MedionMode==1 || (WriteDescPackets && (CurrentPosition >= 384 || !PMTatStart))) && DoMerge != 1)
   {
 //    DoOutputHeaderPacks = 2;
     for (k = 0; (PATPMTBuf[4 + k*192] == 'G'); k++)
