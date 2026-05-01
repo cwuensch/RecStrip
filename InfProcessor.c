@@ -120,10 +120,10 @@ bool InfProcessor_Init()
   BookmarkInfo  = NULL;
 
   InfSize = sizeof(TYPE_RecHeader_TMSS);
-  InfBuffer = (byte*) malloc(max(InfSize, 32768));
+  InfBuffer = (byte*) malloc(min(InfSize + 2048, 32768));
   if(InfBuffer)
   {
-    memset(InfBuffer, 0, max(InfSize, 32768));
+    memset(InfBuffer, 0, min(InfSize + 2048, 32768));
     RecHeaderInfo = (TYPE_RecHeader_Info*) InfBuffer;
     BookmarkInfo = &(((TYPE_RecHeader_TMSS*)InfBuffer)->BookmarkInfo);
     TRACEEXIT;
@@ -263,8 +263,8 @@ bool LoadInfFile(char *AbsInfName, bool FirstTime)
   SYSTEM_TYPE           curSystemType = ST_UNKNOWN;
   size_t                curInfSize, p;
   char                 *TempString = NULL;
-  bool                  HDFound = FALSE, Result = FALSE;
-  int                   k;
+  bool                  HDFound = FALSE;
+  int                   ReadBytes, k;
 
   TRACEENTER;
   if(!InfBuffer || !RecHeaderInfo)
@@ -284,9 +284,9 @@ bool LoadInfFile(char *AbsInfName, bool FirstTime)
       fseeko64(fInfIn, 0, SEEK_END);
       InfFileSize = ftell(fInfIn);
       rewind(fInfIn);
-      Result = (fread(InfBuffer, 1, InfSize, fInfIn) + 4 >= InfSize);
+      ReadBytes = fread(InfBuffer, 1, InfSize, fInfIn);
 
-      if ((Result >= sizeof(TYPE_RecHeader_TMSS)) && (RecHeader->ExtExtEventInfo.Magic == 0xEE00))
+      if ((ReadBytes >= sizeof(TYPE_RecHeader_TMSS)) && (RecHeader->ExtExtEventInfo.Magic == 0xEE00))
       {
         fseeko64(fInfIn, (char*)RecHeader->ExtExtEventInfo.Text - (char*)RecHeader, SEEK_SET);
         fread(RecHeader->ExtExtEventInfo.Text, 1, RecHeader->ExtExtEventInfo.TextLength, fInfIn);
@@ -319,7 +319,7 @@ bool LoadInfFile(char *AbsInfName, bool FirstTime)
   }
   
   //Decode the source .inf
-  if (Result)
+  if (ReadBytes + 4 >= sizeof(TYPE_RecHeader_TMSC))
   {
     curSystemType = DetermineInfType(InfBuffer, InfFileSize);
     switch (curSystemType)
@@ -687,8 +687,8 @@ bool SaveInfFile(const char *AbsDestInf, const char *AbsSourceInf)
     fInfOut = fopen(AbsDestInf, "wb");
   if(fInfOut)
   {
-    if ((InfSize >= sizeof(TYPE_RecHeader_TMSS)) && (RecInf->ExtExtEventInfo.Magic == 0xEE00))
-      OutSize += RecInf->ExtExtEventInfo.TextLength;
+    if (RecInf->ExtExtEventInfo.Magic == 0xEE00)
+      OutSize = sizeof(TYPE_RecHeader_TMSS) + RecInf->ExtExtEventInfo.TextLength;
 
     if ((DoStrip && (DoMerge != 1 || AlreadyStripped)) || MedionStrip)
     {

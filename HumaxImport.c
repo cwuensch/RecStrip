@@ -463,7 +463,7 @@ bool GetTpInfoFromMap(word ServiceID, TYPE_RecHeader_TMSS *RecInf)
         {
           if (TransportStreamID <= 1)
             TransportStreamID = TSID;
-          if (RecInf->ServiceInfo.SatIndex == 1)
+          if ((RecInf->ServiceInfo.SatIndex == 1) && !RecInf->ServiceInfo.TPIndex)
             RecInf->ServiceInfo.TPIndex = TpIdx;
 
           RecInf->TransponderInfo.SatIndex = 1;

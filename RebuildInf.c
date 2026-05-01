@@ -2635,7 +2635,7 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word TransportID, wor
   dword                *CRC = NULL;
   const char*           LangArr[] = {"deu", "mis", "mul"};
   int                   Offset = 0;
-  int                   StreamTag = 1, k, d;
+  int                   StreamTag = 1, k, d, n=0;
   bool                  TeletextDone = FALSE, SubtitlesDone = FALSE;
 
   TRACEENTER;
@@ -2767,6 +2767,9 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word TransportID, wor
           Elem->ESInfoLen2   += (sizeof(tTSAC3Desc) + sizeof(tTSAudioDesc));
           Desc1->DescrTag     = DESC_AC3;
           Desc1->DescrLength  = 1;
+          if (!*AudioPIDs[k].desc)
+            strncpy(AudioPIDs[k].desc, "deu", sizeof(Desc->LanguageCode));
+          n--;
           printf("  Audio Track %d:  PID=%d, AC3, Type=0x%x", (k + 1), AudioPIDs[k].pid, Elem->stream_type);
         }
         else if (AudioPIDs[k].type <= 4)
@@ -2794,8 +2797,11 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word TransportID, wor
           Desc->DescrLength   = 4;
           if (*AudioPIDs[k].desc)
             strncpy(Desc->LanguageCode, AudioPIDs[k].desc, sizeof(Desc->LanguageCode));
+          else if (AudioPIDs[k].pid==5113 || AudioPIDs[k].pid==6222)
+            strncpy(Desc->LanguageCode, "fra", sizeof(Desc->LanguageCode));
           else
-            strncpy(Desc->LanguageCode, ((AudioPIDs[k].pid==5113 || AudioPIDs[k].pid==6222) ? "fra" : LangArr[(k<3) ? k : 0]), sizeof(Desc->LanguageCode));
+            strncpy(Desc->LanguageCode, LangArr[(n<3) ? n : 0], sizeof(Desc->LanguageCode));
+          n++;
           Desc->AudioFlag     = (AudioPIDs[k].desc_flag) ? AudioPIDs[k].desc_flag - 1 : (((strncmp(Desc->LanguageCode, "mul", 3) == 0) || (strncmp(Desc->LanguageCode, "qks", 3) == 0)) ? 2 : 0);
           printf(" [%.3s]", Desc->LanguageCode);
 
