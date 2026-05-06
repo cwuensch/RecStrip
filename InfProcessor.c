@@ -264,7 +264,7 @@ bool LoadInfFile(char *AbsInfName, bool FirstTime)
   size_t                curInfSize, p;
   char                 *TempString = NULL;
   bool                  HDFound = FALSE;
-  int                   ReadBytes, k;
+  int                   ReadBytes = 0, k;
 
   TRACEENTER;
   if(!InfBuffer || !RecHeaderInfo)

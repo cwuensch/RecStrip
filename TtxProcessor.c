@@ -1004,7 +1004,7 @@ printf("ZEILE 0: m=%hx, p=%02hx\n", m, p); */
             page_buffer_in[i].receiving_data = NO;
             memset(page_buffer_in[i].text, 0, sizeof(teletext_text_t));
           }
-        else
+        else if (page_number >= 0x100)
           memset(page_buffer_in[MAGAZINE(page_number)-1].text, 0, sizeof(teletext_text_t));
       }
 
@@ -1018,8 +1018,9 @@ printf("ZEILE 0: m=%hx, p=%02hx\n", m, p); */
 
     page_number = (m << 8) | p;
     transmission_mode = (transmission_mode_t) (unham_8_4(packet->data[7]) & 0x01);
+    last_y = 0;
 
-    if (((p & 0xf0) > 0x90) || ((p & 0x0f) > 0x09)) return;
+    if (((p & 0xf0) > 0x90) || ((p & 0x0f) > 0x09) || (m == 0)) return;
 
     // Open a new srt output file
 //    if (ExtractTeletext && flag_subtitle)
@@ -1081,11 +1082,11 @@ printf("ZEILE 0: m=%hx, p=%02hx\n", m, p); */
         //cur_page_buffer->tainted = YES;
       }
     }
-    last_y = 0;
+//    last_y = 0;
     return;
   }
 
-  if (((page_number & 0xf0) > 0x90) || ((page_number & 0x0f) > 0x09)) return;
+  if (((page_number & 0xf0) > 0x90) || ((page_number & 0x0f) > 0x09) || (page_number < 0x100)) return;
   if ((out_nr >= 0) && (m == MAGAZINE(page_number)))
     cur_page_buffer = &page_buffer[out_nr];
   else if (ExtractAllTeletext && page_number && (page_number==0x333 || !(cc_map[PAGE(page_number)] & (1 << (m - 1)))))

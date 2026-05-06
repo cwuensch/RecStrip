@@ -30,6 +30,10 @@
 #ifdef _MSC_VER
   #define inline
 #endif
+#if defined(_MSC_VER) && defined(_DEBUG)
+  #define _CRTDBG_MAP_ALLOC
+  #include <crtdbg.h>
+#endif
 
 #ifndef _GNU_SOURCE
   #define _GNU_SOURCE
@@ -1378,6 +1382,11 @@ int main(int argc, const char* argv[])
   #ifndef _WIN32
     setvbuf(stdout, NULL, _IOLBF, 4096);  // zeilenweises Buffering, auch bei Ausgabe in Datei
   #endif
+  #if defined(_MSC_VER) && defined(_DEBUG)
+    _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_CHECK_ALWAYS_DF);
+    //_CrtSetBreakAlloc(1234); // wenn du eine bestimmte Allocation beobachten willst
+  #endif
+
   printf("\nRecStrip for Topfield PVR " VERSION "\n");
   printf("(C) 2016-2026 Christian Wuensch\n");
   printf("- based on Naludump 0.1.1 by Udo Richter -\n");
