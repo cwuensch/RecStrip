@@ -288,7 +288,12 @@ bool StrToUTF8(char *destination, const char *source, size_t num, byte DefaultIS
 
   while(*SourceString && num > 1)
   {
-    if(*SourceString < 0x80)
+    if (*SourceString <= 0x09)
+    {
+      //Ignore repeated charset identifiers (e.g. in ExtEPGText) [CW]
+      SourceString++;
+    }
+    else if(*SourceString < 0x80)
     {
       //ASCII: just copy
       *DestString = *SourceString;
