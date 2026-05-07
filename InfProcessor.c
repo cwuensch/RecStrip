@@ -234,7 +234,7 @@ static int RemoveItemizedText(TYPE_RecHeader_TMSS *RecHeader, char *const NewEve
     RecHeader->ExtEventInfo.Text[min(RecHeader->ExtEventInfo.TextLength, sizeof(RecHeader->ExtEventInfo.Text))] = '\0';
     StrToUTF8(NewEventText, &RecHeader->ExtEventInfo.Text[p], NewTextLen, 9);
     RecHeader->ExtEventInfo.Text[min(RecHeader->ExtEventInfo.TextLength, sizeof(RecHeader->ExtEventInfo.Text))] = tmp;
-    len = strlen(RecHeader->ExtEventInfo.Text);
+    len = strlen(NewEventText);
 
     // Itemized Strings kopieren
     p = 0;
@@ -289,7 +289,8 @@ bool LoadInfFile(char *AbsInfName, bool FirstTime)
       if ((ReadBytes >= sizeof(TYPE_RecHeader_TMSS)) && (RecHeader->ExtExtEventInfo.Magic == 0xEE00))
       {
         fseeko64(fInfIn, (char*)RecHeader->ExtExtEventInfo.Text - (char*)RecHeader, SEEK_SET);
-        fread(RecHeader->ExtExtEventInfo.Text, 1, RecHeader->ExtExtEventInfo.TextLength, fInfIn);
+        ReadBytes = fread(RecHeader->ExtExtEventInfo.Text, 1, RecHeader->ExtExtEventInfo.TextLength, fInfIn);
+        RecHeader->ExtExtEventInfo.Text[ReadBytes] = '\0';
       }
       fclose(fInfIn);
     }
@@ -459,20 +460,20 @@ printf("  INF: ServiceName = %s\n", ServiceInfo->ServiceName);
       // ExtEventText setzen + ggf. Itemized Items in ExtEventText entfernen
       len = RemoveItemizedText(RecHeader, TempString, EPGBUFFERSIZE);
 
-      // ggf. "..." am Ende entfernen
-      if (TempString[len-2] == '.')
-        while (TempString[len-1] == '.') len--;
-      TempString[len] = '\0';
-
       // ExtEventInfo und ExtExtEvtInfo einlesen
       if ((RecHeader->ExtExtEventInfo.Magic == 0xEE00) && (RecHeader->ExtExtEventInfo.TextLength > 0))
       {
+        // ggf. "..." am Ende entfernen
+        if (TempString[len-2] == '.')
+          while (TempString[len-1] == '.') len--;
+        TempString[len] = '\0';
+
         RecHeader->ExtExtEventInfo.Text[min(RecHeader->ExtExtEventInfo.TextLength, 2043)] = '\0';
         StrToUTF8(&TempString[len], &RecHeader->ExtExtEventInfo.Text[3], EPGBUFFERSIZE - len, 9);
       }
       len += strlen(&TempString[len]);
 
-      if (!ExtEPGText || (!RebuildInf && (len > (int)strlen(ExtEPGText) + 10)))
+      if (!ExtEPGText || (!RebuildInf && (len + 10 >= (int)strlen(ExtEPGText))))
       {
         ExtEPGText = (char*)malloc(len + 1);
         strncpy(ExtEPGText, TempString, len);
@@ -486,8 +487,8 @@ printf("  INF: ServiceName = %s\n", ServiceInfo->ServiceName);
         snprintf(&RecHeader->ExtEventInfo.Text[sizeof(RecHeader->ExtEventInfo.Text) - 4], 4, "...");
         RecHeader->ExtExtEventInfo.Magic = 0xEE00;
         snprintf(RecHeader->ExtExtEventInfo.Text, 2044, "...%s", &TempString[sizeof(RecHeader->ExtEventInfo.Text) - 4]);
-        RecHeader->ExtExtEventInfo.TextLength = strlen(RecHeader->ExtExtEventInfo.Text) + 1;
-        if (RecHeader->ExtExtEventInfo.TextLength > 2040)
+        RecHeader->ExtExtEventInfo.TextLength = strlen(RecHeader->ExtExtEventInfo.Text);
+        if (RecHeader->ExtExtEventInfo.TextLength > 2042)
           snprintf(&RecHeader->ExtExtEventInfo.Text[2040], 4, "...");
       }
       RecHeader->ExtEventInfo.Text[sizeof(RecHeader->ExtEventInfo.Text) - 1] = '\0';
@@ -563,8 +564,8 @@ void SetInfEventText(const char *pCaption)
     snprintf(&RecHeader->ExtEventInfo.Text[sizeof(RecHeader->ExtEventInfo.Text) - 4], 4, "...");
     RecHeader->ExtExtEventInfo.Magic = 0xEE00;
     snprintf(RecHeader->ExtExtEventInfo.Text, 2044, "...%s", &ExtEPGText[len - 4]);
-    RecHeader->ExtExtEventInfo.TextLength = strlen(RecHeader->ExtExtEventInfo.Text) + 1;
-    if (RecHeader->ExtExtEventInfo.TextLength > 2040)
+    RecHeader->ExtExtEventInfo.TextLength = strlen(RecHeader->ExtExtEventInfo.Text);
+    if (RecHeader->ExtExtEventInfo.TextLength > 2042)
       snprintf(&RecHeader->ExtExtEventInfo.Text[2040], 4, "...");
   }
   RecHeader->ExtEventInfo.Text[sizeof(RecHeader->ExtEventInfo.Text) - 1] = '\0';
@@ -688,7 +689,7 @@ bool SaveInfFile(const char *AbsDestInf, const char *AbsSourceInf)
   if(fInfOut)
   {
     if (RecInf->ExtExtEventInfo.Magic == 0xEE00)
-      OutSize = sizeof(TYPE_RecHeader_TMSS) + RecInf->ExtExtEventInfo.TextLength;
+      OutSize = sizeof(TYPE_RecHeader_TMSS) + RecInf->ExtExtEventInfo.TextLength + 1;
 
     if ((DoStrip && (DoMerge != 1 || AlreadyStripped)) || MedionStrip)
     {
