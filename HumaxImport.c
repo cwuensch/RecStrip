@@ -643,7 +643,7 @@ bool GetEPGFromMap(char *VidFileName, word ServiceID, word *OutTransportID, TYPE
                   snprintf(&RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 4], 4, "...");
                   RecInf->ExtExtEventInfo.Magic = 0xEE00;
                   snprintf(RecInf->ExtExtEventInfo.Text, 2044, "...%s", &ExtEPGText[sizeof(RecInf->ExtEventInfo.Text) - 4]);
-                  RecInf->ExtExtEventInfo.TextLength = strlen(RecInf->ExtExtEventInfo.Text);
+                  RecInf->ExtExtEventInfo.TextLength = (word)strlen(RecInf->ExtExtEventInfo.Text);
                   if (RecInf->ExtExtEventInfo.TextLength > 2042)
                     snprintf(&RecInf->ExtExtEventInfo.Text[2040], 4, "...");
                 }

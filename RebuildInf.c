@@ -500,7 +500,7 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
                 snprintf(&RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 4], 4, "...");
                 RecInf->ExtExtEventInfo.Magic = 0xEE00;
                 snprintf(RecInf->ExtExtEventInfo.Text, 2044, "...%s", &ExtEPGText[sizeof(RecInf->ExtEventInfo.Text) - 4]);
-                RecInf->ExtExtEventInfo.TextLength = strlen(RecInf->ExtExtEventInfo.Text);
+                RecInf->ExtExtEventInfo.TextLength = (word)strlen(RecInf->ExtExtEventInfo.Text);
                 if (RecInf->ExtExtEventInfo.TextLength > 2042)
                   snprintf(&RecInf->ExtExtEventInfo.Text[2040], 4, "...");
               }
@@ -1043,7 +1043,7 @@ if (ExtDesc->ItemsLen > 0)
             snprintf(&OutExtEventInfo->Text[sizeof(OutExtEventInfo->Text) - 4], 4, "...");
             OutExtExtEvtInfo->Magic = 0xEE00;
             snprintf(OutExtExtEvtInfo->Text, 2044, "...%s", &ExtEPGText[sizeof(OutExtEventInfo->Text) - 4]);
-            OutExtExtEvtInfo->TextLength = strlen(OutExtExtEvtInfo->Text);
+            OutExtExtEvtInfo->TextLength = (word)strlen(OutExtExtEvtInfo->Text);
             if (OutExtExtEvtInfo->TextLength > 2040)
               snprintf(&OutExtExtEvtInfo->Text[2040], 4, "...");
           }
@@ -1157,7 +1157,7 @@ static bool AnalyseTtx(byte *PSBuffer, int BufSize, bool AcceptTimeString, tPVRT
                 }
 printf("  TS: Teletext Programme Identification Data: '%s'\n", programme);
               }
-              else if (AcceptTimeString && TtxTime && !*TtxTime && ((programme[12]==':' && programme[15]==':') || (programme[13]==':' && programme[16]==':') || (programme[14]==':' && programme[17]==':')))
+              else if (AcceptTimeString && TtxTime && !*TtxTime && ((programme[12]==':' && programme[15]==':' && '0'<=programme[17] && programme[17]<='9') || (programme[13]==':' && programme[16]==':' && '0'<=programme[18] && programme[18]<='9') || (programme[14]==':' && programme[17]==':' && '0'<=programme[19] && programme[19]<='9')))
               {
                 dword year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
                 struct tm timeinfo = {0};
@@ -1837,7 +1837,7 @@ bool GenerateInfFile(FILE *fIn, char *AbsRecFileName, TYPE_RecHeader_TMSS *RecIn
     tTSPacket          *curPacket = NULL, *lastPacket = NULL;
     word                curPID = 0;
     bool                PTSLastPayloadStart = FALSE;
-    dword               PTSLastEndNulls = 0;
+    dword               PTSLastEndNulls = 0xffffffff;
     PMTPID = 0;
     PSBuffer_Init(&PMTBuffer, PMTPID,  4096, TRUE, TRUE);
     PSBuffer_Init(&EITBuffer, 0x0012, 16384, TRUE, TRUE);
@@ -2308,7 +2308,10 @@ bool GenerateInfFile(FILE *fIn, char *AbsRecFileName, TYPE_RecHeader_TMSS *RecIn
             {
               curPESPacket = (tPESHeader*) &curPacket->Data[(curPacket->Adapt_Field_Exists) ? curPacket->Data[0] + 1 : 0];
               if (curPacket->Payload_Unit_Start)
+              {
+                PTSLastEndNulls = 0xffffffff;
                 GetPTS((byte*) curPESPacket, &curPTS, NULL);
+              }
               if (FindPictureHeader((byte*) curPESPacket, 184 - ((curPacket->Adapt_Field_Exists) ? curPacket->Data[0] + 1 : 0), &FrameType, &PTSLastEndNulls))
               {
                 if (FrameType == 1)  // zuerst vom I-Frame nehmen

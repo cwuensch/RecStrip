@@ -404,7 +404,7 @@ dword FindPictureHeader(byte *Buffer, int BufferLen, byte *pFrameType, dword *pI
       else if (*p == 0x00)
       {
         // MPEG2 picture header: http://dvdnav.mplayerhq.hu/dvdinfo/mpeghdrs.html#picture
-        if(pFrameType)  *pFrameType = (p[2] >> 3) & 0x03;
+        if(pFrameType) *pFrameType = (p[2] >> 3) & 0x03;
         ret = (dword)(p - Buffer + 6);
         break;
       }
