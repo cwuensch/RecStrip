@@ -1143,6 +1143,8 @@ static bool AnalyseTtx(byte *PSBuffer, int BufSize, bool AcceptTimeString, tPVRT
                 word c = telx_to_ucs2(byte_reverse(data_block[i]));
                 // strip any control codes from PID, eg. TVP station
                 if (c < 0x20) continue;
+                if (c == 0x2370)
+                  { programme[0] = '\0'; break; }
                 len += ucs2_to_utf8(u, c);
                 strcat(programme, u);
               }
@@ -1157,7 +1159,7 @@ static bool AnalyseTtx(byte *PSBuffer, int BufSize, bool AcceptTimeString, tPVRT
                 }
 printf("  TS: Teletext Programme Identification Data: '%s'\n", programme);
               }
-              else if (AcceptTimeString && TtxTime && !*TtxTime && ((programme[12]==':' && programme[15]==':' && '0'<=programme[17] && programme[17]<='9') || (programme[13]==':' && programme[16]==':' && '0'<=programme[18] && programme[18]<='9') || (programme[14]==':' && programme[17]==':' && '0'<=programme[19] && programme[19]<='9')))
+              else if (AcceptTimeString && TtxTime && !*TtxTime && *programme && ((programme[12]==':' && programme[15]==':') || (programme[13]==':' && programme[16]==':') || (programme[14]==':' && programme[17]==':')))
               {
                 dword year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
                 struct tm timeinfo = {0};
