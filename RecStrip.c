@@ -730,6 +730,8 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
   char                  AddFileIn[FBLIB_DIR_SIZE], MDTtxName[FBLIB_DIR_SIZE];
 //  byte                 *InfBuf_tmp = NULL;
   tSegmentMarker2      *Segments_tmp = NULL;
+  int                   k;
+  char                 *p;
 
   // dirty hack: aktuelle Pointer für InfBuffer und SegmentMarker speichern
   byte                 *InfBuffer_bak = InfBuffer;
@@ -741,8 +743,10 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
 
   tSegmentMarker2      *SegmentMarker_bak = SegmentMarker;
   int                   NrSegmentMarker_bak = NrSegmentMarker;
-  int                   k;
-  char                 *p;
+
+  byte                 *EPGPacks_bak = EPGPacks;
+  char                 *ExtEPGText_bak = ExtEPGText;
+  EPGPacks = NULL; ExtEPGText = NULL;
 
   TRACEENTER;
 //  CurrentStartTime = 0;
@@ -1024,6 +1028,11 @@ static bool OpenInputFiles(char *RecFileIn, bool FirstTime)
     OrigStartTime = OrigStartTime_bak;
     OrigStartSec = OrigStartSec_bak;
 //    InfDuration = InfDuration + InfDuration_bak;  // eigentlich unnötig
+    
+    if(EPGPacks) free(EPGPacks);
+    EPGPacks = EPGPacks_bak;
+    if(ExtEPGText) free(ExtEPGText);
+    ExtEPGText = ExtEPGText_bak;
   }
 
   printf("\n");
@@ -1256,8 +1265,8 @@ static void CloseInputFiles(bool PrintErrors, bool SetStripFlags, bool SetStartT
   CloseNavFileIn();
   CloseSrtFilesIn();
   if(MedionMode == 1) SimpleMuxer_Close();
-  if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
-  if(ExtEPGText) { free(ExtEPGText); ExtEPGText = NULL; }
+//  if(EPGPacks) { free(EPGPacks); EPGPacks = NULL; }
+//  if(ExtEPGText) { free(ExtEPGText); ExtEPGText = NULL; }
 
   TRACEEXIT;
 }
@@ -2229,8 +2238,6 @@ int main(int argc, const char* argv[])
     else
       fprintf(stderr, "\t\t\t%s\n",  (ExtEPGText ? ExtEPGText : ""));
   }
-  if(ExtEPGText) { free(ExtEPGText); ExtEPGText = NULL; }
-
 
   // SPECIAL FEATURE: Fix PAT/PMT of output file (-p)
   if (DoFixPMT && (HumaxSource || EycosSource || TechniSource || MedionMode || WriteDescPackets))
