@@ -13,9 +13,9 @@ env:
 
 
 jobs:
-  winbuild2017:
-    name: Windows (VS 2017)
-    runs-on: windows-2019
+  winbuild2022:
+    name: Windows (VS 2022)
+    runs-on: windows-2025
     env:
       SOLUTION_FILE_PATH: RecStrip_VS/RecStrip.sln
 
@@ -25,6 +25,11 @@ jobs:
 
     - name: Use VS 2017 project
       run: mv -Force RecStrip_VS/RecStrip_2017.vcxproj RecStrip_VS/RecStrip.vcxproj
+
+    - name: Install WinXP Toolset 141
+      shell: cmd
+      run: |
+        "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe" modify --quiet --norestart --productId Microsoft.VisualStudio.Product.Enterprise --add Microsoft.VisualStudio.Component.WinXP
 
     - name: Add MSBuild to PATH
       uses: microsoft/setup-msbuild@v1

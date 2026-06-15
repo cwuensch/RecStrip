@@ -35,6 +35,8 @@
 #include "CutProcessor.h"
 #include "H264.h"
 
+#define XOR(a, b) (!!(a) != !!(b))
+
 /*#ifdef _WIN32
   #define timezone _timezone
 #else
@@ -317,6 +319,7 @@ bool LoadTechnisat(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
   if ((fAdd = fopen(TempStr, "r")))
   {
     dword hour = 0, minute = 0, second = 0, millisec = 0, i = 1;
+    printf("  Importing TechniSat Marken.txt\n");
     if (fgets(TempStr, sizeof(TempStr), fAdd))
       if (sscanf(TempStr, "%u . %u . %u %u _ %u", &day, &month, &year, &hour, &minute) == 5)
         RecInf->RecHeaderInfo.StartTime = Unix2TFTime(MakeUnixTime((word)year, (byte)month, (byte)day, (byte)hour, (byte)minute, 0, NULL), NULL, TRUE);
@@ -354,9 +357,9 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
   if (strlen(LogFile) > 24)
   {
     LogFile[strlen(LogFile)-23] = '\0';
-    if ((p = strrchr(LogFile, '-')) && (p[1] > '1') && (p[1] <= '9') && (p[2]==' '))
+    if ((p = strrchr(LogFile, '-')) && (p[1] > '1') && (p[1] <= '9') && (p[2]==' ') && !strstr(LogFile, "Perlen des Regenwaldes"))
     {
-      // Falls der Dateiname einen Szenen-Index ("-3") enthält, wähle das erste Logfile der Aufnahme
+      // Falls der Dateiname einen Szenen-Index ("-3") enthält, wähle das erste Logfile der Aufnahme (außer es ist "Perlen des Regenwaldes")
       *p = '\0';
       strncpy(LogDate, &AbsTsFileName[strlen(AbsTsFileName)-23], 11);
 
@@ -422,6 +425,8 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
       memset(RecInf->EventInfo.EventNameDescription, 0, sizeof(RecInf->EventInfo.EventNameDescription));
       memset(RecInf->ExtEventInfo.Text, 0, sizeof(RecInf->ExtEventInfo.Text));
       RecInf->ExtEventInfo.TextLength = 0;
+      if ((RecInf->ExtExtEventInfo.Magic == 0xEE00) && (RecInf->ExtExtEventInfo.TextLength))
+        memset(&RecInf->ExtExtEventInfo, 0, sizeof(RecInf->ExtExtEventInfo) + RecInf->ExtExtEventInfo.TextLength);
 
       for (i = 0; ret && fgets(Buffer, 4096, fLog); i++)
       {
@@ -462,6 +467,9 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
                 RecInf->EventInfo.EndTime = Unix2TFTime(UnixTime2, NULL, FALSE);
                 RecInf->EventInfo.DurationHour = (byte) (Duration / 3600);
                 RecInf->EventInfo.DurationMin = (byte) ((Duration / 60) % 60);
+//                RecInf->EventInfo.ServiceID = RecInf->ServiceInfo.ServiceID;
+                RecInf->EventInfo.EventID = 1;
+                RecInf->EventInfo.RunningStatus = 4;
                 UnixTime1 = 0;
               }
               else i = 8;
@@ -476,19 +484,28 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
             case 7:
             {
               if(ExtEPGText) free(ExtEPGText);
-              if (!(ExtEPGText = (char*) malloc(strlen(Buffer) + 1)))
+              if (!(ExtEPGText = (char*) malloc(2*strlen(Buffer) + 1)))
               {
                 printf("  Could not allocate memory for ExtEPGText.\n");
                 TRACEEXIT;
                 return FALSE;
               }
-              memset(RecInf->ExtEventInfo.Text, 0, sizeof(RecInf->ExtEventInfo.Text));
-              strcpy(ExtEPGText, Buffer);
-              StrToUTF8(RecInf->ExtEventInfo.Text, ExtEPGText, (int)sizeof(RecInf->ExtEventInfo.Text), 0);
-              if (RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] != '\0')
+//              RecInf->ExtEventInfo.ServiceID = RecInf->ServiceInfo.ServiceID;
+              StrToUTF8(ExtEPGText, Buffer, 2*strlen(Buffer), 0);
+              realloc(ExtEPGText, strlen(ExtEPGText) + 1);
+              strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, sizeof(RecInf->ExtEventInfo.Text));
+
+              if (RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] != 0)
+              {
                 snprintf(&RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 4], 4, "...");
-//              RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] = '\0';
-              RecInf->ExtEventInfo.TextLength = (word)strlen(RecInf->ExtEventInfo.Text);
+                RecInf->ExtExtEventInfo.Magic = 0xEE00;
+                snprintf(RecInf->ExtExtEventInfo.Text, 2044, "...%s", &ExtEPGText[sizeof(RecInf->ExtEventInfo.Text) - 4]);
+                RecInf->ExtExtEventInfo.TextLength = (word)strlen(RecInf->ExtExtEventInfo.Text);
+                if (RecInf->ExtExtEventInfo.TextLength > 2042)
+                  snprintf(&RecInf->ExtExtEventInfo.Text[2040], 4, "...");
+              }
+              RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] = 0;
+              RecInf->ExtEventInfo.TextLength = min((word) strlen(RecInf->ExtEventInfo.Text), (word)sizeof(RecInf->ExtEventInfo.Text) - 1);
               printf("    EPGExtEvt = %s\n", ExtEPGText);
               break;
             }
@@ -533,7 +550,11 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
 void InitInfStruct(TYPE_RecHeader_TMSS *RecInf)
 {
   TRACEENTER;
+
+  if ((RecInf->ExtExtEventInfo.Magic == 0xEE00) && (RecInf->ExtExtEventInfo.TextLength))
+    memset(&RecInf->ExtExtEventInfo, 0, RecInf->ExtExtEventInfo.TextLength + sizeof(RecInf->ExtExtEventInfo));
   memset(RecInf, 0, sizeof(TYPE_RecHeader_TMSS));
+
   RecInf->RecHeaderInfo.Magic[0]      = 'T';
   RecInf->RecHeaderInfo.Magic[1]      = 'F';
   RecInf->RecHeaderInfo.Magic[2]      = 'r';
@@ -850,13 +871,14 @@ printf("  TS: SvcName   = %s\n", RecInf->ServiceInfo.ServiceName);
   return FALSE;
 }
 
-bool AnalyseEIT(byte *Buffer, int BufSize, word ServiceID, word *OutTransportID, TYPE_Event_Info *OutEventInfo, TYPE_ExtEvent_Info *OutExtEventInfo, bool OverwriteInf)
+tPVRTime AnalyseEIT(byte *Buffer, int BufSize, word ServiceID, word *OutTransportID, TYPE_Event_Info *OutEventInfo, TYPE_ExtEvent_Info *OutExtEventInfo, TYPE_ExtExtEvent_Info *OutExtExtEvtInfo, bool OverwriteInf)
 {
   tTSEIT               *EIT = (tTSEIT*)Buffer;
   tEITEvent            *Event = NULL;
   tTSDesc              *Desc = NULL;
   tShortEvtDesc        *ShortDesc = NULL;
   tExtEvtDesc          *ExtDesc = NULL;
+  tPVRTime              StartTime = 0, EndTime = 0;
 //  char                 *ExtEPGText = NULL;
   int                   ExtEPGTextLen = 0, SectionLength, DescriptorLoopLen, p;
   word                  EventID;
@@ -877,12 +899,13 @@ bool AnalyseEIT(byte *Buffer, int BufSize, word ServiceID, word *OutTransportID,
 
       memset(OutEventInfo->EventNameDescription, 0, sizeof(OutEventInfo->EventNameDescription));
       memset(OutExtEventInfo->Text, 0, sizeof(OutExtEventInfo->Text));
-//      memset(ExtEPGText, 0, EPGBUFFERSIZE);
       OutExtEventInfo->TextLength = 0;
+      if ((OutExtExtEvtInfo->Magic == 0xEE00) && (OutExtExtEvtInfo->TextLength))
+        memset(OutExtExtEvtInfo, 0, OutExtExtEvtInfo->TextLength + sizeof(OutExtExtEvtInfo));
+//      memset(ExtEPGText, 0, EPGBUFFERSIZE);
       ExtEPGText[0] = '\0';
-
-      if(OutTransportID) *OutTransportID = (EIT->TS_ID1 * 256 | EIT->TS_ID2);
     }
+    if(OutTransportID) *OutTransportID = (EIT->TS_ID1 * 256 | EIT->TS_ID2);
 
     SectionLength = EIT->SectionLen1 * 256 | EIT->SectionLen2;
     SectionLength = min(SectionLength + 3, BufSize);    // SectionLength zählt erst ab Byte 3
@@ -894,7 +917,7 @@ bool AnalyseEIT(byte *Buffer, int BufSize, word ServiceID, word *OutTransportID,
       DescriptorLoopLen = Event->DescriptorLoopLen1 * 256 | Event->DescriptorLoopLen2;
 
       p += sizeof(tEITEvent);
-      if(Event->RunningStatus == 4) // *CW-debug* richtig: 4
+      if(Event->RunningStatus == 4)  // *CW-debug* richtig: 4
       {
         //Found the event we were looking for
         while ((DescriptorLoopLen > 0) && (p + (int)sizeof(tTSDesc) + 4 <= SectionLength))
@@ -908,16 +931,23 @@ bool AnalyseEIT(byte *Buffer, int BufSize, word ServiceID, word *OutTransportID,
             char       *Name, *Text, tmp;
             ShortDesc = (tShortEvtDesc*) Desc;
 
-            OutEventInfo->ServiceID = ServiceID;
-            OutEventInfo->EventID = EventID;
-            OutEventInfo->RunningStatus = Event->RunningStatus;
-            OutEventInfo->StartTime = (Event->StartTime[0] << 24) | (Event->StartTime[1] << 16) | (BCD2BIN(Event->StartTime[2]) << 8) | BCD2BIN(Event->StartTime[3]);
-            OutEventInfo->DurationHour = BCD2BIN(Event->DurationSec[0]);
-            OutEventInfo->DurationMin = BCD2BIN(Event->DurationSec[1]);
-            OutEventInfo->EndTime = AddTimeSec(OutEventInfo->StartTime, 0, NULL, OutEventInfo->DurationHour * 3600 + OutEventInfo->DurationMin * 60);
-//            StartTimeUnix = 86400*((OutEventInfo->StartTime>>16) - 40587) + 3600*BCD2BIN(Event->StartTime[2]) + 60*BCD2BIN(Event->StartTime[3]);
-printf("  TS: EvtStart  = %s (UTC)\n", TimeStrTF(OutEventInfo->StartTime, 0));
-printf("  TS: EvtDuratn = %02d:%02d\n", OutEventInfo->DurationHour, OutEventInfo->DurationMin);
+            StartTime = (Event->StartTime[0] << 24) | (Event->StartTime[1] << 16) | (BCD2BIN(Event->StartTime[2]) << 8) | BCD2BIN(Event->StartTime[3]);
+            EndTime = AddTimeSec(StartTime, 0, NULL, BCD2BIN(Event->DurationSec[0]) * 3600 + BCD2BIN(Event->DurationSec[1]) * 60);
+
+            if(OutEventInfo->ServiceID <= 1 || OverwriteInf) OutEventInfo->ServiceID = ServiceID;
+            if(OutEventInfo->EventID <= 1 || OverwriteInf) OutEventInfo->EventID = EventID;
+
+            if (OverwriteInf)
+            {
+              OutEventInfo->RunningStatus = Event->RunningStatus;
+              OutEventInfo->StartTime = StartTime;
+              OutEventInfo->DurationHour = BCD2BIN(Event->DurationSec[0]);
+              OutEventInfo->DurationMin = BCD2BIN(Event->DurationSec[1]);
+              OutEventInfo->EndTime = EndTime;
+            }
+//            StartTimeUnix = 86400*((pOutEventInfo->StartTime>>16) - 40587) + 3600*BCD2BIN(Event->StartTime[2]) + 60*BCD2BIN(Event->StartTime[3]);
+printf("  TS: EvtStart  = %s (UTC)\n", TimeStrTF(StartTime, 0));
+printf("  TS: EvtDuratn = %02d:%02d\n", BCD2BIN(Event->DurationSec[0]), BCD2BIN(Event->DurationSec[1]));
 
             Name = (char*)&Buffer[p + sizeof(tShortEvtDesc)];
             NameLen = min(ShortDesc->EvtNameLen, BufSize - p - 1);
@@ -926,18 +956,23 @@ printf("  TS: EvtDuratn = %02d:%02d\n", OutEventInfo->DurationHour, OutEventInfo
 
             tmp = Name[NameLen];
             Name[NameLen] = '\0';
-            StrToUTF8(OutEventInfo->EventNameDescription, Name, sizeof(OutEventInfo->EventNameDescription), 0);
+            if (OverwriteInf)
+              StrToUTF8(OutEventInfo->EventNameDescription, Name, sizeof(OutEventInfo->EventNameDescription), 0);
+printf("  TS: EventName = %s\n", (OverwriteInf) ? OutEventInfo->EventNameDescription : Name);
             Name[NameLen] = tmp;
 
-            NameLen = (int)strlen(OutEventInfo->EventNameDescription);
-            OutEventInfo->EventNameLength = NameLen;
-printf("  TS: EventName = %s\n", OutEventInfo->EventNameDescription);
+            if (OverwriteInf)
+            {
+              NameLen = (int)strlen(OutEventInfo->EventNameDescription);
+              OutEventInfo->EventNameLength = NameLen;
+            }
 
             tmp = Text[TextLen];
             Text[TextLen] = '\0';
-            StrToUTF8(&OutEventInfo->EventNameDescription[NameLen], Text, sizeof(OutEventInfo->EventNameDescription) - NameLen, 0);
+            if (OverwriteInf)
+              StrToUTF8(&OutEventInfo->EventNameDescription[NameLen], Text, sizeof(OutEventInfo->EventNameDescription) - NameLen, 0);
+printf("  TS: EventDesc = %s\n", (OverwriteInf) ? &OutEventInfo->EventNameDescription[NameLen] : Text);
             Text[TextLen] = tmp;
-printf("  TS: EventDesc = %s\n", &OutEventInfo->EventNameDescription[NameLen]);
           }
 
           else if(Desc->DescrTag == DESC_EITExtEvent && OverwriteInf)
@@ -983,13 +1018,13 @@ if (ExtDesc->ItemsLen > 0)
               snprintf (&ExtEPGText[ExtEPGTextLen], EPGBUFFERSIZE - ExtEPGTextLen, "\xC2\x8A");  ExtEPGTextLen += 2;
               tmp = Name[NameLen];
               Name[NameLen] = '\0';
-              StrToUTF8(&ExtEPGText[ExtEPGTextLen], Name, EPGBUFFERSIZE - ExtEPGTextLen, 0);  ExtEPGTextLen += (int)strlen(&ExtEPGText[ExtEPGTextLen]);
+              StrToUTF8(&ExtEPGText[ExtEPGTextLen], Name, EPGBUFFERSIZE - ExtEPGTextLen, 0);     ExtEPGTextLen += (int)strlen(&ExtEPGText[ExtEPGTextLen]);
               Name[NameLen] = tmp;
 
               snprintf (&ExtEPGText[ExtEPGTextLen], EPGBUFFERSIZE - ExtEPGTextLen, ": ");        ExtEPGTextLen += 2;
               tmp = Text[TextLen];
               Text[TextLen] = '\0';
-              StrToUTF8(&ExtEPGText[ExtEPGTextLen], Text, EPGBUFFERSIZE - ExtEPGTextLen, 0);  ExtEPGTextLen += (int)strlen(&ExtEPGText[ExtEPGTextLen]);
+              StrToUTF8(&ExtEPGText[ExtEPGTextLen], Text, EPGBUFFERSIZE - ExtEPGTextLen, 0);     ExtEPGTextLen += (int)strlen(&ExtEPGText[ExtEPGTextLen]);
               Text[TextLen] = tmp;
             }
           }
@@ -999,9 +1034,21 @@ if (ExtDesc->ItemsLen > 0)
         }
         if (OverwriteInf)
         {
-          strncpy(OutExtEventInfo->Text, ExtEPGText, min(ExtEPGTextLen, (int)sizeof(OutExtEventInfo->Text)));
+          ExtEPGText[ExtEPGTextLen] = '\0';
+          realloc(ExtEPGText, ExtEPGTextLen + 1);
+          strncpy(OutExtEventInfo->Text, ExtEPGText, sizeof(OutExtEventInfo->Text));
+
+          if (OutExtEventInfo->Text[sizeof(OutExtEventInfo->Text) - 1] != 0)
+          {
+            snprintf(&OutExtEventInfo->Text[sizeof(OutExtEventInfo->Text) - 4], 4, "...");
+            OutExtExtEvtInfo->Magic = 0xEE00;
+            snprintf(OutExtExtEvtInfo->Text, 2044, "...%s", &ExtEPGText[sizeof(OutExtEventInfo->Text) - 4]);
+            OutExtExtEvtInfo->TextLength = (word)strlen(OutExtExtEvtInfo->Text);
+            if (OutExtExtEvtInfo->TextLength > 2040)
+              snprintf(&OutExtExtEvtInfo->Text[2040], 4, "...");
+          }
           OutExtEventInfo->Text[sizeof(OutExtEventInfo->Text) - 1] = '\0';
-          OutExtEventInfo->TextLength = (word) min(ExtEPGTextLen, (int)sizeof(OutExtEventInfo->Text) - 1);
+          OutExtEventInfo->TextLength = min((word)ExtEPGTextLen, (word)sizeof(OutExtEventInfo->Text) - 1);
 printf("  TS: EPGExtEvt = %s\n", ExtEPGText);
         }
 
@@ -1025,15 +1072,10 @@ printf("  TS: EPGExtEvt = %s\n", ExtEPGText);
             if (*c == '\t') *c = ' ';
           }
         }
-        else
-        {
-          free(ExtEPGText); ExtEPGText = NULL;
-        }
-
 //printf("CRC = %x\n", crc32m_tab(Buffer, SectionLength-4));
 
         TRACEEXIT;
-        return TRUE;
+        return EndTime;
       }
       else
       {
@@ -1101,6 +1143,8 @@ static bool AnalyseTtx(byte *PSBuffer, int BufSize, bool AcceptTimeString, tPVRT
                 word c = telx_to_ucs2(byte_reverse(data_block[i]));
                 // strip any control codes from PID, eg. TVP station
                 if (c < 0x20) continue;
+                if (c == 0x2370)
+                  { programme[0] = '\0'; break; }
                 len += ucs2_to_utf8(u, c);
                 strcat(programme, u);
               }
@@ -1115,7 +1159,7 @@ static bool AnalyseTtx(byte *PSBuffer, int BufSize, bool AcceptTimeString, tPVRT
                 }
 printf("  TS: Teletext Programme Identification Data: '%s'\n", programme);
               }
-              else if (AcceptTimeString && TtxTime && !*TtxTime && ((programme[12]==':' && programme[15]==':') || (programme[13]==':' && programme[16]==':') || (programme[14]==':' && programme[17]==':')))
+              else if (AcceptTimeString && TtxTime && !*TtxTime && *programme && ((programme[12]==':' && programme[15]==':') || (programme[13]==':' && programme[16]==':') || (programme[14]==':' && programme[17]==':')))
               {
                 dword year = 0, month = 0, day = 0, hour = 0, minute = 0, second = 0;
                 struct tm timeinfo = {0};
@@ -1436,7 +1480,7 @@ static bool AnalyseVideo(byte *PSBuffer, int BufSize, word pid, int *const VidHe
   return FALSE;
 }
 
-bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
+bool GenerateInfFile(FILE *fIn, char *AbsRecFileName, TYPE_RecHeader_TMSS *RecInf)
 {
   FILE                 *fIn2 = fIn;
   tPSBuffer             PMTBuffer, EITBuffer, TtxBuffer;
@@ -1447,10 +1491,10 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
   word                  PMTPID = 0;
   tPVRTime              TtxTime = 0;
   byte                  TtxTimeSec = 0;
-  dword                 TtxPCR = 0, TtxPTS = 0, curPTS = 0;
+  dword                 TtxPCR = 0, TtxPTS = 0, curPTS = 0, EITOK = 0;
   int                   dPCR = 0, dPTS = 0;
   int                   Offset, ReadBytes, d, d_max=128, i;
-  bool                  PMTOK = FALSE, EITOK = FALSE, SDTOK = FALSE, TtxFound = FALSE, TtxOK = FALSE, VidOK = FALSE;
+  bool                  PMTOK = FALSE, /*EITOK = FALSE,*/ SDTOK = FALSE, TtxFound = FALSE, TtxOK = FALSE, VidOK = FALSE;
   bool                  FirstFilePTSOK = FALSE, LastFilePTSOK = FALSE, AllPidsScanned = FALSE;
   int                   AudOK = 0;
   byte                 *p;
@@ -1742,12 +1786,11 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
           {
             int EITLen = *(int*)(&p[4]);
             tTSEIT *EIT = (tTSEIT*)(&p[8]);
-            TYPE_Event_Info tmpEvent;
             RecInf->ServiceInfo.ServiceID = (EIT->ServiceID1 * 256 | EIT->ServiceID2);
-            if ((EITOK = AnalyseEIT(&p[8], ReadBytes - (int)(p-Buffer), RecInf->ServiceInfo.ServiceID, &TransportStreamID, (OverwriteEPG ? &RecInf->EventInfo : &tmpEvent), &RecInf->ExtEventInfo, OverwriteEPG)))
+            if ((EITOK = AnalyseEIT(&p[8], ReadBytes - (int)(p-Buffer), RecInf->ServiceInfo.ServiceID, &TransportStreamID, &RecInf->EventInfo, &RecInf->ExtEventInfo, &RecInf->ExtExtEventInfo, OverwriteEPG)))
             {
               EPGLen = 0;
-              if(EPGBuffer) { free(EPGBuffer); EPGBuffer = NULL; }
+              if(EPGBuffer) { free(EPGBuffer); pEPGBuffer = EPGBuffer = NULL; }
               if (EITLen && ((EPGBuffer = (byte*)malloc(EITLen + 1))))
               {
                 EPGBuffer[0] = 0;  // Pointer field (=0) vor der TableID (nur im ersten TS-Paket der Tabelle, gibt den Offset an, an der die Tabelle startet, z.B. wenn noch Reste der vorherigen am Paketanfang stehen)
@@ -1756,7 +1799,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
                 EPGLen = EITLen + 1;
               }
 
-              if (!IsFirst && (IsLast || !TtxOK || (/*(RecInf->EventInfo.StartTime <= MidTimeUTC) &&*/ ((OverwriteEPG ? RecInf->EventInfo : tmpEvent).EndTime >= MidTimeUTC))))
+              if (!IsFirst && (IsLast || !TtxOK || (/*(RecInf->EventInfo.StartTime <= MidTimeUTC) &&*/ (EITOK >= MidTimeUTC))))
                 break;
             }
             p = p + 8 + EITLen + 53;
@@ -1796,7 +1839,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
     tTSPacket          *curPacket = NULL, *lastPacket = NULL;
     word                curPID = 0;
     bool                PTSLastPayloadStart = FALSE;
-    dword               PTSLastEndNulls = 0;
+    dword               PTSLastEndNulls = 0xffffffff;
     PMTPID = 0;
     PSBuffer_Init(&PMTBuffer, PMTPID,  4096, TRUE, TRUE, TRUE);
     PSBuffer_Init(&EITBuffer, 0x0012, 16384, TRUE, TRUE, TRUE);
@@ -1892,7 +1935,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
               PSBuffer_ProcessTSPacket(&EITBuffer, (tTSPacket*) (&p[k*PACKETSIZE + PACKETOFFSET]), (&p[k*PACKETSIZE + PACKETOFFSET] - Buffer));
               memcpy(&EPGPacks[((PACKETSIZE==192) ? 0 : 4) + k*192], &p[k*PACKETSIZE], PACKETSIZE);
             }
-            EITOK = AnalyseEIT(EITBuffer.Buffer1, EITBuffer.ValidBufLen, RecInf->ServiceInfo.ServiceID, &TransportStreamID, &RecInf->EventInfo, &RecInf->ExtEventInfo, TRUE);
+            EITOK = AnalyseEIT(EITBuffer.Buffer1, EITBuffer.ValidBufLen, RecInf->ServiceInfo.ServiceID, &TransportStreamID, &RecInf->EventInfo, &RecInf->ExtEventInfo, &RecInf->ExtExtEventInfo, TRUE);
           }
         }
         else continue;
@@ -2048,7 +2091,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             {
               byte *pBuffer = (EITBuffer.ValidBuffer==2) ? EITBuffer.Buffer2 : EITBuffer.Buffer1;
               EPGLen = EITBuffer.ValidBufLen ? EITBuffer.ValidBufLen : EITBuffer.BufferPtr;
-              if ((EITOK = (!EITBuffer.ErrorFlag && AnalyseEIT(pBuffer, EPGLen, RecInf->ServiceInfo.ServiceID, &TransportStreamID, &RecInf->EventInfo, &RecInf->ExtEventInfo, TRUE))))
+              if ((EITOK = (!EITBuffer.ErrorFlag && AnalyseEIT(pBuffer, EPGLen, RecInf->ServiceInfo.ServiceID, &TransportStreamID, &RecInf->EventInfo, &RecInf->ExtEventInfo, &RecInf->ExtExtEventInfo, TRUE))))
               {
                 // hier EPGPacks füllen (-> nach unten verschieben?)
                 pEPGBuffer = pBuffer;
@@ -2216,7 +2259,7 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
         if(!RecInf->ServiceInfo.PMTPID) RecInf->ServiceInfo.PMTPID = 256;
       }
       if (!EITOK && PMTatStart && (EITBuffer.ValidBuffer == 0) && (LastEITBuffer == 0))
-        EITOK = !EITBuffer.ErrorFlag && AnalyseEIT(EITBuffer.Buffer1, EITBuffer.BufferPtr, RecInf->ServiceInfo.ServiceID, &TransportStreamID, &RecInf->EventInfo, &RecInf->ExtEventInfo, TRUE);  // Versuche EIT trotzdem zu parsen (bei gestrippten Aufnahmen gibt es kein Folge-Paket, das den Payload_Unit_Start auslöst)
+        EITOK = !EITBuffer.ErrorFlag && AnalyseEIT(EITBuffer.Buffer1, EITBuffer.BufferPtr, RecInf->ServiceInfo.ServiceID, &TransportStreamID, &RecInf->EventInfo, &RecInf->ExtEventInfo, &RecInf->ExtExtEventInfo, TRUE);  // Versuche EIT trotzdem zu parsen (bei gestrippten Aufnahmen gibt es kein Folge-Paket, das den Payload_Unit_Start auslöst)
       if (!EITOK)
         printf ("  Failed to get the EIT information.\n");
       if (TeletextPID != 0xffff && !TtxOK)
@@ -2271,7 +2314,10 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
             {
               curPESPacket = (tPESHeader*) &curPacket->Data[(curPacket->Adapt_Field_Exists) ? curPacket->Data[0] + 1 : 0];
               if (curPacket->Payload_Unit_Start)
+              {
+                PTSLastEndNulls = 0xffffffff;
                 GetPTS((byte*) curPESPacket, &curPTS, NULL);
+              }
               if (FindPictureHeader((byte*) curPESPacket, 184 - ((curPacket->Adapt_Field_Exists) ? curPacket->Data[0] + 1 : 0), &FrameType, &PTSLastEndNulls))
               {
                 if (FrameType == 1)  // zuerst vom I-Frame nehmen
@@ -2384,15 +2430,23 @@ bool GenerateInfFile(FILE *fIn, TYPE_RecHeader_TMSS *RecInf)
       fclose(fIn2);
   }
 
+  // Hier Transponder-Infos aus Map einlesen
+  if (HumaxSource || TechniSource || DVBViewerSrc || MedionMode)
+    GetTpInfoFromMap(RecInf->ServiceInfo.ServiceID, RecInf);
+
+  // Hier EPG aus Map einlesen
+  if (HumaxSource || EycosSource || TechniSource || DVBViewerSrc || MedionMode)
+  {
+    GetEPGFromMap(AbsRecFileName, RecInf->ServiceInfo.ServiceID, &TransportStreamID, RecInf);
+    RecInf->TransponderInfo.TSID = TransportStreamID;
+    pEPGBuffer = EPGBuffer;
+  }
+
   // hier EPGPacks füllen (außer bei SimpleMuxer/Medion)
   if (DoGenerateEIT && !pEPGBuffer && RecInf->EventInfo.StartTime)
   {
     GenerateEIT(RecInf->ServiceInfo.ServiceID, TF2UnixTime(RecInf->EventInfo.StartTime, 0, FALSE), RecInf->EventInfo.DurationHour, RecInf->EventInfo.DurationMin, RecInf->EventInfo.EventNameDescription, RecInf->EventInfo.EventNameLength, &RecInf->EventInfo.EventNameDescription[RecInf->EventInfo.EventNameLength], (int)strlen(&RecInf->EventInfo.EventNameDescription[RecInf->EventInfo.EventNameLength]), ExtEPGText, (int)strlen(ExtEPGText), RecInf->ServiceInfo.AudioStreamType);
     pEPGBuffer = EPGBuffer;
-  }
-  if (!DoInfoOnly)
-  {
-    free(ExtEPGText); ExtEPGText = NULL;
   }
 
   if (pEPGBuffer && (MedionMode != 1))
@@ -2552,28 +2606,28 @@ void SortAudioPIDs(tAudioTrack AudioPIDs[])
 {
   tAudioTrack           tmp;
   int                   curPid, minPid, minPos, StreamTypeSort;
-  int                   i, j, k;
+  int                   i, j;
 
   for (i = 0; (i < MAXCONTINUITYPIDS) && (AudioPIDs[i].pid != 0) && AudioPIDs[i].sorted; i++);  // sortierte überspringen
 
-  for (j = i; (j < MAXCONTINUITYPIDS) && (AudioPIDs[j].pid != 0) && !AudioPIDs[j].sorted; j++)  // PIDs der Größe nach sortieren (außer die un-gescannten)
+  for (i = i; (i < MAXCONTINUITYPIDS) && (AudioPIDs[i].pid != 0) && !AudioPIDs[i].sorted; i++)  // PIDs der Größe nach sortieren (außer die un-gescannten)
   {
     minPid = 0x7fffffff;
-    minPos = j;
-    for (k = j; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0) && !AudioPIDs[k].sorted; k++)
+    minPos = i;
+    for (j = i; (j < MAXCONTINUITYPIDS) && (AudioPIDs[j].pid != 0) && !AudioPIDs[j].sorted; j++)
     {
       StreamTypeSort = (AudioPIDs[j].streamType) ? AudioPIDs[j].streamType : 4;
       curPid = (StreamTypeSort << 17) + (!AudioPIDs[j].scanned ? (int)1 << 16 : 0) + ((strncmp(AudioPIDs[j].desc, "deu", 3)==0 || strncmp(AudioPIDs[j].desc, "ger", 3)==0) ? 0 : ((int)1 << (AudioPIDs[j].streamType + 15))) + AudioPIDs[j].pid;
       if(curPid < minPid && AudioPIDs[j].streamType != STREAMTYPE_TELETEXT && AudioPIDs[j].streamType != STREAMTYPE_SUBTITLE)
       {
         minPid = curPid;
-        minPos = k;
+        minPos = j;
       }
     }
-    if ((minPos != j) && AudioPIDs[j].streamType != STREAMTYPE_TELETEXT && AudioPIDs[j].streamType != STREAMTYPE_SUBTITLE)  // setze Track mit minimaler PID an die aktuelle Position j
+    if ((minPos != i) && AudioPIDs[i].streamType != STREAMTYPE_TELETEXT && AudioPIDs[i].streamType != STREAMTYPE_SUBTITLE)  // setze Track mit minimaler PID an die aktuelle Position i
     {
-      tmp = AudioPIDs[j];
-      AudioPIDs[j] = AudioPIDs[minPos];
+      tmp = AudioPIDs[i];
+      AudioPIDs[i] = AudioPIDs[minPos];
       AudioPIDs[minPos] = tmp;
     }
   }
@@ -2590,12 +2644,12 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word TransportID, wor
   dword                *CRC = NULL;
   const char*           LangArr[] = {"deu", "mis", "mul"};
   int                   Offset = 0;
-  int                   StreamTag = 1, k;
+  int                   StreamTag = 1, k, d, n=0;
   bool                  TeletextDone = FALSE, SubtitlesDone = FALSE;
 
   TRACEENTER;
   memset(PATPMTBuf, 0, 192 * (PATonly ? 1 : 4));
-  printf("  SID=%hu, PMTPid=%hd, PCRPID=%hd\n", ServiceID, PMTPid, PCRPID);
+  printf("  SID=%hu, TSID=%hu, PMTPid=%hd, PCRPID=%hd\n", ServiceID, TransportID, PMTPid, PCRPID);
   
   // PAT/PMT initialisieren
   Packet = (tTSPacket*) &PATPMTBuf[4];
@@ -2693,171 +2747,180 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word TransportID, wor
 //  SortAudioPIDs(AudioPIDs);
 
   // Audio-PIDs
-  for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0); k++)
+  for (d = 0; d <= 1; d++)  // 0. Durchlauf: erstes Audio, erster Teletext, 1. Durchlauf: alle anderen (sonst erkennt VLC den Teletext nicht)
   {
-    if (AudioPIDs[k].scanned && AudioPIDs[k].streamType == STREAMTYPE_AUDIO)
+    for (k = 0; (k < MAXCONTINUITYPIDS) && (AudioPIDs[k].pid != 0); k++)
     {
-      tTSAudioDesc *Desc    = NULL;
-
-      Elem = (tElemStream*) &Packet->Data[Offset];
-      Elem->ESPID1          = AudioPIDs[k].pid / 256;
-      Elem->ESPID2          = (AudioPIDs[k].pid & 0xff);
-      Elem->Reserved1       = 7;
-      Elem->Reserved2       = 0xf;
-      Elem->ESInfoLen1      = 0;
-      Elem->ESInfoLen2      = sizeof(tTSStreamDesc);
-      Offset               += sizeof(tElemStream);
-
-      Desc0 = (tTSStreamDesc*) &Packet->Data[Offset];
-
-      if ((AudioPIDs[k].type == STREAM_AUDIO_MPEG4_AC3_PLUS) || (AudioPIDs[k].type == STREAM_AUDIO_MPEG4_AC3) || (strncmp(AudioPIDs[k].desc, "AC", 2) == 0) || (strncmp(AudioPIDs[k].desc, "ac", 2) == 0))
+      if (AudioPIDs[k].scanned && AudioPIDs[k].streamType == STREAMTYPE_AUDIO && (XOR(d==0, k > 0)))  // ((d==0 && k==0) || (k >= d))
       {
-        tTSAC3Desc *Desc1   = (tTSAC3Desc*) &Packet->Data[Offset + sizeof(tTSStreamDesc)];
-//        Desc0               = (tTSStreamDesc*) &Packet->Data[Offset];
-        Desc                = (tTSAudioDesc*) &Packet->Data[Offset + sizeof(tTSStreamDesc) + sizeof(tTSAC3Desc)];
+        tTSAudioDesc *Desc    = NULL;
 
-        Elem->stream_type   = AudioPIDs[k].type;  // STREAM_AUDIO_MPEG4_AC3_PLUS;
-        Elem->ESInfoLen2   += (sizeof(tTSAC3Desc) + sizeof(tTSAudioDesc));
-        Desc1->DescrTag     = DESC_AC3;
-        Desc1->DescrLength  = 1;
-        printf("  Audio Track %d:  PID=%d, AC3, Type=0x%x", (k + 1), AudioPIDs[k].pid, Elem->stream_type);
-      }
-      else if (AudioPIDs[k].type <= 4)
-      {
-        Desc = (tTSAudioDesc*) &Packet->Data[Offset + sizeof(tTSStreamDesc)];
-        Elem->stream_type   = AudioPIDs[k].type;  // (AudioPIDs[k].type <= 1) ? ((AudioPIDs[k].type == 1) ? STREAM_AUDIO_MPEG1 : STREAM_AUDIO_MPEG2) : AudioPIDs[k].type;
-        Elem->ESInfoLen2   += sizeof(tTSAudioDesc);
-        printf("  Audio Track %d:  PID=%d, MPEG-%s, Type=0x%x", (k + 1), AudioPIDs[k].pid, (Elem->stream_type==STREAM_AUDIO_MPEG1 ? "1" : (Elem->stream_type==STREAM_AUDIO_MPEG2 ? "2" : "?")), Elem->stream_type);
-      }
-      else
-      {
-        Desc = (tTSAudioDesc*) &Packet->Data[Offset + sizeof(tTSStreamDesc)];
-        Elem->stream_type   = AudioPIDs[k].type;
-        Elem->ESInfoLen2   += sizeof(tTSAudioDesc);
-        printf("  Audio Track %d:  PID=%d, Unknown Type: 0x%x", (k + 1), AudioPIDs[k].pid, Elem->stream_type);
-      }
-      if (Desc)
-      {
-        tTSSupplAudioDesc *Desc2 = (tTSSupplAudioDesc*) &Packet->Data[Offset + Elem->ESInfoLen2];
-        Desc0->DescrTag       = DESC_StreamIdentifier;
-        Desc0->DescrLength    = 1;
-        Desc0->ComponentTag   = StreamTag++;
+        Elem = (tElemStream*) &Packet->Data[Offset];
+        Elem->ESPID1          = AudioPIDs[k].pid / 256;
+        Elem->ESPID2          = (AudioPIDs[k].pid & 0xff);
+        Elem->Reserved1       = 7;
+        Elem->Reserved2       = 0xf;
+        Elem->ESInfoLen1      = 0;
+        Elem->ESInfoLen2      = sizeof(tTSStreamDesc);
+        Offset               += sizeof(tElemStream);
 
-        Desc->DescrTag      = DESC_AudioLang;
-        Desc->DescrLength   = 4;
-        if (*AudioPIDs[k].desc)
-          strncpy(Desc->LanguageCode, AudioPIDs[k].desc, sizeof(Desc->LanguageCode));
-        else
-          strncpy(Desc->LanguageCode, ((AudioPIDs[k].pid==5113 || AudioPIDs[k].pid==6222) ? "fra" : LangArr[(k<3) ? k : 0]), sizeof(Desc->LanguageCode));
-        Desc->AudioFlag     = (AudioPIDs[k].desc_flag) ? AudioPIDs[k].desc_flag - 1 : (((strncmp(Desc->LanguageCode, "mul", 3) == 0) || (strncmp(Desc->LanguageCode, "qks", 3) == 0)) ? 2 : 0);
-        printf(" [%.3s]", Desc->LanguageCode);
+        Desc0 = (tTSStreamDesc*) &Packet->Data[Offset];
 
-        if ((Desc->AudioFlag > 0) || (strncmp(Desc->LanguageCode, "mis", 3) == 0) || (strncmp(Desc->LanguageCode, "mul", 3) == 0) || (strncmp(Desc->LanguageCode, "qks", 3) == 0))
+        if ((AudioPIDs[k].type == STREAM_AUDIO_MPEG4_AC3_PLUS) || (AudioPIDs[k].type == STREAM_AUDIO_MPEG4_AC3) || (strncmp(AudioPIDs[k].desc, "AC", 2) == 0) || (strncmp(AudioPIDs[k].desc, "ac", 2) == 0))
         {
-          Elem->ESInfoLen2   += sizeof(tTSSupplAudioDesc);
-          Desc2->DescrTag     = DESC_Extension;
-          Desc2->DescrTagExt  = 0x06;
-          Desc2->DescrLength  = 4;
-          Desc2->mix_type     = 1;
-          Desc2->reserved     = 1;
-          Desc2->editorial_classification = (Desc->AudioFlag > 1) ? Desc->AudioFlag - 1 : ((strncmp(Desc->LanguageCode, "mis", 3) == 0) ? 1 : 2);   // 0=main audio, 1=audio description for vis. imp., 2=clean audio for hear. imp., 3=spoken subtitles
-          Desc2->language_code_present = 1;
-          strcpy(Desc->LanguageCode, ((strncmp(Desc->LanguageCode, "mul", 3) == 0) ? "mul" : "deu"));
-          printf(" -> editorial class: 0x%hhx", Desc2->editorial_classification);
+          tTSAC3Desc *Desc1   = (tTSAC3Desc*) &Packet->Data[Offset + sizeof(tTSStreamDesc)];
+//          Desc0               = (tTSStreamDesc*) &Packet->Data[Offset];
+          Desc                = (tTSAudioDesc*) &Packet->Data[Offset + sizeof(tTSStreamDesc) + sizeof(tTSAC3Desc)];
+
+          Elem->stream_type   = AudioPIDs[k].type;  // STREAM_AUDIO_MPEG4_AC3_PLUS;
+          Elem->ESInfoLen2   += (sizeof(tTSAC3Desc) + sizeof(tTSAudioDesc));
+          Desc1->DescrTag     = DESC_AC3;
+          Desc1->DescrLength  = 1;
+          if (!*AudioPIDs[k].desc)
+            strncpy(AudioPIDs[k].desc, "deu", sizeof(Desc->LanguageCode));
+          n--;
+          printf("  Audio Track %d:  PID=%d, AC3, Type=0x%x", (k + 1), AudioPIDs[k].pid, Elem->stream_type);
         }
+        else if (AudioPIDs[k].type <= 4)
+        {
+          Desc = (tTSAudioDesc*) &Packet->Data[Offset + sizeof(tTSStreamDesc)];
+          Elem->stream_type   = AudioPIDs[k].type;  // (AudioPIDs[k].type <= 1) ? ((AudioPIDs[k].type == 1) ? STREAM_AUDIO_MPEG1 : STREAM_AUDIO_MPEG2) : AudioPIDs[k].type;
+          Elem->ESInfoLen2   += sizeof(tTSAudioDesc);
+          printf("  Audio Track %d:  PID=%d, MPEG-%s, Type=0x%x", (k + 1), AudioPIDs[k].pid, (Elem->stream_type==STREAM_AUDIO_MPEG1 ? "1" : (Elem->stream_type==STREAM_AUDIO_MPEG2 ? "2" : "?")), Elem->stream_type);
+        }
+        else
+        {
+          Desc = (tTSAudioDesc*) &Packet->Data[Offset + sizeof(tTSStreamDesc)];
+          Elem->stream_type   = AudioPIDs[k].type;
+          Elem->ESInfoLen2   += sizeof(tTSAudioDesc);
+          printf("  Audio Track %d:  PID=%d, Unknown Type: 0x%x", (k + 1), AudioPIDs[k].pid, Elem->stream_type);
+        }
+        if (Desc)
+        {
+          tTSSupplAudioDesc *Desc2 = (tTSSupplAudioDesc*) &Packet->Data[Offset + Elem->ESInfoLen2];
+          Desc0->DescrTag       = DESC_StreamIdentifier;
+          Desc0->DescrLength    = 1;
+          Desc0->ComponentTag   = StreamTag++;
+
+          Desc->DescrTag      = DESC_AudioLang;
+          Desc->DescrLength   = 4;
+          if (*AudioPIDs[k].desc)
+            strncpy(Desc->LanguageCode, AudioPIDs[k].desc, sizeof(Desc->LanguageCode));
+          else if (AudioPIDs[k].pid==5113 || AudioPIDs[k].pid==6222)
+            strncpy(Desc->LanguageCode, "fra", sizeof(Desc->LanguageCode));
+          else
+            strncpy(Desc->LanguageCode, LangArr[(n<3) ? n : 0], sizeof(Desc->LanguageCode));
+          n++;
+          Desc->AudioFlag     = (AudioPIDs[k].desc_flag) ? AudioPIDs[k].desc_flag - 1 : (((strncmp(Desc->LanguageCode, "mul", 3) == 0) || (strncmp(Desc->LanguageCode, "qks", 3) == 0)) ? 2 : 0);
+          printf(" [%.3s]", Desc->LanguageCode);
+
+          if ((Desc->AudioFlag > 0) || (strncmp(Desc->LanguageCode, "mis", 3) == 0) || (strncmp(Desc->LanguageCode, "mul", 3) == 0) || (strncmp(Desc->LanguageCode, "qks", 3) == 0))
+          {
+            Elem->ESInfoLen2   += sizeof(tTSSupplAudioDesc);
+            Desc2->DescrTag     = DESC_Extension;
+            Desc2->DescrTagExt  = 0x06;
+            Desc2->DescrLength  = 4;
+            Desc2->mix_type     = 1;
+            Desc2->reserved     = 1;
+            Desc2->editorial_classification = (Desc->AudioFlag > 1) ? Desc->AudioFlag - 1 : ((strncmp(Desc->LanguageCode, "mis", 3) == 0) ? 1 : 2);   // 0=main audio, 1=audio description for vis. imp., 2=clean audio for hear. imp., 3=spoken subtitles
+            Desc2->language_code_present = 1;
+            strcpy(Desc->LanguageCode, ((strncmp(Desc->LanguageCode, "mul", 3) == 0) ? "mul" : "deu"));
+            printf(" -> editorial class: 0x%hhx", Desc2->editorial_classification);
+          }
+        }
+
+        printf("\n");
+        Offset               += Elem->ESInfoLen2;
+        PMT->SectionLen2     += sizeof(tElemStream) + Elem->ESInfoLen2;
       }
 
-      printf("\n");
-      Offset               += Elem->ESInfoLen2;
-      PMT->SectionLen2     += sizeof(tElemStream) + Elem->ESInfoLen2;
-    }
-
-    else if ((AudioPIDs[k].streamType == STREAMTYPE_TELETEXT) /* && !RemoveTeletext */)
-    {
-      // Teletext-PID
-      tTSTtxDesc *ttxDesc;
-
-      Elem = (tElemStream*) &Packet->Data[Offset];
-      Elem->Reserved1         = 7;
-      Elem->Reserved2         = 0xf;
-      Elem->stream_type       = 6;
-      Elem->ESPID1            = AudioPIDs[k].pid / 256;
-      Elem->ESPID2            = (AudioPIDs[k].pid & 0xff);
-      Elem->ESInfoLen1        = 0;
-      Elem->ESInfoLen2        = sizeof(tTSTtxDesc);
-      Offset                 += sizeof(tElemStream);
-
-      Desc0 = (tTSStreamDesc*) &Packet->Data[Offset];
-      Desc0->DescrTag         = DESC_StreamIdentifier;
-      Desc0->DescrLength      = 1;
-      Desc0->ComponentTag     = StreamTag++;
-      Elem->ESInfoLen2       += sizeof(tTSStreamDesc);
-
-      ttxDesc = (tTSTtxDesc*) &Packet->Data[Offset + sizeof(tTSStreamDesc)];
-      ttxDesc->DescrTag       = DESC_Teletext;
-
-      ttxDesc->DescrLength    = 5;
-      ttxDesc->ttx[0].teletext_type = 1;
-      ttxDesc->ttx[0].magazine_nr = 1;
-      ttxDesc->ttx[0].page_nr = 0;
-      if (*AudioPIDs[k].desc)
-        strcpy(ttxDesc->ttx[0].LanguageCode, AudioPIDs[k].desc);
-      else
-        strcpy(ttxDesc->ttx[0].LanguageCode, "deu");
-
-      if (AudioPIDs[k].desc_flag)
+      else if ((AudioPIDs[k].streamType == STREAMTYPE_TELETEXT) /* && !RemoveTeletext */ && (XOR(d==1, AudioPIDs[k].pid == TeletextPID)))
       {
-        Elem->ESInfoLen2     += 5;
-        ttxDesc->DescrLength += 5;
-        ttxDesc->ttx[1].teletext_type = 1;
-        ttxDesc->ttx[1].magazine_nr = 1;
-        ttxDesc->ttx[1].page_nr = AudioPIDs[k].desc_flag - 1;
-        strcpy(ttxDesc->ttx[1].LanguageCode, ttxDesc->ttx[0].LanguageCode);
+        // Teletext-PID
+        tTSTtxDesc *ttxDesc;
+
+        Elem = (tElemStream*) &Packet->Data[Offset];
+        Elem->Reserved1         = 7;
+        Elem->Reserved2         = 0xf;
+        Elem->stream_type       = 6;
+        Elem->ESPID1            = AudioPIDs[k].pid / 256;
+        Elem->ESPID2            = (AudioPIDs[k].pid & 0xff);
+        Elem->ESInfoLen1        = 0;
+        Elem->ESInfoLen2        = sizeof(tTSTtxDesc);
+        Offset                 += sizeof(tElemStream);
+
+        Desc0 = (tTSStreamDesc*) &Packet->Data[Offset];
+        Desc0->DescrTag         = DESC_StreamIdentifier;
+        Desc0->DescrLength      = 1;
+        Desc0->ComponentTag     = StreamTag++;
+        Elem->ESInfoLen2       += sizeof(tTSStreamDesc);
+
+        ttxDesc = (tTSTtxDesc*) &Packet->Data[Offset + sizeof(tTSStreamDesc)];
+        ttxDesc->DescrTag       = DESC_Teletext;
+
+        ttxDesc->DescrLength    = 5;
+        ttxDesc->ttx[0].teletext_type = 1;
+        ttxDesc->ttx[0].magazine_nr = 1;
+        ttxDesc->ttx[0].page_nr = 0;
+        if (*AudioPIDs[k].desc)
+          strcpy(ttxDesc->ttx[0].LanguageCode, AudioPIDs[k].desc);
+        else
+          strcpy(ttxDesc->ttx[0].LanguageCode, "deu");
+
+        if (AudioPIDs[k].desc_flag)
+        {
+          Elem->ESInfoLen2     += 5;
+          ttxDesc->DescrLength += 5;
+          ttxDesc->ttx[1].teletext_type = 1;
+          ttxDesc->ttx[1].magazine_nr = 1;
+          ttxDesc->ttx[1].page_nr = AudioPIDs[k].desc_flag - 1;
+          strcpy(ttxDesc->ttx[1].LanguageCode, ttxDesc->ttx[0].LanguageCode);
+        }
+
+        Offset                 += Elem->ESInfoLen2;
+        PMT->SectionLen2       += sizeof(tElemStream) + Elem->ESInfoLen2;
+        if(AudioPIDs[k].pid == TeletextPID) TeletextDone = TRUE;
+        printf("  Teletext Track: PID=%d [%.3s]\n", AudioPIDs[k].pid, ttxDesc->ttx[0].LanguageCode);
       }
-
-      Offset                 += Elem->ESInfoLen2;
-      PMT->SectionLen2       += sizeof(tElemStream) + Elem->ESInfoLen2;
-      if(AudioPIDs[k].pid == TeletextPID) TeletextDone = TRUE;
-      printf("  Teletext Track: PID=%d [%.3s]\n", AudioPIDs[k].pid, ttxDesc->ttx[0].LanguageCode);
-    }
   
-    else if (AudioPIDs[k].streamType == STREAMTYPE_SUBTITLE)
-    {
-      // Subtitles-PID
-      tTSSubtDesc *subtDesc;
+      else if ((AudioPIDs[k].streamType == STREAMTYPE_SUBTITLE) && (d==1))
+      {
+        // Subtitles-PID
+        tTSSubtDesc *subtDesc;
 
-      Elem = (tElemStream*) &Packet->Data[Offset];
-      Elem->Reserved1         = 7;
-      Elem->Reserved2         = 0xf;
-      Elem->stream_type       = 6;
-      Elem->ESPID1            = AudioPIDs[k].pid / 256;
-      Elem->ESPID2            = (AudioPIDs[k].pid & 0xff);
-      Elem->ESInfoLen1        = 0;
-      Elem->ESInfoLen2        = sizeof(tTSSubtDesc);
-      Offset                 += sizeof(tElemStream);
+        Elem = (tElemStream*) &Packet->Data[Offset];
+        Elem->Reserved1         = 7;
+        Elem->Reserved2         = 0xf;
+        Elem->stream_type       = 6;
+        Elem->ESPID1            = AudioPIDs[k].pid / 256;
+        Elem->ESPID2            = (AudioPIDs[k].pid & 0xff);
+        Elem->ESInfoLen1        = 0;
+        Elem->ESInfoLen2        = sizeof(tTSSubtDesc);
+        Offset                 += sizeof(tElemStream);
 
-      Desc0 = (tTSStreamDesc*) &Packet->Data[Offset];
-      Desc0->DescrTag         = DESC_StreamIdentifier;
-      Desc0->DescrLength      = 1;
-      Desc0->ComponentTag     = StreamTag++;
-      Elem->ESInfoLen2       += sizeof(tTSStreamDesc);
+        Desc0 = (tTSStreamDesc*) &Packet->Data[Offset];
+        Desc0->DescrTag         = DESC_StreamIdentifier;
+        Desc0->DescrLength      = 1;
+        Desc0->ComponentTag     = StreamTag++;
+        Elem->ESInfoLen2       += sizeof(tTSStreamDesc);
 
-      subtDesc = (tTSSubtDesc*) &Packet->Data[Offset + sizeof(tTSStreamDesc)];
-      subtDesc->DescrTag      = DESC_Subtitle;
-      subtDesc->DescrLength   = 8;
-      subtDesc->subtitling_type = (AudioPIDs[k].desc_flag) ? AudioPIDs[k].desc_flag - 1 : 36;
-      subtDesc->composition_page_id2 = 1;
-      subtDesc->ancillary_page_id2 = 1;
+        subtDesc = (tTSSubtDesc*) &Packet->Data[Offset + sizeof(tTSStreamDesc)];
+        subtDesc->DescrTag      = DESC_Subtitle;
+        subtDesc->DescrLength   = 8;
+        subtDesc->subtitling_type = (AudioPIDs[k].desc_flag) ? AudioPIDs[k].desc_flag - 1 : 36;
+        subtDesc->composition_page_id2 = 1;
+        subtDesc->ancillary_page_id2 = 1;
 
-      if (*AudioPIDs[k].desc)
-        strcpy(subtDesc->LanguageCode, AudioPIDs[k].desc);
-      else
-        strcpy(subtDesc->LanguageCode, "deu");
+        if (*AudioPIDs[k].desc)
+          strcpy(subtDesc->LanguageCode, AudioPIDs[k].desc);
+        else
+          strcpy(subtDesc->LanguageCode, "deu");
 
-      Offset                 += Elem->ESInfoLen2;
-      PMT->SectionLen2       += sizeof(tElemStream) + Elem->ESInfoLen2;
-      if(AudioPIDs[k].pid == SubtitlesPID) SubtitlesDone = TRUE;
-      printf("  Subtitle Track: PID=%d [%.3s]\n", AudioPIDs[k].pid, subtDesc->LanguageCode);
+        Offset                 += Elem->ESInfoLen2;
+        PMT->SectionLen2       += sizeof(tElemStream) + Elem->ESInfoLen2;
+        if(AudioPIDs[k].pid == SubtitlesPID) SubtitlesDone = TRUE;
+        printf("  Subtitle Track: PID=%d [%.3s]\n", AudioPIDs[k].pid, subtDesc->LanguageCode);
+      }
     }
   }
 
@@ -2874,6 +2937,78 @@ void GeneratePatPmt(byte *const PATPMTBuf, word ServiceID, word TransportID, wor
   TRACEEXIT;
 }
 
+// Modify an EIT packet
+bool ModifyEIT(byte *const Buffer, int BufSize, word ServiceID, dword StartTime, byte DurationHour, byte DurationMin)
+{
+  tTSEIT               *eit = (tTSEIT*)Buffer;
+  tEITEvent            *Event = NULL;
+  tTSDesc              *Desc = NULL;
+  int                   SectionLength, DescriptorLoopLen, p;
+  word                  EventID;
+  bool                  EPGchanged = FALSE;
+
+  TRACEENTER;
+
+  if ((eit->TableID == TABLE_EIT) && ((eit->ServiceID1 * 256 | eit->ServiceID2) == ServiceID || !ServiceID))
+  {
+    if (StartTime || DurationHour || DurationMin)
+    {
+      SectionLength = eit->SectionLen1 * 256 | eit->SectionLen2;
+      SectionLength = min(SectionLength + 3, BufSize);    // SectionLength zählt erst ab Byte 3
+      p = sizeof(tTSEIT);
+
+      while (p + (int)sizeof(tTSEIT) + 4 <= SectionLength)
+      {
+        Event = (tEITEvent*) &Buffer[p];
+        EventID = Event->EventID1 * 256 | Event->EventID2;
+        DescriptorLoopLen = Event->DescriptorLoopLen1 * 256 | Event->DescriptorLoopLen2;
+
+        p += sizeof(tEITEvent);
+        if(Event->RunningStatus == 4)
+        {
+          while ((DescriptorLoopLen > 0) && (p + (int)sizeof(tTSDesc) + 4 <= SectionLength))
+          {
+            Desc = (tTSDesc*) &Buffer[p];
+            if(Desc->DescrTag == DESC_EITShortEvent)
+            {
+              Event->StartTime[0] = StartTime >> 24;
+              Event->StartTime[1] = (StartTime >> 16) & 0xff;
+              Event->StartTime[2] = BIN2BCD((StartTime >> 8) & 0xff);
+              Event->StartTime[3] = BIN2BCD(StartTime & 0xff);
+              Event->DurationSec[0] = BIN2BCD(DurationHour);
+              Event->DurationSec[1] = BIN2BCD(DurationMin);
+              Event->DurationSec[2] = BIN2BCD(0);
+              EPGchanged = TRUE;
+            }
+            DescriptorLoopLen -= (Desc->DescrLength + sizeof(tTSDesc));
+            p += (Desc->DescrLength + sizeof(tTSDesc));
+          }
+        }
+        else p += DescriptorLoopLen;
+      }
+    }
+
+    // Dirty hack: Hier die ServiceID im EIT-Paket an die Aufnahme anpassen (z.B. arte -> arte HD)
+    // Entfernt, denn: In vielen Fällen (z.B. Humax) ist die ServiceID gar nicht bekannt!
+/*    if ((word)eit->ServiceID1 << 8 + eit->ServiceID2 != ServiceID)
+    {
+      printf("  GetEPGFromMap: Changeing ServiceID from %hu to %hu.\n", eit->ServiceID1*256 + eit->ServiceID2, ServiceID);
+      eit->ServiceID1 = (byte)(ServiceID >> 8);
+      eit->ServiceID2 = (byte)(ServiceID & 0xff);
+      eit->TS_ID1 = (byte)(TransportStreamID >> 8);
+      eit->TS_ID2 = (byte)(TransportStreamID & 0xff);
+      EPGchanged = TRUE;  // CRC neu berechnen
+    } */
+
+    // CRC neu berechnen
+    if (EPGchanged!= 0)
+      *(dword*)&Buffer[eit->SectionLen1*256 + eit->SectionLen2] = crc32m_tab((byte*)eit, eit->SectionLen1*256 + eit->SectionLen2);  // testen!!
+  }
+
+  TRACEEXIT;
+  return EPGchanged;
+}
+
 // Generate an artificial EIT
 void GenerateEIT(word ServiceID, time_t StartTimeUnix, byte DurationHour, byte DurationMin, char *EventName, int EventNameLen, char *EventDesc, int EventDescLen, char *ExtEventText, int ExtEventTextLen, byte AudioStreamType)
 {
@@ -2888,7 +3023,7 @@ void GenerateEIT(word ServiceID, time_t StartTimeUnix, byte DurationHour, byte D
   tExtEvtDesc          *desc2 = NULL;                                                      //  8 bytes * (ExtEventTextLen / 255) + ExtEventTextLen
   tUserDesc            *user = NULL;                                                       //  2 bytes + 13 bytes
   tPVRTime              StartTimeTF = Unix2TFTime(StartTimeUnix, NULL, FALSE);             //  4 bytes CRC
-                                                                                           // = max 87 + EventNameLen + EventDescLen + ExtEventTextLen + 8 * (ExtEventTextLen / 255)
+                                                                                           // = max 87 + EventNameLen + EventDescLen + ExtEventTextLen + 8 * (ExtEventTextLen / 249)
   if (EITBuf && StartTimeUnix)
   {
     printf("  -> Generating artificial EIT Event Table from map data!\n");

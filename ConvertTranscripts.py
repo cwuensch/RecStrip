@@ -2,16 +2,16 @@
 # Konvertiert TurboScribe Transkriptionen in srt mit Sprechern
 # Variante 1: csv nach srt konvertieren
 #
-# (c) 2025 Christian Wünsch
+# (c) 2025 Christian Wuensch
 #
 
 import sys, csv
 
-# Farb-Array für die Sprecher, beginnend ab Speaker 2
+# Farb-Array fuer die Sprecher, beginnend ab Speaker 2
 color_array = [
   "#ffff00",  # gelb
   "#00ffff",  # cyan
-  "#80ff00",  # grün
+  "#80ff00",  # gruen
   "#ff00ff",  # magenta
   "#ff0000",  # rot
   "#0080ff",  # blau
@@ -36,7 +36,7 @@ def ms_to_timestr(ms):
   return f"{hours:02}:{minutes:02}:{seconds:02},{milliseconds:03}"
 
 def split_at_space(text, pos):
-  """Teilt einen String um die Position pos am nächsten Leerzeichen auf"""
+  """Teilt einen String um die Position pos am naechsten Leerzeichen auf"""
   if (pos >= len(text) or ' ' not in text):
     return (text, "")
 
@@ -78,7 +78,7 @@ def csv_to_srt(csv_name, srt_name):
           start = int(last_row["start"])
           stop = int(last_row["end"])
           text = last_row["text"].strip()
-          nr_parts = len(text) // 80 + 1  # Wenn die 80 um x überschritten wird -> ein Part mehr
+          nr_parts = len(text) // 80 + 1  # Wenn die 80 um x ueberschritten wird -> ein Part mehr
           part_time = max((stop - start - nr_parts) // nr_parts, 1)
 
           while (nr_parts > 1 and text != ""):
@@ -104,7 +104,7 @@ def csv_to_srt(csv_name, srt_name):
       start = int(last_row["start"])
       stop = int(last_row["end"])
       text = last_row["text"].strip()
-      nr_parts = len(text) // 80 + 1  # Wenn die 80 um x überschritten wird -> ein Part mehr
+      nr_parts = len(text) // 80 + 1  # Wenn die 80 um x ueberschritten wird -> ein Part mehr
       part_time = max((stop - start - nr_parts) // nr_parts, 1)
 
       while (nr_parts > 1 and text != ""):

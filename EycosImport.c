@@ -87,7 +87,36 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
       TeletextPID           = (word) -1;
       isHDVideo             = FALSE;
 
+      RecInf->TransponderInfo.SatIndex = 1;
       RecInf->TransponderInfo.Frequency = EycosHeader.Frequency;
+      RecInf->TransponderInfo.SymbolRate = EycosHeader.SymbolRate;
+      RecInf->TransponderInfo.Polarization = EycosHeader.Polarization;
+
+      if (EycosHeader.FEC == 0x0d)
+      {
+        RecInf->TransponderInfo.ModulationType = 1;  // QPSK
+        RecInf->TransponderInfo.FECMode = 0x4;      // 3/4
+      }
+      else if(EycosHeader.FEC == 0x31)
+      {
+        RecInf->TransponderInfo.ModulationType = 1;  // QPSK
+        RecInf->TransponderInfo.FECMode = 0x3;      // 5/6
+      }
+      else if(EycosHeader.FEC == 0x09)
+      {
+        RecInf->TransponderInfo.ModulationSystem = 1;  // DVBS2
+        RecInf->TransponderInfo.ModulationType = 2;   // 8PSK
+      }
+
+//      RecInf->TransponderInfo.ModulationSystem = (strncmp(System, "DVBS2", 5) == 0);
+//      if (strncmp(System, "QPSK", 4) == 0) RecInf->TransponderInfo.ModulationType = 1;
+//      else if (strncmp(System, "8PSK", 4) == 0) RecInf->TransponderInfo.ModulationType = 2;
+//      else if (strncmp(System, "16QAM", 5) == 0) RecInf->TransponderInfo.ModulationType = 3;
+
+//      RecInf->TransponderInfo.Pilot = (Pilot=='y');
+//      RecInf->TransponderInfo.TSID = EycosHeader.TSID;
+      RecInf->TransponderInfo.OriginalNetworkID = 0x1;
+
       RecInf->ServiceInfo.ServiceType     = 0;  // SVC_TYPE_Tv
       RecInf->ServiceInfo.ServiceID       = EycosHeader.ServiceID;
       RecInf->ServiceInfo.PMTPID          = EycosHeader.PMTPid;
@@ -218,6 +247,9 @@ bool LoadEycosHeader(char *AbsTrpFileName, TYPE_RecHeader_TMSS *RecInf)
 
 //      memset(RecInf->EventInfo.EventNameDescription, 0, sizeof(RecInf->EventInfo.EventNameDescription));
 //      memset(RecInf->ExtEventInfo.Text, 0, sizeof(RecInf->ExtEventInfo.Text));
+//      if ((RecInf->ExtExtEventInfo.Magic == 0xEE00) && (RecInf->ExtExtEventInfo.TextLength))
+//        memset(&RecInf->ExtExtEventInfo, 0, RecInf->ExtExtEventInfo.TextLength + sizeof(RecInf->ExtExtEventInfo));
+//      RecInf->ExtEventInfo.TextLength = 0;
       EycosEvent.Title[sizeof(EycosEvent.Title) - 1] = '\0';
       StrToUTF8(RecInf->EventInfo.EventNameDescription, EycosEvent.Title, sizeof(RecInf->EventInfo.EventNameDescription), 0);
 //      RecInf->EventInfo.EventNameDescription[NameLen] = '\0';
@@ -248,11 +280,20 @@ if (strlen(ExtEPGText) != TextLen)
   printf("ASSERT: ExtEventTextLength (%d) != length of ExtEventText (%d)!\n", TextLen, strlen(ExtEPGText));
 #endif
         ExtEPGText[TextLen] = '\0';
-        RecInf->ExtEventInfo.TextLength = min(TextLen, (int)sizeof(RecInf->ExtEventInfo.Text) - 1);
-        strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, RecInf->ExtEventInfo.TextLength + 1);
+        realloc(ExtEPGText, strlen(ExtEPGText) + 1);
+        strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, sizeof(RecInf->ExtEventInfo.Text));
+
         if (RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] != 0)
+        {
           snprintf(&RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 4], 4, "...");
+          RecInf->ExtExtEventInfo.Magic = 0xEE00;
+          snprintf(RecInf->ExtExtEventInfo.Text, 2044, "...%s", &ExtEPGText[sizeof(RecInf->ExtEventInfo.Text) - 4]);
+          RecInf->ExtExtEventInfo.TextLength = (word)strlen(RecInf->ExtExtEventInfo.Text);
+          if (RecInf->ExtExtEventInfo.TextLength > 2042)
+            snprintf(&RecInf->ExtExtEventInfo.Text[2040], 4, "...");
+        }
         RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] = '\0';
+        RecInf->ExtEventInfo.TextLength = min((word) strlen(RecInf->ExtEventInfo.Text), (word)sizeof(RecInf->ExtEventInfo.Text) - 1);
         printf("    EPGExtEvt = %s\n", ExtEPGText);
       }
       else
@@ -295,15 +336,17 @@ if (strlen(ExtEPGText) != TextLen)
       {
         SegmentMarker[j].Position = EycosIdx.PacketNr * 188;
         BookmarkInfo->Bookmarks[BookmarkInfo->NrBookmarks++] = (dword)(EycosIdx.PacketNr / 48);
-        printf((j > 0) ? ", %llu (%u:%02u:%02u,%03u)" : "%llu (%u:%02u:%02u,%03u)", SegmentMarker[j].Position, SegmentMarker[j].Timems/3600000, SegmentMarker[j].Timems/60000 % 60, SegmentMarker[j].Timems/1000 % 60, SegmentMarker[j].Timems % 1000);
+        printf((j > 1) ? ", %llu (%u:%02u:%02u,%03u)" : "%llu (%u:%02u:%02u,%03u)", SegmentMarker[j].Position, SegmentMarker[j].Timems/3600000, SegmentMarker[j].Timems/60000 % 60, SegmentMarker[j].Timems/1000 % 60, SegmentMarker[j].Timems % 1000);
       }
+      else
+        DeleteSegmentMarker(j, FALSE);
     }
     fseeko64(fIdx, -1 * (int)sizeof(tEycosIdxEntry), SEEK_END);
     if (fread(&EycosIdx, sizeof(tEycosIdxEntry), 1, fIdx))
     {
       RecInf->RecHeaderInfo.DurationMin = (word)(EycosIdx.Timems / 60000);
       RecInf->RecHeaderInfo.DurationSec = (word)(EycosIdx.Timems / 1000) % 60;
-      if (NrSegmentMarker > 2)
+      if (NrSegmentMarker >= 2)
         SegmentMarker[NrSegmentMarker-1].Timems = EycosIdx.Timems;
     }
     fclose(fIdx);

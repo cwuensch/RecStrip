@@ -10,6 +10,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="..\Makefile" />
+    <None Include="..\.github\workflows\build.yml" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\RecStrip.h">
