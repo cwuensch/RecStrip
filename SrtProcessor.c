@@ -33,7 +33,7 @@ bool LoadSrtFilesIn(const char* AbsInRec)
 {
   char CurFileName[FBLIB_DIR_SIZE];
   int i, j;
-  char* Extensions[] = {".srt", ".sup", "_deu.srt", "_fra.srt", "_ger.srt", "_full.srt", "_777.srt", "_150.srt", "_151.srt", "_888.srt", "_160.srt", "_161.srt", "_152.srt", "_149.srt", "_571.srt"};
+  char* Extensions[] = {".srt", ".sup", "_deu.srt", "_fra.srt", "_ger.srt", "_subt.srt", "_777.srt", "_150.srt", "_151.srt", "_888.srt", "_160.srt", "_161.srt", "_152.srt", "_149.srt", "_571.srt"};
 
   CloseSrtFilesIn();
 

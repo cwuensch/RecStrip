@@ -227,28 +227,32 @@ static int RemoveItemizedText(TYPE_RecHeader_TMSS *RecHeader, char *const NewEve
   while ((n < 2*RecHeader->ExtEventInfo.NrItemizedPairs) && (p < RecHeader->ExtEventInfo.TextLength))
     if (RecHeader->ExtEventInfo.Text[p++] == '\0')  n++;
 
+  if (n != 2*RecHeader->ExtEventInfo.NrItemizedPairs)
+    p = 0;
+
+  // EPG Text kopieren
+  tmp = RecHeader->ExtEventInfo.Text[min(RecHeader->ExtEventInfo.TextLength, sizeof(RecHeader->ExtEventInfo.Text))];
+  RecHeader->ExtEventInfo.Text[min(RecHeader->ExtEventInfo.TextLength, sizeof(RecHeader->ExtEventInfo.Text))] = '\0';
+  StrToUTF8(NewEventText, &RecHeader->ExtEventInfo.Text[p], NewTextLen, 0);
+  RecHeader->ExtEventInfo.Text[min(RecHeader->ExtEventInfo.TextLength, sizeof(RecHeader->ExtEventInfo.Text))] = tmp;
+  len = (int)strlen(NewEventText);
+
   if (n == 2*RecHeader->ExtEventInfo.NrItemizedPairs)
   {
-    // EPG Text kopieren
-    tmp = RecHeader->ExtEventInfo.Text[min(RecHeader->ExtEventInfo.TextLength, sizeof(RecHeader->ExtEventInfo.Text))];
-    RecHeader->ExtEventInfo.Text[min(RecHeader->ExtEventInfo.TextLength, sizeof(RecHeader->ExtEventInfo.Text))] = '\0';
-    StrToUTF8(NewEventText, &RecHeader->ExtEventInfo.Text[p], NewTextLen, 0);
-    RecHeader->ExtEventInfo.Text[min(RecHeader->ExtEventInfo.TextLength, sizeof(RecHeader->ExtEventInfo.Text))] = tmp;
-    len = (int)strlen(NewEventText);
-
     // Itemized Strings kopieren
     p = 0;
-    for (i = 0; (i < 2*RecHeader->ExtEventInfo.NrItemizedPairs) && (len + 2 < NewTextLen); i++)
+    for (i = 0; (i < RecHeader->ExtEventInfo.NrItemizedPairs) && (len + 2 < NewTextLen); i++)
     {
 //      snprintf(&NewEventText[strlen(NewEventText)], NewTextLen-strlen(NewEventText), ((k % 2 == 0) ? (((byte)NewEventText[0] >= 0x15) ? "\xC2\x8A%s: " : "\x8A%s: ") : "%s"), &RecHeader->ExtEventInfo.Text[p]);
       snprintf(&NewEventText[len], NewTextLen - len, "\xC2\x8A");                              len += 2;
-      StrToUTF8(&NewEventText[len], &RecHeader->ExtEventInfo.Text[p], NewTextLen - len, 0);    len += (int)strlen(&NewEventText[len]);  p += (int)strlen(&RecHeader->ExtEventInfo.Text[p]);
+      StrToUTF8(&NewEventText[len], &RecHeader->ExtEventInfo.Text[p], NewTextLen - len, 0);    len += (int)strlen(&NewEventText[len]);  p += (int)strlen(&RecHeader->ExtEventInfo.Text[p]) + 1;
       if (len + 2 < NewTextLen)
       {
         snprintf(&NewEventText[len], NewTextLen - len, ": ");                                  len += 2;
-        StrToUTF8(&NewEventText[len], &RecHeader->ExtEventInfo.Text[p], NewTextLen - len, 0);  len += (int)strlen(&NewEventText[len]);  p += (int)strlen(&RecHeader->ExtEventInfo.Text[p]);
+        StrToUTF8(&NewEventText[len], &RecHeader->ExtEventInfo.Text[p], NewTextLen - len, 0);  len += (int)strlen(&NewEventText[len]);  p += (int)strlen(&RecHeader->ExtEventInfo.Text[p]) + 1;
       }
     }
+    RecHeader->ExtEventInfo.NrItemizedPairs = 0;
   }
   TRACEEXIT;
   return len;
