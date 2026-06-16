@@ -13,26 +13,43 @@ env:
 
 
 jobs:
-  winbuild2022:
-    name: Windows (VS 2022)
+  winbuild2025:
+    name: Windows (VS 2026)
     runs-on: windows-2025
     env:
       SOLUTION_FILE_PATH: RecStrip_VS/RecStrip.sln
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 
     - name: Use VS 2017 project
       run: mv -Force RecStrip_VS/RecStrip_2017.vcxproj RecStrip_VS/RecStrip.vcxproj
 
+    - name: List VS workloads
+      shell: powershell
+      run: |
+        & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" `
+          -products * `
+          -format json
+
     - name: Install WinXP Toolset 141
       shell: cmd
       run: |
-        "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe" modify --quiet --norestart --productId Microsoft.VisualStudio.Product.Enterprise --add Microsoft.VisualStudio.Component.WinXP
+        "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe" modify --installPath "C:\Program Files\Microsoft Visual Studio\18\Enterprise" --add Microsoft.VisualStudio.Component.WinXP --quiet --norestart
+
+#    - name: Install WinXP Toolset 141 (old)
+#      shell: cmd
+#      run: |
+#        "C:\Program Files (x86)\Microsoft Visual Studio\Installer\vs_installer.exe" modify --productId Microsoft.VisualStudio.Product.Enterprise --add Microsoft.VisualStudio.Component.WinXP --quiet --norestart
+
+    - name: Check toolsets
+      shell: powershell
+      run: |
+        Get-ChildItem "C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Tools\MSVC"
 
     - name: Add MSBuild to PATH
-      uses: microsoft/setup-msbuild@v1
+      uses: microsoft/setup-msbuild@v3
 #      with:
 #        vs-version: '[10.0,10.1)'
 
@@ -49,32 +66,90 @@ jobs:
         move "RecStrip_VS\x64\Release\RecStrip.exe" "RecStrip_VS\RecStrip_x64.exe"
 
     - name: Copy build artefact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
-        name: RecStrip_VS2017
+        name: RecStrip_VS2026
         path: |
           ${{ github.workspace }}/RecStrip_VS/RecStrip_Win32.exe
           ${{ github.workspace }}/RecStrip_VS/RecStrip_x64.exe
   
     - name: Create zip archive
       if: startsWith(github.ref, 'refs/tags/')
-      run: Compress-Archive -Path ${{ github.workspace }}\RecStrip_VS\RecStrip*.exe,${{ github.workspace }}/SenderMap.txt -DestinationPath RecStrip_VS2017.zip
+      run: Compress-Archive -Path ${{ github.workspace }}\RecStrip_VS\RecStrip*.exe,${{ github.workspace }}/SenderMap.txt -DestinationPath RecStrip_VS2026.zip
 
     - name: Upload release binaries
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v3
       if: startsWith(github.ref, 'refs/tags/')
       with:
-        files: RecStrip_VS2017.zip
+        files: RecStrip_VS2026.zip
 
-  winbuild2010:
-    name: Windows (VS 2010 Docker)
-    runs-on: windows-2019
+
+  msbuild:
+    name: MSBuild (Build Tools 141)
+    runs-on: windows-2025
     env:
       SOLUTION_FILE_PATH: RecStrip_VS/RecStrip.sln
 
     steps:
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
+
+    - name: Use VS 2017 project
+      run: mv -Force RecStrip_VS/RecStrip_2017.vcxproj RecStrip_VS/RecStrip.vcxproj
+
+    - name: Download MS Buildtools installer
+      shell: powershell
+      run: |
+        Invoke-WebRequest -Uri "https://aka.ms/vs/17/release/vs_buildtools.exe" -OutFile vs_buildtools.exe
+
+    - name: Install VS Build Tools 141_xp
+      shell: cmd
+      run: |
+        .\vs_buildtools.exe --wait --installPath C:\BuildTools --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.v141.x86.x64 --add Microsoft.VisualStudio.Component.WinXP --includeRecommended --quiet --norestart
+        rem .\vs_buildtools.exe --wait --installPath C:\BuildTools --add Microsoft.VisualStudio.Component.WinXP --add Microsoft.VisualStudio.Component.Windows10SDK.19041 --includeRecommended --quiet --norestart
+
+    - name: Build x86
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      shell: cmd
+      run: |
+        "C:\BuildTools\MSBuild\Current\Bin\MSBuild.exe" /m /p:Configuration=Release /p:Platform=Win32 ${{env.SOLUTION_FILE_PATH}}
+        move "RecStrip_VS\Release\RecStrip.exe" "RecStrip_VS\RecStrip_Win32.exe"
+
+    - name: Build x64
+      working-directory: ${{env.GITHUB_WORKSPACE}}
+      shell: cmd
+      run: |
+        "C:\BuildTools\MSBuild\Current\Bin\MSBuild.exe" /m /p:Configuration=Release /p:Platform=x64 ${{env.SOLUTION_FILE_PATH}}
+        move "RecStrip_VS\x64\Release\RecStrip.exe" "RecStrip_VS\RecStrip_x64.exe"
+
+    - name: Copy build artefact
+      uses: actions/upload-artifact@v7
+      with:
+        name: RecStrip_MSBuild
+        path: |
+          ${{ github.workspace }}/RecStrip_VS/RecStrip_Win32.exe
+          ${{ github.workspace }}/RecStrip_VS/RecStrip_x64.exe
+  
+    - name: Create zip archive
+      if: startsWith(github.ref, 'refs/tags/')
+      run: Compress-Archive -Path ${{ github.workspace }}\RecStrip_VS\RecStrip*.exe,${{ github.workspace }}/SenderMap.txt -DestinationPath RecStrip_MSBuild.zip
+
+    - name: Upload release binaries
+      uses: softprops/action-gh-release@v3
+      if: startsWith(github.ref, 'refs/tags/')
+      with:
+        files: RecStrip_MSBuild.zip
+
+
+  winbuild2010:
+    name: Windows (VS 2010 Docker)
+    runs-on: windows-2025
+    env:
+      SOLUTION_FILE_PATH: RecStrip_VS/RecStrip.sln
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v6
 
     - name: Compile code in container
       run: |
@@ -91,7 +166,7 @@ jobs:
         move "RecStrip_VS\x64\Release\RecStrip.exe" "RecStrip_VS\RecStrip_x64.exe"
 
     - name: Copy build artefact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: RecStrip_Windows
         path: |
@@ -103,10 +178,11 @@ jobs:
       run: Compress-Archive -Path ${{ github.workspace }}\RecStrip_VS\RecStrip*.exe,${{ github.workspace }}/SenderMap.txt -DestinationPath RecStrip_Windows.zip
 
     - name: Upload release binaries
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v3
       if: startsWith(github.ref, 'refs/tags/')
       with:
         files: RecStrip_Windows.zip
+
 
   mingwbuild:
     name: Build with MinGW
@@ -117,7 +193,7 @@ jobs:
       run: sudo apt-get install -y gcc-mingw-w64
 
     - name: Checkout repository and submodules
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 #      with:
 #        submodules: recursive
 
@@ -142,7 +218,7 @@ jobs:
         mv RecStrip.exe RecStrip_x64.exe
 
     - name: Copy build artefact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: RecStrip_MinGW
         path: |
@@ -154,7 +230,7 @@ jobs:
       run: zip -9 -r RecStrip_MinGW.zip RecStrip*.exe SenderMap.txt
 
     - name: Upload release binaries
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v3
       if: startsWith(github.ref, 'refs/tags/')
       with:
         files: RecStrip_MinGW.zip
@@ -162,13 +238,13 @@ jobs:
 
   winbuild_new:
     name: Windows (VS 2010 install)
-    runs-on: windows-2019
+    runs-on: windows-2025
     env:
       SOLUTION_FILE_PATH: RecStrip_VS/RecStrip.sln
 
     steps:
     - name: Download VS2010
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       with:
         repository: cwuensch/VS2010
         ref: minimal
@@ -198,10 +274,10 @@ jobs:
     - name: Extract Windows SDK 7.1A (ggf. schon vorhanden, muss aber in v7.0A)
       shell: powershell
       run: |
-        #echo "Extracting..."
-        #Expand-Archive -Force -Path ${{ github.workspace }}/VS2010/WindowsSDK_7.1A.zip -DestinationPath "C:\Program Files (x86)\Microsoft SDKs\Windows\"
+        echo "Extracting..."
+        Expand-Archive -Force -Path ${{ github.workspace }}/VS2010/WindowsSDK_7.1A.zip -DestinationPath "C:\Program Files (x86)\Microsoft SDKs\Windows\"
         echo "Copying..."
-        Rename-Item "C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A" "C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A.bak"
+        Rename-Item "C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A" "C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A.bak" -ErrorAction SilentlyContinue
         New-Item -Path "C:\Program Files (x86)\Microsoft SDKs\Windows\v7.0A" -ItemType SymbolicLink -Value "C:\Program Files (x86)\Microsoft SDKs\Windows\v7.1A"
         echo "Registry import..."
         reg import "${{ github.workspace }}/VS2010/WinSDK70.reg"
@@ -287,13 +363,13 @@ jobs:
         echo "C:\Windows\Microsoft.NET\Framework64\v4.0.30319" >> $GITHUB_PATH
 
 #    - name: Add MSBuild to PATH
-#      uses: microsoft/setup-msbuild@v1
+#      uses: microsoft/setup-msbuild@v3
 #      with:
 #        vs-version: '[10.0,10.1)'
 
 
     - name: Checkout repository
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
       
     - name: Build x86
       shell: cmd
@@ -328,22 +404,22 @@ jobs:
         move "${{ github.workspace }}\RecStrip_VS\x64\Release\RecStrip.exe" "${{ github.workspace }}\RecStrip_VS\RecStrip_x64.exe"
 
     - name: Copy build artefact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
-        name: RecStrip_Windows_new
+        name: RecStrip_VS2010
         path: |
           ${{ github.workspace }}/RecStrip_VS/RecStrip_Win32.exe
           ${{ github.workspace }}/RecStrip_VS/RecStrip_x64.exe
   
     - name: Create zip archive
       if: startsWith(github.ref, 'refs/tags/')
-      run: Compress-Archive -Path ${{ github.workspace }}\RecStrip_VS\RecStrip*.exe,${{ github.workspace }}/SenderMap.txt -DestinationPath RecStrip_Windows_new.zip
+      run: Compress-Archive -Path ${{ github.workspace }}\RecStrip_VS\RecStrip*.exe,${{ github.workspace }}/SenderMap.txt -DestinationPath RecStrip_VS2010.zip
 
     - name: Upload release binaries
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v3
       if: startsWith(github.ref, 'refs/tags/')
       with:
-        files: RecStrip_Windows_new.zip
+        files: RecStrip_VS2010.zip
 
 # ----------------------------------------------------
 
@@ -353,7 +429,7 @@ jobs:
 
     steps:
     - name: Checkout repository and submodules
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 #      with:
 #        submodules: recursive
 
@@ -366,7 +442,7 @@ jobs:
         args: make
 
     - name: Copy build artefact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: RecStrip_TMS
         path: ${{ github.workspace }}/RecStrip
@@ -376,7 +452,7 @@ jobs:
       run: zip -9 -r RecStrip_TMS.zip RecStrip SenderMap.txt
 
     - name: Upload release binaries
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v3
       if: startsWith(github.ref, 'refs/tags/')
       with:
         files: RecStrip_TMS.zip
@@ -389,7 +465,7 @@ jobs:
 
     steps:
     - name: Checkout repository and submodules
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 #      with:
 #        submodules: recursive
 
@@ -421,7 +497,7 @@ jobs:
         make
 
     - name: Copy build artefact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: RecStrip_Linux
         path: |
@@ -433,7 +509,7 @@ jobs:
       run: zip -9 -r RecStrip_Linux.zip RecStrip RecStrip_x64 SenderMap.txt
 
     - name: Upload release binaries
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v3
       if: startsWith(github.ref, 'refs/tags/')
       with:
         files: RecStrip_Linux.zip
@@ -472,7 +548,7 @@ jobs:
         fi
 
     - name: Get compiled binaries
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
       with:
         name: RecStrip_Linux
         path: ${{ github.workspace }}
@@ -532,7 +608,7 @@ jobs:
 
     steps:
     - name: Checkout repository and submodules
-      uses: actions/checkout@v4
+      uses: actions/checkout@v6
 #      with:
 #        submodules: recursive
 
@@ -547,7 +623,7 @@ jobs:
         docker cp SynoBuild:/toolkit/build_base/source/RecStrip/RecStrip ${{ github.workspace }}/RecStrip_${{ matrix.platform }}
         
     - name: Copy build artefact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: RecStrip_Synology_${{ matrix.platform }}
         path: |
@@ -562,7 +638,7 @@ jobs:
 
     steps:
     - name: Download artifacts
-      uses: actions/download-artifact@v4
+      uses: actions/download-artifact@v8
 
     - name: Copy all platforms together
       run: |
@@ -576,6 +652,6 @@ jobs:
         zip -9 -r ${{ github.workspace }}/RecStrip_Synology.zip RecStrip* SenderMap.txt
 
     - name: Upload release binaries
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v3
       with:
         files: ${{ github.workspace }}/RecStrip_Synology.zip
