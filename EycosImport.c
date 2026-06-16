@@ -280,7 +280,7 @@ if (strlen(ExtEPGText) != TextLen)
   printf("ASSERT: ExtEventTextLength (%d) != length of ExtEventText (%d)!\n", TextLen, strlen(ExtEPGText));
 #endif
         ExtEPGText[TextLen] = '\0';
-        realloc(ExtEPGText, strlen(ExtEPGText) + 1);
+        ExtEPGText = (char*) realloc(ExtEPGText, strlen(ExtEPGText) + 1);
         strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, sizeof(RecInf->ExtEventInfo.Text));
 
         if (RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] != 0)

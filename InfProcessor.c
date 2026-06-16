@@ -290,7 +290,7 @@ bool LoadInfFile(char *AbsInfName, bool FirstTime)
       rewind(fInfIn);
       ReadBytes = (int)fread(InfBuffer, 1, InfSize, fInfIn);
 
-      if ((ReadBytes >= sizeof(TYPE_RecHeader_TMSS)) && (RecHeader->ExtExtEventInfo.Magic == 0xEE00))
+      if ((ReadBytes >= (int)sizeof(TYPE_RecHeader_TMSS)) && (RecHeader->ExtExtEventInfo.Magic == 0xEE00))
       {
         fseeko64(fInfIn, (char*)RecHeader->ExtExtEventInfo.Text - (char*)RecHeader, SEEK_SET);
         ReadBytes = (int)fread(RecHeader->ExtExtEventInfo.Text, 1, RecHeader->ExtExtEventInfo.TextLength, fInfIn);
@@ -324,7 +324,7 @@ bool LoadInfFile(char *AbsInfName, bool FirstTime)
   }
   
   //Decode the source .inf
-  if (ReadBytes + 4 >= sizeof(TYPE_RecHeader_TMSC))
+  if (ReadBytes + 4 >= (int)sizeof(TYPE_RecHeader_TMSC))
   {
     curSystemType = DetermineInfType(InfBuffer, InfFileSize);
     switch (curSystemType)

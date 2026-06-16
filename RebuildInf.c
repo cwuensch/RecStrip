@@ -492,7 +492,7 @@ bool LoadDVBViewer(char *AbsTsFileName, TYPE_RecHeader_TMSS *RecInf)
               }
 //              RecInf->ExtEventInfo.ServiceID = RecInf->ServiceInfo.ServiceID;
               StrToUTF8(ExtEPGText, Buffer, 2*strlen(Buffer), 0);
-              realloc(ExtEPGText, strlen(ExtEPGText) + 1);
+              ExtEPGText = (char*) realloc(ExtEPGText, strlen(ExtEPGText) + 1);
               strncpy(RecInf->ExtEventInfo.Text, ExtEPGText, sizeof(RecInf->ExtEventInfo.Text));
 
               if (RecInf->ExtEventInfo.Text[sizeof(RecInf->ExtEventInfo.Text) - 1] != 0)
@@ -1034,8 +1034,8 @@ if (ExtDesc->ItemsLen > 0)
         }
         if (OverwriteInf)
         {
-          ExtEPGText[ExtEPGTextLen] = '\0';
-          realloc(ExtEPGText, ExtEPGTextLen + 1);
+          ExtEPGText[min(ExtEPGTextLen, EPGBUFFERSIZE-1)] = '\0';
+          ExtEPGText = (char*) realloc(ExtEPGText, min(ExtEPGTextLen, EPGBUFFERSIZE-1) + 1);
           strncpy(OutExtEventInfo->Text, ExtEPGText, sizeof(OutExtEventInfo->Text));
 
           if (OutExtEventInfo->Text[sizeof(OutExtEventInfo->Text) - 1] != 0)
