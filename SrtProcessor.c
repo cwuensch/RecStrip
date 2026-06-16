@@ -33,7 +33,7 @@ bool LoadSrtFilesIn(const char* AbsInRec)
 {
   char CurFileName[FBLIB_DIR_SIZE];
   int i, j;
-  char* Extensions[] = {".srt", ".sup", "_deu.srt", "_fra.srt", "_ger.srt", "_full.srt", "_777.srt", "_150.srt", "_151.srt", "_888.srt", "_160.srt", "_161.srt", "_152.srt", "_149.srt", "_571.srt"};
+  char* Extensions[] = {".srt", ".sup", "_deu.srt", "_fra.srt", "_ger.srt", "_subt.srt", "_777.srt", "_150.srt", "_151.srt", "_888.srt", "_160.srt", "_161.srt", "_152.srt", "_149.srt", "_571.srt"};
 
   CloseSrtFilesIn();
 
@@ -92,7 +92,7 @@ bool SrtProcessCaptions(dword FromTimems, dword ToTimems, int TimeDiff, bool DoO
   {
     if(!srts[i].fSrtIn) continue;
     if(DoOutput && !srts[i].fSrtOut)
-      printf("  Warning! SRT input '...%s' has no open output file!\n", srts[i].Extension);
+      printf("  Warning! SRT input nr. %d (%d: \"%s\") has no open output file!\n", i+1, srts[i].Nr + 1, srts[i].Number);
     Buffer[0] = '\0';
 
     // Walk through srt file and copy relevant parts to output files

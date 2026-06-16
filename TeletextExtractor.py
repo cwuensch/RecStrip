@@ -22,9 +22,10 @@ except ImportError:
     import tty
 
 colors = {
-  '●':30, '◐':31, '◑':32, '◒':33, '◓':34, '◔':35, '◕':36, '○':37,
+  '●':30, '◐':31, '◑':32, '◒':33, '◓':34, '◔':35, '◕':36, '○':37, 
   '▣':40, '▤':41, '▥':42, '▦':43, '▧':44, '▨':45, '▩':46, '□':47
 }
+# '◌' = hidden
 
 def getch():
   """
@@ -108,32 +109,50 @@ def mytrim(line):
 
 def replace_colors(line, colorize_output):
   hold_mosaic = False
-  last_c = ' '
+  found_color = False
 
   if (colorize_output):
+    last_c = '▣'
+    line = list(line)
+
+    for i, c in enumerate(line):
+      if ('□' <= c <= '▩'):
+        last_c = c
+      if (c == '◌'):
+        line[i] = '○' if (last_c == '□') else chr(ord(last_c) + 0x2C)
+    line = "".join(line)
+
     for old, new in colors.items():
       line = line.replace(old, "%s\033[%dm%s" % ((old if (new<40) else ''), new, (old if (new>=40) else ''))) + "\033[0m"
 
+  last_c = ' '
   line = list(line)
   for i, c in enumerate(line):
     if (c == '◆'):
       hold_mosaic = True
+      found_color = False
     elif (c == '◇'):
       hold_mosaic = False
 
-    if (c in colors.keys() or c in "◆◇"):
+    if (c in colors.keys() or c in "◆◇◈"):
       line[i] = last_c if (hold_mosaic) else ' '
+      if (c == '◈'):
+        last_c = ' '
     elif (ord(c) >= 0x2588):
 #      c = ' '        # CW: hier wird die Mosaic ASCII-Art deaktiviert
 #      line[i] = ' '  # CW: hier wird die Mosaic ASCII-Art deaktiviert
       last_c = c
+      found_color = False
     elif (c.isalpha() and c != 'm'):
       last_c = ' '
-
+    elif (c == '\033'):
+      found_color = True
+    elif (c == ' ' and found_color):
+      last_c = ' '
   return("".join(line))
 
 # Funktion zur Text-Extraktion einer Teletext-Seite
-def extract_text(page, filename, page_nr, sub_nr, comment):
+def extract_text(page, filename, folder, page_nr, sub_nr, comment):
   trimmed_page = []
   out_page = []
   result = {}
@@ -141,6 +160,18 @@ def extract_text(page, filename, page_nr, sub_nr, comment):
 
   # 1. Schritt: Zeilen trimmen, tokenisieren und von Navigations-Zeilen befreien
   for i, line in enumerate(page):
+    # Hidden Text entfernen
+    hidden = False
+    line = list(line)
+    for j, c in enumerate(line):
+      if (c == '◌'):
+        hidden = True
+      elif (('○' <= c <= '◕') or ('□' <= c <= '▩')):
+        hidden = False
+      if (hidden):
+        line[j] = ' '
+    line = "".join(line)
+
     line = line.replace("  VPS  ", " VPS ")
 #    line = line.replace(" bis ", "  bis ")
     line = line.replace("tag  ", "tag, ")
@@ -168,7 +199,7 @@ def extract_text(page, filename, page_nr, sub_nr, comment):
     if (len(line) > 1 and (line != ">> ")):
       if (line[-1] == " "):
         line = line[:-1]
-      if (line[-1] == "-" and line[-2] != " " and (not next_line[0].isupper() or (next_line[0] == "!" and not next_line[1].isupper()))):
+      if ((len(line) > 2 and line[-1] == "-" and line[-2] != " ") and len(next_line) > 1 and (not next_line[0].isupper() or (next_line[0] == "!" and not next_line[1].isupper()))):
         line = line[:-1]
         getrennt = True
       else:
@@ -193,6 +224,7 @@ def extract_text(page, filename, page_nr, sub_nr, comment):
     out_page.append(str.rstrip(line_buf))
 
   # 3. Schritt: Besondere Zeilen identifizieren
+  result["folder"] = folder
   result["filename"] = filename
   result["page"] = page_nr
   result["subpage"] = sub_nr
@@ -254,7 +286,8 @@ def extract_text(page, filename, page_nr, sub_nr, comment):
       result["text"].append(line)
     i = i + 1
 
-  result["text"] = "\r".join(result["text"])
+  result["text"] = "\n".join(result["text"])
+  result["full"] = "\n".join(out_page)
   return(result, out_page)
 
 
@@ -308,11 +341,13 @@ def process_page(all_pages, new_text):
         # ref und new stimmen überein
         if ((nr_unique_new > nr_unique_ref + 40) or (nr_missing_new < nr_missing_ref and nr_unique_new + 10 >= nr_unique_ref) or (nr_unique_new > nr_unique_ref and nr_missing_new == nr_missing_ref)):
           if (subpage_nr == 0):
-            subpage_nr = sub
+            all_pages[page_nr][0][sub] = new_text
+          else:
             all_pages[page_nr][subpage_nr] = new_text
         else:
           if (subpage_nr == 0):
-            subpage_nr = sub
+            all_pages[page_nr][0][sub] = old_text
+          else:
             all_pages[page_nr][subpage_nr] = old_text
         new_text = None
         break
@@ -363,19 +398,6 @@ def load_teletext(all_pages, file_text):
       if (new_text != None):
         new_text.append(line)
 
-  for i, p in all_pages.items():
-    new_page = {}
-    if (0 in p and len(p[0]) > 0):
-      new_page = { ((j/10) if j>0 else 0):s for j,s in enumerate(p[0]) }
-    for j, s in sorted(p.items()):
-      if (j > 0):
-        new_page[j] = s
-
-#    if (0 in p and len(p[0]) > 1):
-#      for j, s in new_page.items():
-#        s[0] = "%s (+%d)" % (s[0][:11], len(p[0]))
-    all_pages[i] = new_page
-
   return(all_pages)
 
 # Funktion zum Anzeigen des Inhalts einer Teletext-Seite
@@ -397,8 +419,8 @@ def get_subpage(page, sub_nr):
       return(sub_nr)
   return(-2)
 
-def print_page(all_pages, page_nr, sub_nr, do_extract, searchstr, file_names, comment):
-#  print(f"DEBUG: print_page (all_pages[{len(all_pages)}], page_nr={page_nr}, sub_nr={sub_nr}, do_extract={do_extract})")
+def print_page(all_pages, page_nr, sub_nr, do_extract, searchstr, file_names, folder, comment):
+#  print(f"DEBUG: print_page (all_pages[{len(all_pages)}], page_nr={page_nr}, sub_nr={sub_nr}, folder={folder}, do_extract={do_extract})")
   page = get_page(all_pages, page_nr)
   subpages = list(page.keys())
   result = None
@@ -406,7 +428,7 @@ def print_page(all_pages, page_nr, sub_nr, do_extract, searchstr, file_names, co
   sub_nr = get_subpage(page, sub_nr)
   if (sub_nr >= 0):
     if (do_extract):
-      result, out_page = extract_text(page[subpages[sub_nr]], file_names, page_nr, sub_nr, comment)
+      result, out_page = extract_text(page[subpages[sub_nr]], file_names, folder, page_nr, sub_nr, comment)
       str = "\n".join(out_page)
     else:
       str = map(lambda x: replace_colors(x, True), page[subpages[sub_nr]])
@@ -453,7 +475,7 @@ def do_save(outlist, first_write):
 # Funktion zum Speichern der vollständigen Extraktions-Tabelle
 def save_table(outtable):
   with open("output2.tsv", "a", newline="", encoding="utf-8") as out_file:
-    writer = csv.DictWriter(out_file, delimiter='\t', quotechar='"', quoting=csv.QUOTE_MINIMAL, lineterminator='\r\n', fieldnames=["filename", "page", "subpage", "now", "sender", "datum", "zeit", "dauer", "titel", "subtitel", "desc1", "desc2", "desc3", "desc4", "desc5", "desc6", "desc7", "desc8", "desc9", "text", "comment"], extrasaction='ignore')
+    writer = csv.DictWriter(out_file, delimiter='\t', quotechar='"', quoting=csv.QUOTE_MINIMAL, lineterminator='\r\n', fieldnames=["folder", "filename", "page", "subpage", "now", "sender", "datum", "zeit", "dauer", "titel", "subtitel", "desc1", "desc2", "desc3", "desc4", "desc5", "desc6", "desc7", "desc8", "desc9", "text", "full", "comment"], extrasaction='ignore')
     writer.writeheader()
     for row in outtable:
       if (row):
@@ -483,8 +505,14 @@ def main():
         folder = argument.split("/")[0]
       elif (os.sep in argument):
         folder = argument.split(os.sep)[0]
+      if (folder):
+        argument = argument[len(folder)+1:]
     else:
       folder = argument
+  else:
+    print ("Bitte Argument übergeben (Dateiname.ttx/.gz oder Ordner)!")
+    sys.stdin.read(1)
+    return
 
   clear()
   try:
@@ -521,6 +549,9 @@ def main():
 
 #  all_files.sort(key=lambda x: os.path.getsize(x), reverse=True)
   all_files = [x.removesuffix(".gz") if x.endswith(".gz") else x for x in all_files]
+  if (len(all_files) == 0):
+    print("No teletext files (*.ttx, *.ttx.gz) found.")
+    return
 
   if (len(all_files[0]) > 15 and all_files[0][-15] == "_"):  # Humax
     all_files.sort(key=lambda x: x.split("_")[0][:-1] + "_" + x.split("_")[1][:6])
@@ -549,20 +580,22 @@ def main():
         file_mask2 = cur_name[-15:-8]
       elif (re.search(".+ \[\d{4}-\d{2}-\d{2}\]\.ttx", cur_name)):
         file_mask = cur_name[:-17]
-        file_mask2 = cur_name[-16:]
+        file_mask2 = cur_name[-16:-4]
         while (file_mask.endswith("-2") or file_mask.endswith("-1")):
           file_mask = file_mask[:-2]
       elif (re.search("\[\d{4}-\d{2}-\d{2}\] .+_video\.ttx", cur_name)):
-        file_mask = cur_name[:-10]
-        while (file_mask.endswith("-2") or file_mask.endswith("-1")):
-          file_mask = file_mask[:-2]
+        file_mask = cur_name[:12]
+        file_mask2 = cur_name[13:-10]
+        while (file_mask2.endswith("-2") or file_mask2.endswith("-1")):
+          file_mask2 = file_mask2[:-2]
 #      elif (re.search(".+ \[\d{2}\.\d{2}\.\d{4}\]\.ttx", cur_name)):
 #        file_mask = cur_name[:-17]
-#        file_mask2 = cur_name[-16:]
+#        file_mask2 = cur_name[-16:-4]
       elif (re.search(".+\(Cut-\d{1,2}\)\.ttx", cur_name)):
         file_mask = cur_name[:-12]
         while (file_mask.endswith(" ")):
           file_mask = file_mask[:-1]
+
 
       j = i
       while (j > 0 and all_files[j-1].startswith(file_mask) and file_mask2 in all_files[j-1]):
@@ -582,6 +615,21 @@ def main():
         with opener(file_path, "r", "\r\n") as file:
           all_pages = load_teletext(all_pages, file.read())
 
+
+      # Verschachtelung der Seiten (Subpages bzw. Alternativen) auflösen
+      for n, p in all_pages.items():
+        new_page = {}
+        if (0 in p and len(p[0]) > 0):
+          new_page = { ((m/10) if m>0 else 0):s for m,s in enumerate(p[0]) }
+        for m, s in sorted(p.items()):
+          if (m > 0):
+            new_page[m] = s
+        if (0 in p and len(p[0]) > 1):
+          for m, s in new_page.items():
+            s[0] = "%s (%d/%d)" % (s[0][:5], m*10, len(p[0]))
+#            s[0] = "%s (%d)" % (s[0][:11], len(p[0]))
+        all_pages[n] = new_page
+
       # Sort subpages
 #      for page_nr, page in all_pages.items():
 #        all_pages[page_nr] = sorted(page.items())
@@ -589,17 +637,17 @@ def main():
       # Read previously generated page associations
       if (cur_name in inlist):
         page = inlist[cur_name]["page"]
-        subpage = int(inlist[cur_name]["subpage"])
+        subpage = float(inlist[cur_name]["subpage"])
         comment = inlist[cur_name]["comment"]
       else:
         page = "100"
         last_page = get_page(all_pages, "333")
 
-        if (last_page != None and (1 in last_page) and str.rstrip(last_page[1][2])=="" and str.rstrip(last_page[1][3])=="" and str.rstrip(last_page[1][4])==""):
+        if (last_page != None and (0 in last_page) and str.rstrip(last_page[0][2])=="" and str.rstrip(last_page[0][3])=="" and str.rstrip(last_page[0][4])==""):
           page = "333"
         else:
           last_page = get_page(all_pages, "368")  # arte
-          if (last_page != None and (1 in last_page) and str.rstrip(last_page[1][2])=="" and str.rstrip(last_page[1][3])=="" and str.rstrip(last_page[1][4])==""):
+          if (last_page != None and (0 in last_page) and str.rstrip(last_page[0][2])=="" and str.rstrip(last_page[0][3])=="" and str.rstrip(last_page[0][4])==""):
             page = "368"
           else:
             last_page = get_page(all_pages, "300")  # terranova
@@ -607,7 +655,7 @@ def main():
               page = "300"
 
         if (page == "333" or page == "368"):
-          for line in last_page[1]:
+          for line in last_page[0]:
             x = re.search("[.> ](\d{3}) ?$", str.rstrip(line))
             if (x):
               page = x.group(1)
@@ -634,7 +682,7 @@ def main():
         if (answer == b'f'):
           do_search(all_pages, searchstr)
         else:
-          subpage, result = print_page(all_pages, page, subpage, (mode==1), searchstr, file_names, comment)
+          subpage, result = print_page(all_pages, page, subpage, (mode==1), searchstr, file_names, folder, comment)
           if (quietmode):
             outtable.append(result)
 
@@ -704,11 +752,11 @@ def main():
           i = i - 2
           break
 
-        elif (answer == b'\r' and newpage != ""):
+        elif ((answer==b'\r' or answer==b'\n') and newpage != ""):
           page = newpage if (newpage != "0" and newpage != "000") else "100"
           subpage = 0
 
-        elif (answer == b'\r' or answer == b'n' or answer == b'c'):
+        elif ((answer==b'\r' or answer==b'\n') or answer == b'n' or answer == b'c'):
           if (answer == b'n'):
             page = "0"
             subpage = 0
@@ -719,6 +767,7 @@ def main():
 
       if (answer == b'q'):
         break
+
     i = i + 1
 
   if (quietmode):
