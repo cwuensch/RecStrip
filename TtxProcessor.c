@@ -1650,7 +1650,7 @@ bool WriteAllTeletext(char *AbsOutFile)
             }
             else if ((*c <= 0x07) && (hold_mosaic || (foreground_color != (color_t) *c)))  // foreground color
             {
-              if (hold_mosaic)  // ASCII color resets the held character
+              if (hold_mosaic)  // ASCII color resets the held character -> 0x25c8 not necessary, since not reliable...
               {
                 if ((j > 0) && (page->text[i][j-1] == ' ' || page->text[i][j-1] == 0x25c8))
                   page->text[i][j-1] = 0x25c8;  // reset hold character
@@ -1664,8 +1664,8 @@ bool WriteAllTeletext(char *AbsOutFile)
 
               foreground_color = (color_t) *c;
               *c = (uint16_t) TTXT_COLORSYMBOLS[0][foreground_color];
-              if(last_coltag && !hold_mosaic)  *last_coltag = ' ';
-              last_coltag = c;
+              if(last_coltag)  *last_coltag = ' ';
+              last_coltag = (hold_mosaic) ? c : NULL;
             }
             else if (*c == 0x0d)  // double height
             {
