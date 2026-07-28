@@ -1572,7 +1572,7 @@ bool WriteAllTeletext(char *AbsOutFile)
 {
   uint16_t line[41];
   int p, s, i, j, col_stop;
-  uint16_t *c, *last_coltag;
+  uint16_t *c, *last_coltag, last_c;
   color_t foreground_color, background_color;
   bool hold_mosaic, out_of_box, empty_file = TRUE, ret = TRUE;
   FILE *f = fopen(AbsOutFile, "wb");
@@ -1612,6 +1612,19 @@ bool WriteAllTeletext(char *AbsOutFile)
       fprintf(f, "----------------------------------------\r\n");
       fprintf(f, ((nr_subpages <= 1) ? "[%03hu]\r\n" : "[%03hu] (%d/%d)\r\n"), p+100, s, nr_subpages);
 
+/*if (p == 83 && s == 1)
+{
+  FILE *fDbg = fopen("C:/Users/Christian Wünsch/Downloads/Lagunen_p183.txt", "wb");
+  printf("page 183\n");
+  for (i = 0; i < 24; i++)
+  {
+    for (j = 0; j < 40; j++)
+      fwrite((byte*)&page->text[i][j], 1, 1, fDbg);
+    fwrite("\n", 1, 1, fDbg);
+  }
+  fclose(fDbg);
+} */
+
       for (i = 0; i < 24; i++)
       {
         foreground_color = COLOR_WHITE;
@@ -1619,6 +1632,7 @@ bool WriteAllTeletext(char *AbsOutFile)
         out_of_box = -1;  // NA
         hold_mosaic = FALSE;
         last_coltag = NULL;
+        last_c = ' ';
         col_stop = 0;
 
         // Check for boxed area
@@ -1640,17 +1654,20 @@ bool WriteAllTeletext(char *AbsOutFile)
         for (j = 0; j < 40; j++)
         {
           c = &page->text[i][j];
-          if (*c <= 0x20)
+          if (*c < 0x20)
           {
             if (*c == 0 && j == 0)
             {
               foreground_color = COLOR_BLACK;
-              *c = ' ';
-              last_coltag = c;
+              *c = (hold_mosaic==2) ? (uint16_t) TTXT_COLORSYMBOLS[0][foreground_color] : ' ';
+              if(last_coltag)  *last_coltag = ' ';
+              last_coltag = (hold_mosaic!=2) ? c : NULL;
+              if(hold_mosaic)  hold_mosaic = 1;
+//              last_c = ' ';
             }
-            else if ((*c <= 0x07) && (hold_mosaic || (foreground_color != (color_t) *c)))  // foreground color
+            else if ((*c <= 0x07) && ((foreground_color != (color_t) *c) || hold_mosaic==2))  // foreground color
             {
-              if (hold_mosaic)  // ASCII color resets the held character -> 0x25c8 not necessary, since not reliable...
+/*              if (hold_mosaic)  // ASCII color resets the held character -> 0x25c8 not necessary, since not reliable...
               {
                 if ((j > 0) && (page->text[i][j-1] == ' ' || page->text[i][j-1] == 0x25c8))
                   page->text[i][j-1] = 0x25c8;  // reset hold character
@@ -1660,27 +1677,31 @@ bool WriteAllTeletext(char *AbsOutFile)
                   page->text[i][j] = 0x25c8;  // reset hold character
                   continue;
                 }
-              }
+              } */
 
               foreground_color = (color_t) *c;
               *c = (uint16_t) TTXT_COLORSYMBOLS[0][foreground_color];
               if(last_coltag)  *last_coltag = ' ';
-              last_coltag = (hold_mosaic) ? c : NULL;
+              last_coltag = (hold_mosaic!=2) ? c : NULL;
+              if(hold_mosaic)  hold_mosaic = 1;
+//              last_c = ' ';
             }
             else if (*c == 0x0d)  // double height
             {
               double_height = TRUE;
+              *c = ' ';
             }
-            else if ((*c >= 0x10 && *c <= 0x17) && (hold_mosaic || (foreground_color != (color_t) (*c - 0x10))))  // mosaic foreground color
+            else if ((*c >= 0x10 && *c <= 0x17) && (foreground_color != (color_t) (*c - 0x10)))  // mosaic foreground color
             {
               foreground_color = (color_t) (*c - 0x10);
               *c = (uint16_t) TTXT_COLORSYMBOLS[0][foreground_color];
-              if(last_coltag && !hold_mosaic)  *last_coltag = ' ';
+              if(last_coltag)  *last_coltag = ' ';
+              if(hold_mosaic)  hold_mosaic = 2;
               last_coltag = c;
             }
             else if (*c == 0x1c)  // black background
             {
-              if (background_color != COLOR_BLACK)
+              if ((background_color != COLOR_BLACK) || hold_mosaic==2)
                 *c = (uint16_t) TTXT_COLORSYMBOLS[1][COLOR_BLACK];
               else
                 *c = ' ';
@@ -1688,30 +1709,30 @@ bool WriteAllTeletext(char *AbsOutFile)
             }
             else if (*c == 0x1d)  // background color
             {
-              if ((out_of_box != TRUE) && (background_color != foreground_color))
+              if ((out_of_box != TRUE) && ((background_color != foreground_color) || hold_mosaic==2))
                 *c = (uint16_t) TTXT_COLORSYMBOLS[1][foreground_color];
               else
                 *c = ' ';
               background_color = foreground_color;
 
-              if (last_coltag && !hold_mosaic)  // when [color][background][color] -> remove the first [color]
+              if (last_coltag && hold_mosaic!=2)  // when [color][background][color] -> remove the first [color]
               {
                 int k;
-                for (k = j+1; k < 40; k++)
-                  if(page->text[i][k] != ' ') break;
+                for (k = j-(c-last_coltag)+1; k < 40; k++)
+                  if(k!=j && page->text[i][k] != ' ') break;
                 if ((k >= 40) || (page->text[i][k] <= 0x07))
                   *last_coltag = ' ';
               }
             }
             else if (*c == 0x0b)  // box start
             {
-              if ((out_of_box == TRUE) && (background_color != COLOR_BLACK))
+              if ((out_of_box == TRUE) && ((background_color != COLOR_BLACK) || hold_mosaic==2))
                 *c = (uint16_t) TTXT_COLORSYMBOLS[1][background_color];
               out_of_box = FALSE;
             }
             else if (*c == 0x0a && (*(c+1) != 0x0a))  // box end
             {
-              if ((out_of_box == FALSE) && (background_color != COLOR_BLACK))
+              if ((out_of_box == FALSE) && ((background_color != COLOR_BLACK) || hold_mosaic==2))
                 *c = (uint16_t) TTXT_COLORSYMBOLS[1][COLOR_BLACK];
               else
                 *c = ' ';
@@ -1726,20 +1747,26 @@ bool WriteAllTeletext(char *AbsOutFile)
             else if (*c == 0x1e)
             {
               *c = 0x25c6;  // hold mosaic
-              hold_mosaic = TRUE;
-              last_coltag = NULL;
+              hold_mosaic = 2;
             }
             else if (*c == 0x1f)
             {
               *c = 0x25c7;  // release mosaic
               hold_mosaic = FALSE;
               last_coltag = NULL;
+              last_c = ' ';
             }
-            else
-              *c = ' ';
+            else 
+            {
+              if(hold_mosaic == 2) *c = last_c;
+              else *c = ' ';
+            }
           }
-          else
+          else 
+          {
+            last_c = (*c >= 0x2588) ? *c : ' ';
             last_coltag = NULL;
+          }
         }
         if(last_coltag && !hold_mosaic) *last_coltag = ' ';
 
