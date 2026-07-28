@@ -3,7 +3,7 @@
 # Use with argument -q to make a tsv of the selected description page for each rec.
 # python C:\Topfield\RecStrip_28\TeletextExtractor.py -q Humax-1 & python C:\Topfield\RecStrip_28\TeletextExtractor.py -q Humax-2 & python C:\Topfield\RecStrip_28\TeletextExtractor.py -q Humax-3 & python C:\Topfield\RecStrip_28\TeletextExtractor.py -q Humax-4 & python C:\Topfield\RecStrip_28\TeletextExtractor.py -q Humax-5 & python C:\Topfield\RecStrip_28\TeletextExtractor.py -q Humax-6 & python C:\Topfield\RecStrip_28\TeletextExtractor.py -q Medion-1 & python C:\Topfield\RecStrip_28\TeletextExtractor.py -q Medion-2 & python C:\Topfield\RecStrip_28\TeletextExtractor.py -q Medion-3
 #
-# (c) 2024-2025 Christian Wünsch
+# (c) 2024-2026 Christian Wünsch
 #
 #
 
@@ -109,7 +109,6 @@ def mytrim(line):
 
 def replace_colors(line, colorize_output):
   hold_mosaic = False
-  found_color = False
 
   if (colorize_output):
     last_c = '▣'
@@ -130,25 +129,22 @@ def replace_colors(line, colorize_output):
   for i, c in enumerate(line):
     if (c == '◆'):
       hold_mosaic = True
-      found_color = False
-    elif (c == '◇'):
-      hold_mosaic = False
 
-    if (c in colors.keys() or c in "◆◇◈"):
+    if (c in colors.keys() or c in "◆◇◈◌"):
       line[i] = last_c if (hold_mosaic) else ' '
-      if (c == '◈'):
-        last_c = ' '
+#      if ('○' <= c <= '◕' or c in "◇◈"):
+#        last_c = ' '
     elif (ord(c) >= 0x2588):
 #      c = ' '        # CW: hier wird die Mosaic ASCII-Art deaktiviert
 #      line[i] = ' '  # CW: hier wird die Mosaic ASCII-Art deaktiviert
       last_c = c
-      found_color = False
     elif (c.isalpha() and c != 'm'):
       last_c = ' '
-    elif (c == '\033'):
-      found_color = True
-    elif (c == ' ' and found_color):
+    elif (c in (' ', '\033')):
       last_c = ' '
+
+    if (c == '◇'):
+      hold_mosaic = False
   return("".join(line))
 
 # Funktion zur Text-Extraktion einer Teletext-Seite
@@ -176,13 +172,14 @@ def extract_text(page, filename, folder, page_nr, sub_nr, comment):
 #    line = line.replace(" bis ", "  bis ")
     line = line.replace("tag  ", "tag, ")
     line = line.replace("woch  ", "woch, ")
+    line = line.strip()
 
     if (i >= 2 and ("   " in line or "●" in line or "◐" in line or "◑" in line or "◒" in line or "◓" in line or "◔" in line or "◕" in line or "○" in line)):
-      parts = re.split("   |●|◐|◑|◒|◓|◔|◕|○", line)
+      parts = re.split(r"   |●|◐|◑|◒|◓|◔|◕|○", line)
       for nr, part in enumerate(parts):
         part = mytrim(part)
         if (len(part) > 0):
-          if (not re.search("((\.\.\.)|(>>?)) ?\d{3}", part) and not re.search("^ *(▧○)?\d{3} ?<<?", line) and not ("VPS" in part and len(part) <= 10) and not ("Übersicht" in line and len(line) <= 13)):
+          if (not re.search(r"((\.\.\.)|(>>?)) ?\d{3}", part) and not re.search(r"^ *(▧○)?\d{3} ?<<?", line) and not ("VPS" in part and len(part) <= 10) and not ("Übersicht" in line and len(line) <= 13)):
             trimmed_page.append(("!" if (nr % 2 > 0) else "") + part)
     else:
       trimmed_page.append(mytrim(line))
@@ -199,24 +196,28 @@ def extract_text(page, filename, folder, page_nr, sub_nr, comment):
     if (len(line) > 1 and (line != ">> ")):
       if (line[-1] == " "):
         line = line[:-1]
-      if ((len(line) > 2 and line[-1] == "-" and line[-2] != " ") and len(next_line) > 1 and (not next_line[0].isupper() or (next_line[0] == "!" and not next_line[1].isupper()))):
-        line = line[:-1]
-        getrennt = True
-      else:
-        line = line + " "
 
       if (len(line_buf) > 1 and not textstart):
         out_page.append("")
         textstart = True
 
-      if (line and line_buf and (line[0] == "!") and (line_buf[0] == "!")):
-        line = line[1:]
+      if (line and line_buf and ((line[0] == "!" and line_buf[0] == "!") or (line[0] != "!" and line_buf[0] != "!"))):
+        if (line[0] == "!"):
+          line = line[1:]
+
+        if ((len(line_buf) > 2 and line_buf[-1] == "-" and line_buf[-2] != " ") and len(line) > 1 and (not line[0].isupper())):
+          line_buf = line_buf[:-1]
+          getrennt = True
+
+      if (len(line_buf) > 2 and not getrennt and (line_buf[-1] != "-" or line_buf[-2] == " ")):
+        line_buf = line_buf + " "
       line_buf = line_buf + line
+
 
       if (line_buf and next_line):
         same_col = ((line_buf[0] == "!" and next_line[0] == "!") or (line_buf[0] != "!" and next_line[0] != "!"))
 
-      if (not getrennt and (i <= 2 or not same_col or (len(line) <= 20) or (len(next_line) <= 1) or (len(next_line.split(" ")[0]) < 38-len(line)) or not any(map(str.islower, line)) or "16:9" in next_line)):
+      if (i <= 2 or not same_col or (len(line) <= 10) or (len(next_line) <= 1) or not any(map(str.islower, line)) or "16:9" in next_line or "<-" in next_line or "->" in next_line):
         out_page.append(str.rstrip(line_buf))
         line_buf = ""
     i = i + 1
@@ -253,15 +254,15 @@ def extract_text(page, filename, folder, page_nr, sub_nr, comment):
       breakfound = True
     if (breakfound and result["titel"] != ""):
       break
-    if (re.search("\d{1,2}\. ?(\d{1,2}\.|(Jan|Feb|Mär|Apr|Mai|Jun|Jul|Aug|Sep|Okt|Nov|Dez))", line)):
+    if (re.search(r"\d{1,2}\. ?(\d{1,2}\.|(Jan|Feb|Mär|Apr|Mai|Jun|Jul|Aug|Sep|Okt|Nov|Dez))", line)):
       if (result["datum"] == ""):
         result["datum"] = line
       out_page[i] = "[DATUM] " + line
-    elif ((re.search("\d{1,2}[\.:]\d{1,2}", line) or "Uhr" in line) and not "16:9" in line):
+    elif ((re.search(r"\d{1,2}[\.:]\d{1,2}", line) or "Uhr" in line) and not "16:9" in line):
       if (result["zeit"] == ""):
         result["zeit"] = line
       out_page[i] = "[ZEIT]  " + line
-    elif (re.search("\d{1,3} ?(min|MIN|Minuten)", line) and len(line) < 10):
+    elif (re.search(r"\d{1,3} ?(min|MIN|Minuten)", line) and len(line) < 10):
       if (result["dauer"] == ""):
         result["dauer"] = line
         out_page[i] = "[DAUER] " + line
@@ -319,12 +320,12 @@ def process_page(all_pages, new_text):
       nr_same = sum( sum( (old_text[i][j] == new_text[i][j]) for j in range(0, min(len(old_text[i]), len(new_text[i]))) ) for i in range(1, len(old_text)) )
       nr_missing_ref = sum( old_text[i].count('⍰') for i in range(1, len(old_text)) )
       nr_missing_new = sum( new_text[i].count('⍰') for i in range(1, len(new_text)) )
-      nr_unique_ref  = sum( sum( (old_text[i][j] > ' ' and new_text[i][j] <= ' ') for j in range(0, min(len(old_text[i]), len(new_text[i]))) ) + max(len(old_text[i])-len(new_text[i]), 0) for i in range(2, len(old_text)) )
-      nr_unique_new  = sum( sum( (new_text[i][j] > ' ' and old_text[i][j] <= ' ') for j in range(0, min(len(old_text[i]), len(new_text[i]))) ) + max(len(new_text[i])-len(old_text[i]), 0) for i in range(2, len(new_text)) )
+      nr_unique_ref  = sum( sum( (old_text[i][j] > ' ' and new_text[i][j] <= ' ') for j in range(0, min(len(old_text[i]), len(new_text[i]))) ) + max(len(old_text[i])-len(new_text[i]), 0) for i in range(2, min(len(old_text), len(new_text))) ) + 20*max(len(old_text)-len(new_text), 0)
+      nr_unique_new  = sum( sum( (new_text[i][j] > ' ' and old_text[i][j] <= ' ') for j in range(0, min(len(old_text[i]), len(new_text[i]))) ) + max(len(new_text[i])-len(old_text[i]), 0) for i in range(2, min(len(old_text), len(new_text))) ) + 20*max(len(new_text)-len(old_text), 0)
 
 
       # Wenn ref = new oder ref Teilmenge von new oder umgekehrt
-      if (nr_same > 40 and nr_diff < 40 and not (nr_unique_ref > 20 and nr_unique_new > 20)):
+      if (nr_same > 40 and nr_diff < 40 and not (nr_unique_ref > 20 or nr_unique_new > 20)):
         # Fix missing chars if page is duplicate
         if ((nr_missing_ref > 0 or nr_missing_new > 0) and nr_diff > 0):
           for i in range(0, len(old_text)):
@@ -353,7 +354,7 @@ def process_page(all_pages, new_text):
         break
 
       # feste Unterseite oder wenig Differenz
-      if (subpage_nr > 0 or nr_diff <= 40):
+      if (subpage_nr > 0 or nr_diff <= 20):
         if (subpage_nr == 0):
           all_pages[page_nr][0][sub] = new_text
         else:
@@ -438,7 +439,7 @@ def print_page(all_pages, page_nr, sub_nr, do_extract, searchstr, file_names, fo
       if (do_extract):
         print("")
     else:
-      print(re.sub(searchstr, "\033[92m" + searchstr + "\033[0m", replace_colors(str, False), flags=re.IGNORECASE))
+      print(re.sub(searchstr, r"\033[92m" + searchstr + r"\033[0m", replace_colors(str, False), flags=re.IGNORECASE))
   else:
     print (f"no data ({page_nr})")
   return(sub_nr, result)
@@ -454,7 +455,7 @@ def do_search(all_pages, searchstr):
           if (not page_found):
             print(subpage[0])
           print(replace_colors(subpage[line_nr-1], False))
-          print(re.sub(searchstr, "\033[92m" + searchstr + "\033[0m", replace_colors(line, False), flags=re.IGNORECASE))
+          print(re.sub(searchstr, r"\033[92m" + searchstr + r"\033[0m", replace_colors(line, False), flags=re.IGNORECASE))
           if (line_nr+1 < len(subpage)):
             print(replace_colors(subpage[line_nr+1], False))
           page_found = True
@@ -491,7 +492,7 @@ def main():
   outtable = []
   inlist = {}
 
-  folder = "."
+  folder = ""
   quietmode = 0
   if (len(sys.argv) > 1):
     if (sys.argv[1] == "-q"):
@@ -505,13 +506,13 @@ def main():
         folder = argument.split("/")[0]
       elif (os.sep in argument):
         folder = argument.split(os.sep)[0]
-      if (folder):
+      if (len(folder) > 0):
         argument = argument[len(folder)+1:]
     else:
       folder = argument
   else:
     print ("Bitte Argument übergeben (Dateiname.ttx/.gz oder Ordner)!")
-    sys.stdin.read(1)
+#    sys.stdin.read(1)
     return
 
   clear()
@@ -575,23 +576,23 @@ def main():
     if cur_name.endswith(".ttx"):
       file_mask = cur_name
       file_mask2 = ""
-      if (re.search("_\d{10}.ttx", cur_name)):
+      if (re.search(r"_\d{10}.ttx", cur_name)):
         file_mask = cur_name[:-16]
         file_mask2 = cur_name[-15:-8]
-      elif (re.search(".+ \[\d{4}-\d{2}-\d{2}\]\.ttx", cur_name)):
+      elif (re.search(r".+ \[\d{4}-\d{2}-\d{2}\]\.ttx", cur_name)):
         file_mask = cur_name[:-17]
         file_mask2 = cur_name[-16:-4]
         while (file_mask.endswith("-2") or file_mask.endswith("-1")):
           file_mask = file_mask[:-2]
-      elif (re.search("\[\d{4}-\d{2}-\d{2}\] .+_video\.ttx", cur_name)):
+      elif (re.search(r"\[\d{4}-\d{2}-\d{2}\] .+_video\.ttx", cur_name)):
         file_mask = cur_name[:12]
         file_mask2 = cur_name[13:-10]
         while (file_mask2.endswith("-2") or file_mask2.endswith("-1")):
           file_mask2 = file_mask2[:-2]
-#      elif (re.search(".+ \[\d{2}\.\d{2}\.\d{4}\]\.ttx", cur_name)):
+#      elif (re.search(r".+ \[\d{2}\.\d{2}\.\d{4}\]\.ttx", cur_name)):
 #        file_mask = cur_name[:-17]
 #        file_mask2 = cur_name[-16:-4]
-      elif (re.search(".+\(Cut-\d{1,2}\)\.ttx", cur_name)):
+      elif (re.search(r".+\(Cut-\d{1,2}\)\.ttx", cur_name)):
         file_mask = cur_name[:-12]
         while (file_mask.endswith(" ")):
           file_mask = file_mask[:-1]
@@ -656,7 +657,7 @@ def main():
 
         if (page == "333" or page == "368"):
           for line in last_page[0]:
-            x = re.search("[.> ](\d{3}) ?$", str.rstrip(line))
+            x = re.search(r"[.> ](\d{3}) ?$", str.rstrip(line))
             if (x):
               page = x.group(1)
               break
