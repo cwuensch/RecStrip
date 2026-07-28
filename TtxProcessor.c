@@ -1660,7 +1660,6 @@ bool WriteAllTeletext(char *AbsOutFile)
             {
               foreground_color = COLOR_BLACK;
               *c = (hold_mosaic==2) ? (uint16_t) TTXT_COLORSYMBOLS[0][foreground_color] : ' ';
-              if(last_coltag)  *last_coltag = ' ';
               last_coltag = (hold_mosaic!=2) ? c : NULL;
               if(hold_mosaic)  hold_mosaic = 1;
 //              last_c = ' ';
